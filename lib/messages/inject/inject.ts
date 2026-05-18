@@ -168,7 +168,7 @@ function injectContextUsage(
 
     const percentage = ((currentTokens / modelContextLimit) * 100).toFixed(1)
     const formatK = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n))
-    const usageTag = `\n\nContext usage: ${formatK(currentTokens)} / ${formatK(modelContextLimit)} tokens (${percentage}%). ACP threshold: 55%.`
+    const usageTag = `\n\nContext usage: ${formatK(currentTokens)} / ${formatK(modelContextLimit)} tokens (${percentage}%). ACP (Active Context Pruning) threshold: 55%. You ARE the ACP agent — use the compress tool proactively to manage context quality.`
 
     for (const part of lastUser.parts) {
         if (part.type === "text") {
