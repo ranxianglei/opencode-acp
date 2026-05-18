@@ -177,7 +177,7 @@ export function isContextOverLimits(
         for (const msg of recentMessages) {
             if (msg.info.role === "assistant" && msg.parts) {
                 for (const part of msg.parts) {
-                    if (part.type === "tool-invocation" && part.toolInvocation?.toolName === "compress") {
+                    if ((part as any).type === "tool-invocation" && (part as any).toolInvocation?.toolName === "compress") {
                         overMaxLimit = false
                         break
                     }
