@@ -570,6 +570,13 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
                             actual: typeof purge.turns,
                         })
                     }
+                    if (typeof purge.turns === "number" && purge.turns < 1) {
+                        errors.push({
+                            key: "strategies.purgeErrors.turns",
+                            expected: "positive number (>= 1)",
+                            actual: `${purge.turns} (will be clamped to 1)`,
+                        })
+                    }
                     if (purge.protectedTools !== undefined && !Array.isArray(purge.protectedTools)) {
                         errors.push({
                             key: "strategies.purgeErrors.protectedTools",
