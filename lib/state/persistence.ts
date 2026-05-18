@@ -67,20 +67,20 @@ const STORAGE_DIR = join(
 )
 
 /** One-time migration: copy plugin/dcp/ → plugin/acp/ if ACP dir doesn't exist yet */
-function migrateFromLegacyIfNeeded(): void {
+function migrateFromLegacyIfNeeded(logger: Logger): void {
     if (existsSyncSync(STORAGE_DIR)) return
     if (!existsSyncSync(LEGACY_STORAGE_DIR)) return
     try {
         cpSync(LEGACY_STORAGE_DIR, STORAGE_DIR, { recursive: true })
-        console.log(`[ACP] Migrated storage from ${LEGACY_STORAGE_DIR} → ${STORAGE_DIR}`)
+        logger.info(`[ACP] Migrated storage from ${LEGACY_STORAGE_DIR} → ${STORAGE_DIR}`)
     } catch (e: any) {
-        console.warn(`[ACP] Storage migration failed: ${e.message}`)
+        logger.warn(`[ACP] Storage migration failed: ${e.message}`)
     }
 }
 
-async function ensureStorageDir(): Promise<void> {
+async function ensureStorageDir(logger: Logger): Promise<void> {
     if (!existsSync(STORAGE_DIR)) {
-        migrateFromLegacyIfNeeded()
+        migrateFromLegacyIfNeeded(logger)
         await fs.mkdir(STORAGE_DIR, { recursive: true })
     }
 }
@@ -94,7 +94,7 @@ async function writePersistedSessionState(
     state: PersistedSessionState,
     logger: Logger,
 ): Promise<void> {
-    await ensureStorageDir()
+    await ensureStorageDir(logger)
 
     const filePath = getSessionFilePath(sessionId)
     const content = JSON.stringify(state, null, 2)
