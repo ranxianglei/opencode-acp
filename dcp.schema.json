@@ -1,0 +1,319 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "$id": "https://raw.githubusercontent.com/Opencode-DCP/opencode-dynamic-context-pruning/master/dcp.schema.json",
+    "title": "DCP Plugin Configuration",
+    "description": "Configuration schema for the OpenCode Dynamic Context Pruning plugin",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+        "$schema": {
+            "type": "string",
+            "description": "JSON Schema reference for IDE autocomplete"
+        },
+        "enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Enable or disable the DCP plugin"
+        },
+        "autoUpdate": {
+            "type": "boolean",
+            "default": true,
+            "description": "Automatically update npm-installed DCP when a newer npm latest version is available. Version-locked plugin specs are not updated."
+        },
+        "debug": {
+            "type": "boolean",
+            "default": false,
+            "description": "Enable debug logging"
+        },
+        "pruneNotification": {
+            "type": "string",
+            "enum": ["off", "minimal", "detailed"],
+            "default": "detailed",
+            "description": "Level of notification shown when context management occurs"
+        },
+        "pruneNotificationType": {
+            "type": "string",
+            "enum": ["chat", "toast"],
+            "default": "chat",
+            "description": "Where to display notifications (chat message or toast notification)"
+        },
+        "commands": {
+            "type": "object",
+            "description": "Configuration for DCP slash commands (/dcp)",
+            "additionalProperties": false,
+            "properties": {
+                "enabled": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Enable DCP slash commands (/dcp)"
+                },
+                "protectedTools": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "default": [],
+                    "description": "Additional tool names or wildcard patterns to protect from pruning via commands (e.g., /dcp sweep). Supports glob wildcards: * matches any characters, ? matches a single character (e.g., \"mcp_*\", \"my_tool_?\")"
+                }
+            },
+            "default": {
+                "enabled": true,
+                "protectedTools": []
+            }
+        },
+        "manualMode": {
+            "type": "object",
+            "description": "Manual mode behavior for context management tools",
+            "additionalProperties": false,
+            "properties": {
+                "enabled": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Start new sessions with manual mode enabled"
+                },
+                "automaticStrategies": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "When manual mode is enabled, keep automatic deduplication/purge strategies running"
+                }
+            },
+            "default": {
+                "enabled": false,
+                "automaticStrategies": true
+            }
+        },
+        "turnProtection": {
+            "type": "object",
+            "description": "Protect recent tool outputs from being pruned",
+            "additionalProperties": false,
+            "properties": {
+                "enabled": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Enable turn-based protection"
+                },
+                "turns": {
+                    "type": "number",
+                    "default": 4,
+                    "description": "Number of recent turns to protect from pruning"
+                }
+            }
+        },
+        "experimental": {
+            "type": "object",
+            "description": "Experimental settings that may change in future releases",
+            "additionalProperties": false,
+            "properties": {
+                "allowSubAgents": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Allow DCP processing in subagent sessions"
+                },
+                "customPrompts": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Enable user-editable prompt overrides under dcp-prompts directories"
+                }
+            },
+            "default": {
+                "allowSubAgents": false,
+                "customPrompts": false
+            }
+        },
+        "protectedFilePatterns": {
+            "type": "array",
+            "items": {
+                "type": "string"
+            },
+            "default": [],
+            "description": "Glob patterns for files that should be protected from pruning (e.g., '**/*.config.ts')"
+        },
+        "compress": {
+            "type": "object",
+            "description": "Configuration for the unified compress tool",
+            "additionalProperties": false,
+            "properties": {
+                "mode": {
+                    "type": "string",
+                    "enum": ["range", "message"],
+                    "default": "range",
+                    "description": "Compression mode. 'range' compresses spans into block summaries, 'message' compresses individual raw messages."
+                },
+                "permission": {
+                    "type": "string",
+                    "enum": ["ask", "allow", "deny"],
+                    "default": "allow",
+                    "description": "Permission mode (deny disables the tool)"
+                },
+                "showCompression": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Show compression summaries in notifications"
+                },
+                "summaryBuffer": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "When enabled, active summary tokens extend the effective maxContextLimit used for context-limit nudges."
+                },
+                "maxContextLimit": {
+                    "description": "Soft upper threshold. Above this, DCP keeps sending strong compression nudges (based on nudgeFrequency), so the model is pushed to compress. Accepts number or \"X%\" of the model context window.",
+                    "default": 100000,
+                    "oneOf": [
+                        {
+                            "type": "number"
+                        },
+                        {
+                            "type": "string",
+                            "pattern": "^\\d+(?:\\.\\d+)?%$"
+                        }
+                    ]
+                },
+                "minContextLimit": {
+                    "description": "Soft lower threshold for reminder nudges. Below this, turn/iteration reminders are off (compression is less likely). At or above this, reminders are on. Accepts number or \"X%\" of the model context window.",
+                    "default": 50000,
+                    "oneOf": [
+                        {
+                            "type": "number"
+                        },
+                        {
+                            "type": "string",
+                            "pattern": "^\\d+(?:\\.\\d+)?%$"
+                        }
+                    ]
+                },
+                "modelMaxLimits": {
+                    "description": "Per-model override for maxContextLimit by exact provider/model key. If set, this takes priority over the global maxContextLimit.",
+                    "type": "object",
+                    "additionalProperties": {
+                        "oneOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "string",
+                                "pattern": "^\\d+(?:\\.\\d+)?%$"
+                            }
+                        ]
+                    }
+                },
+                "modelMinLimits": {
+                    "description": "Per-model override for minContextLimit by exact provider/model key. If set, this takes priority over the global minContextLimit.",
+                    "type": "object",
+                    "additionalProperties": {
+                        "oneOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "string",
+                                "pattern": "^\\d+(?:\\.\\d+)?%$"
+                            }
+                        ]
+                    }
+                },
+                "nudgeFrequency": {
+                    "type": "number",
+                    "default": 5,
+                    "minimum": 1,
+                    "description": "How often the context-limit nudge fires when above maxContextLimit (1 = every fetch, 5 = every 5th fetch)"
+                },
+                "iterationNudgeThreshold": {
+                    "type": "number",
+                    "default": 15,
+                    "minimum": 1,
+                    "description": "How many messages to wait after a user message before adding compression reminders."
+                },
+                "nudgeForce": {
+                    "type": "string",
+                    "enum": ["strong", "soft"],
+                    "default": "soft",
+                    "description": "Controls how likely compression is after user messages. 'strong' is more likely, 'soft' is less likely."
+                },
+                "protectedTools": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "default": [],
+                    "description": "Tool names or wildcard patterns whose completed outputs should be appended to the compression summary. Supports glob wildcards: * matches any characters, ? matches a single character (e.g., \"mcp_*\", \"my_tool_?\")"
+                },
+                "protectTags": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Preserve text wrapped in <protect>...</protect> when compressed"
+                },
+                "protectUserMessages": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "When enabled, your messages are never lost during compression"
+                }
+            },
+            "default": {
+                "mode": "range",
+                "permission": "allow",
+                "showCompression": false,
+                "summaryBuffer": true,
+                "maxContextLimit": 100000,
+                "minContextLimit": 50000,
+                "nudgeFrequency": 5,
+                "iterationNudgeThreshold": 15,
+                "nudgeForce": "soft",
+                "protectedTools": [],
+                "protectTags": false,
+                "protectUserMessages": false
+            }
+        },
+        "strategies": {
+            "type": "object",
+            "description": "Automatic pruning strategies",
+            "additionalProperties": false,
+            "properties": {
+                "deduplication": {
+                    "type": "object",
+                    "description": "Remove duplicate tool outputs",
+                    "additionalProperties": false,
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean",
+                            "default": true,
+                            "description": "Enable deduplication strategy"
+                        },
+                        "protectedTools": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            },
+                            "default": [],
+                            "description": "Tool names or wildcard patterns excluded from deduplication. Supports glob wildcards: * matches any characters, ? matches a single character (e.g., \"mcp_*\", \"my_tool_?\")"
+                        }
+                    }
+                },
+                "purgeErrors": {
+                    "type": "object",
+                    "description": "Remove tool outputs that resulted in errors",
+                    "additionalProperties": false,
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean",
+                            "default": true,
+                            "description": "Enable purge errors strategy"
+                        },
+                        "turns": {
+                            "type": "number",
+                            "default": 4,
+                            "description": "Number of turns after which errors are purged"
+                        },
+                        "protectedTools": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            },
+                            "default": [],
+                            "description": "Tool names or wildcard patterns excluded from error purging. Supports glob wildcards: * matches any characters, ? matches a single character (e.g., \"mcp_*\", \"my_tool_?\")"
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
