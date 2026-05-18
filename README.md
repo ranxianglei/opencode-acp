@@ -7,7 +7,7 @@
 
 ### Why ACP instead of DCP?
 
-DCP is a great idea with 34 bugs. After fixing all of them, ACP handles **tens of thousands of messages** in a single session (vs ~200 before fixes), with pipeline latency reduced from **37 seconds to 90ms per turn**.
+DCP is a great idea with 35 bugs. After fixing all of them, ACP handles **tens of thousands of messages** in a single session (vs ~200 before fixes), with pipeline latency reduced from **37 seconds to 90ms per turn**.
 
 | Metric | DCP (original) | ACP (this fork) |
 |--------|---------------|-----------------|
@@ -17,7 +17,7 @@ DCP is a great idea with 34 bugs. After fixing all of them, ACP handles **tens o
 | GC effectiveness | Never deactivates old blocks | Age-based auto-cleanup |
 | Compress reliability | Fails on edge cases, model gives up | Auto-recovers reversed boundaries |
 
-Key fixes include: state persistence across restarts, token usage reporting (was returning 0), summary message ID resolution, GC age-based deactivation, 268× logger/tokenizer speedup, and auto-swap for reversed compress boundaries. See the [full bug fix list](#bug-fixes-34-total) below.
+Key fixes include: state persistence across restarts, token usage reporting (was returning 0), summary message ID resolution, GC age-based deactivation, 268× logger/tokenizer speedup, auto-swap for reversed compress boundaries, and aging warning suppression at low context usage. See the [full bug fix list](#bug-fixes-35-total) below.
 
 ## Installation
 
@@ -194,16 +194,16 @@ Each level overrides the previous, so project settings take priority over global
 
 ### Commands
 
-DCP provides a `/dcp` slash command:
+ACP provides an `/acp` slash command (also accepts `/dcp` for backward compatibility):
 
-- `/dcp` — Shows available DCP commands
-- `/dcp context` — Shows a breakdown of your current session's token usage by category (system, user, assistant, tools, etc.) and how much has been saved through pruning.
-- `/dcp stats` — Shows cumulative pruning statistics across all sessions.
-- `/dcp sweep` — Prunes all tools since the last user message. Accepts an optional count: `/dcp sweep 10` prunes the last 10 tools. Respects `commands.protectedTools`.
-- `/dcp manual [on|off]` — Toggle manual mode or set explicit state. When on, the AI will not autonomously use context management tools.
-- `/dcp compress [focus]` — Trigger a single compress tool execution. Optional focus text directs what content to compress, following the active `compress.mode`.
-- `/dcp decompress <n>` — Restore a specific active compression by ID (for example `/dcp decompress 2`). Running without an argument shows available compression IDs, token sizes, and topics.
-- `/dcp recompress <n>` — Re-apply a user-decompressed compression by ID (for example `/dcp recompress 2`). Running without an argument shows recompressible IDs, token sizes, and topics.
+- `/acp` — Shows available ACP commands
+- `/acp context` — Shows a breakdown of your current session's token usage by category (system, user, assistant, tools, etc.) and how much has been saved through pruning.
+- `/acp stats` — Shows cumulative pruning statistics across all sessions.
+- `/acp sweep` — Prunes all tools since the last user message. Accepts an optional count: `/acp sweep 10` prunes the last 10 tools. Respects `commands.protectedTools`.
+- `/acp manual [on|off]` — Toggle manual mode or set explicit state. When on, the AI will not autonomously use context management tools.
+- `/acp compress [focus]` — Trigger a single compress tool execution. Optional focus text directs what content to compress, following the active `compress.mode`.
+- `/acp decompress <n>` — Restore a specific active compression by ID (for example `/acp decompress 2`). Running without an argument shows available compression IDs, token sizes, and topics.
+- `/acp recompress <n>` — Re-apply a user-decompressed compression by ID (for example `/acp recompress 2`). Running without an argument shows recompressible IDs, token sizes, and topics.
 
 ### Prompt Overrides
 
@@ -253,7 +253,7 @@ AGPL-3.0-or-later
 
 This project is a fork of [@tarquinen/opencode-dcp](https://github.com/Tarquinen/opencode-dynamic-context-pruning). Original copyright belongs to the original author. Modifications and bug fixes by ranxianglei.
 
-## Bug Fixes (34 total)
+## Bug Fixes (35 total)
 
 Critical and high-severity fixes applied on top of DCP v3.1.11:
 
@@ -282,5 +282,6 @@ Critical and high-severity fixes applied on top of DCP v3.1.11:
 | 21 | HIGH | Logger + tokenizer 20-50s per-turn latency (268× slowdown) |
 | 22 | HIGH | compress throws hard error on reversed block boundaries — model gives up |
 | 23–34 | MEDIUM | Various fixes for dedup, purge errors, schema validation, hook timing, etc. |
+| 35 | HIGH | Aging warnings shown at low context usage (<50%) — triggers unnecessary compress, wastes tokens |
 
 For the complete list with root cause analysis, see the [bug tracker](https://github.com/ranxianglei/opencode-acp/issues).
