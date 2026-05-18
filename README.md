@@ -3,7 +3,9 @@
 [![npm version](https://img.shields.io/npm/v/opencode-acp.svg)](https://www.npmjs.com/package/opencode-acp)
 [![license](https://img.shields.io/npm/l/opencode-acp.svg)](https://github.com/ranxianglei/opencode-acp/blob/master/LICENSE)
 
-**ACP** (Active Context Pruning) is a hardened fork of [DCP](https://github.com/Tarquinen/opencode-dynamic-context-pruning) for [OpenCode](https://opencode.ai). The model actively manages its own context — deciding *when* and *what* to compress, rather than waiting for a passive threshold trigger.
+**ACP** (Active Context Pruning) is a hardened fork of [DCP](https://github.com/Tarquinen/opencode-dynamic-context-pruning) for [OpenCode](https://opencode.ai).
+
+**Active** means the model proactively decides *when* and *what* to compress — as opposed to passive approaches that only react when context hits a hard limit. The model uses the `compress` tool to produce high-fidelity summaries of completed conversation segments, preserving important details while freeing context space. This is superior to passive truncation because the model controls what information to keep.
 
 ### Why ACP instead of DCP?
 
@@ -43,7 +45,7 @@ ACP reduces context size through a compress tool and automatic cleanup. Your ses
 
 Compress is a tool exposed to your model that replaces closed, stale conversation content with high-fidelity technical summaries. You can think of this as a much smarter version of Opencode's compaction process. Instead of triggering statically when your session reaches its maximum context and on the entire coding session, Compress allows the model to pick when to activate based on task completion, and to only compress the specific messages that are no longer needed verbatim.
 
-DCP supports two compression modes:
+ACP supports two compression modes:
 
 - `range` mode compresses contiguous spans of conversation into one or more summaries.
 - `message` mode (experimental) compresses individual raw messages independently, letting the model manage context much more surgically.
@@ -60,11 +62,13 @@ Prunes inputs from errored tool calls after a configurable number of turns (defa
 
 ## Configuration
 
-DCP uses its own config file, searched in order:
+ACP uses its own config file, searched in order:
 
 1. Global: `~/.config/opencode/dcp.jsonc` (or `dcp.json`), created automatically on first run
 2. Custom config directory: `$OPENCODE_CONFIG_DIR/dcp.jsonc` (or `dcp.json`), if `OPENCODE_CONFIG_DIR` is set
 3. Project: `.opencode/dcp.jsonc` (or `dcp.json`) in your project's `.opencode` directory
+
+> **Note:** The config file name `dcp.jsonc` is kept for backward compatibility with DCP installations.
 
 Each level overrides the previous, so project settings take priority over global. Restart OpenCode after making config changes.
 
@@ -82,7 +86,7 @@ Each level overrides the previous, so project settings take priority over global
     "$schema": "https://raw.githubusercontent.com/Opencode-DCP/opencode-dynamic-context-pruning/master/dcp.schema.json",
     // Enable or disable the plugin
     "enabled": true,
-    // Automatically update npm-installed DCP when a newer npm latest is available.
+    // Automatically update npm-installed ACP when a newer npm latest is available.
     // Version-locked plugin specs are not updated.
     "autoUpdate": true,
     // Enable debug logging to ~/.config/opencode/logs/dcp/
@@ -94,11 +98,11 @@ Each level overrides the previous, so project settings take priority over global
     // Slash commands configuration
     "commands": {
         "enabled": true,
-        // Additional tools to protect from pruning via commands (e.g., /dcp sweep)
+        // Additional tools to protect from pruning via commands (e.g., /acp sweep)
         "protectedTools": [],
     },
     // Manual mode: disables autonomous context management,
-    // tools only run when explicitly triggered via /dcp commands
+    // tools only run when explicitly triggered via /acp commands
     "manualMode": {
         "enabled": false,
         // When true, automatic cleanup (deduplication, purgeErrors)
@@ -112,7 +116,7 @@ Each level overrides the previous, so project settings take priority over global
     },
     // Experimental settings
     "experimental": {
-        // Allow DCP processing in subagent sessions
+        // Allow ACP processing in subagent sessions
         "allowSubAgents": false,
         // Enable user-editable prompt overrides under dcp-prompts directories
         // When false (default), prompt override files/directories are ignored
@@ -132,7 +136,7 @@ Each level overrides the previous, so project settings take priority over global
         "showCompression": false,
         // Let active summary tokens extend the effective maxContextLimit
         "summaryBuffer": true,
-        // Soft upper threshold: above this, DCP keeps injecting strong
+        // Soft upper threshold: above this, ACP keeps injecting strong
         // compression nudges (based on nudgeFrequency), so compression is
         // much more likely. Accepts: number or "X%" of model context window.
         "maxContextLimit": 100000,
@@ -207,7 +211,7 @@ ACP provides an `/acp` slash command (also accepts `/dcp` for backward compatibi
 
 ### Prompt Overrides
 
-DCP exposes six editable prompts:
+ACP exposes six editable prompts:
 
 - `system`
 - `compress-range`
@@ -216,7 +220,7 @@ DCP exposes six editable prompts:
 - `turn-nudge`
 - `iteration-nudge`
 
-This feature is disabled by default. Set `experimental.customPrompts` to `true` in your DCP config to activate it.
+This feature is disabled by default. Set `experimental.customPrompts` to `true` in your ACP config to activate it.
 
 When enabled, managed defaults are written to `~/.config/opencode/dcp-prompts/defaults/` as plain-text prompt files. A single `README.md` in that directory explains each prompt and how to create overrides.
 
@@ -235,17 +239,37 @@ For the `compress` tool, `compress.protectedTools` ensures specific tool outputs
 
 ## Impact on Prompt Caching
 
-LLM providers cache prompts based on exact prefix matching. When DCP prunes content, it changes messages, which invalidates cached prefixes from that point forward.
+LLM providers cache prompts based on exact prefix matching. When ACP prunes content, it changes messages, which invalidates cached prefixes from that point forward.
 
 **Trade-off:** You lose some cache reads but gain token savings from reduced context size and fewer hallucinations from stale context. In most cases, especially in long sessions, the savings outweigh the cache miss cost.
 
 > [!NOTE]
-> In testing, cache hit rates were approximately 85% with DCP vs 90% without.
+> In testing, cache hit rates were approximately 85% with ACP vs 90% without.
 
 **No impact for:**
 
 - **Request-based billing** — Providers like GitHub Copilot that charge per request, not tokens.
 - **Uniform token pricing** — Providers like Cerebras that bill cached and uncached tokens at the same rate.
+
+## Migrating from DCP
+
+ACP is a drop-in replacement for DCP. To migrate:
+
+1. Remove the old DCP plugin from your `opencode.json`
+2. Install ACP: `opencode plugin install opencode-acp@latest --global`
+3. Restart OpenCode
+
+**What's preserved:**
+- Session state (compression blocks, message ID mappings) — stored in `~/.local/share/opencode/storage/plugin/dcp/`
+- Config file `~/.config/opencode/dcp.jsonc` — ACP reads the same config
+- Prompt overrides in `~/.config/opencode/dcp-prompts/`
+
+**What changes:**
+- Slash command: `/dcp` → `/acp` (both work for backward compatibility)
+- Notification headers: `DCP` → `ACP`
+- Context usage label: `DCP threshold` → `ACP threshold`
+
+Internal storage paths and config file names keep the `dcp` naming for backward compatibility.
 
 ## License
 
