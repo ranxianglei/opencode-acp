@@ -1,13 +1,13 @@
 import type { SessionState, WithParts } from "./state"
 import { isIgnoredUserMessage } from "./messages/query"
 
-const MESSAGE_REF_REGEX = /^m(\d{4})$/
+const MESSAGE_REF_REGEX = /^m(\d{4,5})$/
 const BLOCK_REF_REGEX = /^b([1-9]\d*)$/
 const MESSAGE_ID_TAG_NAME = "dcp-message-id"
 
-const MESSAGE_REF_WIDTH = 4
+const MESSAGE_REF_WIDTH = 5
 const MESSAGE_REF_MIN_INDEX = 1
-export const MESSAGE_REF_MAX_INDEX = 9999
+export const MESSAGE_REF_MAX_INDEX = 99999
 
 export type ParsedBoundaryId =
     | {

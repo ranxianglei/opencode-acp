@@ -195,12 +195,12 @@ test("compress message mode batches individual message summaries", async () => {
             topic: "Batch stale notes",
             content: [
                 {
-                    messageId: "m0002",
+                    messageId: "m00002",
                     topic: "Code path note",
                     summary: "Captured the assistant's code-path findings.",
                 },
                 {
-                    messageId: "m0003",
+                    messageId: "m00003",
                     topic: "Task output note",
                     summary: "Captured the assistant's task-backed follow-up.",
                 },
@@ -222,11 +222,11 @@ test("compress message mode batches individual message summaries", async () => {
         (a, b) => a.blockId - b.blockId,
     )
 
-    assert.equal(blocks[0]?.startId, "m0002")
-    assert.equal(blocks[0]?.endId, "m0002")
+    assert.equal(blocks[0]?.startId, "m00002")
+    assert.equal(blocks[0]?.endId, "m00002")
     assert.equal(blocks[0]?.topic, "Code path note")
-    assert.equal(blocks[1]?.startId, "m0003")
-    assert.equal(blocks[1]?.endId, "m0003")
+    assert.equal(blocks[1]?.startId, "m00003")
+    assert.equal(blocks[1]?.endId, "m00003")
     assert.match(
         blocks[1]?.summary || "",
         /The following protected tools were used in this conversation as well:/,
@@ -271,7 +271,7 @@ test("compress message mode appends protected prompt info", async () => {
             topic: "Protected note",
             content: [
                 {
-                    messageId: "m0001",
+                    messageId: "m00001",
                     topic: "User request note",
                     summary: "Captured the user's investigation request.",
                 },
@@ -330,7 +330,7 @@ test("compress message mode ignores protect tags on ignored user messages", asyn
             topic: "Ignored protected note",
             content: [
                 {
-                    messageId: "m0001",
+                    messageId: "m00001",
                     topic: "Ignored note",
                     summary: "Captured the ignored user message.",
                 },
@@ -381,7 +381,7 @@ test("compress message mode stores call id for later duration attachment", async
             topic: "Batch stale notes",
             content: [
                 {
-                    messageId: "m0002",
+                    messageId: "m00002",
                     topic: "Code path note",
                     summary: "Captured the assistant's code-path findings.",
                 },
@@ -437,12 +437,12 @@ test("compress message mode does not partially apply when preparation fails", as
                 topic: "Batch stale notes",
                 content: [
                     {
-                        messageId: "m0002",
+                        messageId: "m00002",
                         topic: "Code path note",
                         summary: "Captured the assistant's code-path findings.",
                     },
                     {
-                        messageId: "m0003",
+                        messageId: "m00003",
                         topic: "Task output note",
                         summary: "Captured the assistant's task-backed follow-up.",
                     },
@@ -543,12 +543,12 @@ test("compress message mode skips protected user message references", async () =
                     summary: "Should be skipped.",
                 },
                 {
-                    messageId: "m0001",
+                    messageId: "m00001",
                     topic: "Hidden protected ref",
                     summary: "Should also be skipped.",
                 },
                 {
-                    messageId: "m0002",
+                    messageId: "m00002",
                     topic: "Valid note",
                     summary: "Captured the assistant's code-path findings.",
                 },
@@ -566,7 +566,7 @@ test("compress message mode skips protected user message references", async () =
     assert.match(result, /^Compressed 1 message into \[Compressed conversation section\]\./)
     assert.match(result, /Skipped 2 issues:/)
     assert.match(result, /messageId BLOCKED refers to a protected message/)
-    assert.match(result, /messageId m0001 refers to a protected message/)
+    assert.match(result, /messageId m00001 refers to a protected message/)
 })
 
 test("compress message mode allows messages containing compress tool parts", async () => {
@@ -622,7 +622,7 @@ test("compress message mode allows messages containing compress tool parts", asy
             topic: "Compress compress call",
             content: [
                 {
-                    messageId: "m0004",
+                    messageId: "m00004",
                     topic: "Compress tool message",
                     summary: "Captured the earlier compress tool call.",
                 },
@@ -640,7 +640,7 @@ test("compress message mode allows messages containing compress tool parts", asy
     assert.equal(result, "Compressed 1 message into [Compressed conversation section].\nIMPORTANT: This was an automatic context compression. You MUST continue your previous task exactly where you left off. Do NOT ask the user what to do next.")
     assert.equal(state.prune.messages.blocksById.size, 1)
     const block = Array.from(state.prune.messages.blocksById.values())[0]
-    assert.equal(block?.startId, "m0004")
+    assert.equal(block?.startId, "m00004")
 })
 
 test("compress message mode sends one aggregated notification for batched messages", async () => {
@@ -681,12 +681,12 @@ test("compress message mode sends one aggregated notification for batched messag
             topic: "Batch stale notes",
             content: [
                 {
-                    messageId: "m0002",
+                    messageId: "m00002",
                     topic: "Code path note",
                     summary: "Captured the assistant's code-path findings.",
                 },
                 {
-                    messageId: "m0003",
+                    messageId: "m00003",
                     topic: "Task output note",
                     summary: "Captured the assistant's task-backed follow-up.",
                 },
@@ -737,7 +737,7 @@ test("compress message mode skips messages that are already actively compressed"
             topic: "First pass",
             content: [
                 {
-                    messageId: "m0002",
+                    messageId: "m00002",
                     topic: "Code path note",
                     summary: "Captured the assistant's code-path findings.",
                 },
@@ -756,12 +756,12 @@ test("compress message mode skips messages that are already actively compressed"
             topic: "Second pass",
             content: [
                 {
-                    messageId: "m0002",
+                    messageId: "m00002",
                     topic: "Already compressed note",
                     summary: "Should be skipped because it is already compressed.",
                 },
                 {
-                    messageId: "m0003",
+                    messageId: "m00003",
                     topic: "Task output note",
                     summary: "Captured the assistant's task-backed follow-up.",
                 },
@@ -778,7 +778,7 @@ test("compress message mode skips messages that are already actively compressed"
     assert.equal(state.prune.messages.blocksById.size, 2)
     assert.match(result, /^Compressed 1 message into \[Compressed conversation section\]\./)
     assert.match(result, /Skipped 1 issue:/)
-    assert.match(result, /messageId m0002 is already part of an active compression\./)
+    assert.match(result, /messageId m00002 is already part of an active compression\./)
 })
 
 test("compress message mode skips invalid batch entries and reports issues", async () => {
@@ -814,17 +814,17 @@ test("compress message mode skips invalid batch entries and reports issues", asy
                     summary: "Should be skipped.",
                 },
                 {
-                    messageId: "m0002",
+                    messageId: "m00002",
                     topic: "Valid note",
                     summary: "Captured the assistant's code-path findings.",
                 },
                 {
-                    messageId: "m9999",
+                    messageId: "m09999",
                     topic: "Missing message",
                     summary: "Should also be skipped.",
                 },
                 {
-                    messageId: "m0002",
+                    messageId: "m00002",
                     topic: "Duplicate valid note",
                     summary: "Duplicate entry should be skipped.",
                 },
@@ -842,8 +842,8 @@ test("compress message mode skips invalid batch entries and reports issues", asy
     assert.match(result, /^Compressed 1 message into \[Compressed conversation section\]\./)
     assert.match(result, /Skipped 3 issues:/)
     assert.match(result, /Block IDs like bN are not allowed/)
-    assert.match(result, /messageId m9999 is not available in the current conversation context/)
-    assert.match(result, /messageId m0002 was selected more than once in this batch\./)
+    assert.match(result, /messageId m09999 is not available in the current conversation context/)
+    assert.match(result, /messageId m00002 was selected more than once in this batch\./)
 })
 
 test("compress message mode reports issues when every batch entry is skipped", async () => {
@@ -880,7 +880,7 @@ test("compress message mode reports issues when every batch entry is skipped", a
                         summary: "Should be skipped.",
                     },
                     {
-                        messageId: "m9999",
+                        messageId: "m09999",
                         topic: "Missing message",
                         summary: "Should also be skipped.",
                     },

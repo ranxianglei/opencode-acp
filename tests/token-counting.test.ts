@@ -51,7 +51,7 @@ test("counting includes input for large built-in tool calls", () => {
             input: {
                 topic: "Compression topic",
                 content: [
-                    { messageId: "m0001", topic: "Prior work", summary: "Compressed summary" },
+                    { messageId: "m00001", topic: "Prior work", summary: "Compressed summary" },
                 ],
             },
             output: "compressed",

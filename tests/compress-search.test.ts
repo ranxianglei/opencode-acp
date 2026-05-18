@@ -86,8 +86,8 @@ function makeBlock(overrides: Partial<CompressionBlock> = {}): CompressionBlock 
         mode: "range",
         topic: "test",
         batchTopic: "test",
-        startId: "m0001",
-        endId: "m0003",
+        startId: "m00001",
+        endId: "m00003",
         anchorMessageId: "raw-1",
         compressMessageId: "comp-1",
         compressCallId: undefined,
@@ -227,12 +227,12 @@ test("resolveBoundaryIds resolves message IDs correctly", () => {
     const ctx = makeContext([msg1, msg2])
 
     const state = makeState()
-    state.messageIds.byRef.set("m0001", "raw-a")
-    state.messageIds.byRef.set("m0002", "raw-b")
-    state.messageIds.byRawId.set("raw-a", "m0001")
-    state.messageIds.byRawId.set("raw-b", "m0002")
+    state.messageIds.byRef.set("m00001", "raw-a")
+    state.messageIds.byRef.set("m00002", "raw-b")
+    state.messageIds.byRawId.set("raw-a", "m00001")
+    state.messageIds.byRawId.set("raw-b", "m00002")
 
-    const { startReference, endReference } = resolveBoundaryIds(ctx, state, "m0001", "m0002")
+    const { startReference, endReference } = resolveBoundaryIds(ctx, state, "m00001", "m00002")
     assert.equal(startReference.kind, "message")
     assert.equal(startReference.messageId, "raw-a")
     assert.equal(startReference.rawIndex, 0)
@@ -261,7 +261,7 @@ test("resolveBoundaryIds throws on invalid startId format", () => {
     const ctx = makeContext([])
     const state = makeState()
     assert.throws(
-        () => resolveBoundaryIds(ctx, state, "invalid", "m0001"),
+        () => resolveBoundaryIds(ctx, state, "invalid", "m00001"),
         /startId is invalid/,
     )
 })
@@ -270,7 +270,7 @@ test("resolveBoundaryIds throws on unknown message ref", () => {
     const ctx = makeContext([])
     const state = makeState()
     assert.throws(
-        () => resolveBoundaryIds(ctx, state, "m0099", "m0100"),
+        () => resolveBoundaryIds(ctx, state, "m00099", "m00100"),
         /not available/,
     )
 })
@@ -281,13 +281,13 @@ test("resolveBoundaryIds auto-swaps reversed boundaries (Bug 34)", () => {
     const ctx = makeContext([msg1, msg2])
 
     const state = makeState()
-    state.messageIds.byRef.set("m0001", "raw-a")
-    state.messageIds.byRef.set("m0002", "raw-b")
-    state.messageIds.byRawId.set("raw-a", "m0001")
-    state.messageIds.byRawId.set("raw-b", "m0002")
+    state.messageIds.byRef.set("m00001", "raw-a")
+    state.messageIds.byRef.set("m00002", "raw-b")
+    state.messageIds.byRawId.set("raw-a", "m00001")
+    state.messageIds.byRawId.set("raw-b", "m00002")
 
     // Pass in reversed order: end before start
-    const { startReference, endReference } = resolveBoundaryIds(ctx, state, "m0002", "m0001")
+    const { startReference, endReference } = resolveBoundaryIds(ctx, state, "m00002", "m00001")
     assert.equal(startReference.messageId, "raw-a")
     assert.equal(startReference.rawIndex, 0)
     assert.equal(endReference.messageId, "raw-b")

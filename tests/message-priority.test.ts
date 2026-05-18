@@ -215,17 +215,17 @@ test("injectMessageIds injects ID into every tool output for assistant messages"
     // User messages: still injected into all text parts
     assert.match(
         (userTextOne as any).text,
-        /\n\n<dcp-message-id priority="high">m0001<\/dcp-message-id>/,
+        /\n\n<dcp-message-id priority="high">m00001<\/dcp-message-id>/,
     )
     assert.match(
         (userTextTwo as any).text,
-        /\n\n<dcp-message-id priority="high">m0001<\/dcp-message-id>/,
+        /\n\n<dcp-message-id priority="high">m00001<\/dcp-message-id>/,
     )
     // Assistant messages: ID injected into every tool output
     assert.doesNotMatch((assistantTextOne as any).text, /dcp-message-id/)
-    assert.match((assistantToolOne as any).state.output, /m0002<\/dcp-message-id>/)
+    assert.match((assistantToolOne as any).state.output, /m00002<\/dcp-message-id>/)
     assert.doesNotMatch((assistantTextTwo as any).text, /dcp-message-id/)
-    assert.match((assistantToolTwo as any).state.output, /m0002<\/dcp-message-id>/)
+    assert.match((assistantToolTwo as any).state.output, /m00002<\/dcp-message-id>/)
 })
 
 test("injectMessageIds marks every protected user text part as BLOCKED in message mode", () => {
@@ -277,7 +277,7 @@ test("injectMessageIds marks every protected user text part as BLOCKED in messag
     assert.doesNotMatch((userTextTwo as any).text, /priority=/)
     assert.match(
         (assistantText as any).text,
-        /\n\n<dcp-message-id priority="low">m0002<\/dcp-message-id>/,
+        /\n\n<dcp-message-id priority="low">m00002<\/dcp-message-id>/,
     )
 })
 
@@ -320,9 +320,9 @@ test("injectMessageIds injects ID into every tool output in range mode", () => {
 
     // Every tool output gets the ID
     assert.doesNotMatch((assistantTextOne as any).text, /dcp-message-id/)
-    assert.match((assistantToolOne as any).state.output, /m0002<\/dcp-message-id>/)
+    assert.match((assistantToolOne as any).state.output, /m00002<\/dcp-message-id>/)
     assert.doesNotMatch((assistantTextTwo as any).text, /dcp-message-id/)
-    assert.match((assistantToolTwo as any).state.output, /m0002<\/dcp-message-id>/)
+    assert.match((assistantToolTwo as any).state.output, /m00002<\/dcp-message-id>/)
 })
 
 test("message mode marks compress tool messages as high priority even when short", () => {
@@ -364,10 +364,10 @@ test("message mode marks compress tool messages as high priority even when short
 
     // ID injected into tool output, not the text part
     assert.doesNotMatch((assistantText as any).text, /dcp-message-id/)
-    assert.match((assistantTool as any).state.output, /m0002<\/dcp-message-id>/)
+    assert.match((assistantTool as any).state.output, /m00002<\/dcp-message-id>/)
     assert.match(
         (assistantTool as any).state.output,
-        /<dcp-message-id priority="high">m0002<\/dcp-message-id>/,
+        /<dcp-message-id priority="high">m00002<\/dcp-message-id>/,
     )
 })
 
@@ -413,10 +413,10 @@ test("message-mode nudges append to existing text parts and list only earlier vi
     assert.equal(injectedNudge?.type, "text")
     assert.match((injectedNudge as any).text, /\n\n<dcp-system-reminder>Base context nudge/)
     assert.match((injectedNudge as any).text, /Message priority context:/)
-    // m0001 (user, 6000 tokens) and m0002 (assistant, 6000 tokens) are both high priority
-    assert.match((injectedNudge as any).text, /High-priority message IDs before this point: m0001, m0002/)
-    assert.doesNotMatch((injectedNudge as any).text, /m0003/)
-    assert.doesNotMatch((injectedNudge as any).text, /m0004/)
+    // m00001 (user, 6000 tokens) and m00002 (assistant, 6000 tokens) are both high priority
+    assert.match((injectedNudge as any).text, /High-priority message IDs before this point: m00001, m00002/)
+    assert.doesNotMatch((injectedNudge as any).text, /m00003/)
+    assert.doesNotMatch((injectedNudge as any).text, /m00004/)
 })
 
 test("message-mode nudges exclude protected user messages from priority guidance", () => {
@@ -452,8 +452,8 @@ test("message-mode nudges exclude protected user messages from priority guidance
 
     const injectedNudge = messages[2]?.parts[0]
     assert.equal(injectedNudge?.type, "text")
-    assert.match((injectedNudge as any).text, /High-priority message IDs before this point: m0002/)
-    assert.doesNotMatch((injectedNudge as any).text, /m0001/)
+    assert.match((injectedNudge as any).text, /High-priority message IDs before this point: m00002/)
+    assert.doesNotMatch((injectedNudge as any).text, /m00001/)
 })
 
 test("range-mode nudges append to existing text parts before tool outputs", () => {
@@ -680,8 +680,8 @@ test("message-mode rendered compressed summaries mark block IDs as BLOCKED", () 
         mode: "range",
         topic: "Earlier notes",
         batchTopic: "Earlier notes",
-        startId: "m0001",
-        endId: "m0001",
+        startId: "m00001",
+        endId: "m00001",
         anchorMessageId: "msg-user-1",
         compressMessageId: "msg-origin",
         includedBlockIds: [],
@@ -730,8 +730,8 @@ test("range-mode rendered compressed summaries keep block IDs", () => {
         mode: "range",
         topic: "Earlier notes",
         batchTopic: "Earlier notes",
-        startId: "m0001",
-        endId: "m0001",
+        startId: "m00001",
+        endId: "m00001",
         anchorMessageId: "msg-user-1",
         compressMessageId: "msg-origin",
         includedBlockIds: [],
@@ -758,8 +758,8 @@ test("range-mode rendered compressed summaries keep block IDs", () => {
 test("hallucination stripping removes all dcp-prefixed XML tags including variants", async () => {
     const text =
         "alpha" +
-        '<dcp-message-id priority="low">m0008</dcp-message-id>' +
-        '<dcp-message-id-extra priority="high">m0008</dcp-message-id-extra>' +
+        '<dcp-message-id priority="low">m00008</dcp-message-id>' +
+        '<dcp-message-id-extra priority="high">m00008</dcp-message-id-extra>' +
         "<dcp-system-reminder>strip this</dcp-system-reminder>" +
         "<dcp-system-reminder-extra>strip this too</dcp-system-reminder-extra>" +
         "omega"
@@ -803,7 +803,7 @@ test("hallucination stripping handles nested dcp tags", async () => {
 test("hallucination stripping handles mixed paired and orphan tags", async () => {
     assert.equal(
         stripHallucinationsFromString(
-            'text\n<dcp-message-id priority="low">m0045</dcp-message-id>\n<dcp:function_calls>\n',
+            'text\n<dcp-message-id priority="low">m00045</dcp-message-id>\n<dcp:function_calls>\n',
         ),
         "text\n\n\n",
     )

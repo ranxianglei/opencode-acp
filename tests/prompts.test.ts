@@ -128,7 +128,7 @@ test("compress-message overrides preserve plain-text metadata mentions", () => {
         [
             "Override body.",
             "",
-            'Each message has an ID inside XML metadata tags like `<dcp-message-id priority="high">m0007</dcp-message-id>`.',
+            'Each message has an ID inside XML metadata tags like `<dcp-message-id priority="high">m00007</dcp-message-id>`.',
             "Messages marked as `<dcp-message-id>BLOCKED</dcp-message-id>` cannot be compressed.",
         ].join("\n"),
         "compress-message.md",
@@ -140,7 +140,7 @@ test("compress-message overrides preserve plain-text metadata mentions", () => {
         assert.match(runtimePrompts.compressMessage, /Override body\./)
         assert.match(
             runtimePrompts.compressMessage,
-            /<dcp-message-id priority="high">m0007<\/dcp-message-id>/,
+            /<dcp-message-id priority="high">m00007<\/dcp-message-id>/,
         )
         assert.match(runtimePrompts.compressMessage, /<dcp-message-id>BLOCKED<\/dcp-message-id>/)
     } finally {

@@ -200,8 +200,8 @@ test("compression notifications increment by tool call across range and message 
             topic: "Range batch",
             content: [
                 {
-                    startId: "m0001",
-                    endId: "m0001",
+                    startId: "m00001",
+                    endId: "m00001",
                     summary: "Captured the opening user request.",
                 },
             ],
@@ -234,12 +234,12 @@ test("compression notifications increment by tool call across range and message 
             topic: "Message batch",
             content: [
                 {
-                    messageId: "m0002",
+                    messageId: "m00002",
                     topic: "Code path note",
                     summary: "Captured the assistant code-path findings.",
                 },
                 {
-                    messageId: "m0003",
+                    messageId: "m00003",
                     topic: "Task output note",
                     summary: "Captured the assistant task-backed follow-up.",
                 },
@@ -292,12 +292,12 @@ test("decompress groups batched message compressions by tool call", async () => 
             topic: "Batch stale notes",
             content: [
                 {
-                    messageId: "m0002",
+                    messageId: "m00002",
                     topic: "Code path note",
                     summary: "Captured the assistant code-path findings.",
                 },
                 {
-                    messageId: "m0003",
+                    messageId: "m00003",
                     topic: "Task output note",
                     summary: "Captured the assistant task-backed follow-up.",
                 },
@@ -392,13 +392,13 @@ test("decompress keeps batched ranges individually restorable", async () => {
             topic: "Batch stale notes",
             content: [
                 {
-                    startId: "m0001",
-                    endId: "m0001",
+                    startId: "m00001",
+                    endId: "m00001",
                     summary: "Captured the opening user request.",
                 },
                 {
-                    startId: "m0002",
-                    endId: "m0002",
+                    startId: "m00002",
+                    endId: "m00002",
                     summary: "Captured the assistant code-path findings.",
                 },
             ],
