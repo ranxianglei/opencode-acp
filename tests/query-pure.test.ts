@@ -91,7 +91,7 @@ test("isIgnoredUserMessage returns false for assistant message", () => {
     assert.equal(isIgnoredUserMessage(msg as any), false)
 })
 
-test("isIgnoredUserMessage returns true for message with undefined parts field", () => {
+test("isIgnoredUserMessage returns false for message with undefined parts field", () => {
     const msg = makeUser()
     ;(msg as any).parts = undefined
     assert.equal(isIgnoredUserMessage(msg as any), false)

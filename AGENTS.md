@@ -137,7 +137,8 @@ opencode-acp/
 │   ├── README.md                     # Scripts documentation
 │   └── ...                           # CLI tools for session inspection
 │
-├── tests/                            # Test files (currently empty shells — needs baseline tests)
+├── tests/                            # Test files — 343 tests across 22 files
+├── lib/config-validation.ts          # Pure validation logic (extracted from config.ts for testability)
 ├── dcp.schema.json                   # JSON schema for config validation
 ├── tsconfig.json                     # TypeScript config
 ├── tsup.config.ts                    # Build config
@@ -349,22 +350,23 @@ No CI/CD is configured. Tests run locally.
 
 **Test categories** (by naming convention, all in `tests/`):
 
-| Category | Files | Description |
-|----------|-------|-------------|
-| **Unit** | `token-counting.test.ts`, `message-ids.test.ts`, `message-utils.test.ts`, `message-priority.test.ts`, `input-budget.test.ts`, `host-permissions.test.ts`, `update.test.ts` | Pure function tests, no side effects |
-| **Functional** | `compression-groups.test.ts`, `compression-targets.test.ts`, `compress-message.test.ts`, `compress-range-placeholders.test.ts`, `compress-range.test.ts`, `hooks-permission.test.ts`, `prompts.test.ts`, `token-usage.test.ts` | Module-level tests with mocked dependencies |
-| **E2E** | *(to be added)* | Full pipeline tests |
+| Category | Files | Tests | Description |
+|----------|-------|-------|-------------|
+| **Baseline** | `hooks-permission.test.ts`, `compress-message.test.ts`, `compress-range.test.ts`, `message-priority.test.ts`, `token-counting.test.ts`, `context-limits.test.ts`, `update.test.ts` | 95 | Original DCP tests, adapted for ACP |
+| **Tier 1 (pure)** | `config-validation.test.ts`, `priority-classify.test.ts`, `shape.test.ts`, `query-pure.test.ts`, `gc-truncate-pure.test.ts`, `state-utils-pure.test.ts` | 83 | Pure function tests, no side effects |
+| **Tier 2 (mock)** | `query-mock.test.ts`, `gc-truncate-mock.test.ts`, `strategies-dedup.test.ts`, `strategies-purge-errors.test.ts` | 68 | Mock-data unit tests |
+| **Functional** | `compress-search.test.ts`, `compress-state.test.ts`, `message-ids.test.ts` | 77 | Compress pipeline with mock data |
+| **E2E** | `e2e-message-transform.test.ts`, `e2e-blocks-nudges.test.ts` | 21 | Full message-transform pipeline |
 
-**Coverage gaps** (modules with no tests):
-- `config.ts` — config merging, defaults, migration logic
+**Total: 343 tests, 0 failures** (as of commit `7268202` + review fixes)
+
+**Test review requirement**: All new and modified test files MUST undergo independent review by at least 2 separate agents before commit. See Section 5.4.
+
+**Coverage gaps** (modules still without dedicated tests):
 - `state/persistence.ts` — state persistence, DCP migration
-- `state/state.ts` — session state creation
 - `messages/prune.ts` — prune replacement logic
 - `messages/sync.ts` — block synchronization
 - `messages/inject/inject.ts` — nudge injection
-- `gc/truncate.ts` — age-based deactivation + truncation
-- `strategies/deduplication.ts` — duplicate tool call pruning
-- `strategies/purge-errors.ts` — error pruning
 - `commands/*.ts` — slash command handlers
 - `ui/notification.ts` — notification builder
 
@@ -482,3 +484,27 @@ Use descriptive commit messages. Historical examples:
 - `feat: /dcp → /acp command rename with backward compat`
 - `chore: bump version to 1.0.1`
 - `fix: config migration moved to getConfig() entry point`
+
+### 5.4 Test Review (MANDATORY)
+
+All new and modified test files MUST undergo independent review by **at least 2 separate agents** before being committed. This requirement applies to:
+
+- New test files added to `tests/`
+- Modified test files (changed test logic, not just test names)
+- Changes to test utilities or factories that affect test correctness
+
+**Review checklist:**
+
+| Category | What to Check |
+|----------|---------------|
+| **Import correctness** | Tests import from actual source files, not local reimplementations. If a source module has untestable runtime dependencies, extract pure logic into a separate importable module. |
+| **Test name fidelity** | Test name accurately describes what the test asserts. A test named "returns true" must assert `true`, not `false`. |
+| **Config completeness** | `buildConfig()` factory includes ALL required config fields (including `gc`), matching the `PluginConfig` type. |
+| **Input validity** | Test inputs actually exercise the code path described in the test name. A "dcp tag stripping" test must contain actual dcp tags. |
+| **No tautological tests** | Tests must assert meaningful behavior, not trivially true conditions (e.g., `assert.equal(x, x)`). |
+
+**Anti-patterns to flag:**
+- Tests that reimplement source logic locally instead of importing from source
+- `buildConfig()` missing fields that other test files include
+- Test names that contradict their assertions
+- Tests whose inputs don't match what the test name describes

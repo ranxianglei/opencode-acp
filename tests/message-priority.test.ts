@@ -773,8 +773,9 @@ test("hallucination stripping removes all dcp-prefixed XML tags including varian
 })
 
 test("hallucination stripping removes colon and underscore dcp tag variants", async () => {
-    assert.equal(stripHallucinationsFromString("beforeafter"), "beforeafter")
-    assert.equal(stripHallucinationsFromString("startend"), "startend")
+    // The regex matches <dcp...> with any suffix (colon, underscore, etc.)
+    assert.equal(stripHallucinationsFromString('before<dcp:block>content</dcp:block>after'), "beforeafter")
+    assert.equal(stripHallucinationsFromString('start<dcp_summary>text</dcp_summary>end'), "startend")
 })
 
 test("hallucination stripping removes orphan opening tags", async () => {
