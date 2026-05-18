@@ -1,7 +1,16 @@
 import type { SessionState, CompressionBlock } from "../../state"
 import type { GCConfig } from "../../config"
 
-export function buildCompressedBlockGuidance(state: SessionState, gcConfig?: GCConfig): string {
+export interface BlockGuidanceContext {
+    currentTokens?: number
+    modelContextLimit?: number
+}
+
+export function buildCompressedBlockGuidance(
+    state: SessionState,
+    gcConfig?: GCConfig,
+    context?: BlockGuidanceContext,
+): string {
     const activeBlockIds = Array.from(state.prune.messages.activeBlockIds)
         .filter((id) => Number.isInteger(id) && id > 0)
         .sort((a, b) => a - b)
@@ -16,7 +25,16 @@ export function buildCompressedBlockGuidance(state: SessionState, gcConfig?: GCC
         "- If your selected compression range includes any listed block, include each required placeholder exactly once in the summary using `(bN)`.",
     ]
 
-    if (gcConfig) {
+    // [FIX Bug 35] Only show aging warnings when context usage is above 50%.
+    // Showing warnings at low usage causes unnecessary compress operations that
+    // waste tokens and attention — the model preemptively re-summarizes blocks
+    // that aren't actually at risk of GC truncation.
+    const usageRatio =
+        context?.currentTokens && context?.modelContextLimit
+            ? context.currentTokens / context.modelContextLimit
+            : 0
+
+    if (gcConfig && usageRatio > 0.5) {
         const promotionThreshold = gcConfig.promotionThreshold
         const agingBlocks: string[] = []
 

@@ -141,7 +141,7 @@ export const injectCompressNudges = (
     injectContextUsage(messages, currentTokens, modelContextLimit)
 
     if (config.compress.mode !== "message") {
-        const blockGuidance = buildCompressedBlockGuidance(state, config.gc)
+        const blockGuidance = buildCompressedBlockGuidance(state, config.gc, { currentTokens, modelContextLimit })
         if (blockGuidance.trim()) {
             const lastUser = getLastUserMessage(messages)
             if (lastUser) appendToLastTextPart(lastUser, "\n\n" + blockGuidance)
