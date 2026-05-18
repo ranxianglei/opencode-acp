@@ -1,25 +1,43 @@
-# Dynamic Context Pruning Plugin
+# OpenCode ACP — Active Context Pruning
 
-[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/dansmolsky)
-[![npm version](https://img.shields.io/npm/v/@tarquinen/opencode-dcp.svg)](https://www.npmjs.com/package/@tarquinen/opencode-dcp)
+[![npm version](https://img.shields.io/npm/v/opencode-acp.svg)](https://www.npmjs.com/package/opencode-acp)
+[![license](https://img.shields.io/npm/l/opencode-acp.svg)](https://github.com/ranxianglei/opencode-acp/blob/master/LICENSE)
 
-Automatically reduces token usage in OpenCode by managing conversation context.
+**ACP** (Active Context Pruning) is a hardened fork of [DCP](https://github.com/Tarquinen/opencode-dynamic-context-pruning) for [OpenCode](https://opencode.ai). The model actively manages its own context — deciding *when* and *what* to compress, rather than waiting for a passive threshold trigger.
 
-![DCP in action](assets/images/dcp-demo9.png)
+### Why ACP instead of DCP?
+
+DCP is a great idea with 34 bugs. After fixing all of them, ACP handles **tens of thousands of messages** in a single session (vs ~200 before fixes), with pipeline latency reduced from **37 seconds to 90ms per turn**.
+
+| Metric | DCP (original) | ACP (this fork) |
+|--------|---------------|-----------------|
+| Max stable session | ~200 messages | 10,000+ messages |
+| Per-turn overhead | 20–50 seconds | ~90ms |
+| State persistence | Lost on restart | Survives restart |
+| GC effectiveness | Never deactivates old blocks | Age-based auto-cleanup |
+| Compress reliability | Fails on edge cases, model gives up | Auto-recovers reversed boundaries |
+
+Key fixes include: state persistence across restarts, token usage reporting (was returning 0), summary message ID resolution, GC age-based deactivation, 268× logger/tokenizer speedup, and auto-swap for reversed compress boundaries. See the [full bug fix list](#bug-fixes-34-total) below.
 
 ## Installation
 
-Install from the CLI:
-
 ```bash
-opencode plugin @tarquinen/opencode-dcp@latest --global
+opencode plugin opencode-acp@latest --global
 ```
 
-This installs the package and adds it to your global OpenCode config.
+Or add to your opencode config:
+
+```json
+{
+  "plugin": {
+    "opencode-acp": "latest"
+  }
+}
+```
 
 ## How It Works
 
-DCP reduces context size through a compress tool and automatic cleanup. Your session history is never modified — DCP replaces pruned content with placeholders before sending requests to your LLM.
+ACP reduces context size through a compress tool and automatic cleanup. Your session history is never modified — ACP replaces pruned content with placeholders before sending requests to your LLM.
 
 ### Compress
 
@@ -232,3 +250,37 @@ LLM providers cache prompts based on exact prefix matching. When DCP prunes cont
 ## License
 
 AGPL-3.0-or-later
+
+This project is a fork of [@tarquinen/opencode-dcp](https://github.com/Tarquinen/opencode-dynamic-context-pruning). Original copyright belongs to the original author. Modifications and bug fixes by ranxianglei.
+
+## Bug Fixes (34 total)
+
+Critical and high-severity fixes applied on top of DCP v3.1.11:
+
+| # | Severity | Summary |
+|---|----------|---------|
+| 1 | CRITICAL | State not persisted across restarts — messageIds, block deactivation, save errors silently lost |
+| 2 | CRITICAL | resetOnCompaction() clears all compression blocks — undoes all pruning work |
+| 3 | CRITICAL | prune silently drops summary — DATA LOSS when no user message precedes anchor |
+| 4 | CRITICAL | getCurrentTokenUsage returns 0 — prevents nudge from ever triggering |
+| 5 | HIGH | loadPruneMessagesState duplicates activeBlockIds + reasoning-strip undefined guard |
+| 6 | HIGH | Synthetic summary messages get mNNNN refs but are invisible to boundary lookup |
+| 7 | HIGH | State not persisted across restarts — messageIds, block deactivation, and save errors silently lost |
+| 8 | HIGH | isMessageCompacted() inconsistent with compaction summary message handling |
+| 9 | HIGH | Compressed block summaries retain stale mNNNN message ID tags — model copies stale IDs |
+| 10 | HIGH | Model uses stale mNNNN IDs from nudges/summaries — compress fails with "startId not available" |
+| 11 | HIGH | Major GC skips legacy blocks without generation field — oversized blocks never collected |
+| 12 | HIGH | Percentage-based thresholds calculated against effective input context instead of full model context window |
+| 13 | HIGH | Context window leaks — compressed messages reappear after /compact |
+| 14 | HIGH | Compression notifications write full block summaries to DB — can reach 150KB+ per notification |
+| 15 | HIGH | npm auto-install overwrites fork with upstream package |
+| 16 | HIGH | Summary mNNNN refs in compress output — model copies stale message IDs |
+| 17 | HIGH | Synthetic messages not in messageIdToBlockId — compress fails to find them |
+| 18 | HIGH | Compress stops model from responding after compression completes |
+| 19 | HIGH | Dynamic block guidance breaks API prefix cache |
+| 20 | HIGH | GC never deactivates old blocks — dead-weight accumulates indefinitely |
+| 21 | HIGH | Logger + tokenizer 20-50s per-turn latency (268× slowdown) |
+| 22 | HIGH | compress throws hard error on reversed block boundaries — model gives up |
+| 23–34 | MEDIUM | Various fixes for dedup, purge errors, schema validation, hook timing, etc. |
+
+For the complete list with root cause analysis, see the [bug tracker](https://github.com/ranxianglei/opencode-acp/issues).

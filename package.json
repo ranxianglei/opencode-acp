@@ -1,9 +1,9 @@
 {
     "$schema": "https://json.schemastore.org/package.json",
-    "name": "@tarquinen/opencode-dcp",
-    "version": "3.1.11",
+    "name": "opencode-acp",
+    "version": "1.0.0",
     "type": "module",
-    "description": "OpenCode plugin that optimizes token usage by pruning obsolete tool outputs from conversation context",
+    "description": "Active Context Pruning — model-driven context management for OpenCode (hardened fork of DCP with 34 bug fixes)",
     "main": "./dist/index.js",
     "types": "./dist/index.d.ts",
     "exports": {
@@ -35,18 +35,20 @@
         "plugin",
         "context",
         "pruning",
+        "active-context",
         "optimization",
-        "tokens"
+        "tokens",
+        "acp"
     ],
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/Tarquinen/opencode-dynamic-context-pruning.git"
+        "url": "git+https://github.com/ranxianglei/opencode-acp.git"
     },
     "bugs": {
-        "url": "https://github.com/Tarquinen/opencode-dynamic-context-pruning/issues"
+        "url": "https://github.com/ranxianglei/opencode-acp/issues"
     },
-    "homepage": "https://github.com/Tarquinen/opencode-dynamic-context-pruning#readme",
-    "author": "tarquinen",
+    "homepage": "https://github.com/ranxianglei/opencode-acp#readme",
+    "author": "ranxianglei",
     "license": "AGPL-3.0-or-later",
     "peerDependencies": {
         "@opencode-ai/plugin": ">=1.4.3"
