@@ -1072,7 +1072,23 @@ export function getConfig(ctx: PluginInput): PluginConfig {
     let config = deepCloneConfig(defaultConfig)
     const configPaths = getConfigPaths(ctx)
 
-    if (!configPaths.global) {
+    // Migration: dcp.jsonc → acp.jsonc (must run before createDefaultConfig check)
+    if (!existsSync(GLOBAL_CONFIG_PATH_JSONC) && !existsSync(GLOBAL_CONFIG_PATH_JSON)) {
+        if (existsSync(GLOBAL_CONFIG_DIR) || existsSync(LEGACY_GLOBAL_CONFIG_PATH_JSONC) || existsSync(LEGACY_GLOBAL_CONFIG_PATH_JSON)) {
+            if (!existsSync(GLOBAL_CONFIG_DIR)) {
+                mkdirSync(GLOBAL_CONFIG_DIR, { recursive: true })
+            }
+            if (existsSync(LEGACY_GLOBAL_CONFIG_PATH_JSONC)) {
+                copyFileSync(LEGACY_GLOBAL_CONFIG_PATH_JSONC, GLOBAL_CONFIG_PATH_JSONC)
+                console.log("[ACP] Migrated config from dcp.jsonc to acp.jsonc")
+            } else if (existsSync(LEGACY_GLOBAL_CONFIG_PATH_JSON)) {
+                copyFileSync(LEGACY_GLOBAL_CONFIG_PATH_JSON, GLOBAL_CONFIG_PATH_JSONC)
+                console.log("[ACP] Migrated config from dcp.json to acp.jsonc")
+            }
+        }
+    }
+
+    if (!configPaths.global && !existsSync(GLOBAL_CONFIG_PATH_JSONC)) {
         createDefaultConfig()
     }
 
