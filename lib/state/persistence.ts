@@ -1,16 +1,25 @@
 /**
- * State persistence module for DCP plugin.
+ * State persistence module for ACP plugin.
  * Persists pruned tool IDs across sessions so they survive OpenCode restarts.
- * Storage location: ~/.local/share/opencode/storage/plugin/dcp/{sessionId}.json
+ * Storage location: ~/.local/share/opencode/storage/plugin/acp/{sessionId}.json
  */
 
 import * as fs from "fs/promises"
 import { existsSync } from "fs"
 import { homedir } from "os"
 import { join } from "path"
+import { cpSync, existsSync as existsSyncSync } from "fs"
 import type { CompressionBlock, PrunedMessageEntry, SessionState, SessionStats } from "./types"
 import type { Logger } from "../logger"
 import { serializePruneMessagesState } from "./utils"
+
+const LEGACY_STORAGE_DIR = join(
+    process.env.XDG_DATA_HOME || join(homedir(), ".local", "share"),
+    "opencode",
+    "storage",
+    "plugin",
+    "dcp",
+)
 
 /** Prune state as stored on disk */
 export interface PersistedPruneMessagesState {
@@ -54,11 +63,24 @@ const STORAGE_DIR = join(
     "opencode",
     "storage",
     "plugin",
-    "dcp",
+    "acp",
 )
+
+/** One-time migration: copy plugin/dcp/ → plugin/acp/ if ACP dir doesn't exist yet */
+function migrateFromLegacyIfNeeded(): void {
+    if (existsSyncSync(STORAGE_DIR)) return
+    if (!existsSyncSync(LEGACY_STORAGE_DIR)) return
+    try {
+        cpSync(LEGACY_STORAGE_DIR, STORAGE_DIR, { recursive: true })
+        console.log(`[ACP] Migrated storage from ${LEGACY_STORAGE_DIR} → ${STORAGE_DIR}`)
+    } catch (e: any) {
+        console.warn(`[ACP] Storage migration failed: ${e.message}`)
+    }
+}
 
 async function ensureStorageDir(): Promise<void> {
     if (!existsSync(STORAGE_DIR)) {
+        migrateFromLegacyIfNeeded()
         await fs.mkdir(STORAGE_DIR, { recursive: true })
     }
 }
