@@ -55,11 +55,11 @@ export function resolveBoundaryIds(
     const parsedEndId = parseBoundaryId(endId)
 
     if (parsedStartId === null) {
-        issues.push("startId is invalid. Use an injected message ID (mNNNN) or block ID (bN).")
+        issues.push("startId is invalid. Use an injected message ID (mNNNNN) or block ID (bN).")
     }
 
     if (parsedEndId === null) {
-        issues.push("endId is invalid. Use an injected message ID (mNNNN) or block ID (bN).")
+        issues.push("endId is invalid. Use an injected message ID (mNNNNN) or block ID (bN).")
     }
 
     if (issues.length > 0) {

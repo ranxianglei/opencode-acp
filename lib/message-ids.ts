@@ -28,7 +28,7 @@ export function formatMessageRef(index: number): string {
         index > MESSAGE_REF_MAX_INDEX
     ) {
         throw new Error(
-            `Message ID index out of bounds: ${index}. Supported range is 0-${MESSAGE_REF_MAX_INDEX}.`,
+            `Message ID index out of bounds: ${index}. Supported range is ${MESSAGE_REF_MIN_INDEX}-${MESSAGE_REF_MAX_INDEX}.`,
         )
     }
     return `m${index.toString().padStart(MESSAGE_REF_WIDTH, "0")}`

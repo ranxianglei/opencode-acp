@@ -52,7 +52,7 @@ opencode-acp/
 │   ├── logger.ts                     # Structured logging (logs/acp/)
 │   ├── auth.ts                       # Plugin authentication
 │   ├── token-utils.ts                # Token counting utilities
-│   ├── message-ids.ts                # Message ID mapping (raw ↔ mNNNN refs)
+│   ├── message-ids.ts                # Message ID mapping (raw ↔ mNNNNNN refs)
 │   ├── compress-permission.ts        # Permission management for compress tool
 │   ├── protected-patterns.ts         # File pattern protection logic
 │   ├── host-permissions.ts           # Host-based permission system
@@ -160,14 +160,14 @@ index.ts (Plugin Entry — registers hooks + tools)
     ├─► Message Transform Hook (experimental.chat.messages.transform) ← runs EVERY LLM call
     │       │
     │       ├─► checkSession() → state init, load persisted state
-    │       ├─► stripHallucinations() → remove stale mNNNN refs from model output
-    │       ├─► assignMessageRefs() → bidirectional map: raw message IDs ↔ mNNNN refs
+    │       ├─► stripHallucinations() → remove stale mNNNNN refs from model output
+    │       ├─► assignMessageRefs() → bidirectional map: raw message IDs ↔ mNNNNN refs
     │       ├─► syncCompressionBlocks() → deactivate orphaned blocks (messages deleted externally)
     │       ├─► runMajorGC() → age-based block deactivation + truncate oversized summaries
     │       ├─► prune() → replace compressed ranges with summary blocks in messages
     │       ├─► injectCompressNudges() → add context-limit / turn / iteration nudges
     │       │       └─► includes block aging guidance (only when context usage > 50%)
-    │       ├─► injectMessageIds() → tag every message with mNNNN ref (or BLOCKED)
+    │       ├─► injectMessageIds() → tag every message with mNNNNN ref (or BLOCKED)
     │       ├─► applyAnchoredNudges() → render nudge text into actual messages
     │       └─► stripStaleMetadata() → clean up removed messages' metadata
     │
@@ -179,7 +179,7 @@ index.ts (Plugin Entry — registers hooks + tools)
     │       └─► Track compress tool start/complete → attach duration to blocks
     │
     ├─► Text Complete Hook (experimental.text.complete)
-    │       └─► Strip hallucinated mNNNN/bN refs from completions
+    │       └─► Strip hallucinated mNNNNN/bN refs from completions
     │
     └─► Compress Tool (registered as "compress")
             │
@@ -508,7 +508,7 @@ All source code changes (files under `lib/`) MUST undergo independent review by 
 | **Type safety** | No `as any`, no `@ts-ignore`, no type assertion hacks |
 | **State integrity** | State mutations are safe, no lost data on save/load cycle |
 
-### 5.3 Commit Convention
+### 5.4 Commit Convention
 
 Use descriptive commit messages. Historical examples:
 - `fix: aging warning only shows when context usage > 50%`
@@ -516,7 +516,7 @@ Use descriptive commit messages. Historical examples:
 - `chore: bump version to 1.0.1`
 - `fix: config migration moved to getConfig() entry point`
 
-### 5.4 Test Review (MANDATORY)
+### 5.5 Test Review (MANDATORY)
 
 All new and modified test files MUST undergo independent review by **at least 2 separate agents** before merge (same requirement as Section 5.3 code review). This requirement applies to:
 

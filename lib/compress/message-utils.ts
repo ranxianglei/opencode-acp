@@ -88,8 +88,16 @@ const ISSUE_TEMPLATES: Record<string, [singular: string, plural: string]> = {
         "refer to protected messages and cannot be compressed.",
     ],
     "invalid-format": [
-        "is invalid. Use an injected raw message ID of the form mNNNN.",
-        "are invalid. Use injected raw message IDs of the form mNNNN.",
+        "is invalid. Use an injected raw message ID of the form mNNNNN.",
+        "are invalid. Use injected raw message IDs of the form mNNNNN.",
+    ],
+    "block-id": [
+        "is invalid here. Block IDs like bN are not allowed; use an mNNNNN message ID instead.",
+        "are invalid here. Block IDs like bN are not allowed; use mNNNNN message IDs instead.",
+    ],
+    "not-in-context": [
+        "is not available in the current conversation context. Choose an injected mNNNNN ID visible in context.",
+        "are not available in the current conversation context. Choose injected mNNNNN IDs visible in context.",
     ],
     "block-id": [
         "is invalid here. Block IDs like bN are not allowed; use an mNNNN message ID instead.",

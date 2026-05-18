@@ -345,3 +345,38 @@ test("assignMessageRefs returns 0 for empty message array", () => {
     const state = makeState()
     assert.equal(assignMessageRefs(state, []), 0)
 })
+
+// --- Backward compatibility: 4-digit → 5-digit ref migration ---
+
+test("parseBoundaryId normalizes 4-digit ref to 5-digit", () => {
+    const result = parseBoundaryId("m0001")
+    assert.ok(result !== null)
+    assert.equal(result.kind, "message")
+    assert.equal(result.ref, "m00001")
+    assert.equal(result.index, 1)
+})
+
+test("parseBoundaryId normalizes 4-digit ref m9999 to 5-digit m09999", () => {
+    const result = parseBoundaryId("m9999")
+    assert.ok(result !== null)
+    assert.equal(result.kind, "message")
+    assert.equal(result.ref, "m09999")
+    assert.equal(result.index, 9999)
+})
+
+test("4-digit to 5-digit migration roundtrip: parseMessageRef then formatMessageRef", () => {
+    // This is the exact pattern used in state.ts ensureSessionInitialized
+    const oldRef = "m0001"
+    const parsed = parseMessageRef(oldRef)
+    assert.equal(parsed, 1)
+    const newRef = formatMessageRef(parsed!)
+    assert.equal(newRef, "m00001")
+    assert.notEqual(newRef, oldRef) // Confirms migration needed
+})
+
+test("5-digit refs are unchanged by roundtrip", () => {
+    const ref = "m00001"
+    const parsed = parseMessageRef(ref)
+    const normalized = formatMessageRef(parsed!)
+    assert.equal(normalized, ref)
+})
