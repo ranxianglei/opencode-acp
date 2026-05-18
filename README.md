@@ -285,17 +285,19 @@ ACP is a drop-in replacement for DCP. To migrate:
 
 **What's preserved:**
 
-- Session state (compression blocks, message ID mappings) -- stored in `~/.local/share/opencode/storage/plugin/dcp/`
+- Session state (compression blocks, message ID mappings) -- auto-migrated from `plugin/dcp/` to `~/.local/share/opencode/storage/plugin/acp/`
 - Config file `~/.config/opencode/dcp.jsonc` -- ACP reads the same config
 - Prompt overrides in `~/.config/opencode/dcp-prompts/`
 
 **What changes:**
 
+- Storage directory: `plugin/dcp/` to `plugin/acp/` (auto-migrated on first launch)
+- Log directory: `logs/dcp/` to `logs/acp/`
 - Slash command: `/dcp` to `/acp` (both work for backward compatibility)
 - Notification headers: `DCP` to `ACP`
 - Context usage label: `DCP threshold` to `ACP threshold`
 
-Internal storage paths and config file names keep the `dcp` naming for backward compatibility.
+Config file names (`dcp.jsonc`, `dcp-prompts/`) keep the `dcp` naming for backward compatibility.
 
 ---
 

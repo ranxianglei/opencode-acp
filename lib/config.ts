@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, existsSync, mkdirSync, statSync } from "fs"
+import { readFileSync, writeFileSync, existsSync, mkdirSync, statSync, copyFileSync } from "fs"
 import { join, dirname } from "path"
 import { homedir } from "os"
 import { parse } from "jsonc-parser/lib/esm/main.js"
@@ -778,8 +778,10 @@ const defaultConfig: PluginConfig = {
 const GLOBAL_CONFIG_DIR = process.env.XDG_CONFIG_HOME
     ? join(process.env.XDG_CONFIG_HOME, "opencode")
     : join(homedir(), ".config", "opencode")
-const GLOBAL_CONFIG_PATH_JSONC = join(GLOBAL_CONFIG_DIR, "dcp.jsonc")
-const GLOBAL_CONFIG_PATH_JSON = join(GLOBAL_CONFIG_DIR, "dcp.json")
+const GLOBAL_CONFIG_PATH_JSONC = join(GLOBAL_CONFIG_DIR, "acp.jsonc")
+const GLOBAL_CONFIG_PATH_JSON = join(GLOBAL_CONFIG_DIR, "acp.json")
+const LEGACY_GLOBAL_CONFIG_PATH_JSONC = join(GLOBAL_CONFIG_DIR, "dcp.jsonc")
+const LEGACY_GLOBAL_CONFIG_PATH_JSON = join(GLOBAL_CONFIG_DIR, "dcp.json")
 
 function findOpencodeDir(startDir: string): string | null {
     let current = startDir
@@ -806,31 +808,47 @@ function getConfigPaths(ctx?: PluginInput): {
         ? GLOBAL_CONFIG_PATH_JSONC
         : existsSync(GLOBAL_CONFIG_PATH_JSON)
           ? GLOBAL_CONFIG_PATH_JSON
-          : null
+          : existsSync(LEGACY_GLOBAL_CONFIG_PATH_JSONC)
+            ? LEGACY_GLOBAL_CONFIG_PATH_JSONC
+            : existsSync(LEGACY_GLOBAL_CONFIG_PATH_JSON)
+              ? LEGACY_GLOBAL_CONFIG_PATH_JSON
+              : null
 
     let configDir: string | null = null
     const opencodeConfigDir = process.env.OPENCODE_CONFIG_DIR
     if (opencodeConfigDir) {
-        const configJsonc = join(opencodeConfigDir, "dcp.jsonc")
-        const configJson = join(opencodeConfigDir, "dcp.json")
+        const configJsonc = join(opencodeConfigDir, "acp.jsonc")
+        const configJson = join(opencodeConfigDir, "acp.json")
+        const legacyJsonc = join(opencodeConfigDir, "dcp.jsonc")
+        const legacyJson = join(opencodeConfigDir, "dcp.json")
         configDir = existsSync(configJsonc)
             ? configJsonc
             : existsSync(configJson)
               ? configJson
-              : null
+              : existsSync(legacyJsonc)
+                ? legacyJsonc
+                : existsSync(legacyJson)
+                  ? legacyJson
+                  : null
     }
 
     let project: string | null = null
     if (ctx?.directory) {
         const opencodeDir = findOpencodeDir(ctx.directory)
         if (opencodeDir) {
-            const projectJsonc = join(opencodeDir, "dcp.jsonc")
-            const projectJson = join(opencodeDir, "dcp.json")
+            const projectJsonc = join(opencodeDir, "acp.jsonc")
+            const projectJson = join(opencodeDir, "acp.json")
+            const legacyJsonc = join(opencodeDir, "dcp.jsonc")
+            const legacyJson = join(opencodeDir, "dcp.json")
             project = existsSync(projectJsonc)
                 ? projectJsonc
                 : existsSync(projectJson)
                   ? projectJson
-                  : null
+                  : existsSync(legacyJsonc)
+                    ? legacyJsonc
+                    : existsSync(legacyJson)
+                      ? legacyJson
+                      : null
         }
     }
 
@@ -842,11 +860,21 @@ function createDefaultConfig(): void {
         mkdirSync(GLOBAL_CONFIG_DIR, { recursive: true })
     }
 
-    const configContent = `{
+    if (!existsSync(GLOBAL_CONFIG_PATH_JSONC)) {
+        if (existsSync(LEGACY_GLOBAL_CONFIG_PATH_JSONC)) {
+            copyFileSync(LEGACY_GLOBAL_CONFIG_PATH_JSONC, GLOBAL_CONFIG_PATH_JSONC)
+            console.log("[ACP] Migrated config from dcp.jsonc to acp.jsonc")
+        } else if (existsSync(LEGACY_GLOBAL_CONFIG_PATH_JSON)) {
+            copyFileSync(LEGACY_GLOBAL_CONFIG_PATH_JSON, GLOBAL_CONFIG_PATH_JSONC)
+            console.log("[ACP] Migrated config from dcp.json to acp.jsonc")
+        } else {
+            const configContent = `{
   "$schema": "https://raw.githubusercontent.com/Opencode-DCP/opencode-dynamic-context-pruning/master/dcp.schema.json"
 }
 `
-    writeFileSync(GLOBAL_CONFIG_PATH_JSONC, configContent, "utf-8")
+            writeFileSync(GLOBAL_CONFIG_PATH_JSONC, configContent, "utf-8")
+        }
+    }
 }
 
 interface ConfigLoadResult {
