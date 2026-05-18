@@ -100,11 +100,11 @@ ACP provides an `/acp` slash command (also accepts `/dcp` for backward compatibi
 
 ACP uses its own config file, searched in order:
 
-1. **Global:** `~/.config/opencode/dcp.jsonc` (or `dcp.json`), created automatically on first run
-2. **Custom config directory:** `$OPENCODE_CONFIG_DIR/dcp.jsonc` (or `dcp.json`), if `OPENCODE_CONFIG_DIR` is set
-3. **Project:** `.opencode/dcp.jsonc` (or `dcp.json`) in your project's `.opencode` directory
+1. **Global:** `~/.config/opencode/acp.jsonc` (or `acp.json`), created automatically on first run
+2. **Custom config directory:** `$OPENCODE_CONFIG_DIR/acp.jsonc` (or `acp.json`), if `OPENCODE_CONFIG_DIR` is set
+3. **Project:** `.opencode/acp.jsonc` (or `acp.json`) in your project's `.opencode` directory
 
-> **Note:** The config file name `dcp.jsonc` is kept for backward compatibility with DCP installations.
+If no `acp.jsonc` is found, ACP falls back to `dcp.jsonc` / `dcp.json` (for backward compatibility with existing DCP installations) and auto-migrates on first write.
 
 Each level overrides the previous, so project settings take priority over global. Restart OpenCode after making config changes.
 
@@ -122,7 +122,7 @@ Each level overrides the previous, so project settings take priority over global
     // Automatically update npm-installed ACP when a newer npm latest is available.
     // Version-locked plugin specs are not updated.
     "autoUpdate": true,
-    // Enable debug logging to ~/.config/opencode/logs/dcp/
+    // Enable debug logging to ~/.config/opencode/logs/acp/
     "debug": false,
     // Notification display: "off", "minimal", or "detailed"
     "pruneNotification": "detailed",
@@ -242,7 +242,7 @@ ACP exposes six editable prompts:
 
 This feature is disabled by default. Set `experimental.customPrompts` to `true` in your ACP config to activate it.
 
-When enabled, managed defaults are written to `~/.config/opencode/dcp-prompts/defaults/` as plain-text prompt files. A single `README.md` in that directory explains each prompt and how to create overrides.
+When enabled, managed defaults are written to `~/.config/opencode/acp-prompts/defaults/` as plain-text prompt files. A single `README.md` in that directory explains each prompt and how to create overrides.
 
 To customize behavior, add a file with the same name under an overrides directory and edit it as plain text.
 
@@ -286,8 +286,8 @@ ACP is a drop-in replacement for DCP. To migrate:
 **What's preserved:**
 
 - Session state (compression blocks, message ID mappings) -- auto-migrated from `plugin/dcp/` to `~/.local/share/opencode/storage/plugin/acp/`
-- Config file `~/.config/opencode/dcp.jsonc` -- ACP reads the same config
-- Prompt overrides in `~/.config/opencode/dcp-prompts/`
+- Config file `~/.config/opencode/dcp.jsonc` -- ACP auto-migrates to `acp.jsonc`
+- Prompt overrides in `~/.config/opencode/dcp-prompts/` -- auto-migrates to `acp-prompts/`
 
 **What changes:**
 
@@ -297,7 +297,7 @@ ACP is a drop-in replacement for DCP. To migrate:
 - Notification headers: `DCP` to `ACP`
 - Context usage label: `DCP threshold` to `ACP threshold`
 
-Config file names (`dcp.jsonc`, `dcp-prompts/`) keep the `dcp` naming for backward compatibility.
+ACP auto-migrates config from `dcp.jsonc` to `acp.jsonc` and prompts from `dcp-prompts/` to `acp-prompts/` on first launch.
 
 ---
 
