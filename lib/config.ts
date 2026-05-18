@@ -744,10 +744,10 @@ const defaultConfig: PluginConfig = {
     compress: {
         mode: "range",
         permission: "allow",
-        showCompression: false,
+        showCompression: true,
         summaryBuffer: true,
-        maxContextLimit: 100000,
-        minContextLimit: 50000,
+        maxContextLimit: "55%",
+        minContextLimit: "45%",
         nudgeFrequency: 5,
         iterationNudgeThreshold: 15,
         nudgeForce: "soft",
@@ -771,7 +771,7 @@ const defaultConfig: PluginConfig = {
         promotionThreshold: 5,
         maxBlockAge: 15,
         maxOldGenSummaryLength: 3000,
-        majorGcThresholdPercent: "55%",
+        majorGcThresholdPercent: "100%",
     },
 }
 

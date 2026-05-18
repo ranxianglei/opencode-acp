@@ -108,6 +108,19 @@ If no `acp.jsonc` is found, ACP falls back to `dcp.jsonc` / `dcp.json` (for back
 
 Each level overrides the previous, so project settings take priority over global. Restart OpenCode after making config changes.
 
+> [!IMPORTANT]
+> **Disable OpenCode's built-in auto-compaction.** ACP handles context management itself — OpenCode's compaction conflicts with ACP and can cause issues (re-expanded messages, lost compression state). Add to your `opencode.json`:
+>
+> ```jsonc
+> {
+>   "compaction": {
+>     "auto": false
+>   }
+> }
+> ```
+>
+> Or set the environment variable: `OPENCODE_DISABLE_AUTOCOMPACT=1`
+
 > [!NOTE]
 > If you use models with smaller context windows, such as GitHub Copilot models or local models, lower `compress.minContextLimit` and `compress.maxContextLimit` in your configuration to match the available context.
 
@@ -166,17 +179,17 @@ Each level overrides the previous, so project settings take priority over global
         // Permission mode: "allow" (no prompt), "ask" (prompt), "deny" (tool not registered)
         "permission": "allow",
         // Show compression content in a chat notification
-        "showCompression": false,
+        "showCompression": true,
         // Let active summary tokens extend the effective maxContextLimit
         "summaryBuffer": true,
         // Soft upper threshold: above this, ACP keeps injecting strong
         // compression nudges (based on nudgeFrequency), so compression is
         // much more likely. Accepts: number or "X%" of model context window.
-        "maxContextLimit": 100000,
+        "maxContextLimit": "55%",
         // Soft lower threshold for reminder nudges: below this, turn/iteration
         // reminders are off (compression less likely). At/above this, reminders
         // are on. Accepts: number or "X%" of model context window.
-        "minContextLimit": 50000,
+        "minContextLimit": "45%",
         // Optional per-model override for maxContextLimit by providerID/modelID.
         // If present, this wins over the global maxContextLimit.
         // Accepts: number or "X%".
