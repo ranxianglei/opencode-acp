@@ -269,7 +269,7 @@ export function createCommandExecuteHandler(
             return
         }
 
-        if (input.command === "dcp") {
+        if (input.command === "acp" || input.command === "dcp") {
             const messagesResponse = await client.session.messages({
                 path: { id: input.sessionID },
             })

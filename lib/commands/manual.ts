@@ -3,8 +3,8 @@
  * Handles toggling manual mode and triggering individual tool executions.
  *
  * Usage:
- *   /dcp manual [on|off]  - Toggle manual mode or set explicit state
- *   /dcp compress [focus]  - Trigger manual compress execution
+ *   /acp manual [on|off]  - Toggle manual mode or set explicit state
+ *   /acp compress [focus]  - Trigger manual compress execution
  */
 
 import type { Logger } from "../logger"
@@ -15,7 +15,7 @@ import { getCurrentParams } from "../token-utils"
 import { buildCompressedBlockGuidance } from "../prompts/extensions/nudge"
 import { isIgnoredUserMessage } from "../messages/query"
 
-const MANUAL_MODE_ON = "Manual mode is now ON. Use /dcp compress to trigger context tools manually."
+const MANUAL_MODE_ON = "Manual mode is now ON. Use /acp compress to trigger context tools manually."
 
 const MANUAL_MODE_OFF = "Manual mode is now OFF."
 

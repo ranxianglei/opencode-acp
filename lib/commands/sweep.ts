@@ -3,8 +3,8 @@
  * Prunes tool outputs since the last user message, or the last N tools.
  *
  * Usage:
- *   /dcp sweep        - Prune all tools since the previous user message
- *   /dcp sweep 10     - Prune the last 10 tools
+ *   /acp sweep        - Prune all tools since the previous user message
+ *   /acp sweep 10     - Prune the last 10 tools
  */
 
 import type { Logger } from "../logger"

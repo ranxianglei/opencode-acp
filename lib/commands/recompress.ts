@@ -77,7 +77,7 @@ function formatRecompressMessage(
 function formatAvailableBlocksMessage(availableTargets: CompressionTarget[]): string {
     const lines: string[] = []
 
-    lines.push("Usage: /dcp recompress <n>")
+    lines.push("Usage: /acp recompress <n>")
     lines.push("")
 
     if (availableTargets.length === 0) {
@@ -113,7 +113,7 @@ export async function handleRecompressCommand(ctx: RecompressCommandContext): Pr
         await sendIgnoredMessage(
             client,
             sessionId,
-            "Invalid arguments. Usage: /dcp recompress <n>",
+            "Invalid arguments. Usage: /acp recompress <n>",
             params,
             logger,
         )
@@ -139,7 +139,7 @@ export async function handleRecompressCommand(ctx: RecompressCommandContext): Pr
         await sendIgnoredMessage(
             client,
             sessionId,
-            `Please enter a compression number. Example: /dcp recompress 2`,
+            `Please enter a compression number. Example: /acp recompress 2`,
             params,
             logger,
         )

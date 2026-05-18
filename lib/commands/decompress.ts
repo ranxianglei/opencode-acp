@@ -124,7 +124,7 @@ function formatDecompressMessage(
 function formatAvailableBlocksMessage(availableTargets: CompressionTarget[]): string {
     const lines: string[] = []
 
-    lines.push("Usage: /dcp decompress <n>")
+    lines.push("Usage: /acp decompress <n>")
     lines.push("")
 
     if (availableTargets.length === 0) {
@@ -160,7 +160,7 @@ export async function handleDecompressCommand(ctx: DecompressCommandContext): Pr
         await sendIgnoredMessage(
             client,
             sessionId,
-            "Invalid arguments. Usage: /dcp decompress <n>",
+            "Invalid arguments. Usage: /acp decompress <n>",
             params,
             logger,
         )
@@ -182,7 +182,7 @@ export async function handleDecompressCommand(ctx: DecompressCommandContext): Pr
         await sendIgnoredMessage(
             client,
             sessionId,
-            `Please enter a compression number. Example: /dcp decompress 2`,
+            `Please enter a compression number. Example: /acp decompress 2`,
             params,
             logger,
         )

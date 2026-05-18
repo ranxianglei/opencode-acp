@@ -1,6 +1,6 @@
 /**
- * DCP Help command handler.
- * Shows available DCP commands and their descriptions.
+ * ACP Help command handler.
+ * Shows available ACP commands and their descriptions.
  */
 
 import type { Logger } from "../logger"
@@ -20,16 +20,16 @@ export interface HelpCommandContext {
 }
 
 const BASE_COMMANDS: [string, string][] = [
-    ["/dcp context", "Show token usage breakdown for current session"],
-    ["/dcp stats", "Show DCP pruning statistics"],
-    ["/dcp sweep [n]", "Prune tools since last user message, or last n tools"],
-    ["/dcp manual [on|off]", "Toggle manual mode or set explicit state"],
+    ["/acp context", "Show token usage breakdown for current session"],
+    ["/acp stats", "Show ACP pruning statistics"],
+    ["/acp sweep [n]", "Prune tools since last user message, or last n tools"],
+    ["/acp manual [on|off]", "Toggle manual mode or set explicit state"],
 ]
 
 const TOOL_COMMANDS: Record<string, [string, string]> = {
-    compress: ["/dcp compress [focus]", "Trigger manual compress tool execution"],
-    decompress: ["/dcp decompress <n>", "Restore selected compression"],
-    recompress: ["/dcp recompress <n>", "Re-apply a user-decompressed compression"],
+    compress: ["/acp compress [focus]", "Trigger manual compress tool execution"],
+    decompress: ["/acp decompress <n>", "Restore selected compression"],
+    recompress: ["/acp recompress <n>", "Re-apply a user-decompressed compression"],
 }
 
 function getVisibleCommands(state: SessionState, config: PluginConfig): [string, string][] {
@@ -50,7 +50,7 @@ function formatHelpMessage(state: SessionState, config: PluginConfig): string {
     const lines: string[] = []
 
     lines.push("╭─────────────────────────────────────────────────────────────────────────╮")
-    lines.push("│                              DCP Commands                               │")
+    lines.push("│                              ACP Commands                               │")
     lines.push("╰─────────────────────────────────────────────────────────────────────────╯")
     lines.push("")
     lines.push(`  ${"Manual mode:".padEnd(colWidth)}${state.manualMode ? "ON" : "OFF"}`)

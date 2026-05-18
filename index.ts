@@ -96,9 +96,9 @@ const server: Plugin = (async (ctx) => {
 
             if (config.commands.enabled && config.compress.permission !== "deny") {
                 opencodeConfig.command ??= {}
-                opencodeConfig.command["dcp"] = {
+                opencodeConfig.command["acp"] = {
                     template: "",
-                    description: "Show available DCP commands",
+                    description: "Show available ACP commands",
                 }
             }
 
