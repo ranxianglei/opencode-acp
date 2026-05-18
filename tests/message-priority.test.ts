@@ -413,8 +413,8 @@ test("message-mode nudges append to existing text parts and list only earlier vi
     assert.equal(injectedNudge?.type, "text")
     assert.match((injectedNudge as any).text, /\n\n<dcp-system-reminder>Base context nudge/)
     assert.match((injectedNudge as any).text, /Message priority context:/)
-    assert.match((injectedNudge as any).text, /High-priority message IDs before this point: m0001/)
-    assert.doesNotMatch((injectedNudge as any).text, /m0002/)
+    // m0001 (user, 6000 tokens) and m0002 (assistant, 6000 tokens) are both high priority
+    assert.match((injectedNudge as any).text, /High-priority message IDs before this point: m0001, m0002/)
     assert.doesNotMatch((injectedNudge as any).text, /m0003/)
     assert.doesNotMatch((injectedNudge as any).text, /m0004/)
 })
@@ -497,8 +497,9 @@ test("range-mode nudges append to existing text parts before tool outputs", () =
     assert.equal(injectedNudge?.type, "text")
     assert.equal(toolOutput?.type, "tool")
     assert.match((injectedNudge as any).text, /\n\n<dcp-system-reminder>Base context nudge/)
-    assert.match((injectedNudge as any).text, /Compressed block context:/)
-    assert.match((injectedNudge as any).text, /Active compressed blocks in this session: 1 \(b7\)/)
+    // Block context guidance is now injected separately in injectCompressNudges,
+    // not in applyAnchoredNudges (moved for API prefix cache optimization).
+    // The base nudge text is appended without block context here.
     assert.equal((toolOutput as any).state.output, "task output body")
 })
 

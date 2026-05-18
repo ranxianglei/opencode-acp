@@ -207,7 +207,8 @@ test("compress message mode batches individual message summaries", async () => {
         },
     )
 
-    assert.equal(result, "Compressed 2 messages into [Compressed conversation section].")
+    // [Bug 30 fix] Result now includes IMPORTANT continuation instruction
+    assert.equal(result, "Compressed 2 messages into [Compressed conversation section].\nIMPORTANT: This was an automatic context compression. You MUST continue your previous task exactly where you left off. Do NOT ask the user what to do next.")
     assert.equal(state.prune.messages.blocksById.size, 2)
 
     const blocks = Array.from(state.prune.messages.blocksById.values()).sort(
@@ -628,7 +629,8 @@ test("compress message mode allows messages containing compress tool parts", asy
         },
     )
 
-    assert.equal(result, "Compressed 1 message into [Compressed conversation section].")
+    // [Bug 30 fix] Result now includes IMPORTANT continuation instruction
+    assert.equal(result, "Compressed 1 message into [Compressed conversation section].\nIMPORTANT: This was an automatic context compression. You MUST continue your previous task exactly where you left off. Do NOT ask the user what to do next.")
     assert.equal(state.prune.messages.blocksById.size, 1)
     const block = Array.from(state.prune.messages.blocksById.values())[0]
     assert.equal(block?.startId, "m0004")
@@ -692,7 +694,8 @@ test("compress message mode sends one aggregated notification for batched messag
     )
 
     assert.equal(toastCalls.length, 1)
-    assert.match(toastCalls[0] || "", /▣ DCP \| -[^,\n]+ removed, \+[^\s\n]+ summary/)
+    // [ACP rebrand] DCP → ACP in notification headers
+    assert.match(toastCalls[0] || "", /▣ ACP \| -[^,\n]+ removed, \+[^\s\n]+ summary/)
     assert.match(toastCalls[0] || "", /Compression #1/)
     assert.match(toastCalls[0] || "", /▣ Compression #1 -[^,\n]+ removed, \+[^\s\n]+ summary/)
     assert.match(toastCalls[0] || "", /Topic: Batch stale notes/)
