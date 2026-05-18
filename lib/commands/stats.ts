@@ -30,7 +30,7 @@ function formatStatsMessage(
     const lines: string[] = []
 
     lines.push("╭───────────────────────────────────────────────────────────╮")
-    lines.push("│                    DCP Statistics                         │")
+    lines.push("│                    ACP Statistics                         │")
     lines.push("╰───────────────────────────────────────────────────────────╯")
     lines.push("")
     lines.push("Compression:")

@@ -75,7 +75,7 @@ function formatNoUserMessage(): string {
     const lines: string[] = []
 
     lines.push("╭───────────────────────────────────────────────────────────╮")
-    lines.push("│                      DCP Sweep                            │")
+    lines.push("│                      ACP Sweep                            │")
     lines.push("╰───────────────────────────────────────────────────────────╯")
     lines.push("")
     lines.push("Nothing swept: no user message found.")
@@ -95,7 +95,7 @@ function formatSweepMessage(
     const lines: string[] = []
 
     lines.push("╭───────────────────────────────────────────────────────────╮")
-    lines.push("│                      DCP Sweep                            │")
+    lines.push("│                      ACP Sweep                            │")
     lines.push("╰───────────────────────────────────────────────────────────╯")
     lines.push("")
 

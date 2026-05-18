@@ -139,7 +139,7 @@ function extractParameterKey(tool: string, parameters: any): string {
 
 export function formatStatsHeader(totalTokensSaved: number, pruneTokenCounter: number): string {
     const totalTokensSavedStr = `~${formatTokenCount(totalTokensSaved + pruneTokenCounter)}`
-    return [`▣ DCP | ${totalTokensSavedStr} saved total`].join("\n")
+    return [`▣ ACP | ${totalTokensSavedStr} saved total`].join("\n")
 }
 
 export function formatTokenCount(tokens: number, compact?: boolean): string {

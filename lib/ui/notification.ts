@@ -123,7 +123,7 @@ export async function sendUnifiedNotification(
 
         await client.tui.showToast({
             body: {
-                title: "DCP: Compress Notification",
+                title: "ACP: Compress Notification",
                 message: toastMessage,
                 variant: "info",
                 duration: 5000,
@@ -249,7 +249,7 @@ export async function sendCompressNotification(
 
     const totalActiveSummaryTkns = getActiveSummaryTokenUsage(state)
     const totalGross = state.stats.totalPruneTokens + state.stats.pruneTokenCounter
-    const notificationHeader = `▣ DCP | ${formatCompressionMetrics(totalGross, totalActiveSummaryTkns)}`
+    const notificationHeader = `▣ ACP | ${formatCompressionMetrics(totalGross, totalActiveSummaryTkns)}`
 
     if (config.pruneNotification === "minimal") {
         message = `${notificationHeader} — ${compressionLabel}`
@@ -302,7 +302,7 @@ export async function sendCompressNotification(
 
         await client.tui.showToast({
             body: {
-                title: "DCP: Compress Notification",
+                title: "ACP: Compress Notification",
                 message: toastMessage,
                 variant: "info",
                 duration: 5000,

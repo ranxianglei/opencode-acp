@@ -360,7 +360,7 @@ function buildContextUsageInfo(currentTokens?: number, modelContextLimit?: numbe
     }
     const percentage = ((currentTokens / modelContextLimit) * 100).toFixed(1)
     const formatK = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n))
-    return `\n\nContext usage: ${formatK(currentTokens)} / ${formatK(modelContextLimit)} tokens (${percentage}%). DCP threshold: 55%.`
+    return `\n\nContext usage: ${formatK(currentTokens)} / ${formatK(modelContextLimit)} tokens (${percentage}%). ACP threshold: 55%.`
 }
 
 export function applyAnchoredNudges(

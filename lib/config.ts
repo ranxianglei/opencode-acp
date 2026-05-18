@@ -708,7 +708,7 @@ function showConfigWarnings(
         try {
             ctx.client.tui.showToast({
                 body: {
-                    title: `DCP: ${configType} warning`,
+                    title: `ACP: ${configType} warning`,
                     message: `${configPath}\n${messages.join("\n")}`,
                     variant: "warning",
                     duration: 7000,
@@ -1063,7 +1063,7 @@ export function getConfig(ctx: PluginInput): PluginConfig {
         if (result.parseError) {
             scheduleParseWarning(
                 ctx,
-                `DCP: Invalid ${layer.name}`,
+                `ACP: Invalid ${layer.name}`,
                 `${layer.path}\n${result.parseError}\nUsing previous/default values`,
             )
             continue

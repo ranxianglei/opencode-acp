@@ -62,7 +62,7 @@ const PROMPT_DEFINITIONS: PromptDefinition[] = [
         key: "system",
         fileName: "system.md",
         label: "System",
-        description: "Core system-level DCP instruction block",
+        description: "Core system-level ACP instruction block",
         usage: "Injected into the model system prompt on every request",
         runtimeField: "system",
     },
@@ -273,9 +273,9 @@ function buildDefaultPromptFileContent(bundledEditableText: string): string {
 
 function buildDefaultsReadmeContent(): string {
     const lines: string[] = []
-    lines.push("# DCP Prompt Defaults")
+    lines.push("# ACP Prompt Defaults")
     lines.push("")
-    lines.push("This directory stores the DCP prompts.")
+    lines.push("This directory stores the ACP prompts.")
     lines.push("Each prompt file here should contain plain text only (no XML wrappers).")
     lines.push("")
     lines.push("## Creating Overrides")

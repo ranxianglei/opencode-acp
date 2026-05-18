@@ -27,7 +27,7 @@ export function startAutoUpdate(ctx: PluginInput, enabled: boolean): void {
             setTimeout(() => {
                 ctx.client.tui.showToast({
                     body: {
-                        title: "DCP update ready",
+                        title: "ACP update ready",
                         message: `Updated ${result.name} from ${result.current} to ${result.latest}. Restart OpenCode to finish.`,
                         variant: "info",
                         duration: 7000,

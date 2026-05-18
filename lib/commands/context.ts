@@ -251,7 +251,7 @@ function formatContextMessage(breakdown: TokenBreakdown): string {
     const maxLabelLen = Math.max(...categories.map((c) => c.label.length))
 
     lines.push("╭───────────────────────────────────────────────────────────╮")
-    lines.push("│                  DCP Context Analysis                     │")
+    lines.push("│                  ACP Context Analysis                     │")
     lines.push("╰───────────────────────────────────────────────────────────╯")
     lines.push("")
     lines.push("Session Context Breakdown:")
@@ -283,7 +283,7 @@ function formatContextMessage(breakdown: TokenBreakdown): string {
             `  Pruned:          ${pruned.join(", ")} (~${formatTokenCount(breakdown.prunedTokens)})`,
         )
         lines.push(`  Current context: ~${formatTokenCount(breakdown.total)}`)
-        lines.push(`  Without DCP:     ~${formatTokenCount(withoutPruning)}`)
+        lines.push(`  Without ACP:     ~${formatTokenCount(withoutPruning)}`)
     } else {
         lines.push(`  Current context: ~${formatTokenCount(breakdown.total)}`)
     }
