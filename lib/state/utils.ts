@@ -347,4 +347,12 @@ export function resetOnCompaction(state: SessionState): void {
         turnNudgeAnchors: new Set<string>(),
         iterationNudgeAnchors: new Set<string>(),
     }
+    // [FIX] Reset message IDs on compaction — old mappings are stale after
+    // compaction replaces messages with a summary. Keeping them causes
+    // assignMessageRefs to allocate from stale nextRef positions.
+    state.messageIds = {
+        byRawId: new Map<string, string>(),
+        byRef: new Map<string, string>(),
+        nextRef: 1,
+    }
 }
