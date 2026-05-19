@@ -99,14 +99,6 @@ const ISSUE_TEMPLATES: Record<string, [singular: string, plural: string]> = {
         "is not available in the current conversation context. Choose an injected mNNNNN ID visible in context.",
         "are not available in the current conversation context. Choose injected mNNNNN IDs visible in context.",
     ],
-    "block-id": [
-        "is invalid here. Block IDs like bN are not allowed; use an mNNNN message ID instead.",
-        "are invalid here. Block IDs like bN are not allowed; use mNNNN message IDs instead.",
-    ],
-    "not-in-context": [
-        "is not available in the current conversation context. Choose an injected mNNNN ID visible in context.",
-        "are not available in the current conversation context. Choose injected mNNNN IDs visible in context.",
-    ],
     protected: [
         "refers to a protected message and cannot be compressed.",
         "refer to protected messages and cannot be compressed.",
