@@ -52,7 +52,7 @@ opencode-acp/
 │   ├── logger.ts                     # Structured logging (logs/acp/)
 │   ├── auth.ts                       # Plugin authentication
 │   ├── token-utils.ts                # Token counting utilities
-│   ├── message-ids.ts                # Message ID mapping (raw ↔ mNNNN refs)
+│   ├── message-ids.ts                # Message ID mapping (raw ↔ mNNNNNN refs)
 │   ├── compress-permission.ts        # Permission management for compress tool
 │   ├── protected-patterns.ts         # File pattern protection logic
 │   ├── host-permissions.ts           # Host-based permission system
@@ -160,14 +160,14 @@ index.ts (Plugin Entry — registers hooks + tools)
     ├─► Message Transform Hook (experimental.chat.messages.transform) ← runs EVERY LLM call
     │       │
     │       ├─► checkSession() → state init, load persisted state
-    │       ├─► stripHallucinations() → remove stale mNNNN refs from model output
-    │       ├─► assignMessageRefs() → bidirectional map: raw message IDs ↔ mNNNN refs
+    │       ├─► stripHallucinations() → remove stale mNNNNN refs from model output
+    │       ├─► assignMessageRefs() → bidirectional map: raw message IDs ↔ mNNNNN refs
     │       ├─► syncCompressionBlocks() → deactivate orphaned blocks (messages deleted externally)
     │       ├─► runMajorGC() → age-based block deactivation + truncate oversized summaries
     │       ├─► prune() → replace compressed ranges with summary blocks in messages
     │       ├─► injectCompressNudges() → add context-limit / turn / iteration nudges
     │       │       └─► includes block aging guidance (only when context usage > 50%)
-    │       ├─► injectMessageIds() → tag every message with mNNNN ref (or BLOCKED)
+    │       ├─► injectMessageIds() → tag every message with mNNNNN ref (or BLOCKED)
     │       ├─► applyAnchoredNudges() → render nudge text into actual messages
     │       └─► stripStaleMetadata() → clean up removed messages' metadata
     │
@@ -179,7 +179,7 @@ index.ts (Plugin Entry — registers hooks + tools)
     │       └─► Track compress tool start/complete → attach duration to blocks
     │
     ├─► Text Complete Hook (experimental.text.complete)
-    │       └─► Strip hallucinated mNNNN/bN refs from completions
+    │       └─► Strip hallucinated mNNNNN/bN refs from completions
     │
     └─► Compress Tool (registered as "compress")
             │
@@ -469,6 +469,19 @@ For reference when modifying code — these bugs were real and the fixes are loa
 3. Understand the module dependency graph (Section 4.1)
 4. Check if the change affects backward compatibility (Section 2.6)
 
+### 5.1.1 Development Workflow
+
+All changes MUST follow this workflow:
+
+1. Create a feature branch from `master`
+2. Implement changes
+3. Ensure `npm run build` and `npm run typecheck` pass
+4. Ensure all tests pass: `npm run test`
+5. Commit with descriptive messages
+6. Push branch and create a GitHub PR
+7. Obtain **dual-agent review** (Sections 5.3 + 5.4) on the PR
+8. Merge PR after both reviews pass
+
 ### 5.2 After Making Changes
 
 1. `npm run build` must pass
@@ -477,7 +490,25 @@ For reference when modifying code — these bugs were real and the fixes are loa
 4. Deploy locally and test in opencode
 5. Update version in `package.json` before publishing
 
-### 5.3 Commit Convention
+### 5.3 Code Review (MANDATORY)
+
+All source code changes (files under `lib/`) MUST undergo independent review by **at least 2 separate agents** before merge. This applies to:
+
+- New modules added to `lib/`
+- Modified source files
+- Changes to shared types, interfaces, or exports
+
+**Review checklist:**
+
+| Category | What to Check |
+|----------|---------------|
+| **Correctness** | Logic matches intent, no off-by-one errors, edge cases handled |
+| **Backward compatibility** | No breaking changes to persisted state format, exported APIs, or internal tags (Section 2.6) |
+| **Performance** | No unnecessary CPU/memory overhead, no O(n²) where O(n) suffices |
+| **Type safety** | No `as any`, no `@ts-ignore`, no type assertion hacks |
+| **State integrity** | State mutations are safe, no lost data on save/load cycle |
+
+### 5.4 Commit Convention
 
 Use descriptive commit messages. Historical examples:
 - `fix: aging warning only shows when context usage > 50%`
@@ -485,9 +516,9 @@ Use descriptive commit messages. Historical examples:
 - `chore: bump version to 1.0.1`
 - `fix: config migration moved to getConfig() entry point`
 
-### 5.4 Test Review (MANDATORY)
+### 5.5 Test Review (MANDATORY)
 
-All new and modified test files MUST undergo independent review by **at least 2 separate agents** before being committed. This requirement applies to:
+All new and modified test files MUST undergo independent review by **at least 2 separate agents** before merge (same requirement as Section 5.3 code review). This requirement applies to:
 
 - New test files added to `tests/`
 - Modified test files (changed test logic, not just test names)

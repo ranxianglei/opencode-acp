@@ -136,8 +136,8 @@ test("compress range rebuilds subagent message refs after session state was rese
     const rawMessages = buildMessages(sessionID)
     const state = createSessionState()
     state.sessionId = "ses_other"
-    state.messageIds.byRawId.set("other-message", "m0001")
-    state.messageIds.byRef.set("m0001", "other-message")
+    state.messageIds.byRawId.set("other-message", "m00001")
+    state.messageIds.byRef.set("m00001", "other-message")
     state.messageIds.nextRef = 2
 
     const logger = new Logger(false)
@@ -164,8 +164,8 @@ test("compress range rebuilds subagent message refs after session state was rese
             topic: "Subagent race fix",
             content: [
                 {
-                    startId: "m0001",
-                    endId: "m0002",
+                    startId: "m00001",
+                    endId: "m00002",
                     summary: "Captured the initial investigation and follow-up request.",
                 },
             ],
@@ -182,8 +182,8 @@ test("compress range rebuilds subagent message refs after session state was rese
     assert.equal(result, "Compressed 2 messages into [Compressed conversation section].\nIMPORTANT: This was an automatic context compression. You MUST continue your previous task exactly where you left off. Do NOT ask the user what to do next.")
     assert.equal(state.sessionId, sessionID)
     assert.equal(state.isSubAgent, true)
-    assert.equal(state.messageIds.byRef.get("m0001"), "msg-assistant-1")
-    assert.equal(state.messageIds.byRef.get("m0002"), "msg-user-2")
+    assert.equal(state.messageIds.byRef.get("m00001"), "msg-assistant-1")
+    assert.equal(state.messageIds.byRef.get("m00002"), "msg-user-2")
     assert.equal(state.prune.messages.blocksById.size, 1)
 })
 
@@ -250,8 +250,8 @@ test("compress range mode appends protected prompt info", async () => {
             topic: "Protected range",
             content: [
                 {
-                    startId: "m0001",
-                    endId: "m0002",
+                    startId: "m00001",
+                    endId: "m00002",
                     summary: "Captured release investigation.",
                 },
             ],
@@ -310,13 +310,13 @@ test("compress range mode batches multiple ranges into one notification", async 
             topic: "Batch stale notes",
             content: [
                 {
-                    startId: "m0001",
-                    endId: "m0001",
+                    startId: "m00001",
+                    endId: "m00001",
                     summary: "Captured the initial assistant investigation.",
                 },
                 {
-                    startId: "m0002",
-                    endId: "m0002",
+                    startId: "m00002",
+                    endId: "m00002",
                     summary: "Captured the follow-up user request.",
                 },
             ],
@@ -370,13 +370,13 @@ test("compress range mode rejects overlapping batched ranges", async () => {
                 topic: "Overlapping ranges",
                 content: [
                     {
-                        startId: "m0001",
-                        endId: "m0002",
+                        startId: "m00001",
+                        endId: "m00002",
                         summary: "Captured the initial investigation and follow-up request.",
                     },
                     {
-                        startId: "m0002",
-                        endId: "m0002",
+                        startId: "m00002",
+                        endId: "m00002",
                         summary: "Captured the follow-up request again.",
                     },
                 ],

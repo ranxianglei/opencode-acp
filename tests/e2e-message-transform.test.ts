@@ -217,15 +217,15 @@ test("basic pipeline: assigns message IDs and preserves all messages", async () 
     assert.equal(output.messages.length, 5)
 
     // Message IDs should be assigned
-    assert.equal(state.messageIds.byRawId.get("u1"), "m0001")
-    assert.equal(state.messageIds.byRawId.get("a1"), "m0002")
-    assert.equal(state.messageIds.byRawId.get("u2"), "m0003")
-    assert.equal(state.messageIds.byRawId.get("a2"), "m0004")
-    assert.equal(state.messageIds.byRawId.get("u3"), "m0005")
+    assert.equal(state.messageIds.byRawId.get("u1"), "m00001")
+    assert.equal(state.messageIds.byRawId.get("a1"), "m00002")
+    assert.equal(state.messageIds.byRawId.get("u2"), "m00003")
+    assert.equal(state.messageIds.byRawId.get("a2"), "m00004")
+    assert.equal(state.messageIds.byRawId.get("u3"), "m00005")
 
     // Reverse mapping should exist
-    assert.equal(state.messageIds.byRef.get("m0001"), "u1")
-    assert.equal(state.messageIds.byRef.get("m0005"), "u3")
+    assert.equal(state.messageIds.byRef.get("m00001"), "u1")
+    assert.equal(state.messageIds.byRef.get("m00005"), "u3")
 })
 
 // ─── Test: Message IDs are stable across multiple pipeline runs ──────────────
@@ -242,8 +242,8 @@ test("message IDs remain stable across sequential pipeline calls", async () => {
     }
     await handler({}, output1)
 
-    assert.equal(state.messageIds.byRawId.get("u1"), "m0001")
-    assert.equal(state.messageIds.byRawId.get("a1"), "m0002")
+    assert.equal(state.messageIds.byRawId.get("u1"), "m00001")
+    assert.equal(state.messageIds.byRawId.get("a1"), "m00002")
     assert.equal(state.messageIds.nextRef, 3)
 
     // Second call adds new messages; existing IDs should remain stable
@@ -258,11 +258,11 @@ test("message IDs remain stable across sequential pipeline calls", async () => {
     await handler({}, output2)
 
     // Old IDs stable
-    assert.equal(state.messageIds.byRawId.get("u1"), "m0001")
-    assert.equal(state.messageIds.byRawId.get("a1"), "m0002")
+    assert.equal(state.messageIds.byRawId.get("u1"), "m00001")
+    assert.equal(state.messageIds.byRawId.get("a1"), "m00002")
     // New IDs assigned
-    assert.equal(state.messageIds.byRawId.get("u2"), "m0003")
-    assert.equal(state.messageIds.byRawId.get("a2"), "m0004")
+    assert.equal(state.messageIds.byRawId.get("u2"), "m00003")
+    assert.equal(state.messageIds.byRawId.get("a2"), "m00004")
     assert.equal(state.messageIds.nextRef, 5)
 })
 
@@ -325,8 +325,8 @@ test("compression blocks: compressed messages are replaced with summaries", asyn
         mode: "message",
         topic: "test topic",
         batchTopic: "test topic",
-        startId: "m0001",
-        endId: "m0002",
+        startId: "m00001",
+        endId: "m00002",
         anchorMessageId: "u2",  // summary injected at this anchor
         compressMessageId: "msg-compress",
         compressCallId: "call-compress",
@@ -441,8 +441,8 @@ test("message IDs remain consistent after compression and pruning", async () => 
         mode: "message",
         topic: "early chat",
         batchTopic: "early chat",
-        startId: "m0001",
-        endId: "m0002",
+        startId: "m00001",
+        endId: "m00002",
         anchorMessageId: "u3",
         compressMessageId: "msg-comp",
         compressCallId: "call-comp",
@@ -593,10 +593,10 @@ test("deny permission: still filters messages and strips hallucinations", async 
 test("state persistence: session state survives save/load round-trip", async () => {
     const { state, tempDir } = setupPipeline()
 
-    state.messageIds.byRawId.set("u1", "m0001")
-    state.messageIds.byRawId.set("a1", "m0002")
-    state.messageIds.byRef.set("m0001", "u1")
-    state.messageIds.byRef.set("m0002", "a1")
+    state.messageIds.byRawId.set("u1", "m00001")
+    state.messageIds.byRawId.set("a1", "m00002")
+    state.messageIds.byRef.set("m00001", "u1")
+    state.messageIds.byRef.set("m00002", "a1")
     state.messageIds.nextRef = 3
     state.stats.totalPruneTokens = 5000
 
@@ -607,8 +607,8 @@ test("state persistence: session state survives save/load round-trip", async () 
     const loaded = await loadSessionState(SID, logger)
 
     assert.ok(loaded, "state file should be loadable")
-    assert.equal(loaded!.messageIds?.byRawId?.["u1"], "m0001")
-    assert.equal(loaded!.messageIds?.byRawId?.["a1"], "m0002")
+    assert.equal(loaded!.messageIds?.byRawId?.["u1"], "m00001")
+    assert.equal(loaded!.messageIds?.byRawId?.["a1"], "m00002")
     assert.equal(loaded!.messageIds?.nextRef, 3)
     assert.equal(loaded!.stats.totalPruneTokens, 5000)
 

@@ -37,11 +37,11 @@ function buildSchema() {
                     startId: tool.schema
                         .string()
                         .describe(
-                            "Message or block ID marking the beginning of range (e.g. m0001, b2)",
+                            "Message or block ID marking the beginning of range (e.g. m00001, b2)",
                         ),
                     endId: tool.schema
                         .string()
-                        .describe("Message or block ID marking the end of range (e.g. m0012, b5)"),
+                        .describe("Message or block ID marking the end of range (e.g. m00012, b5)"),
                     summary: tool.schema
                         .string()
                         .describe("Complete technical summary replacing all content in range"),

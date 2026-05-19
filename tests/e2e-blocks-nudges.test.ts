@@ -260,8 +260,8 @@ test("block aging: old blocks are deactivated by major GC", async () => {
         mode: "message",
         topic: "test",
         batchTopic: "test",
-        startId: "m0001",
-        endId: "m0002",
+        startId: "m00001",
+        endId: "m00002",
         anchorMessageId: "u2",
         compressMessageId: "msg-comp",
         compressCallId: "call-comp",
@@ -349,8 +349,8 @@ test("session switch: state is reinitialized when session changes", async () => 
     await handler({}, output1)
 
     assert.equal(state.sessionId, SID_A)
-    assert.equal(state.messageIds.byRawId.get("u1a"), "m0001")
-    assert.equal(state.messageIds.byRawId.get("a1a"), "m0002")
+    assert.equal(state.messageIds.byRawId.get("u1a"), "m00001")
+    assert.equal(state.messageIds.byRawId.get("a1a"), "m00002")
 
     // Second call with a DIFFERENT session (session B)
     // checkSession detects the change and reinitializes
@@ -369,8 +369,8 @@ test("session switch: state is reinitialized when session changes", async () => 
     assert.equal(state.messageIds.byRawId.has("u1a"), false, "old session IDs should be cleared")
 
     // New session gets fresh IDs
-    assert.equal(state.messageIds.byRawId.get("u1b"), "m0001")
-    assert.equal(state.messageIds.byRawId.get("a1b"), "m0002")
+    assert.equal(state.messageIds.byRawId.get("u1b"), "m00001")
+    assert.equal(state.messageIds.byRawId.get("a1b"), "m00002")
 })
 
 // ─── Test: Message IDs injected into tool parts ─────────────────────────────
@@ -403,8 +403,8 @@ test("message ID injection: IDs are appended to tool parts", async () => {
         "tool output should contain message ID tag",
     )
     assert.ok(
-        toolOutput.includes("m0002"),
-        "tool output should contain the m0002 ref",
+        toolOutput.includes("m00002"),
+        "tool output should contain the m00002 ref",
     )
 })
 
@@ -459,8 +459,8 @@ test("block consumption: newer block deactivates consumed blocks", async () => {
         mode: "message",
         topic: "old",
         batchTopic: "old",
-        startId: "m0001",
-        endId: "m0002",
+        startId: "m00001",
+        endId: "m00002",
         anchorMessageId: "u1",
         compressMessageId: "msg-comp1",
         compressCallId: "call-comp1",
@@ -495,8 +495,8 @@ test("block consumption: newer block deactivates consumed blocks", async () => {
         mode: "message",
         topic: "new",
         batchTopic: "new",
-        startId: "m0003",
-        endId: "m0004",
+        startId: "m00003",
+        endId: "m00004",
         anchorMessageId: "u3",
         compressMessageId: "msg-comp2",
         compressCallId: "call-comp2",
@@ -564,8 +564,8 @@ test("ID accumulation: sequential runs never produce duplicate refs", async () =
     assert.equal(new Set(allRefs).size, 10, "all refs should be unique")
 
     assert.equal(state.messageIds.nextRef, 11)
-    assert.equal(state.messageIds.byRawId.get("r4_u1"), "m0009")
-    assert.equal(state.messageIds.byRawId.get("r4_a1"), "m0010")
+    assert.equal(state.messageIds.byRawId.get("r4_u1"), "m00009")
+    assert.equal(state.messageIds.byRawId.get("r4_a1"), "m00010")
 })
 
 // ─── Test: Mixed valid and invalid messages ─────────────────────────────────
@@ -589,7 +589,7 @@ test("mixed messages: only valid messages survive, IDs assigned to survivors", a
     const ids = output.messages.map((m: WithParts) => m.info.id)
     assert.deepEqual(ids, ["u1", "a1", "u2"])
 
-    assert.equal(state.messageIds.byRawId.get("u1"), "m0001")
-    assert.equal(state.messageIds.byRawId.get("a1"), "m0002")
-    assert.equal(state.messageIds.byRawId.get("u2"), "m0003")
+    assert.equal(state.messageIds.byRawId.get("u1"), "m00001")
+    assert.equal(state.messageIds.byRawId.get("a1"), "m00002")
+    assert.equal(state.messageIds.byRawId.get("u2"), "m00003")
 })

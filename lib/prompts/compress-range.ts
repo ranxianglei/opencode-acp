@@ -18,7 +18,7 @@ Compressed block sections in context are clearly marked with a header:
 
 - \`[Compressed conversation section]\`
 
-Compressed block IDs always use the \`bN\` form (never \`mNNNN\`) and are represented in the same XML metadata tag format.
+Compressed block IDs always use the \`bN\` form (never \`mNNNNN\`) and are represented in the same XML metadata tag format.
 
 Rules:
 
@@ -41,7 +41,7 @@ When you use compressed block placeholders, write the surrounding summary text s
 BOUNDARY IDS
 You specify boundaries by ID using the injected IDs visible in the conversation:
 
-- \`mNNNN\` IDs identify raw messages
+- \`mNNNNN\` IDs identify raw messages
 - \`bN\` IDs identify previously compressed blocks
 
 Each message has an ID inside XML metadata tags like \`<dcp-message-id>...</dcp-message-id>\`.

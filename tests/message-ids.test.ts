@@ -94,16 +94,20 @@ function makeState(overrides: Partial<SessionState> = {}): SessionState {
 
 // --- Tests for formatMessageRef ---
 
-test("formatMessageRef formats index 1 as m0001", () => {
-    assert.equal(formatMessageRef(1), "m0001")
+test("formatMessageRef formats index 1 as m00001", () => {
+    assert.equal(formatMessageRef(1), "m00001")
 })
 
-test("formatMessageRef formats index 9999 as m9999", () => {
-    assert.equal(formatMessageRef(9999), "m9999")
+test("formatMessageRef formats index 9999 as m09999", () => {
+    assert.equal(formatMessageRef(9999), "m09999")
 })
 
-test("formatMessageRef formats index 123 as m0123", () => {
-    assert.equal(formatMessageRef(123), "m0123")
+test("formatMessageRef formats index 123 as m00123", () => {
+    assert.equal(formatMessageRef(123), "m00123")
+})
+
+test("formatMessageRef formats index 99999 as m99999", () => {
+    assert.equal(formatMessageRef(99999), "m99999")
 })
 
 test("formatMessageRef throws for index 0", () => {
@@ -114,8 +118,8 @@ test("formatMessageRef throws for negative index", () => {
     assert.throws(() => formatMessageRef(-1), /out of bounds/)
 })
 
-test("formatMessageRef throws for index exceeding 9999", () => {
-    assert.throws(() => formatMessageRef(10000), /out of bounds/)
+test("formatMessageRef throws for index exceeding 99999", () => {
+    assert.throws(() => formatMessageRef(100000), /out of bounds/)
 })
 
 test("formatMessageRef throws for non-integer", () => {
@@ -142,32 +146,40 @@ test("formatBlockRef throws for negative", () => {
 
 // --- Tests for parseMessageRef ---
 
-test("parseMessageRef parses m0001 to index 1", () => {
+test("parseMessageRef parses m0001 (4-digit) to index 1", () => {
     assert.equal(parseMessageRef("m0001"), 1)
 })
 
-test("parseMessageRef parses m9999 to index 9999", () => {
+test("parseMessageRef parses m00001 (5-digit) to index 1", () => {
+    assert.equal(parseMessageRef("m00001"), 1)
+})
+
+test("parseMessageRef parses m9999 (4-digit) to index 9999", () => {
     assert.equal(parseMessageRef("m9999"), 9999)
 })
 
+test("parseMessageRef parses m99999 to index 99999", () => {
+    assert.equal(parseMessageRef("m99999"), 99999)
+})
+
 test("parseMessageRef is case-insensitive", () => {
-    assert.equal(parseMessageRef("M0001"), 1)
+    assert.equal(parseMessageRef("M00001"), 1)
 })
 
 test("parseMessageRef trims whitespace", () => {
-    assert.equal(parseMessageRef("  m0001  "), 1)
+    assert.equal(parseMessageRef("  m00001  "), 1)
 })
 
 test("parseMessageRef returns null for invalid format", () => {
     assert.equal(parseMessageRef("m0"), null)
-    assert.equal(parseMessageRef("m10000"), null)
+    assert.equal(parseMessageRef("m100000"), null)
     assert.equal(parseMessageRef("abc"), null)
     assert.equal(parseMessageRef(""), null)
 })
 
 test("parseMessageRef returns null for wrong digit count", () => {
     assert.equal(parseMessageRef("m001"), null)
-    assert.equal(parseMessageRef("m00001"), null)
+    assert.equal(parseMessageRef("m0000001"), null)
 })
 
 // --- Tests for parseBlockRef ---
@@ -201,12 +213,12 @@ test("parseBlockRef returns null for invalid format", () => {
 // --- Tests for parseBoundaryId ---
 
 test("parseBoundaryId parses message ref to message kind", () => {
-    const result = parseBoundaryId("m0005")
+    const result = parseBoundaryId("m00005")
     assert.ok(result)
     assert.equal(result!.kind, "message")
     if (result!.kind === "message") {
         assert.equal(result!.index, 5)
-        assert.equal(result!.ref, "m0005")
+        assert.equal(result!.ref, "m00005")
     }
 })
 
@@ -228,7 +240,7 @@ test("parseBoundaryId returns null for unrecognized input", () => {
 
 // --- Tests for assignMessageRefs ---
 
-test("assignMessageRefs assigns sequential mNNNN IDs to new messages", () => {
+test("assignMessageRefs assigns sequential mNNNNN IDs to new messages", () => {
     const state = makeState()
     const msg1 = makeMessage({ id: "raw-a" })
     const msg2 = makeMessage({ id: "raw-b" })
@@ -237,12 +249,12 @@ test("assignMessageRefs assigns sequential mNNNN IDs to new messages", () => {
     const count = assignMessageRefs(state, [msg1, msg2, msg3])
 
     assert.equal(count, 3)
-    assert.equal(state.messageIds.byRawId.get("raw-a"), "m0001")
-    assert.equal(state.messageIds.byRawId.get("raw-b"), "m0002")
-    assert.equal(state.messageIds.byRawId.get("raw-c"), "m0003")
-    assert.equal(state.messageIds.byRef.get("m0001"), "raw-a")
-    assert.equal(state.messageIds.byRef.get("m0002"), "raw-b")
-    assert.equal(state.messageIds.byRef.get("m0003"), "raw-c")
+    assert.equal(state.messageIds.byRawId.get("raw-a"), "m00001")
+    assert.equal(state.messageIds.byRawId.get("raw-b"), "m00002")
+    assert.equal(state.messageIds.byRawId.get("raw-c"), "m00003")
+    assert.equal(state.messageIds.byRef.get("m00001"), "raw-a")
+    assert.equal(state.messageIds.byRef.get("m00002"), "raw-b")
+    assert.equal(state.messageIds.byRef.get("m00003"), "raw-c")
 })
 
 test("assignMessageRefs preserves existing IDs on second call", () => {
@@ -250,14 +262,14 @@ test("assignMessageRefs preserves existing IDs on second call", () => {
     const msg1 = makeMessage({ id: "raw-a" })
 
     assignMessageRefs(state, [msg1])
-    assert.equal(state.messageIds.byRawId.get("raw-a"), "m0001")
+    assert.equal(state.messageIds.byRawId.get("raw-a"), "m00001")
 
     const msg2 = makeMessage({ id: "raw-b" })
     const count = assignMessageRefs(state, [msg1, msg2])
 
     assert.equal(count, 1)
-    assert.equal(state.messageIds.byRawId.get("raw-a"), "m0001")
-    assert.equal(state.messageIds.byRawId.get("raw-b"), "m0002")
+    assert.equal(state.messageIds.byRawId.get("raw-a"), "m00001")
+    assert.equal(state.messageIds.byRawId.get("raw-b"), "m00002")
 })
 
 test("assignMessageRefs skips messages with empty or missing IDs", () => {
@@ -269,7 +281,7 @@ test("assignMessageRefs skips messages with empty or missing IDs", () => {
     const count = assignMessageRefs(state, [msg1Original, msg2])
 
     assert.equal(count, 1)
-    assert.equal(state.messageIds.byRawId.get("raw-good"), "m0001")
+    assert.equal(state.messageIds.byRawId.get("raw-good"), "m00001")
 })
 
 test("assignMessageRefs skips DCP synthetic message IDs", () => {
@@ -281,7 +293,7 @@ test("assignMessageRefs skips DCP synthetic message IDs", () => {
     const count = assignMessageRefs(state, [msg1, msg2, msg3])
 
     assert.equal(count, 1)
-    assert.equal(state.messageIds.byRawId.get("raw-normal"), "m0001")
+    assert.equal(state.messageIds.byRawId.get("raw-normal"), "m00001")
     assert.ok(!state.messageIds.byRawId.has("msg_dcp_summary_123"))
     assert.ok(!state.messageIds.byRawId.has("msg_dcp_text_456"))
 })
@@ -299,20 +311,20 @@ test("assignMessageRefs skips ignored user messages", () => {
 
     assert.equal(count, 1)
     assert.ok(!state.messageIds.byRawId.has("ignored-user"))
-    assert.equal(state.messageIds.byRawId.get("raw-normal"), "m0001")
+    assert.equal(state.messageIds.byRawId.get("raw-normal"), "m00001")
 })
 
 test("assignMessageRefs handles gap in nextRef by scanning for free slot", () => {
     const state = makeState()
     state.messageIds.nextRef = 1
-    state.messageIds.byRef.set("m0001", "already-used")
-    state.messageIds.byRawId.set("already-used", "m0001")
+    state.messageIds.byRef.set("m00001", "already-used")
+    state.messageIds.byRawId.set("already-used", "m00001")
 
     const msg = makeMessage({ id: "raw-new" })
     const count = assignMessageRefs(state, [msg])
 
     assert.equal(count, 1)
-    assert.equal(state.messageIds.byRawId.get("raw-new"), "m0002")
+    assert.equal(state.messageIds.byRawId.get("raw-new"), "m00002")
 })
 
 test("assignMessageRefs skips first user message in sub-agent mode", () => {
@@ -325,11 +337,46 @@ test("assignMessageRefs skips first user message in sub-agent mode", () => {
 
     assert.equal(count, 2)
     assert.ok(!state.messageIds.byRawId.has("sub-prompt"))
-    assert.equal(state.messageIds.byRawId.get("raw-asst"), "m0001")
-    assert.equal(state.messageIds.byRawId.get("raw-user2"), "m0002")
+    assert.equal(state.messageIds.byRawId.get("raw-asst"), "m00001")
+    assert.equal(state.messageIds.byRawId.get("raw-user2"), "m00002")
 })
 
 test("assignMessageRefs returns 0 for empty message array", () => {
     const state = makeState()
     assert.equal(assignMessageRefs(state, []), 0)
+})
+
+// --- Backward compatibility: 4-digit → 5-digit ref migration ---
+
+test("parseBoundaryId normalizes 4-digit ref to 5-digit", () => {
+    const result = parseBoundaryId("m0001")
+    assert.ok(result !== null)
+    assert.equal(result.kind, "message")
+    assert.equal(result.ref, "m00001")
+    assert.equal(result.index, 1)
+})
+
+test("parseBoundaryId normalizes 4-digit ref m9999 to 5-digit m09999", () => {
+    const result = parseBoundaryId("m9999")
+    assert.ok(result !== null)
+    assert.equal(result.kind, "message")
+    assert.equal(result.ref, "m09999")
+    assert.equal(result.index, 9999)
+})
+
+test("4-digit to 5-digit migration roundtrip: parseMessageRef then formatMessageRef", () => {
+    // This is the exact pattern used in state.ts ensureSessionInitialized
+    const oldRef = "m0001"
+    const parsed = parseMessageRef(oldRef)
+    assert.equal(parsed, 1)
+    const newRef = formatMessageRef(parsed!)
+    assert.equal(newRef, "m00001")
+    assert.notEqual(newRef, oldRef) // Confirms migration needed
+})
+
+test("5-digit refs are unchanged by roundtrip", () => {
+    const ref = "m00001"
+    const parsed = parseMessageRef(ref)
+    const normalized = formatMessageRef(parsed!)
+    assert.equal(normalized, ref)
 })

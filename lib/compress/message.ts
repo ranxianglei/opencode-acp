@@ -25,7 +25,7 @@ function buildSchema() {
                 tool.schema.object({
                     messageId: tool.schema
                         .string()
-                        .describe("Raw message ID to compress (e.g. m0001)"),
+                        .describe("Raw message ID to compress (e.g. m00001)"),
                     topic: tool.schema
                         .string()
                         .describe("Short label (3-5 words) for this one message summary"),

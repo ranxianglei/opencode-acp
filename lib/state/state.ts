@@ -13,6 +13,7 @@ import {
     collectTurnNudgeAnchors,
 } from "./utils"
 import { getLastUserMessage } from "../messages/query"
+import { parseMessageRef, formatMessageRef } from "../message-ids"
 
 export const checkSession = async (
     client: any,
@@ -193,6 +194,18 @@ export async function ensureSessionInitialized(
             if (rawId.startsWith("msg_dcp_summary_") || rawId.startsWith("msg_dcp_text_")) {
                 state.messageIds.byRawId.delete(rawId)
                 state.messageIds.byRef.delete(ref)
+            }
+        }
+        // Migrate 4-digit refs (m0001) to 5-digit (m00001) for msgid expansion
+        for (const [rawId, oldRef] of state.messageIds.byRawId) {
+            const parsed = parseMessageRef(oldRef)
+            if (parsed !== null) {
+                const newRef = formatMessageRef(parsed)
+                if (newRef !== oldRef) {
+                    state.messageIds.byRawId.set(rawId, newRef)
+                    state.messageIds.byRef.delete(oldRef)
+                    state.messageIds.byRef.set(newRef, rawId)
+                }
             }
         }
     }
