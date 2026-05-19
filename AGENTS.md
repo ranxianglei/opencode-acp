@@ -131,13 +131,20 @@ opencode-acp/
 │   │
 │   └── update.ts                     # Auto-update check and notification
 │
+├── devlog/                           # Development iteration logs (templates + per-iteration entries)
+│   ├── README.md                     # Usage guide and naming conventions
+│   ├── REQ.template.md               # Requirement template
+│   ├── WORKLOG.template.md           # Worklog template
+│   ├── DESIGN.template.md            # Design document template
+│   └── YYYY-MM-DD_short-title/       # One folder per iteration (REQ.md + WORKLOG.md minimum)
+│
 ├── scripts/                          # Utility scripts
 │   ├── print.ts                      # Print DCP info
 │   ├── verify-package.mjs            # Package verification before publish
 │   ├── README.md                     # Scripts documentation
 │   └── ...                           # CLI tools for session inspection
 │
-├── tests/                            # Test files — 343 tests across 22 files
+├── tests/                            # Test files — 350 tests across 22 files
 ├── lib/config-validation.ts          # Pure validation logic (extracted from config.ts for testability)
 ├── dcp.schema.json                   # JSON schema for config validation
 ├── tsconfig.json                     # TypeScript config
@@ -344,7 +351,7 @@ npm run check:package  # Build + verify
 **Test directory**: Flat `tests/` structure — all test files in `tests/*.test.ts`. No subdirectories.
 The project has ~20 source files and 15-25 test files; flat structure is sufficient.
 
-No CI/CD is configured. Tests run locally.
+CI is configured via GitHub Actions (PR #2): typecheck + test + build on Node 22/24 matrix.
 
 **Baseline**: Tag `v1.0.1-test-baseline` — 95 tests, initial state before ACP test fixes.
 
@@ -358,7 +365,7 @@ No CI/CD is configured. Tests run locally.
 | **Functional** | `compress-search.test.ts`, `compress-state.test.ts`, `message-ids.test.ts` | 77 | Compress pipeline with mock data |
 | **E2E** | `e2e-message-transform.test.ts`, `e2e-blocks-nudges.test.ts` | 21 | Full message-transform pipeline |
 
-**Total: 343 tests, 0 failures** (as of commit `7268202` + review fixes)
+**Total: 350 tests, 0 failures** (as of commit `5e54496`)
 
 **Test review requirement**: All new and modified test files MUST undergo independent review by at least 2 separate agents before commit. See Section 5.4.
 
@@ -473,14 +480,29 @@ For reference when modifying code — these bugs were real and the fixes are loa
 
 All changes MUST follow this workflow:
 
-1. Create a feature branch from `master`
-2. Implement changes
-3. Ensure `npm run build` and `npm run typecheck` pass
-4. Ensure all tests pass: `npm run test`
-5. Commit with descriptive messages
-6. Push branch and create a GitHub PR
-7. Obtain **dual-agent review** (Sections 5.3 + 5.4) on the PR
-8. Merge PR after both reviews pass
+1. Create a feature branch from `master` (naming: `YYYY-MM-DD_short-title`)
+2. Create devlog entry: `devlog/{YYYY-MM-DD_short-title}/` with `REQ.md` (see Section 5.1.2)
+3. Implement changes
+4. Ensure `npm run build` and `npm run typecheck` pass
+5. Ensure all tests pass: `npm run test`
+6. Commit with descriptive messages (include devlog files)
+7. Push branch and create a GitHub PR
+8. Obtain **dual-agent review** (Sections 5.3 + 5.4) on the PR
+9. Merge PR after both reviews pass
+
+### 5.1.2 Devlog Requirement (MANDATORY)
+
+Every PR MUST have a corresponding devlog entry in `devlog/{YYYY-MM-DD_short-title}/`.
+
+**Rules:**
+- The folder name MUST match the branch name
+- `REQ.md` and `WORKLOG.md` are the required minimum
+- `DESIGN.md` is required for any change affecting architecture, data flow, or module boundaries
+- `REQ.md` should be filled **BEFORE** implementation (functions as a ticket)
+- `WORKLOG.md` should be updated **DURING** and **AFTER** implementation
+- Devlog files are committed alongside code changes — not as a separate afterthought
+
+See `devlog/README.md` for templates and naming conventions.
 
 ### 5.2 After Making Changes
 
