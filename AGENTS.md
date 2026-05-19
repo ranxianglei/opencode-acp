@@ -32,7 +32,7 @@ ACP is a hardened fork of [DCP](https://github.com/Tarquinen/opencode-dynamic-co
 | Field | Value |
 |-------|-------|
 | npm package | `opencode-acp` |
-| Current version | 1.0.1 |
+| Current version | 1.1.0 |
 | GitHub | https://github.com/ranxianglei/opencode-acp |
 | License | AGPL-3.0-or-later |
 | Author | ranxianglei |
@@ -226,10 +226,11 @@ When the model calls `compress`, one or more `CompressionBlock` objects are crea
 
 ACP maintains a bidirectional mapping:
 - **Raw IDs**: OpenCode's internal message IDs (UUIDs)
-- **Refs**: Short human-readable IDs (`m0`, `m1`, `m2`, ...) shown to the model
-- The model uses refs in `compress` tool calls (`startId: "m5"`, `endId: "m12"`)
+- **Refs**: Short human-readable IDs (`m00001`, `m00002`, ...) shown to the model (5-digit zero-padded, max 99999)
+- The model uses refs in `compress` tool calls (`startId: "m00005"`, `endId: "m00012"`)
 - Block IDs use format `b0`, `b1`, etc.
 - Protected messages get `BLOCKED` ref to prevent compression
+- **Backward compat**: Old 4-digit refs (pre-1.1.0) are auto-migrated to 5-digit on state load
 
 #### Session State
 
@@ -530,7 +531,94 @@ All source code changes (files under `lib/`) MUST undergo independent review by 
 | **Type safety** | No `as any`, no `@ts-ignore`, no type assertion hacks |
 | **State integrity** | State mutations are safe, no lost data on save/load cycle |
 
-### 5.4 Commit Convention
+### 5.4 Pre-Publish Checklist (MANDATORY)
+
+Before every `npm publish`, ALL of the following steps MUST be executed **in order**.
+
+**Step 0: Git state (MUST pass before anything else)**
+
+```bash
+# 1. Clean working tree — no uncommitted changes
+git status --porcelain
+# MUST output nothing. If not: commit or stash first.
+
+# 2. On master branch
+git branch --show-current
+# MUST output "master". If not: git checkout master
+
+# 3. Local synced with remote
+git fetch origin && git status
+# MUST show "Your branch is up to date with 'origin/master'".
+# If behind: git pull
+# If ahead: git push first
+```
+
+| Check | Expected | Fix if failed |
+|-------|----------|---------------|
+| Clean working tree | `git status --porcelain` outputs nothing | Commit or stash changes |
+| On master | `git branch --show-current` = `master` | `git checkout master` |
+| Local = remote | `git status` shows up-to-date | `git pull` or `git push` as needed |
+
+**If ANY git check fails: STOP. Do NOT proceed to Step 1.**
+
+**Step 1: Automated verification**
+
+```bash
+npm run check:package    # build + verify-package.mjs
+```
+
+This runs `verify-package.mjs` which checks:
+- Required files exist (`dist/index.js`, `dist/index.d.ts`, `README.md`, `LICENSE`)
+- `package.json` shape is correct (`main`, `exports`, `files`)
+- Runtime import graph has no CommonJS dependencies
+- `npm pack --dry-run` contains no forbidden paths
+
+**Step 2: Privacy / Security audit (MANUAL)**
+
+```bash
+# Inspect what will actually be published
+npm pack --dry-run 2>&1
+
+# Scan for secrets in the tarball
+npm pack && tar -tf opencode-acp-*.tgz | grep -iE '\.env|secret|credential|token|key|\.pem|\.key'
+rm opencode-acp-*.tgz
+```
+
+| Check | What to verify |
+|-------|----------------|
+| **`files` field** | Only contains `dist/`, `README.md`, `LICENSE` — no source, tests, configs, or dev files |
+| **No secrets in tarball** | No API keys, tokens, passwords, or credentials in any packed file |
+| **`.git/config` not packed** | Verify `.git/` is excluded (contains OAuth token in remote URL) |
+| **No hardcoded secrets in `dist/`** | Grep `dist/` for patterns like `sk-`, `gho_`, `api_key`, `apiKey`, `password` |
+| **`.npmignore` is current** | Explicitly excludes `AGENTS.md`, `devlog/`, `tests/`, `scripts/`, `.github/`, `.git/` |
+| **Version bumped** | `package.json` version matches the intended release version |
+
+**Step 3: Content review**
+
+After `npm pack --dry-run`, visually verify:
+1. Only `dist/*.js`, `dist/*.d.ts`, `dist/*.map`, `README.md`, `LICENSE`, `package.json` appear
+2. No `lib/`, `tests/`, `scripts/`, `devlog/`, `AGENTS.md`, `.github/`, `tsconfig.json`, etc.
+3. `dist/` bundle does not contain hardcoded API keys or internal URLs
+
+**Step 4: Tag and publish**
+
+```bash
+# Tag FIRST — if publish fails, the tag marks the attempt
+git tag -a "v{VERSION}" -m "release v{VERSION}"
+git push origin "v{VERSION}"
+
+# Then publish
+npm publish
+
+# Verify
+npm view opencode-acp version
+```
+
+**Tag BEFORE publish.** If `npm publish` fails, the tag documents the intended version. Do NOT tag after — that risks forgetting if publish succeeds.
+
+**If any check in Steps 0–3 fails: DO NOT PUBLISH.** Fix the issue first.
+
+### 5.5 Commit Convention
 
 Use descriptive commit messages. Historical examples:
 - `fix: aging warning only shows when context usage > 50%`
@@ -538,7 +626,7 @@ Use descriptive commit messages. Historical examples:
 - `chore: bump version to 1.0.1`
 - `fix: config migration moved to getConfig() entry point`
 
-### 5.5 Test Review (MANDATORY)
+### 5.6 Test Review (MANDATORY)
 
 All new and modified test files MUST undergo independent review by **at least 2 separate agents** before merge (same requirement as Section 5.3 code review). This requirement applies to:
 

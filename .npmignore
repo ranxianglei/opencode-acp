@@ -1,25 +1,47 @@
-# Development files
-node_modules/
-logs/
-dist/logs/
-*.log
-.DS_Store
-tsconfig.json
-watch-logs.sh
-bun.lock
+# Source files (shipping dist/ only)
+index.ts
+lib/
 
-# Documentation
+# Development
+node_modules/
+tests/
+scripts/
+devlog/
+.github/
+
+# Documentation (internal)
+AGENTS.md
+TESTING.md
 ANALYSIS.md
 docs/
 notes/
 
-# Source files (since we're shipping dist/)
-index.ts
-lib/
+# Build artifacts
+logs/
+dist/logs/
+*.log
+
+# Config
+tsconfig.json
+tsup.config.ts
+dcp.schema.json
+.prettierrc
+.prettierignore
+watch-logs.sh
+bun.lock
+package-lock.json
 
 # Git
 .git/
 .gitignore
 
+# IDE / OS
+.DS_Store
+.vscode/
+.idea/
+
 # OpenCode
 .opencode/
+
+# Misc
+*.tgz

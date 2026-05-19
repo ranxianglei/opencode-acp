@@ -1,3 +1,5 @@
+[English](./README.md) | [中文](./README.zh-CN.md)
+
 <p align="center">
 <strong>Active Context Pruning</strong> for <a href="https://opencode.ai">OpenCode</a>
 <br />
