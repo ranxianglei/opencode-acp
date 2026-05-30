@@ -17,6 +17,7 @@ import {
     appendToLastTextPart,
     appendToAllToolParts,
     createSyntheticTextPart,
+    createSyntheticUserMessage,
     hasContent,
 } from "../utils"
 import {
@@ -30,6 +31,28 @@ import {
     isContextOverLimits,
 } from "./utils"
 import { buildCompressedBlockGuidance } from "../../prompts/extensions/nudge"
+
+/**
+ * Stable seed for the ACP dynamic guidance suffix message.
+ * Using a fixed seed ensures the synthetic message ID is deterministic,
+ * so it won't be assigned a new mNNNNN ref on each transform call.
+ */
+const ACP_SUFFIX_SEED = "acp-dynamic-guidance"
+
+/**
+ * Create a synthetic user message at the END of the messages array.
+ * All per-turn dynamic ACP content (context usage, visible IDs, nudges, etc.)
+ * is injected into this suffix message instead of historical user messages,
+ * preserving OpenAI Responses prefix cache stability.
+ */
+function createSuffixMessage(messages: WithParts[]): WithParts | null {
+    if (messages.length === 0) return null
+    // Use any user message as base for session/agent/model info
+    const base = messages.find((m) => m.info.role === "user") || messages[messages.length - 1]
+    const synthetic = createSyntheticUserMessage(base, "", ACP_SUFFIX_SEED)
+    messages.push(synthetic)
+    return synthetic
+}
 
 export const injectCompressNudges = (
     state: SessionState,
@@ -136,19 +159,20 @@ export const injectCompressNudges = (
         }
     }
 
-    applyAnchoredNudges(state, config, messages, prompts, compressionPriorities, currentTokens, modelContextLimit)
+    const suffixMessage = createSuffixMessage(messages)
 
-    injectContextUsage(messages, currentTokens, modelContextLimit)
+    applyAnchoredNudges(state, config, messages, prompts, compressionPriorities, currentTokens, modelContextLimit, suffixMessage)
+
+    injectContextUsage(suffixMessage, currentTokens, modelContextLimit)
 
     if (config.compress.mode !== "message") {
         const blockGuidance = buildCompressedBlockGuidance(state, config.gc, { currentTokens, modelContextLimit })
-        if (blockGuidance.trim()) {
-            const lastUser = getLastUserMessage(messages)
-            if (lastUser) appendToLastTextPart(lastUser, "\n\n" + blockGuidance)
+        if (blockGuidance.trim() && suffixMessage) {
+            appendToLastTextPart(suffixMessage, "\n\n" + blockGuidance)
         }
     }
 
-    injectVisibleIdRange(state, messages)
+    injectVisibleIdRange(state, messages, suffixMessage)
 
     if (anchorsChanged) {
         void saveSessionState(state, logger)
@@ -156,30 +180,30 @@ export const injectCompressNudges = (
 }
 
 function injectContextUsage(
-    messages: WithParts[],
+    target: WithParts | null,
     currentTokens?: number,
     modelContextLimit?: number,
 ): void {
+    if (!target) return
     if (currentTokens === undefined || modelContextLimit === undefined || modelContextLimit === 0) {
         return
     }
-    const lastUser = getLastUserMessage(messages)
-    if (!lastUser) return
 
     const percentage = ((currentTokens / modelContextLimit) * 100).toFixed(1)
     const formatK = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n))
     const usageTag = `\n\nContext usage: ${formatK(currentTokens)} / ${formatK(modelContextLimit)} tokens (${percentage}%). ACP (Active Context Pruning) threshold: 55%. You ARE the ACP agent — use the compress tool proactively to manage context quality.`
 
-    for (const part of lastUser.parts) {
+    for (const part of target.parts) {
         if (part.type === "text") {
             appendToTextPart(part, usageTag)
             return
         }
     }
-    lastUser.parts.push(createSyntheticTextPart(lastUser, usageTag))
+    target.parts.push(createSyntheticTextPart(target, usageTag))
 }
 
-function injectVisibleIdRange(state: SessionState, messages: WithParts[]): void {
+function injectVisibleIdRange(state: SessionState, messages: WithParts[], target: WithParts | null): void {
+    if (!target) return
     const visibleRefs: string[] = []
     for (const message of messages) {
         const ref = state.messageIds.byRawId.get(message.info.id)
@@ -195,16 +219,13 @@ function injectVisibleIdRange(state: SessionState, messages: WithParts[]): void 
     const last = visibleRefs[visibleRefs.length - 1]
     const rangeTag = `\n\n[Visible message IDs: ${first} to ${last} (${visibleRefs.length} messages). Only use IDs in this range for compress.]`
 
-    const lastUser = getLastUserMessage(messages)
-    if (!lastUser) return
-
-    for (const part of lastUser.parts) {
+    for (const part of target.parts) {
         if (part.type === "text") {
             appendToTextPart(part, rangeTag)
             return
         }
     }
-    lastUser.parts.push(createSyntheticTextPart(lastUser, rangeTag))
+    target.parts.push(createSyntheticTextPart(target, rangeTag))
 }
 
 export const injectMessageIds = (

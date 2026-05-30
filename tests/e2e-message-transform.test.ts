@@ -19,6 +19,7 @@ import type { PluginConfig } from "../lib/config"
 import { createChatMessageTransformHandler } from "../lib/hooks"
 import { Logger } from "../lib/logger"
 import { createSessionState, saveSessionState, type WithParts, type SessionState } from "../lib/state"
+import { isSyntheticMessage } from "../lib/messages/query"
 import { mkdtempSync, rmSync } from "node:fs"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
@@ -213,10 +214,10 @@ test("basic pipeline: assigns message IDs and preserves all messages", async () 
 
     await handler({}, output)
 
-    // All 5 messages should survive the pipeline
-    assert.equal(output.messages.length, 5)
+    // All 5 messages + 1 suffix message should survive the pipeline
+    assert.equal(output.messages.length, 6)
 
-    // Message IDs should be assigned
+    // Message IDs should be assigned (suffix message excluded from ref assignment)
     assert.equal(state.messageIds.byRawId.get("u1"), "m00001")
     assert.equal(state.messageIds.byRawId.get("a1"), "m00002")
     assert.equal(state.messageIds.byRawId.get("u2"), "m00003")
@@ -281,10 +282,11 @@ test("filterMessagesInPlace: removes messages without valid info", async () => {
 
     await handler({}, output)
 
-    // Only 2 valid messages survive
-    assert.equal(output.messages.length, 2)
-    assert.equal(output.messages[0].info.id, "u1")
-    assert.equal(output.messages[1].info.id, "a1")
+    // Only 2 valid messages + 1 suffix message survive
+    assert.equal(output.messages.length, 3)
+    const realMessages = output.messages.filter((m: WithParts) => !isSyntheticMessage(m))
+    assert.equal(realMessages[0].info.id, "u1")
+    assert.equal(realMessages[1].info.id, "a1")
 })
 
 // ─── Test: Hallucinated tags are stripped ────────────────────────────────────

@@ -15,6 +15,7 @@ import type { PluginConfig } from "../lib/config"
 import { createChatMessageTransformHandler } from "../lib/hooks"
 import { Logger } from "../lib/logger"
 import { createSessionState, type WithParts, type SessionState } from "../lib/state"
+import { isSyntheticMessage } from "../lib/messages/query"
 import { mkdtempSync, rmSync } from "node:fs"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
@@ -205,9 +206,9 @@ test("nudge injection: context usage tag injected when modelContextLimit is set"
 
     await handler({}, output)
 
-    const lastUser = output.messages.find((m: WithParts) => m.info.id === "u2")
-    assert.ok(lastUser, "last user message should survive")
-    const textParts = lastUser!.parts.filter((p: any) => p.type === "text")
+    const suffixMessage = output.messages.find((m: WithParts) => isSyntheticMessage(m))
+    assert.ok(suffixMessage, "suffix message should be created")
+    const textParts = suffixMessage!.parts.filter((p: any) => p.type === "text")
     const combinedText = textParts.map((p: any) => p.text).join("")
     assert.ok(combinedText.includes("Context usage:"), "should inject context usage tag")
 })
@@ -410,7 +411,7 @@ test("message ID injection: IDs are appended to tool parts", async () => {
 
 // ─── Test: Visible ID range injection ───────────────────────────────────────
 
-test("visible ID range: range tag injected into last user message", async () => {
+test("visible ID range: range tag injected into suffix message", async () => {
     const { state, handler } = setupPipeline(SID_A, {}, {
         modelContextLimit: 200000,
     })
@@ -427,9 +428,9 @@ test("visible ID range: range tag injected into last user message", async () => 
 
     await handler({}, output)
 
-    const lastUser = output.messages.find((m: WithParts) => m.info.id === "u3")
-    assert.ok(lastUser)
-    const textParts = lastUser!.parts.filter((p: any) => p.type === "text")
+    const suffixMessage = output.messages.find((m: WithParts) => isSyntheticMessage(m))
+    assert.ok(suffixMessage, "suffix message should be created")
+    const textParts = suffixMessage!.parts.filter((p: any) => p.type === "text")
     const combinedText = textParts.map((p: any) => p.text).join("")
     assert.ok(
         combinedText.includes("[Visible message IDs:"),
@@ -585,8 +586,8 @@ test("mixed messages: only valid messages survive, IDs assigned to survivors", a
 
     await handler({}, output)
 
-    assert.equal(output.messages.length, 3, "only 3 valid messages should survive")
-    const ids = output.messages.map((m: WithParts) => m.info.id)
+    assert.equal(output.messages.length, 4, "3 valid messages + 1 suffix message")
+    const ids = output.messages.filter((m: WithParts) => !isSyntheticMessage(m)).map((m: WithParts) => m.info.id)
     assert.deepEqual(ids, ["u1", "a1", "u2"])
 
     assert.equal(state.messageIds.byRawId.get("u1"), "m00001")
