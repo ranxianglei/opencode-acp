@@ -2,6 +2,11 @@ import type { PluginConfig } from "../config"
 import type { WithParts } from "../state"
 import { isMessageWithInfo } from "./shape"
 
+export function isSyntheticMessage(message: WithParts): boolean {
+    const id = message?.info?.id
+    return typeof id === "string" && (id.startsWith("msg_dcp_summary_") || id.startsWith("msg_dcp_text_"))
+}
+
 export const getLastUserMessage = (
     messages: WithParts[],
     startIndex?: number,
@@ -12,7 +17,7 @@ export const getLastUserMessage = (
         if (!isMessageWithInfo(msg)) {
             continue
         }
-        if (msg.info.role === "user" && !isIgnoredUserMessage(msg)) {
+        if (msg.info.role === "user" && !isIgnoredUserMessage(msg) && !isSyntheticMessage(msg)) {
             return msg
         }
     }

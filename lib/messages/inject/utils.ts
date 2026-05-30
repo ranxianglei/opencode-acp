@@ -18,7 +18,7 @@ import {
     createSyntheticTextPart,
     hasContent,
 } from "../utils"
-import { getLastUserMessage, isIgnoredUserMessage } from "../query"
+import { getLastUserMessage, isIgnoredUserMessage, isSyntheticMessage } from "../query"
 import { getCurrentTokenUsage } from "../../token-utils"
 import { getActiveSummaryTokenUsage } from "../../state/utils"
 
@@ -60,6 +60,9 @@ export function findLastNonIgnoredMessage(messages: WithParts[]): LastNonIgnored
     for (let i = messages.length - 1; i >= 0; i--) {
         const message = messages[i]
         if (isIgnoredUserMessage(message)) {
+            continue
+        }
+        if (isSyntheticMessage(message)) {
             continue
         }
         return { message, index: i }
@@ -371,10 +374,52 @@ export function applyAnchoredNudges(
     compressionPriorities?: CompressionPriorityMap,
     currentTokens?: number,
     modelContextLimit?: number,
+    suffixMessage?: WithParts | null,
 ): void {
     const contextUsageInfo = buildContextUsageInfo(currentTokens, modelContextLimit)
     const contextLimitNudgeWithUsage = prompts.contextLimitNudge + contextUsageInfo
     const turnNudgeAnchors = collectTurnNudgeAnchors(state, config, messages)
+
+    if (suffixMessage) {
+        const nudgeParts: string[] = []
+
+        if (config.compress.mode === "message") {
+            if (state.nudges.contextLimitAnchors.size > 0) {
+                for (const { index } of collectAnchoredMessages(state.nudges.contextLimitAnchors, messages)) {
+                    const guidance = buildMessagePriorityGuidance(messages, compressionPriorities, index, MESSAGE_MODE_NUDGE_PRIORITY)
+                    nudgeParts.push(appendGuidanceToDcpTag(contextLimitNudgeWithUsage, guidance))
+                }
+            }
+            if (turnNudgeAnchors.size > 0) {
+                for (const { index } of collectAnchoredMessages(turnNudgeAnchors, messages)) {
+                    const guidance = buildMessagePriorityGuidance(messages, compressionPriorities, index, MESSAGE_MODE_NUDGE_PRIORITY)
+                    nudgeParts.push(appendGuidanceToDcpTag(prompts.turnNudge, guidance))
+                }
+            }
+            if (state.nudges.iterationNudgeAnchors.size > 0) {
+                for (const { index } of collectAnchoredMessages(state.nudges.iterationNudgeAnchors, messages)) {
+                    const guidance = buildMessagePriorityGuidance(messages, compressionPriorities, index, MESSAGE_MODE_NUDGE_PRIORITY)
+                    nudgeParts.push(appendGuidanceToDcpTag(prompts.iterationNudge, guidance))
+                }
+            }
+        } else {
+            if (state.nudges.contextLimitAnchors.size > 0) {
+                nudgeParts.push(contextLimitNudgeWithUsage)
+            }
+            if (turnNudgeAnchors.size > 0) {
+                nudgeParts.push(prompts.turnNudge)
+            }
+            if (state.nudges.iterationNudgeAnchors.size > 0) {
+                nudgeParts.push(prompts.iterationNudge)
+            }
+        }
+
+        const combined = nudgeParts.join("\n\n")
+        if (combined.trim()) {
+            injectAnchoredNudge(suffixMessage, combined)
+        }
+        return
+    }
 
     if (config.compress.mode === "message") {
         applyMessageModeAnchoredNudge(
