@@ -21,6 +21,10 @@ export function renderSystemPrompt(
         extensions.push(prompts.subagentExtension.trim())
     }
 
+    // decompress extension is always included when compress is not denied
+    // (the caller guards on permission === "deny" before reaching renderSystemPrompt)
+    extensions.push(prompts.decompressExtension.trim())
+
     return [prompts.system.trim(), ...extensions]
         .filter(Boolean)
         .join("\n\n")
