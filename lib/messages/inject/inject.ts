@@ -23,6 +23,7 @@ import {
 import {
     addAnchor,
     applyAnchoredNudges,
+    buildContextUsageGuidance,
     countMessagesAfterIndex,
     findLastNonIgnoredMessage,
     getIterationNudgeThreshold,
@@ -163,7 +164,7 @@ export const injectCompressNudges = (
 
     applyAnchoredNudges(state, config, messages, prompts, compressionPriorities, currentTokens, modelContextLimit, suffixMessage)
 
-    injectContextUsage(suffixMessage, currentTokens, modelContextLimit)
+    injectContextUsage(suffixMessage, config, currentTokens, modelContextLimit)
 
     if (config.compress.mode !== "message") {
         const blockGuidance = buildCompressedBlockGuidance(state, config.gc, { currentTokens, modelContextLimit })
@@ -181,17 +182,13 @@ export const injectCompressNudges = (
 
 function injectContextUsage(
     target: WithParts | null,
+    config: PluginConfig,
     currentTokens?: number,
     modelContextLimit?: number,
 ): void {
     if (!target) return
-    if (currentTokens === undefined || modelContextLimit === undefined || modelContextLimit === 0) {
-        return
-    }
-
-    const percentage = ((currentTokens / modelContextLimit) * 100).toFixed(1)
-    const formatK = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n))
-    const usageTag = `\n\nContext usage: ${formatK(currentTokens)} / ${formatK(modelContextLimit)} tokens (${percentage}%). ACP (Active Context Pruning) threshold: 55%. You ARE the ACP agent — use the compress tool proactively to manage context quality.`
+    const usageTag = buildContextUsageGuidance(config, currentTokens, modelContextLimit)
+    if (!usageTag) return
 
     for (const part of target.parts) {
         if (part.type === "text") {

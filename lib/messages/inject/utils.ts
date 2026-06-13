@@ -357,13 +357,54 @@ function applyMessageModeAnchoredNudge(
     }
 }
 
-function buildContextUsageInfo(currentTokens?: number, modelContextLimit?: number): string {
+/**
+ * Resolve a config threshold (number | "NN%") to a percentage value.
+ */
+function resolveThresholdPercent(
+    threshold: number | `${number}%` | undefined,
+    modelContextLimit: number | undefined,
+): number | undefined {
+    if (threshold === undefined) return undefined
+    if (typeof threshold === "number") {
+        if (!modelContextLimit) return undefined
+        return (threshold / modelContextLimit) * 100
+    }
+    const parsed = parseFloat(threshold)
+    return isNaN(parsed) ? undefined : parsed
+}
+
+/**
+ * Build tiered context usage guidance based on actual config thresholds.
+ * Shared by inject.ts (suffix message) and utils.ts (anchored nudges).
+ */
+export function buildContextUsageGuidance(
+    config: PluginConfig,
+    currentTokens?: number,
+    modelContextLimit?: number,
+): string {
     if (currentTokens === undefined || modelContextLimit === undefined || modelContextLimit === 0) {
         return ""
     }
-    const percentage = ((currentTokens / modelContextLimit) * 100).toFixed(1)
+
+    const pct = (currentTokens / modelContextLimit) * 100
+    const percentage = pct.toFixed(1)
     const formatK = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n))
-    return `\n\nContext usage: ${formatK(currentTokens)} / ${formatK(modelContextLimit)} tokens (${percentage}%). ACP (Active Context Pruning) threshold: 55%. You ARE the ACP agent — use the compress tool proactively to manage context quality.`
+
+    const minPct = resolveThresholdPercent(config.compress.minContextLimit, modelContextLimit) ?? 45
+    const maxPct = resolveThresholdPercent(config.compress.maxContextLimit, modelContextLimit) ?? 55
+
+    const base = `Context usage: ${formatK(currentTokens)} / ${formatK(modelContextLimit)} tokens (${percentage}%). ACP threshold: ${maxPct.toFixed(0)}%.`
+
+    let guidance: string
+    if (pct < minPct) {
+        guidance = " Context is ample — focus on your task. Only compress obvious waste (large terminal outputs, duplicated content)."
+    } else if (pct < maxPct) {
+        guidance = " Context is moderate — compress completed sections and high-token waste. Preserve key details."
+    } else {
+        guidance = " Context is high — compress aggressively but selectively. Preserve only what is essential."
+    }
+
+    return `\n\n${base}${guidance}`
 }
 
 export function applyAnchoredNudges(
@@ -376,7 +417,7 @@ export function applyAnchoredNudges(
     modelContextLimit?: number,
     suffixMessage?: WithParts | null,
 ): void {
-    const contextUsageInfo = buildContextUsageInfo(currentTokens, modelContextLimit)
+    const contextUsageInfo = buildContextUsageGuidance(config, currentTokens, modelContextLimit)
     const contextLimitNudgeWithUsage = prompts.contextLimitNudge + contextUsageInfo
     const turnNudgeAnchors = collectTurnNudgeAnchors(state, config, messages)
 
