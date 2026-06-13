@@ -22,7 +22,27 @@
 - Added `resolveThresholdPercent()` helper to parse `number | "NN%"` config values
 - Both inject.ts and utils.ts now call the same shared function
 
+### 4. Iteration 2: Anti-re-compression + tool-output-first guidance
+**Trigger**: Observed agent repeatedly compressing already-compressed block summaries (300 tokens each) with negligible effect. Context stayed at ~53% despite 5+ compressions.
+
+**Changes to `lib/prompts/system.ts`**:
+- Added principle: "Target the largest UNCOMPRESSED content first"
+- Expanded WHAT TO COMPRESS FIRST with recoverable high-token content types
+- New section: DO NOT RE-COMPRESS (low value, diminishing returns)
+
+### 5. Iteration 3: Dual Oracle review fixes
+**Trigger**: Dual Oracle review found 1 CRITICAL + 7 MAJOR issues.
+
+**Fixes applied**:
+- **CRITICAL**: Agent results bullet — removed "compress immediately" (contradicted pressure-based philosophy), explained protected tools auto-preservation behavior, made decompress primary recovery path (not re-invoke)
+- **MAJOR**: DO NOT RE-COMPRESS — added aging warning exception (nudge.ts tells model to re-summarize aging blocks; system prompt must not contradict)
+- **MAJOR**: Merged 4 redundant bullets (terminal/build/git/publish) into one "Verbose command output" bullet
+- **MAJOR**: "Content needed in next 2-3 turns" → "Content whose immediate use is complete" (models can't predict future)
+- **MAJOR**: Build/test output — keep failure messages + file/line refs, not just verdict (contradicted compress-range.ts EXHAUSTIVE requirement)
+- **MINOR**: Added missing scenarios — resolved discussion threads, pending tool calls guard
+- **MINOR**: Removed specific agent names (Oracle, explore, librarian) — use generic phrasing
+
 ## Verification
 - TypeScript: clean
-- Build: success (301.02 KB)
+- Build: success
 - Tests: 386/386 pass
