@@ -8,7 +8,7 @@ import { COMPRESS_MESSAGE as COMPRESS_MESSAGE_PROMPT } from "./compress-message"
 import { CONTEXT_LIMIT_NUDGE } from "./context-limit-nudge"
 import { TURN_NUDGE } from "./turn-nudge"
 import { ITERATION_NUDGE } from "./iteration-nudge"
-import { MANUAL_MODE_SYSTEM_EXTENSION, SUBAGENT_SYSTEM_EXTENSION } from "./extensions/system"
+import { MANUAL_MODE_SYSTEM_EXTENSION, SUBAGENT_SYSTEM_EXTENSION, DECOMPRESS_SYSTEM_EXTENSION } from "./extensions/system"
 
 export type PromptKey =
     | "system"
@@ -55,6 +55,7 @@ export interface RuntimePrompts {
     iterationNudge: string
     manualExtension: string
     subagentExtension: string
+    decompressExtension: string
 }
 
 const PROMPT_DEFINITIONS: PromptDefinition[] = [
@@ -135,6 +136,7 @@ const BUNDLED_EDITABLE_PROMPTS: Record<EditablePromptField, string> = {
 const INTERNAL_PROMPT_EXTENSIONS = {
     manualExtension: MANUAL_MODE_SYSTEM_EXTENSION,
     subagentExtension: SUBAGENT_SYSTEM_EXTENSION,
+    decompressExtension: DECOMPRESS_SYSTEM_EXTENSION,
 }
 
 function createBundledRuntimePrompts(): RuntimePrompts {
@@ -147,6 +149,7 @@ function createBundledRuntimePrompts(): RuntimePrompts {
         iterationNudge: BUNDLED_EDITABLE_PROMPTS.iterationNudge,
         manualExtension: INTERNAL_PROMPT_EXTENSIONS.manualExtension,
         subagentExtension: INTERNAL_PROMPT_EXTENSIONS.subagentExtension,
+        decompressExtension: INTERNAL_PROMPT_EXTENSIONS.decompressExtension,
     }
 }
 

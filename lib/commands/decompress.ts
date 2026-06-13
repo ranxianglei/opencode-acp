@@ -1,9 +1,7 @@
 import type { Logger } from "../logger"
-import type { CompressionBlock, PruneMessagesState, SessionState, WithParts } from "../state"
+import type { SessionState, WithParts } from "../state"
 import { syncCompressionBlocks } from "../messages"
-import { parseBlockRef } from "../message-ids"
 import { getCurrentParams } from "../token-utils"
-import { saveSessionState } from "../state/persistence"
 import { sendIgnoredMessage } from "../ui/notification"
 import { formatTokenCount } from "../ui/utils"
 import {
@@ -11,6 +9,15 @@ import {
     resolveCompressionTarget,
     type CompressionTarget,
 } from "./compression-targets"
+import {
+    parseBlockIdArg,
+    findActiveAncestorBlockId,
+    snapshotActiveMessages,
+    deactivateCompressionTarget,
+    computeRestoredMessages,
+    computeReactivatedBlockIds,
+} from "../compress/decompress-logic"
+import { saveSessionState } from "../state/persistence"
 
 export interface DecompressCommandContext {
     client: any
@@ -19,78 +26,6 @@ export interface DecompressCommandContext {
     sessionId: string
     messages: WithParts[]
     args: string[]
-}
-
-function parseBlockIdArg(arg: string): number | null {
-    const normalized = arg.trim().toLowerCase()
-    const blockRef = parseBlockRef(normalized)
-    if (blockRef !== null) {
-        return blockRef
-    }
-
-    if (!/^[1-9]\d*$/.test(normalized)) {
-        return null
-    }
-
-    const parsed = Number.parseInt(normalized, 10)
-    return Number.isInteger(parsed) && parsed > 0 ? parsed : null
-}
-
-function findActiveParentBlockId(
-    messagesState: PruneMessagesState,
-    block: CompressionBlock,
-): number | null {
-    const queue = [...block.parentBlockIds]
-    const visited = new Set<number>()
-
-    while (queue.length > 0) {
-        const parentBlockId = queue.shift()
-        if (parentBlockId === undefined || visited.has(parentBlockId)) {
-            continue
-        }
-        visited.add(parentBlockId)
-
-        const parent = messagesState.blocksById.get(parentBlockId)
-        if (!parent) {
-            continue
-        }
-
-        if (parent.active) {
-            return parent.blockId
-        }
-
-        for (const ancestorId of parent.parentBlockIds) {
-            if (!visited.has(ancestorId)) {
-                queue.push(ancestorId)
-            }
-        }
-    }
-
-    return null
-}
-
-function findActiveAncestorBlockId(
-    messagesState: PruneMessagesState,
-    target: CompressionTarget,
-): number | null {
-    for (const block of target.blocks) {
-        const activeAncestorBlockId = findActiveParentBlockId(messagesState, block)
-        if (activeAncestorBlockId !== null) {
-            return activeAncestorBlockId
-        }
-    }
-
-    return null
-}
-
-function snapshotActiveMessages(messagesState: PruneMessagesState): Map<string, number> {
-    const activeMessages = new Map<string, number>()
-    for (const [messageId, entry] of messagesState.byMessageId) {
-        if (entry.activeBlockIds.length > 0) {
-            activeMessages.set(messageId, entry.tokenCount)
-        }
-    }
-    return activeMessages
 }
 
 function formatDecompressMessage(
@@ -227,41 +162,19 @@ export async function handleDecompressCommand(ctx: DecompressCommandContext): Pr
 
     const activeMessagesBefore = snapshotActiveMessages(messagesState)
     const activeBlockIdsBefore = new Set(messagesState.activeBlockIds)
-    const deactivatedAt = Date.now()
 
-    for (const block of target.blocks) {
-        block.active = false
-        block.deactivatedByUser = true
-        block.deactivatedAt = deactivatedAt
-        block.deactivatedByBlockId = undefined
-
-        // [FIX Bug 10] Mark consumed inner blocks so syncCompressionBlocks won't re-activate them
-        for (const consumedId of block.consumedBlockIds) {
-            const consumedBlock = messagesState.blocksById.get(consumedId)
-            if (consumedBlock) {
-                consumedBlock.deactivatedByUser = true
-            }
-        }
-    }
+    deactivateCompressionTarget(messagesState, target)
 
     syncCompressionBlocks(state, logger, messages)
 
-    let restoredMessageCount = 0
-    let restoredTokens = 0
-    for (const [messageId, tokenCount] of activeMessagesBefore) {
-        const entry = messagesState.byMessageId.get(messageId)
-        const isActiveNow = entry ? entry.activeBlockIds.length > 0 : false
-        if (!isActiveNow) {
-            restoredMessageCount++
-            restoredTokens += tokenCount
-        }
-    }
+    const { restoredMessageCount, restoredTokens } = computeRestoredMessages(
+        messagesState,
+        activeMessagesBefore,
+    )
 
     state.stats.totalPruneTokens = Math.max(0, state.stats.totalPruneTokens - restoredTokens)
 
-    const reactivatedBlockIds = Array.from(messagesState.activeBlockIds)
-        .filter((blockId) => !activeBlockIdsBefore.has(blockId))
-        .sort((a, b) => a - b)
+    const reactivatedBlockIds = computeReactivatedBlockIds(messagesState, activeBlockIdsBefore)
 
     await saveSessionState(state, logger)
 

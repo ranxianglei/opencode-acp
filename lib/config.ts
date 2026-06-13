@@ -92,6 +92,7 @@ const DEFAULT_PROTECTED_TOOLS = [
     "todowrite",
     "todoread",
     "compress",
+    "decompress",
     "batch",
     "plan_enter",
     "plan_exit",
@@ -99,7 +100,7 @@ const DEFAULT_PROTECTED_TOOLS = [
     "edit",
 ]
 
-const COMPRESS_DEFAULT_PROTECTED_TOOLS = ["task", "skill", "todowrite", "todoread"]
+const COMPRESS_DEFAULT_PROTECTED_TOOLS = ["task", "skill", "todowrite", "todoread", "decompress"]
 
 export { VALID_CONFIG_KEYS, getInvalidConfigKeys, validateConfigTypes, type ValidationError } from "./config-validation"
 
