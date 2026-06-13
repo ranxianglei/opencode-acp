@@ -12,6 +12,8 @@ Compression replaces raw conversation content with dense summaries. When used co
 
 The key principle: compress based on context pressure, not habit. When context is ample, compress rarely or not at all. When context is tight, compress aggressively but selectively. The runtime context usage indicator tells you the current pressure level.
 
+Target the largest UNCOMPRESSED content first. Savings scale with original size — compressing a 5000-token tool output frees far more than re-shrinking an already-summarized 300-token block.
+
 CONTEXT PRESSURE LEVELS
 
 - Ample: Context is well below the threshold. Do NOT compress unless there is obvious waste (huge terminal dumps, duplicated content). Focus entirely on your task.
@@ -20,11 +22,21 @@ CONTEXT PRESSURE LEVELS
 
 WHAT TO COMPRESS FIRST (high value, low risk)
 
-- Verbose terminal/bash command output (build logs, test output, directory listings)
-- Exploration that led nowhere (failed approaches, dead-end searches)
-- Redundant tool results (reading the same file multiple times, repeated status checks)
-- Intermediate steps of completed multi-step tasks
-- Large file contents that have already been used and are no longer needed
+- Agent/subagent review and consultation results: Prime compression targets when context pressure rises — the surrounding reasoning and tool-call chatter is typically the largest block of uncompressed content. Note: if the agent tool is in your protected list, its output is auto-preserved in the summary, so the savings come from the surrounding conversation, not the agent output itself. Compress once you have fully consumed the results (all recommended actions applied or recorded in files). Recover via \`decompress\` while the block is still active. Re-invoking the agent is a last resort — it is a fresh run, not a cache hit.
+- Verbose command output (build/test runs, git diff/log/status, publish logs, directory listings): Once you have read the result, compress. Keep only the verdict — pass/fail status, commit hash, version number, or count. For failures, keep the specific error messages and file/line references needed to act on them. The full output is reproducible by re-running the command.
+- Exploration that led nowhere (failed approaches, dead-end searches): Compress to a one-line note about what was tried and why it failed.
+- Redundant tool results (reading the same file multiple times, repeated status checks, exhausted search results): Keep only the most recent result.
+- Intermediate steps of completed multi-step tasks: Once the task is done, compress the process. Keep only the final outcome.
+- Resolved discussion threads (clarification rounds, negotiated requirements, design debate that reached a decision): Once a conclusion is recorded, compress the back-and-forth. Keep the decision and its rationale.
+- Large file contents that have already been used and are no longer needed: Compress to a summary of key functions, types, or patterns.
+
+DO NOT RE-COMPRESS (low value, diminishing returns)
+
+- Already-compressed block summaries: Re-compressing a summary into a shorter summary saves negligible tokens. If a block needs better detail, use \`decompress\` to restore it, then compress the original content properly. Exception: if a block-aging warning flags specific block IDs as facing GC truncation, re-summarize exactly those flagged blocks into a fresh range — this preserves detail that GC would otherwise destroy.
+- Short messages (1-3 sentences): The compression overhead (block metadata, summary structure) may exceed the tokens saved.
+- Content whose immediate use is complete — the task it supported is done and no open todo/plan references it. If still in active use, let it stay.
+- User instructions and requirements: These must remain visible until the task is complete.
+- Tool calls that are still pending or in-progress: Wait until the result is returned and consumed.
 
 WHAT TO COMPRESS CAREFULLY (high risk - verify before compressing)
 
