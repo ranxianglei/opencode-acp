@@ -361,9 +361,21 @@ function buildContextUsageInfo(currentTokens?: number, modelContextLimit?: numbe
     if (currentTokens === undefined || modelContextLimit === undefined || modelContextLimit === 0) {
         return ""
     }
-    const percentage = ((currentTokens / modelContextLimit) * 100).toFixed(1)
+    const pct = (currentTokens / modelContextLimit) * 100
+    const percentage = pct.toFixed(1)
     const formatK = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n))
-    return `\n\nContext usage: ${formatK(currentTokens)} / ${formatK(modelContextLimit)} tokens (${percentage}%). ACP (Active Context Pruning) threshold: 55%. You ARE the ACP agent — use the compress tool proactively to manage context quality.`
+    const base = `Context usage: ${formatK(currentTokens)} / ${formatK(modelContextLimit)} tokens (${percentage}%). ACP threshold: 55%.`
+
+    let guidance: string
+    if (pct < 40) {
+        guidance = " Context is ample — focus on your task. Only compress obvious waste (large terminal outputs, duplicated content)."
+    } else if (pct < 55) {
+        guidance = " Context is moderate — compress completed sections and high-token waste. Preserve key details."
+    } else {
+        guidance = " Context is high — compress aggressively but selectively. Preserve only what is essential."
+    }
+
+    return `\n\n${base}${guidance}`
 }
 
 export function applyAnchoredNudges(
