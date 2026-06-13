@@ -52,5 +52,7 @@ Generate recovery breadcrumbs in your summary so future-you can reconstruct the 
 - Note what was decided and why, not just what was done
 - Example: "Implemented auth check in src/middleware.ts using validateToken() from auth.ts - user table is users not user"
 
-Use \`compress\` deliberately with quality-first summaries. Prioritize stale content intelligently to maintain a high-signal context window.
+If you later realize you need the original details from a compressed block, use \`decompress\` to restore them. You can decompress, read the content, then re-compress if needed.
+
+Use \`compress\` and \`decompress\` deliberately with quality-first summaries. Prioritize stale content intelligently to maintain a high-signal context window.
 `
