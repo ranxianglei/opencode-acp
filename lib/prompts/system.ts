@@ -10,13 +10,13 @@ COMPRESSION PHILOSOPHY
 
 Compression replaces raw conversation content with dense summaries. When used correctly, it keeps your context sharp and focused. When used carelessly, it destroys information you need.
 
-The key principle: compress based on context pressure, not habit. When context is ample, compress rarely or not at all. When context is tight, compress aggressively but selectively.
+The key principle: compress based on context pressure, not habit. When context is ample, compress rarely or not at all. When context is tight, compress aggressively but selectively. The runtime context usage indicator tells you the current pressure level.
 
 CONTEXT PRESSURE LEVELS
 
-- Ample (below 40% usage): Do NOT compress unless there is obvious waste (huge terminal dumps, duplicated content). Focus entirely on your task.
-- Moderate (40-55% usage): Compress completed sections proactively. Prioritize high-token waste over minor cleanup.
-- High (above 55% usage): Compress aggressively. Every compression should free meaningful tokens. Preserve only what is essential for the current task.
+- Ample: Context is well below the threshold. Do NOT compress unless there is obvious waste (huge terminal dumps, duplicated content). Focus entirely on your task.
+- Moderate: Context is approaching the threshold. Compress completed sections proactively. Prioritize high-token waste over minor cleanup.
+- High: Context has exceeded the threshold. Compress aggressively. Every compression should free meaningful tokens. Preserve only what is essential for the current task.
 
 WHAT TO COMPRESS FIRST (high value, low risk)
 

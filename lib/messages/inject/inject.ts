@@ -23,6 +23,7 @@ import {
 import {
     addAnchor,
     applyAnchoredNudges,
+    buildContextUsageGuidance,
     countMessagesAfterIndex,
     findLastNonIgnoredMessage,
     getIterationNudgeThreshold,
@@ -163,7 +164,7 @@ export const injectCompressNudges = (
 
     applyAnchoredNudges(state, config, messages, prompts, compressionPriorities, currentTokens, modelContextLimit, suffixMessage)
 
-    injectContextUsage(suffixMessage, currentTokens, modelContextLimit)
+    injectContextUsage(suffixMessage, config, currentTokens, modelContextLimit)
 
     if (config.compress.mode !== "message") {
         const blockGuidance = buildCompressedBlockGuidance(state, config.gc, { currentTokens, modelContextLimit })
@@ -179,35 +180,14 @@ export const injectCompressNudges = (
     }
 }
 
-function buildContextUsageTag(currentTokens?: number, modelContextLimit?: number): string {
-    if (currentTokens === undefined || modelContextLimit === undefined || modelContextLimit === 0) {
-        return ""
-    }
-
-    const pct = (currentTokens / modelContextLimit) * 100
-    const percentage = pct.toFixed(1)
-    const formatK = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n))
-    const base = `Context usage: ${formatK(currentTokens)} / ${formatK(modelContextLimit)} tokens (${percentage}%). ACP threshold: 55%.`
-
-    let guidance: string
-    if (pct < 40) {
-        guidance = " Context is ample — focus on your task. Only compress obvious waste (large terminal outputs, duplicated content)."
-    } else if (pct < 55) {
-        guidance = " Context is moderate — compress completed sections and high-token waste. Preserve key details."
-    } else {
-        guidance = " Context is high — compress aggressively but selectively. Preserve only what is essential."
-    }
-
-    return `\n\n${base}${guidance}`
-}
-
 function injectContextUsage(
     target: WithParts | null,
+    config: PluginConfig,
     currentTokens?: number,
     modelContextLimit?: number,
 ): void {
     if (!target) return
-    const usageTag = buildContextUsageTag(currentTokens, modelContextLimit)
+    const usageTag = buildContextUsageGuidance(config, currentTokens, modelContextLimit)
     if (!usageTag) return
 
     for (const part of target.parts) {
