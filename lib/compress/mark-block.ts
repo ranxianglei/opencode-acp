@@ -52,7 +52,7 @@ fully active with zero immediate effect on context or cache. When context pressu
 rises, all marked blocks are merge-compressed together into a single summary in one
 cache break, instead of being handled one at a time.
 
-Argument: blockId — the block reference to mark (e.g., "b0", "b3")
+Argument: blockId — the block reference to mark (e.g., "b1", "b3")
 
 Use mark_block instead of compress when you want deferred cleanup: the block keeps
 serving cache hits now and gets consolidated later only if context gets tight.`
@@ -62,13 +62,13 @@ const UNMARK_DESCRIPTION = `Removes the batch cleanup mark from a compressed blo
 Reverses mark_block. The block returns to normal handling and will not be
 auto-merged during batch cleanup.
 
-Argument: blockId — the block reference to unmark (e.g., "b0", "b3")`
+Argument: blockId — the block reference to unmark (e.g., "b1", "b3")`
 
 function buildSchema() {
     return {
         blockId: tool.schema
             .string()
-            .describe('Block reference to mark (e.g., "b0", "b3")'),
+            .describe('Block reference to mark (e.g., "b1", "b3")'),
     }
 }
 
@@ -76,7 +76,7 @@ function buildUnmarkSchema() {
     return {
         blockId: tool.schema
             .string()
-            .describe('Block reference to unmark (e.g., "b0", "b3")'),
+            .describe('Block reference to unmark (e.g., "b1", "b3")'),
     }
 }
 

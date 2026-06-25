@@ -205,7 +205,9 @@ export function mergeMarkedBlocks(
         }
     }
 
-    messagesState.markedForCleanup.clear()
+    for (const id of sourceIds) {
+        messagesState.markedForCleanup.delete(id)
+    }
 
     const sourceTokens = sourceBlocks.reduce(
         (sum, block) => sum + (block.summaryTokens || Math.round(block.summary.length / 4)),
@@ -231,7 +233,9 @@ function buildNudgeText(state: SessionState, maxMergedLength: number): string | 
     return [
         `⚠️ ${blocks.length} block(s) marked for batch cleanup (${refs}).`,
         `Merge-compressing them would free ~${estimatedSavings} tokens.`,
-        "They will auto-merge when context pressure reaches the high threshold.",
+        blocks.length >= 2
+            ? "They will auto-merge when context pressure reaches the high threshold."
+            : "A single marked block won't auto-merge on its own — use compress to consolidate it, or unmark_block if no longer needed.",
         "To act now, use compress with a range covering these blocks.",
     ].join(" ")
 }
