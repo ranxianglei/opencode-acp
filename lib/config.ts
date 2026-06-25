@@ -57,12 +57,19 @@ export interface ExperimentalConfig {
     customPrompts: boolean
 }
 
+export interface BatchCleanupConfig {
+    lowThreshold: number | `${number}%`
+    highThreshold: number | `${number}%`
+    forceThreshold: number | `${number}%`
+}
+
 export interface GCConfig {
     algorithm: "truncate"
     promotionThreshold: number
     maxBlockAge: number
     maxOldGenSummaryLength: number
     majorGcThresholdPercent: number | `${number}%`
+    batchCleanup: BatchCleanupConfig
 }
 
 export interface PluginConfig {
@@ -93,6 +100,8 @@ const DEFAULT_PROTECTED_TOOLS = [
     "todoread",
     "compress",
     "decompress",
+    "mark_block",
+    "unmark_block",
     "batch",
     "plan_enter",
     "plan_exit",
@@ -203,6 +212,11 @@ const defaultConfig: PluginConfig = {
         maxBlockAge: 15,
         maxOldGenSummaryLength: 3000,
         majorGcThresholdPercent: "100%",
+        batchCleanup: {
+            lowThreshold: "60%",
+            highThreshold: "75%",
+            forceThreshold: "90%",
+        },
     },
 }
 
@@ -457,7 +471,22 @@ function deepCloneConfig(config: PluginConfig): PluginConfig {
                 protectedTools: [...config.strategies.purgeErrors.protectedTools],
             },
         },
-        gc: { ...config.gc },
+        gc: {
+            ...config.gc,
+            batchCleanup: { ...config.gc.batchCleanup },
+        },
+    }
+}
+
+function mergeGC(base: GCConfig, override?: Partial<GCConfig>): GCConfig {
+    if (!override) {
+        return base
+    }
+
+    return {
+        ...base,
+        ...override,
+        batchCleanup: { ...base.batchCleanup, ...(override.batchCleanup ?? {}) },
     }
 }
 
@@ -479,7 +508,7 @@ function mergeLayer(config: PluginConfig, data: Record<string, any>): PluginConf
             ...new Set([...config.protectedFilePatterns, ...(data.protectedFilePatterns ?? [])]),
         ],
         compress: mergeCompress(config.compress, data.compress as CompressOverride),
-        gc: { ...config.gc, ...(data.gc as Partial<GCConfig>) },
+        gc: mergeGC(config.gc, data.gc as Partial<GCConfig>),
         strategies: mergeStrategies(config.strategies, data.strategies as any),
     }
 }

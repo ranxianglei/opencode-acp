@@ -36,6 +36,7 @@ interface PersistedPruneMessagesState {
     activeByAnchorMessageId: Record<string, number>
     nextBlockId: number
     nextRunId: number
+    markedForCleanup?: number[]
 }
 
 export function serializePruneMessagesState(
@@ -53,6 +54,7 @@ export function serializePruneMessagesState(
         activeByAnchorMessageId: Object.fromEntries(messagesState.activeByAnchorMessageId),
         nextBlockId: messagesState.nextBlockId,
         nextRunId: messagesState.nextRunId,
+        markedForCleanup: Array.from(messagesState.markedForCleanup),
     }
 }
 
@@ -117,6 +119,7 @@ export function createPruneMessagesState(): PruneMessagesState {
         activeByAnchorMessageId: new Map<string, number>(),
         nextBlockId: 1,
         nextRunId: 1,
+        markedForCleanup: new Set<number>(),
     }
 }
 
@@ -290,6 +293,14 @@ export function loadPruneMessagesState(
         }
         if (block.runId >= state.nextRunId) {
             state.nextRunId = block.runId + 1
+        }
+    }
+
+    if (Array.isArray(persisted.markedForCleanup)) {
+        for (const id of persisted.markedForCleanup) {
+            if (Number.isInteger(id) && id > 0 && state.blocksById.has(id)) {
+                state.markedForCleanup.add(id)
+            }
         }
     }
 

@@ -10,6 +10,7 @@ function makeGCConfig(overrides: Partial<GCConfig> = {}): GCConfig {
         maxBlockAge: 15,
         maxOldGenSummaryLength: 3000,
         majorGcThresholdPercent: "100%",
+        batchCleanup: { lowThreshold: "60%", highThreshold: "75%", forceThreshold: "90%" },
         ...overrides,
     }
 }
