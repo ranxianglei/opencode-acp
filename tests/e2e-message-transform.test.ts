@@ -618,7 +618,7 @@ test("state persistence: session state survives save/load round-trip", async () 
     rmSync(tempDir, { recursive: true, force: true })
 })
 
-// ─── Test: Internal agent requests are skipped (Bug 36) ──────────────────────
+// ─── Test: Internal agent requests are skipped (Bug 37) ──────────────────────
 
 test("title agent request: pipeline is skipped and messages are not mutated", async () => {
     const { state, handler } = setupPipeline()

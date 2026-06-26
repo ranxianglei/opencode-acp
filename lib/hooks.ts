@@ -50,7 +50,7 @@ const INTERNAL_AGENT_SIGNATURES = [
     "Summarize what was done in this conversation",
 ]
 
-// [FIX Bug 36] OpenCode built-in hidden primary-mode agents that must NOT be
+// [FIX Bug 37] OpenCode built-in hidden primary-mode agents that must NOT be
 // run through the message-transform pipeline. These small internal LLM
 // requests (title/summary/compaction generation) carry the agent name on the
 // user message's `info.agent` field. Mutating them corrupts the request and
@@ -223,7 +223,7 @@ export function createChatMessageTransformHandler(
             })
         }
 
-        // [FIX Bug 36] Skip OpenCode internal agents (title/summary/compaction).
+        // [FIX Bug 37] Skip OpenCode internal agents (title/summary/compaction).
         // These small hidden LLM requests must not be mutated, and running
         // checkSession on them would corrupt shared state (currentTurn, etc.).
         if (isInternalAgentRequest(messages)) {
