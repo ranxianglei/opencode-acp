@@ -382,18 +382,226 @@ test("compression blocks: compressed messages are replaced with summaries", asyn
     assert.ok(remainingIds.includes("u2"), "u2 should survive")
     assert.ok(remainingIds.includes("a2"), "a2 should survive")
 
-    // There should be a synthetic summary message injected at u2's anchor
-    const summaryMsg = output.messages.find(
-        (m: any) => m.info.id?.startsWith("msg_dcp_summary_"),
+    // [FIX Bug 36] The summary is now merged into the following user message (u2)
+    // instead of a standalone synthetic message, so the model no longer sees two
+    // consecutive user turns ([summary(user), u2(user)]) which caused role
+    // confusion / self-Q&A loops.
+    // The recap content is checked (not the msg_dcp_summary_ id prefix) because
+    // the unrelated suffix-guidance nudge message reuses that same id prefix.
+    const standaloneWithRecap = output.messages.find(
+        (m: any) =>
+            m.info.id?.startsWith("msg_dcp_summary_") &&
+            m.parts.some(
+                (p: any) =>
+                    p.type === "text" &&
+                    typeof p.text === "string" &&
+                    p.text.includes("Previous conversation about greetings"),
+            ),
     )
-    assert.ok(summaryMsg, "a synthetic summary message should be injected")
+    assert.ok(
+        !standaloneWithRecap,
+        "recap should be merged into the following user message, not emitted as a standalone synthetic message",
+    )
 
-    // Summary text should contain the compressed content
-    const summaryText = summaryMsg!.parts
+    // The summary content should be prepended into u2 (the following user message),
+    // and u2's original text must still be present after the recap.
+    const u2Msg = output.messages.find((m: any) => m.info.id === "u2")
+    assert.ok(u2Msg, "u2 should survive")
+    const u2Text = u2Msg!.parts
         .filter((p: any) => p.type === "text")
         .map((p: any) => p.text)
         .join("")
-    assert.ok(summaryText.includes("Previous conversation about greetings"))
+    assert.ok(
+        u2Text.includes("Previous conversation about greetings"),
+        "compressed summary should be merged into u2",
+    )
+    assert.ok(
+        u2Text.includes("How are you?"),
+        "u2's original text should be preserved after the summary is prepended",
+    )
+})
+
+// ─── Test: Regression — no consecutive user messages after compression ──────
+
+test("compression summary: never produces two consecutive user turns (Bug 36)", async () => {
+    const { state, handler } = setupPipeline()
+
+    const blockId = 1
+    state.prune.messages.blocksById.set(blockId, {
+        blockId,
+        runId: 1,
+        active: true,
+        deactivatedByUser: false,
+        compressedTokens: 500,
+        summaryTokens: 50,
+        durationMs: 0,
+        mode: "message",
+        topic: "early work",
+        batchTopic: "early work",
+        startId: "m00001",
+        endId: "m00002",
+        anchorMessageId: "u1",
+        compressMessageId: "msg-compress",
+        compressCallId: "call-compress",
+        includedBlockIds: [],
+        consumedBlockIds: [],
+        parentBlockIds: [],
+        directMessageIds: ["u1", "a1"],
+        directToolIds: [],
+        effectiveMessageIds: ["u1", "a1"],
+        effectiveToolIds: [],
+        createdAt: Date.now() - 1000,
+        summary: "The assistant explained the plan and the user acknowledged it.",
+        survivedCount: 0,
+        generation: "old",
+    })
+    state.prune.messages.activeBlockIds.add(blockId)
+    state.prune.messages.activeByAnchorMessageId.set("u1", blockId)
+    state.prune.messages.byMessageId.set("u1", {
+        tokenCount: 200,
+        allBlockIds: [blockId],
+        activeBlockIds: [blockId],
+    })
+    state.prune.messages.byMessageId.set("a1", {
+        tokenCount: 300,
+        allBlockIds: [blockId],
+        activeBlockIds: [blockId],
+    })
+
+    const output = {
+        messages: [
+            makeUserMessage("u1", "What's the plan?"),
+            makeAssistantMessage("a1", "Here is the plan."),
+            makeUserMessage("u2", "Sounds good, continue."),
+            makeAssistantMessage("a2", "Working on it."),
+        ],
+    }
+
+    await handler({}, output)
+
+    // Exclude ONLY the trailing suffix-guidance nudge (the last message, when
+    // synthetic). We must NOT filter all synthetic messages here: the pre-fix bug
+    // emitted the recap itself as a synthetic user message, and filtering it out
+    // would hide the exact consecutive-user pattern this test must catch.
+    const lastIdx = output.messages.length - 1
+    const historical = output.messages.filter(
+        (m: any, idx: number) => !(idx === lastIdx && isSyntheticMessage(m)),
+    )
+
+    // No two adjacent messages may both be role "user" — that pattern is exactly
+    // what caused the model to read its own prior output as user input and fall
+    // into a self-Q&A loop. On the pre-fix code this fails: the standalone
+    // synthetic summary (user) sat immediately before the surviving user turn.
+    for (let i = 1; i < historical.length; i++) {
+        const prev = historical[i - 1]!
+        const curr = historical[i]!
+        const bothUser = prev.info.role === "user" && curr.info.role === "user"
+        assert.ok(
+            !bothUser,
+            `adjacent user turns at index ${i - 1}/${i} (ids ${prev.info.id}, ${curr.info.id}) — compression must not create consecutive user messages`,
+        )
+    }
+
+    // The surviving user turn must carry both the recap and its own original text.
+    const u2 = historical.find((m: WithParts) => m.info.id === "u2")
+    assert.ok(u2, "u2 should survive")
+    const u2Text = u2!.parts
+        .filter((p) => p.type === "text")
+        .map((p) => (p as any).text)
+        .join("")
+    assert.ok(u2Text.includes("The assistant explained the plan"), "recap merged into u2")
+    assert.ok(u2Text.includes("Sounds good, continue."), "u2 original text preserved")
+})
+
+// ─── Test: Fallback — standalone summary when no following user turn (Bug 36) ──
+
+test("compression summary: emits standalone summary when range is last (no user to merge into)", async () => {
+    const { state, handler } = setupPipeline()
+
+    const blockId = 2
+    state.prune.messages.blocksById.set(blockId, {
+        blockId,
+        runId: 2,
+        active: true,
+        deactivatedByUser: false,
+        compressedTokens: 500,
+        summaryTokens: 50,
+        durationMs: 0,
+        mode: "message",
+        topic: "closing work",
+        batchTopic: "closing work",
+        startId: "m00003",
+        endId: "m00004",
+        anchorMessageId: "u2",
+        compressMessageId: "msg-compress",
+        compressCallId: "call-compress",
+        includedBlockIds: [],
+        consumedBlockIds: [],
+        parentBlockIds: [],
+        directMessageIds: ["u2", "a2"],
+        directToolIds: [],
+        effectiveMessageIds: ["u2", "a2"],
+        effectiveToolIds: [],
+        createdAt: Date.now() - 1000,
+        summary: "Final wrap-up of the task.",
+        survivedCount: 0,
+        generation: "old",
+    })
+    state.prune.messages.activeBlockIds.add(blockId)
+    state.prune.messages.activeByAnchorMessageId.set("u2", blockId)
+    state.prune.messages.byMessageId.set("u2", {
+        tokenCount: 200,
+        allBlockIds: [blockId],
+        activeBlockIds: [blockId],
+    })
+    state.prune.messages.byMessageId.set("a2", {
+        tokenCount: 300,
+        allBlockIds: [blockId],
+        activeBlockIds: [blockId],
+    })
+
+    const output = {
+        messages: [
+            makeUserMessage("u1", "Start here"),
+            makeAssistantMessage("a1", "Working"),
+            makeUserMessage("u2", "Almost done"),
+            makeAssistantMessage("a2", "Finished"),
+        ],
+    }
+
+    await handler({}, output)
+
+    const remainingIds = output.messages.map((m: any) => m.info.id)
+    assert.ok(!remainingIds.includes("u2"), "u2 (covered by block) should be pruned")
+    assert.ok(!remainingIds.includes("a2"), "a2 (covered by block) should be pruned")
+
+    // No following user turn exists to merge into, so the recap must be emitted
+    // as a standalone synthetic user message carrying the summary content.
+    const standalone = output.messages.find(
+        (m: any) =>
+            m.info.id?.startsWith("msg_dcp_summary_") &&
+            m.parts.some(
+                (p: any) =>
+                    p.type === "text" &&
+                    typeof p.text === "string" &&
+                    p.text.includes("Final wrap-up of the task."),
+            ),
+    )
+    assert.ok(standalone, "fallback path must emit a standalone synthetic summary")
+
+    // The standalone summary (user) follows a1 (assistant), so alternation holds.
+    const lastIdx = output.messages.length - 1
+    const checkMessages = output.messages.filter(
+        (m: any, idx: number) => !(idx === lastIdx && isSyntheticMessage(m)),
+    )
+    for (let i = 1; i < checkMessages.length; i++) {
+        const prev = checkMessages[i - 1]!
+        const curr = checkMessages[i]!
+        assert.ok(
+            !(prev.info.role === "user" && curr.info.role === "user"),
+            `unexpected adjacent user turns at ${i - 1}/${i}`,
+        )
+    }
 })
 
 // ─── Test: Tool output pruning ───────────────────────────────────────────────
