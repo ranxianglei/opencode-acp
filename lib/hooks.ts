@@ -24,6 +24,7 @@ import {
     resolveCompressionDuration,
 } from "./compress/timing"
 import { filterMessages, filterMessagesInPlace } from "./messages/shape"
+import { getLastUserMessage } from "./messages/query"
 import {
     applyPendingManualTrigger,
     handleContextCommand,
@@ -51,6 +52,24 @@ const INTERNAL_AGENT_SIGNATURES = [
     "You are an anchored context summarization assistant for coding sessions",
     "Summarize what was done in this conversation",
 ]
+
+// [FIX Bug 37] OpenCode built-in hidden primary-mode agents that must NOT be
+// run through the message-transform pipeline. These small internal LLM
+// requests (title/summary/compaction generation) carry the agent name on the
+// user message's `info.agent` field. Mutating them corrupts the request and
+// shared session state (e.g. countTurns runs on the wrong message set).
+// Keep in sync with INTERNAL_AGENT_SIGNATURES (system-prompt layer) and the
+// agent IDs defined in OpenCode's packages/core/src/plugin/agent.ts.
+const INTERNAL_AGENT_NAMES = new Set(["title", "summary", "compaction"])
+
+function isInternalAgentRequest(messages: WithParts[]): boolean {
+    const lastUserMessage = getLastUserMessage(messages)
+    if (!lastUserMessage) {
+        return false
+    }
+    const agent = (lastUserMessage.info as { agent?: unknown }).agent
+    return typeof agent === "string" && INTERNAL_AGENT_NAMES.has(agent)
+}
 
 export function createSystemPromptHandler(
     state: SessionState,
@@ -211,6 +230,14 @@ export function createChatMessageTransformHandler(
                 received: receivedMessages,
                 usable: messages.length,
             })
+        }
+
+        // [FIX Bug 37] Skip OpenCode internal agents (title/summary/compaction).
+        // These small hidden LLM requests must not be mutated, and running
+        // checkSession on them would corrupt shared state (currentTurn, etc.).
+        if (isInternalAgentRequest(messages)) {
+            logger.debug("Skipping message transform for internal agent request")
+            return
         }
 
         await checkSession(client, state, logger, output.messages, config.manualMode.enabled)

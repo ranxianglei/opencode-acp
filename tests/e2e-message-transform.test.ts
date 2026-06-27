@@ -79,13 +79,14 @@ function makeUserMessage(
     id: string,
     text: string,
     sessionId: string = SID,
+    agent: string = "assistant",
 ): WithParts {
     return {
         info: {
             id,
             sessionID: sessionId,
             role: "user",
-            agent: "assistant",
+            agent,
             time: { created: Date.now() },
             model: { providerID: "test-provider", modelID: "test-model" },
         } as WithParts["info"],
@@ -824,4 +825,116 @@ test("state persistence: session state survives save/load round-trip", async () 
     assert.equal(loaded!.stats.totalPruneTokens, 5000)
 
     rmSync(tempDir, { recursive: true, force: true })
+})
+
+// ─── Test: Internal agent requests are skipped (Bug 37) ──────────────────────
+
+test("title agent request: pipeline is skipped and messages are not mutated", async () => {
+    const { state, handler } = setupPipeline()
+
+    // Seed state as if a normal conversation already happened, so we can detect
+    // corruption of currentTurn / messageIds by the title request.
+    const seedMessages: WithParts[] = [
+        makeUserMessage("seed-u1", "Hello", SID, "build"),
+        makeAssistantMessage("seed-a1", "Hi there"),
+        makeUserMessage("seed-u2", "Second message", SID, "build"),
+    ]
+    await handler({}, { messages: seedMessages })
+
+    const turnBefore = state.currentTurn
+    const nextRefBefore = state.messageIds.nextRef
+    const byRawIdSizeBefore = state.messageIds.byRawId.size
+
+    // Now simulate OpenCode's internal title-generation request. The user message
+    // carries agent: "title". This must NOT be mutated.
+    const titleMessages: WithParts[] = [
+        makeUserMessage("title-u1", "Generate a title for this conversation", SID, "title"),
+    ]
+    const originalText = (titleMessages[0].parts[0] as { text: string }).text
+    await handler({}, { messages: titleMessages })
+
+    // Messages returned unchanged (no mNNNN injection, no suffix, no pruning)
+    assert.equal(titleMessages.length, 1)
+    assert.equal(titleMessages[0].info.id, "title-u1")
+    assert.equal((titleMessages[0].parts[0] as { text: string }).text, originalText)
+
+    // State NOT corrupted by the internal request
+    assert.equal(state.currentTurn, turnBefore, "currentTurn must not change for title request")
+    assert.equal(
+        state.messageIds.nextRef,
+        nextRefBefore,
+        "nextRef must not advance for title request",
+    )
+    assert.equal(
+        state.messageIds.byRawId.size,
+        byRawIdSizeBefore,
+        "messageIds map must not grow for title request",
+    )
+    assert.ok(
+        !state.messageIds.byRawId.has("title-u1"),
+        "title request user message must not get a ref",
+    )
+})
+
+test("summary and compaction agent requests are skipped", async () => {
+    const { state, handler } = setupPipeline()
+
+    // Seed normal conversation state
+    await handler({}, {
+        messages: [
+            makeUserMessage("seed-u1", "Hello", SID, "build"),
+            makeAssistantMessage("seed-a1", "Hi"),
+        ],
+    })
+
+    const nextRefBefore = state.messageIds.nextRef
+
+    for (const internalAgent of ["summary", "compaction"]) {
+        const internalMessages: WithParts[] = [
+            makeUserMessage(
+                `${internalAgent}-u1`,
+                `Internal ${internalAgent} request`,
+                SID,
+                internalAgent,
+            ),
+        ]
+        const originalText = (internalMessages[0].parts[0] as { text: string }).text
+        await handler({}, { messages: internalMessages })
+
+        // Messages untouched
+        assert.equal(internalMessages.length, 1, `${internalAgent}: message count unchanged`)
+        assert.equal(
+            (internalMessages[0].parts[0] as { text: string }).text,
+            originalText,
+            `${internalAgent}: text must not be mutated`,
+        )
+        // No ref assigned
+        assert.ok(
+            !state.messageIds.byRawId.has(`${internalAgent}-u1`),
+            `${internalAgent}: must not get a ref`,
+        )
+    }
+
+    // State unchanged across both internal requests
+    assert.equal(state.messageIds.nextRef, nextRefBefore)
+})
+
+test("normal agent request (build) is still fully processed", async () => {
+    const { state, handler } = setupPipeline()
+
+    const messages: WithParts[] = [
+        makeUserMessage("u1", "Hello", SID, "build"),
+        makeAssistantMessage("a1", "Hi there"),
+    ]
+
+    await handler({}, { messages })
+
+    // Normal processing: refs assigned, suffix message appended
+    assert.ok(state.messageIds.byRawId.has("u1"), "build: u1 should get a ref")
+    assert.ok(state.messageIds.byRawId.has("a1"), "build: a1 should get a ref")
+    assert.ok(state.messageIds.nextRef >= 3, "build: nextRef should advance")
+    assert.ok(
+        messages.length >= 2,
+        "build: messages should be processed (suffix may be appended)",
+    )
 })
