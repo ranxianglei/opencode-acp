@@ -29,6 +29,7 @@ export interface PersistedPruneMessagesState {
     activeByAnchorMessageId: Record<string, number>
     nextBlockId: number
     nextRunId: number
+    markedForCleanup?: number[]
 }
 
 export interface PersistedPrune {

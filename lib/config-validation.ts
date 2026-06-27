@@ -45,6 +45,10 @@ export const VALID_CONFIG_KEYS = new Set([
     "gc.maxBlockAge",
     "gc.maxOldGenSummaryLength",
     "gc.majorGcThresholdPercent",
+    "gc.batchCleanup",
+    "gc.batchCleanup.lowThreshold",
+    "gc.batchCleanup.highThreshold",
+    "gc.batchCleanup.forceThreshold",
     "strategies",
     "strategies.deduplication",
     "strategies.deduplication.enabled",
@@ -507,6 +511,45 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
                         expected: 'number | "${number}%"',
                         actual: JSON.stringify(gc.majorGcThresholdPercent),
                     })
+                }
+            }
+
+            const validateBatchThreshold = (
+                key: "gc.batchCleanup.lowThreshold" | "gc.batchCleanup.highThreshold" | "gc.batchCleanup.forceThreshold",
+                value: unknown,
+            ): void => {
+                const isValidNumber = typeof value === "number"
+                const isPercentString = typeof value === "string" && /^\d+(?:\.\d+)?%$/.test(value)
+                if (!isValidNumber && !isPercentString) {
+                    errors.push({
+                        key,
+                        expected: 'number | "${number}%"',
+                        actual: JSON.stringify(value),
+                    })
+                }
+            }
+
+            if (gc.batchCleanup !== undefined) {
+                if (
+                    typeof gc.batchCleanup !== "object" ||
+                    gc.batchCleanup === null ||
+                    Array.isArray(gc.batchCleanup)
+                ) {
+                    errors.push({
+                        key: "gc.batchCleanup",
+                        expected: "object",
+                        actual: typeof gc.batchCleanup,
+                    })
+                } else {
+                    if (gc.batchCleanup.lowThreshold !== undefined) {
+                        validateBatchThreshold("gc.batchCleanup.lowThreshold", gc.batchCleanup.lowThreshold)
+                    }
+                    if (gc.batchCleanup.highThreshold !== undefined) {
+                        validateBatchThreshold("gc.batchCleanup.highThreshold", gc.batchCleanup.highThreshold)
+                    }
+                    if (gc.batchCleanup.forceThreshold !== undefined) {
+                        validateBatchThreshold("gc.batchCleanup.forceThreshold", gc.batchCleanup.forceThreshold)
+                    }
                 }
             }
         }

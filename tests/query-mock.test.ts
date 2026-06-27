@@ -142,6 +142,7 @@ function makeConfig(overrides: Partial<PluginConfig> = {}): PluginConfig {
             maxBlockAge: 15,
             maxOldGenSummaryLength: 3000,
             majorGcThresholdPercent: "100%",
+            batchCleanup: { lowThreshold: "60%", highThreshold: "75%", forceThreshold: "90%" },
         },
         strategies: {
             deduplication: { enabled: true, protectedTools: [] },

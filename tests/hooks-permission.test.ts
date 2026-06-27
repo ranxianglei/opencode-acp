@@ -68,6 +68,7 @@ function buildConfig(permission: "allow" | "ask" | "deny" = "allow"): PluginConf
             maxBlockAge: 15,
             maxOldGenSummaryLength: 3000,
             majorGcThresholdPercent: "100%",
+            batchCleanup: { lowThreshold: "60%", highThreshold: "75%", forceThreshold: "90%" },
         },
     }
 }

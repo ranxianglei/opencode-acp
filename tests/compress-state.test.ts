@@ -312,6 +312,7 @@ test("applyCompressionState promotes old-gen blocks when survivedCount exceeds t
         maxBlockAge: 15,
         maxOldGenSummaryLength: 3000,
         majorGcThresholdPercent: "100%",
+        batchCleanup: { lowThreshold: "60%", highThreshold: "75%", forceThreshold: "90%" },
     }
 
     applyCompressionState(state, input, selection, "msg-a", 1, "summary", [], gcConfig)
@@ -335,6 +336,7 @@ test("applyCompressionState does not promote blocks below threshold", () => {
         maxBlockAge: 15,
         maxOldGenSummaryLength: 3000,
         majorGcThresholdPercent: "100%",
+        batchCleanup: { lowThreshold: "60%", highThreshold: "75%", forceThreshold: "90%" },
     }
 
     applyCompressionState(state, input, selection, "msg-a", 1, "summary", [], gcConfig)

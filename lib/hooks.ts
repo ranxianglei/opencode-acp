@@ -40,7 +40,10 @@ import { compressPermission, syncCompressPermissionState } from "./compress-perm
 import { checkSession, ensureSessionInitialized, saveSessionState, syncToolCache } from "./state"
 import { cacheSystemPromptTokens } from "./ui/utils"
 import { runTruncateGC, shouldRunMajorGC, getGCParams } from "./gc/truncate"
+import { runBatchCleanup } from "./gc/merge"
 import { getCurrentTokenUsage } from "./token-utils"
+import { getLastUserMessage } from "./messages/query"
+import { appendToLastTextPart } from "./messages/utils"
 
 const INTERNAL_AGENT_SIGNATURES = [
     "You are a title generator",
@@ -186,6 +189,12 @@ function runMajorGC(
     }
 }
 
+function appendBatchCleanupNudge(messages: WithParts[], nudgeText: string): void {
+    const lastUser = getLastUserMessage(messages)
+    if (!lastUser) return
+    appendToLastTextPart(lastUser, nudgeText)
+}
+
 export function createChatMessageTransformHandler(
     client: any,
     state: SessionState,
@@ -223,6 +232,13 @@ export function createChatMessageTransformHandler(
         syncToolCache(state, config, logger, output.messages)
         buildToolIdList(state, output.messages)
         runMajorGC(state, config, logger, output.messages)
+        const batchResult = runBatchCleanup(state, config, logger, output.messages)
+        if (batchResult.tier === 1 && batchResult.nudgeText) {
+            appendBatchCleanupNudge(output.messages, batchResult.nudgeText)
+        }
+        if (batchResult.mergedCount > 0) {
+            void saveSessionState(state, logger)
+        }
         prune(state, logger, config, output.messages)
         // [FIX Bug 2] assign refs to newly created synthetic messages from prune/filterCompressedRanges
         assignMessageRefs(state, output.messages)
