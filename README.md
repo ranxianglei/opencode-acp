@@ -46,6 +46,33 @@ Key fixes include: state persistence across restarts, token usage reporting (was
 
 ---
 
+## Proven at scale
+
+ACP is battle-tested on real, long-running engineering sessions. Aggregate stats
+from a single developer workstation (1,445 sessions, 69,097 model turns):
+
+| Metric | Value |
+|--------|-------|
+| Total tokens processed (incl. prompt-cache reads) | **6.17 billion** |
+| Billable tokens (input + output + reasoning) | **828 million** |
+| Prompt-cache hit tokens | 5.34 billion |
+| Average prompt-cache hit ratio | ~87% |
+| Compression blocks created (all-time) | 4,894 |
+| Tokens reclaimed by compression | 61.8 million |
+
+Two representative heavy sessions:
+
+| Session | Span | Turns | Input tokens | Cache reads | Cache hit | Peak context |
+|---------|------|-------|--------------|-------------|-----------|--------------|
+| compute-problem | 6 days | 2,694 | 80.0 M | 502 M | 86.2% | 488 K (49% of 1 M) |
+| model-editing | 2 days | 1,536 | 50.9 M | 412 M | 89.0% | 769 K (77% of 1 M) |
+
+Even at **77% context utilization** the prefix-cache hit ratio stays near **90%** --
+this is the payoff of ACP's cache-aware compression: it prunes from the tail
+(preserving the shared prefix) instead of truncating blindly.
+
+---
+
 ## Installation
 
 ```bash
