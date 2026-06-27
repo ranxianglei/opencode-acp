@@ -144,7 +144,7 @@ opencode-acp/
 │   ├── README.md                     # Scripts documentation
 │   └── ...                           # CLI tools for session inspection
 │
-├── tests/                            # Test files — 350 tests across 22 files
+├── tests/                            # Test files — 407 tests across 31 files
 ├── lib/config-validation.ts          # Pure validation logic (extracted from config.ts for testability)
 ├── dcp.schema.json                   # JSON schema for config validation
 ├── tsconfig.json                     # TypeScript config
@@ -366,7 +366,7 @@ CI is configured via GitHub Actions (PR #2): typecheck + test + build on Node 22
 | **Functional** | `compress-search.test.ts`, `compress-state.test.ts`, `message-ids.test.ts` | 77 | Compress pipeline with mock data |
 | **E2E** | `e2e-message-transform.test.ts`, `e2e-blocks-nudges.test.ts` | 21 | Full message-transform pipeline |
 
-**Total: 350 tests, 0 failures** (as of commit `5e54496`)
+**Total: 407 tests, 0 failures** (as of commit `f0315a6`)
 
 **Test review requirement**: All new and modified test files MUST undergo independent review by at least 2 separate agents before commit. See Section 5.4.
 

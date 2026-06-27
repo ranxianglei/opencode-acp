@@ -7,7 +7,7 @@ const MESSAGE_ID_TAG_NAME = "dcp-message-id"
 
 const MESSAGE_REF_WIDTH = 5
 const MESSAGE_REF_MIN_INDEX = 1
-export const MESSAGE_REF_MAX_INDEX = 99999
+const MESSAGE_REF_MAX_INDEX = 99999
 
 export type ParsedBoundaryId =
     | {

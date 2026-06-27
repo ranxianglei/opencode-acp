@@ -168,7 +168,7 @@ export const appendToAllToolParts = (message: WithParts, tag: string): boolean =
     return injected
 }
 
-export const appendToToolPart = (part: ToolPart, tag: string): boolean => {
+const appendToToolPart = (part: ToolPart, tag: string): boolean => {
     if (part.state?.status !== "completed" || typeof part.state.output !== "string") {
         return false
     }

@@ -74,68 +74,6 @@ function truncateToastSummary(summary: string, maxChars: number = TOAST_SUMMARY_
     return summary.slice(0, maxChars - 3) + "..."
 }
 
-function truncateExtractedSection(
-    message: string,
-    maxChars: number = TOAST_SUMMARY_MAX_CHARS,
-): string {
-    const marker = "\n\n▣ Extracted"
-    const index = message.indexOf(marker)
-    if (index === -1) {
-        return message
-    }
-    const extracted = message.slice(index)
-    if (extracted.length <= maxChars) {
-        return message
-    }
-    return message.slice(0, index) + truncateToastSummary(extracted, maxChars)
-}
-
-export async function sendUnifiedNotification(
-    client: any,
-    logger: Logger,
-    config: PluginConfig,
-    state: SessionState,
-    sessionId: string,
-    pruneToolIds: string[],
-    toolMetadata: Map<string, ToolParameterEntry>,
-    reason: PruneReason | undefined,
-    params: any,
-    workingDirectory: string,
-): Promise<boolean> {
-    const hasPruned = pruneToolIds.length > 0
-    if (!hasPruned) {
-        return false
-    }
-
-    if (config.pruneNotification === "off") {
-        return false
-    }
-
-    const message =
-        config.pruneNotification === "minimal"
-            ? buildMinimalMessage(state, reason)
-            : buildDetailedMessage(state, reason, pruneToolIds, toolMetadata, workingDirectory)
-
-    if (config.pruneNotificationType === "toast") {
-        let toastMessage = truncateExtractedSection(message)
-        toastMessage =
-            config.pruneNotification === "minimal" ? toastMessage : truncateToastBody(toastMessage)
-
-        await client.tui.showToast({
-            body: {
-                title: "ACP: Compress Notification",
-                message: toastMessage,
-                variant: "info",
-                duration: 5000,
-            },
-        })
-        return true
-    }
-
-    await sendIgnoredMessage(client, sessionId, message, params, logger)
-    return true
-}
-
 function buildCompressionSummary(
     entries: CompressionNotificationEntry[],
     state: SessionState,
