@@ -1,0 +1,15 @@
+{
+    "extends": "../tsconfig.json",
+    "compilerOptions": {
+        "declaration": true,
+        "emitDeclarationOnly": false,
+        "noEmit": true,
+        "rootDir": ".",
+        "baseUrl": ".",
+        "paths": {
+            "@acp-v2/*": ["./*"]
+        }
+    },
+    "include": ["./**/*.ts"],
+    "exclude": ["../node_modules", "../dist"]
+}
