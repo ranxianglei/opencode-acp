@@ -1,0 +1,8 @@
+export { createSessionState } from "./factory"
+export { saveSessionState, loadSessionState, deleteSessionState, serializeState } from "./persistence"
+export { cacheToolParameters, getCachedToolParameters, getAllCachedParameters, clearToolCache, removeCachedEntry } from "./tool-cache"
+export { isCompacted, getActiveBlocks, getBlockByAnchor, getMessageRef, getRawIdByRef } from "./queries"
+export { allocateBlock, deactivateBlock, consumeBlocks } from "./mutations/blocks"
+export { markPruned, unmarkPruned, updateActiveBlockIds } from "./mutations/prune-map"
+export { ageBlocks, promoteGeneration, truncateSummary } from "./mutations/gc"
+export type { SessionState, CompressionBlock, PrunedMessageEntry, PruneMessagesState, Prune, WithParts, ToolParameterEntry, SessionStats } from "./types"

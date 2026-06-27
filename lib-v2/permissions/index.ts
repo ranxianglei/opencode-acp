@@ -1,0 +1,6 @@
+export { isSecureMode, getAuthorizationHeader, configureClientAuth } from "./auth"
+export { compressPermission, syncCompressPermissionState } from "./compress-permission"
+export type { CompressPermissionAction } from "./compress-permission"
+export { compressDisabledByOpencode, resolveEffectiveCompressPermission, hasExplicitToolPermission } from "./host-permissions"
+export type { PermissionAction, PermissionValue, PermissionConfig, HostPermissionSnapshot } from "./host-permissions"
+export { matchesGlob, getFilePathsFromParameters, isFilePathProtected, isToolNameProtected } from "./protected-patterns"
