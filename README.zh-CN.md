@@ -22,19 +22,27 @@
 
 ## 为什么选择 ACP
 
-ACP 是 [DCP](https://github.com/Tarquinen/opencode-dynamic-context-pruning) 的强化分支，已应用 **35 项错误修复**。它将上下文管理从一种被动、易崩溃的机制，转变为足以稳定运行于生产环境的方案。
+ACP 起初是 [DCP](https://github.com/Tarquinen/opencode-dynamic-context-pruning) 的强化分支，但此后已经分歧到原版只相当于一个小子集。除了让核心足以稳定运行于生产环境的 **37 项错误修复**之外，ACP 还增加了 DCP 从未具备的能力——最重要的是把块生命周期的完整控制权交给模型：模型可以自主 **compress**、**decompress**（恢复）*以及* **标记删除**，而不是只能创建块然后等待盲目的垃圾回收。
 
 | | DCP（原版） | ACP（本分支） |
 |---|---|---|
 | **最大稳定会话** | ~200 条消息 | 10,000+ 条消息 |
 | **每轮开销** | 20 -- 50 秒 | ~90ms |
 | **状态持久化** | 重启后丢失 | 重启后保留 |
-| **GC 有效性** | 从不停用旧块 | 基于年龄的自动清理 |
-| **Compress 可靠性** | 边界情况失败，模型放弃 | 自动恢复反转的边界 |
+| **相对 DCP 的 bug 修复** | — | 37 项（状态、token、GC、边界、角色……） |
+| **压缩模式** | 仅 range | range + message（精准到单条消息） |
+| **Compress 可靠性** | 边界反转即失败，模型放弃 | 自动恢复反转边界；嵌套摘要跨层级保留信息 |
+| **解压（Decompression）** | 不暴露给模型 | **模型自主** — 模型调用 `decompress` 按需恢复任意块 |
+| **块清理 / 删除** | 无 — 块只能累积，直到盲目的年龄 GC 截断 | **模型自主** `mark_block` / `unmark_block` + 三级压力感知批量合并（单次缓存打断，保留信息而非盲删） |
+| **GC 策略** | 盲目年龄截断，低压力时也触发 — 丢失重要信息（task ID 等） | 压力感知批量整合优先；盲目截断降级为 100% 时的最后兜底 |
+| **受保护内容** | — | 受保护的工具输出、文件模式、用户消息注入摘要，关键信息永不丢失 |
+| **Prompt 缓存影响** | 不受控 | 缓存感知 — 摘要合并进已有轮次；批量清理只产生单次缓存打断 |
+| **自动策略** | — | 去重 + 清除错误（在 compress 时重算，非每轮） |
+| **配置** | 扁平 | 三层合并（全局 → 配置目录 → 项目）+ 每模型上下文上限覆盖 + 用户可编辑 prompt |
 
 > **Active（主动）** 意味着模型主动决定*何时*压缩以及*压缩什么* — 与被动方式不同，被动方式仅在上下文触及硬性限制时才做出反应。模型使用 `compress` 工具对已完成的对话片段生成高保真摘要，在保留重要细节的同时释放上下文空间。这优于被动截断，因为模型可以自行控制保留哪些信息。
 
-主要修复包括：跨重启状态持久化、token 用量报告（此前返回 0）、摘要消息 ID 解析、基于年龄的 GC 停用、268 倍的日志/tokenizer 加速、压缩边界反转的自动交换，以及低上下文使用率时的老化警告抑制。
+主要修复包括：跨重启状态持久化、token 用量报告（此前返回 0）、摘要消息 ID 解析、基于年龄的 GC 停用、268 倍的日志/tokenizer 加速、压缩边界反转的自动交换、低上下文使用率时的老化警告抑制、压缩摘要合并进下一条用户消息（消除对话角色混乱 / 自问自答循环），以及跳过 OpenCode 内置的 title/summary/compaction agent 请求（恢复会话标题生成）。
 
 ---
 
@@ -78,6 +86,19 @@ ACP 支持两种压缩模式：
 ### 清除错误
 
 在可配置的轮次后（默认：4 轮）剪除出错工具调用的输入。错误消息被保留；仅移除可能很大的输入内容。在 `compress` 工具使用时重新计算。
+
+### 延迟块清理（mark_block）
+
+除 `compress` 和 `decompress` 外，ACP 还提供 `mark_block` / `unmark_block` 工具。它们让模型能以**零缓存成本**标记不再需要详细内容的压缩块，将所有整合推迟到上下文压力升高时一次性完成。
+
+- **`mark_block`** 将一个块标记为稍后清理。该块仍完全活跃并继续服务提示缓存命中 —— 立即没有任何变化。
+- 当上下文使用率越过可配置阈值时，ACP 会在**单次缓存打断**中将所有已标记块整合为一个摘要（而非逐个丢失）：
+  - **低阈值（默认 60%）**：提醒模型已标记的块可以合并。
+  - **高阈值（默认 75%）**：所有已标记块被自动合并压缩为一个。
+  - **强制阈值（默认 90%）**：无论是否标记，所有老年代块都被合并 —— 这是基于年龄的 GC 截断前的最后手段。
+- **`unmark_block`** 在模型改变主意时移除标记。
+
+此机制纯粹是附加的 —— 既有的 GC 行为保留为 100% 时的最终兜底，合并后的块仍可被 `decompress` 恢复。阈值可在 `gc.batchCleanup` 下配置。
 
 ---
 
@@ -131,7 +152,7 @@ ACP 使用自己的配置文件，按以下顺序搜索：
 
 ```jsonc
 {
-    "$schema": "https://raw.githubusercontent.com/Opencode-DCP/opencode-dynamic-context-pruning/master/dcp.schema.json",
+    "$schema": "https://raw.githubusercontent.com/ranxianglei/opencode-acp/master/dcp.schema.json",
     // Enable or disable the plugin
     "enabled": true,
     // Automatically update npm-installed ACP when a newer npm latest is available.
@@ -239,6 +260,28 @@ ACP 使用自己的配置文件，按以下顺序搜索：
             "protectedTools": [],
         },
     },
+    // 垃圾回收与批量清理
+    "gc": {
+        "algorithm": "truncate",
+        // 存活此次数后从新生代晋升为老年代
+        "promotionThreshold": 5,
+        // 存活此次数后停用该块
+        "maxBlockAge": 15,
+        // 截断超过此长度（字符）的老年代摘要
+        "maxOldGenSummaryLength": 3000,
+        // 上下文使用率超过此值时执行主 GC
+        "majorGcThresholdPercent": "100%",
+        // 通过 mark_block 标记的块的三级批量合并清理阈值。
+        // 接受数字或 "X%"（模型上下文窗口的百分比）。
+        "batchCleanup": {
+            // 达到此使用率时，提醒模型已标记的块
+            "lowThreshold": "60%",
+            // 达到此使用率时，自动将所有已标记块合并压缩为一个
+            "highThreshold": "75%",
+            // 达到此使用率时，强制合并所有老年代块（GC 之前）
+            "forceThreshold": "90%",
+        },
+    },
 }
 ```
 
@@ -266,11 +309,11 @@ ACP 暴露六个可编辑的 prompt：
 ### 受保护工具
 
 默认情况下，以下工具始终受保护不被剪枝：
-`task`、`skill`、`todowrite`、`todoread`、`compress`、`batch`、`plan_enter`、`plan_exit`、`write`、`edit`
+`task`、`skill`、`todowrite`、`todoread`、`compress`、`decompress`、`mark_block`、`unmark_block`、`batch`、`plan_enter`、`plan_exit`、`write`、`edit`
 
 `commands` 和 `strategies` 中的 `protectedTools` 数组会添加到此默认列表。
 
-对于 `compress` 工具，`compress.protectedTools` 确保特定工具的输出会被附加到压缩摘要中。默认包含 `task`、`skill`、`todowrite` 和 `todoread`。
+对于 `compress` 工具，`compress.protectedTools` 确保特定工具的输出会被附加到压缩摘要中。默认包含 `task`、`skill`、`todowrite`、`todoread` 和 `decompress`。
 
 ---
 
@@ -317,7 +360,7 @@ ACP 在首次启动时自动将配置从 `dcp.jsonc` 迁移到 `acp.jsonc`，将
 ---
 
 <details>
-<summary><strong>错误修复（共 35 项）</strong> — 基于 DCP v3.1.11</summary>
+<summary><strong>错误修复（共 37 项）</strong> — 基于 DCP v3.1.11</summary>
 
 | # | 严重程度 | 摘要 |
 |---|----------|------|
@@ -345,6 +388,8 @@ ACP 在首次启动时自动将配置从 `dcp.jsonc` 迁移到 `acp.jsonc`，将
 | 22 | 高 | compress 在块边界反转时抛出硬错误 — 模型放弃 |
 | 23--34 | 中 | 去重、错误清除、schema 验证、hook 时序等方面的多项修复 |
 | 35 | 高 | 在低上下文使用率（<50%）时显示老化警告 — 触发不必要的 compress，浪费 token |
+| 36 | 高 | 压缩摘要作为独立的 user 消息插入在用户真实发言之前 — 模型把自己先前的 assistant 输出误读为用户输入，导致对话角色混乱 / 自问自答循环 |
+| 37 | 高 | 消息转换管线对 OpenCode 隐藏的 title/summary/compaction agent 请求也运行 — 污染请求并破坏共享会话状态，导致会话标题生成失效 |
 
 完整列表及根因分析，请参见 [Bug Tracker](https://github.com/ranxianglei/opencode-acp/issues)。
 

@@ -314,7 +314,7 @@ function createDefaultConfig(): void {
             console.log("[ACP] Migrated config from dcp.json to acp.jsonc")
         } else {
             const configContent = `{
-  "$schema": "https://raw.githubusercontent.com/Opencode-DCP/opencode-dynamic-context-pruning/master/dcp.schema.json"
+  "$schema": "https://raw.githubusercontent.com/ranxianglei/opencode-acp/master/dcp.schema.json"
 }
 `
             writeFileSync(GLOBAL_CONFIG_PATH_JSONC, configContent, "utf-8")
