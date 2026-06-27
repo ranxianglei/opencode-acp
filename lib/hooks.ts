@@ -43,7 +43,6 @@ import { cacheSystemPromptTokens } from "./ui/utils"
 import { runTruncateGC, shouldRunMajorGC, getGCParams } from "./gc/truncate"
 import { runBatchCleanup } from "./gc/merge"
 import { getCurrentTokenUsage } from "./token-utils"
-import { getLastUserMessage } from "./messages/query"
 import { appendToLastTextPart } from "./messages/utils"
 
 const INTERNAL_AGENT_SIGNATURES = [

@@ -22,19 +22,54 @@ The model decides <em>when</em> and <em>what</em> to compress — not a hard lim
 
 ## Why ACP
 
-ACP is a hardened fork of [DCP](https://github.com/Tarquinen/opencode-dynamic-context-pruning) with **35 bug fixes** applied. It turns context management from a passive, crash-prone mechanism into something stable enough for production use.
+ACP started as a hardened fork of [DCP](https://github.com/Tarquinen/opencode-dynamic-context-pruning), but has since diverged so far that the original is now a small subset. On top of **37 bug fixes** that make the core stable enough for production, ACP adds capabilities DCP never had — most importantly, it hands the model full control over the block lifecycle: it can **compress**, **decompress** (restore) *and* **mark for deletion** on its own, instead of only creating blocks and waiting for blind garbage collection.
 
 | | DCP (original) | ACP (this fork) |
 |---|---|---|
 | **Max stable session** | ~200 messages | 10,000+ messages |
 | **Per-turn overhead** | 20 -- 50 seconds | ~90ms |
 | **State persistence** | Lost on restart | Survives restart |
-| **GC effectiveness** | Never deactivates old blocks | Age-based auto-cleanup |
-| **Compress reliability** | Fails on edge cases, model gives up | Auto-recovers reversed boundaries |
+| **Bug fixes vs DCP** | -- | 37 (state, tokens, GC, boundaries, roles, ...) |
+| **Compression modes** | range only | range + message (surgical per-message) |
+| **Compress reliability** | Fails on reversed boundaries; model gives up | Auto-recovers reversed boundaries; nested summaries preserve info across layers |
+| **Decompression** | Not exposed to the model | **Model-driven** -- the model calls `decompress` to restore any block on demand |
+| **Block cleanup / deletion** | None -- blocks only accumulate until blind age-based GC truncates them | **Model-driven** `mark_block` / `unmark_block` + 3-tier pressure-aware batch merge (one cache break, preserves info instead of blind truncation) |
+| **GC strategy** | Blind age-based truncation, fires even at low pressure -- loses important info (task IDs, etc.) | Pressure-aware batch consolidation first; blind truncation demoted to last-resort fallback at 100% |
+| **Protected content** | -- | Protected tool outputs, file patterns, and user messages are injected into summaries so nothing critical is ever lost |
+| **Prompt-cache impact** | Uncontrolled | Cache-aware -- summaries merged into existing turns; batch cleanup does a single cache break |
+| **Automatic strategies** | -- | Deduplication + purge-errors (recalculated on compress, not every turn) |
+| **Configuration** | Flat | 3-layer merge (global -> config-dir -> project) + per-model context-limit overrides + user-editable prompts |
 
 > **Active** means the model proactively decides *when* and *what* to compress -- as opposed to passive approaches that only react when context hits a hard limit. The model uses the `compress` tool to produce high-fidelity summaries of completed conversation segments, preserving important details while freeing context space. This is superior to passive truncation because the model controls what information to keep.
 
-Key fixes include: state persistence across restarts, token usage reporting (was returning 0), summary message ID resolution, GC age-based deactivation, 268x logger/tokenizer speedup, auto-swap for reversed compress boundaries, and aging warning suppression at low context usage.
+Key fixes include: state persistence across restarts, token usage reporting (was returning 0), summary message ID resolution, GC age-based deactivation, 268x logger/tokenizer speedup, auto-swap for reversed compress boundaries, aging warning suppression at low context usage, compression summary merged into the following user turn (prevents dialog role confusion / self-Q&A loops), and skipping OpenCode's internal title/summary/compaction agents so session title generation keeps working.
+
+---
+
+## Proven at scale
+
+ACP is battle-tested on real, long-running engineering sessions. Aggregate stats
+from a single developer workstation (1,445 sessions, 69,097 model turns):
+
+| Metric | Value |
+|--------|-------|
+| Total tokens processed (incl. prompt-cache reads) | **6.17 billion** |
+| Billable tokens (input + output + reasoning) | **828 million** |
+| Prompt-cache hit tokens | 5.34 billion |
+| Average prompt-cache hit ratio | ~87% |
+| Compression blocks created (all-time) | 4,894 |
+| Tokens reclaimed by compression | 61.8 million |
+
+Two representative heavy sessions:
+
+| Session | Span | Turns | Input tokens | Cache reads | Cache hit | Peak context |
+|---------|------|-------|--------------|-------------|-----------|--------------|
+| compute-problem | 6 days | 2,694 | 80.0 M | 502 M | 86.2% | 488 K (49% of 1 M) |
+| model-editing | 2 days | 1,536 | 50.9 M | 412 M | 89.0% | 769 K (77% of 1 M) |
+
+Even at **77% context utilization** the prefix-cache hit ratio stays near **90%** --
+this is the payoff of ACP's cache-aware compression: it prunes from the tail
+(preserving the shared prefix) instead of truncating blindly.
 
 ---
 
@@ -78,6 +113,19 @@ Identifies repeated tool calls (same tool, same arguments) and keeps only the mo
 ### Purge Errors
 
 Prunes inputs from errored tool calls after a configurable number of turns (default: 4). Error messages are preserved; only the potentially large input content is removed. Recalculated on compress tool use.
+
+### Deferred Block Cleanup (mark_block)
+
+Besides `compress` and `decompress`, ACP exposes `mark_block` / `unmark_block` tools. These give the model a **zero-cache-cost** way to flag compressed blocks it no longer needs in detail, deferring all consolidation into a single operation when context pressure rises.
+
+- **`mark_block`** flags a block for later cleanup. The block stays fully active and keeps serving prompt-cache hits — nothing changes immediately.
+- When context usage crosses configurable thresholds, ACP consolidates all marked blocks into one summary in a **single cache break** (instead of losing them one at a time):
+  - **Low (default 60%)**: a nudge reminds the model that marked blocks can be merged.
+  - **High (default 75%)**: all marked blocks are auto merge-compressed into one.
+  - **Force (default 90%)**: all old-gen blocks are merged regardless of marks — a last resort before age-based GC truncation.
+- **`unmark_block`** removes the flag if the model changes its mind.
+
+This is purely additive — existing GC behavior is retained as the ultimate fallback at 100%, and merged blocks still respond to `decompress`. Thresholds are configurable under `gc.batchCleanup`.
 
 ---
 
@@ -131,7 +179,7 @@ Each level overrides the previous, so project settings take priority over global
 
 ```jsonc
 {
-    "$schema": "https://raw.githubusercontent.com/Opencode-DCP/opencode-dynamic-context-pruning/master/dcp.schema.json",
+    "$schema": "https://raw.githubusercontent.com/ranxianglei/opencode-acp/master/dcp.schema.json",
     // Enable or disable the plugin
     "enabled": true,
     // Automatically update npm-installed ACP when a newer npm latest is available.
@@ -239,6 +287,28 @@ Each level overrides the previous, so project settings take priority over global
             "protectedTools": [],
         },
     },
+    // Garbage collection and batch cleanup
+    "gc": {
+        "algorithm": "truncate",
+        // young → old generation promotion after this many survivals
+        "promotionThreshold": 5,
+        // deactivate a block after this many survivals
+        "maxBlockAge": 15,
+        // truncate old-gen summaries exceeding this length (chars)
+        "maxOldGenSummaryLength": 3000,
+        // run major GC when context usage exceeds this
+        "majorGcThresholdPercent": "100%",
+        // Three-tier batch merge-cleanup for blocks flagged via mark_block.
+        // Accepts a number or "X%" of the model context window.
+        "batchCleanup": {
+            // At/above this usage, remind the model about marked blocks
+            "lowThreshold": "60%",
+            // At/above this usage, auto merge-compress all marked blocks into one
+            "highThreshold": "75%",
+            // At/above this usage, force-merge all old-gen blocks (before GC)
+            "forceThreshold": "90%",
+        },
+    },
 }
 ```
 
@@ -266,11 +336,11 @@ To reset an override, delete the matching file from your overrides directory.
 ### Protected Tools
 
 By default, these tools are always protected from pruning:
-`task`, `skill`, `todowrite`, `todoread`, `compress`, `batch`, `plan_enter`, `plan_exit`, `write`, `edit`
+`task`, `skill`, `todowrite`, `todoread`, `compress`, `decompress`, `mark_block`, `unmark_block`, `batch`, `plan_enter`, `plan_exit`, `write`, `edit`
 
 The `protectedTools` arrays in `commands` and `strategies` add to this default list.
 
-For the `compress` tool, `compress.protectedTools` ensures specific tool outputs are appended to the compressed summary. By default it includes `task`, `skill`, `todowrite`, and `todoread`.
+For the `compress` tool, `compress.protectedTools` ensures specific tool outputs are appended to the compressed summary. By default it includes `task`, `skill`, `todowrite`, `todoread`, and `decompress`.
 
 ---
 
@@ -317,7 +387,7 @@ ACP auto-migrates config from `dcp.jsonc` to `acp.jsonc` and prompts from `dcp-p
 ---
 
 <details>
-<summary><strong>Bug Fixes (35 total)</strong> -- applied on top of DCP v3.1.11</summary>
+<summary><strong>Bug Fixes (37 total)</strong> -- applied on top of DCP v3.1.11</summary>
 
 | # | Severity | Summary |
 |---|----------|---------|
@@ -345,6 +415,8 @@ ACP auto-migrates config from `dcp.jsonc` to `acp.jsonc` and prompts from `dcp-p
 | 22 | HIGH | compress throws hard error on reversed block boundaries -- model gives up |
 | 23--34 | MEDIUM | Various fixes for dedup, purge errors, schema validation, hook timing, etc. |
 | 35 | HIGH | Aging warnings shown at low context usage (<50%) -- triggers unnecessary compress, wastes tokens |
+| 36 | HIGH | Compression summary emitted as a standalone user message before the user's real turn -- model reads its own prior assistant output as user input, causing dialog role confusion / self-Q&A loops |
+| 37 | HIGH | Message-transform pipeline runs on OpenCode's hidden title/summary/compaction agent requests -- corrupts the request and shared session state, breaking session title generation |
 
 For the complete list with root cause analysis, see the [bug tracker](https://github.com/ranxianglei/opencode-acp/issues).
 
