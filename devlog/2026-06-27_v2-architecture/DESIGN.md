@@ -1,9 +1,9 @@
 # DESIGN: ACP v2 Architecture — Clean-Room Rewrite
 
-> **Status**: v2 (revised after dual-agent review)
+> **Status**: v3 (revised after second dual-agent review)
 > **Date**: 2026-06-27
 > **Author**: awork (bot)
-> **Review**: Two explore agents reviewed v1; 5 BLOCKER + 4 MEDIUM issues found and addressed in this revision
+> **Review history**: v1→review (5 BLOCKER)→v2→review (5 BLOCKER)→v3 (this)
 > **Goal**: Design the target architecture for the MIT-licensed clean-room rewrite of ACP
 
 ---
@@ -24,7 +24,7 @@ All code in `lib/` that derives from the original DCP is AGPL-bound (§5 copylef
 | Problem | Metric | Impact |
 |---------|--------|--------|
 | hooks.ts god module | 507 LOC, 23-step pipeline in one function | Untestable in isolation, change amplification |
-| config.ts + config-validation.ts monolith | 1761 LOC combined | Unclear responsibilities, hard to extend |
+| config.ts + config-validation.ts monolith | 1221 LOC combined (585+636) | Unclear responsibilities, hard to extend |
 | Mutable state by reference | All functions mutate SessionState in place | Data flow invisible, race-condition risk |
 | Tangled module dependencies | hooks.ts imports from 15+ modules | Circular coupling, fragile structure |
 | Mixed responsibilities | prune.ts both filters ranges AND prunes tool outputs | Module boundaries don't match domain concepts |
@@ -53,7 +53,7 @@ lib-v2/
 │   ├── system-prompt.ts              # System prompt rendering + injection
 │   ├── message-transform.ts          # Pipeline coordinator — guard + stage runner
 │   ├── command-router.ts             # /acp command dispatch
-│   ├── event-tracker.ts              # Compression timing event tracking
+│   ├── event-tracker.ts              # Compression timing event tracking [absorbs compress/timing.ts]
 │   ├── text-sanitizer.ts             # Strip hallucinated refs from completions
 │   └── update-checker.ts             # Auto-update check at plugin init
 │
@@ -70,11 +70,12 @@ lib-v2/
 │   ├── types.ts                      # SessionState, CompressionBlock, PruneEntry, etc.
 │   ├── factory.ts                    # createSessionState() — clean initialization
 │   ├── persistence.ts                # save() / load() — JSON round-trip + Map serialization
+│   ├── tool-cache.ts                 # Tool result/parameter caching [absorbs state/tool-cache.ts]
 │   ├── mutations/                    # All state mutations (centralized, auditable)
 │   │   ├── blocks.ts                 # allocateBlock, deactivateBlock, consumeBlocks
 │   │   ├── prune-map.ts              # markPruned, unmarkPruned, updateActiveBlockIds
 │   │   └── gc.ts                     # ageBlocks, promoteGeneration, truncateSummary
-│   └── queries.ts                    # Read-only queries (isCompacted, getActiveBlocks, etc.)
+│   └── queries.ts                    # Read-only queries [absorbs state/utils.ts: isCompacted, etc.]
 │
 ├── pipeline/                         # Message transform pipeline (composable)
 │   ├── types.ts                      # PipelineStage interface, PipelineContext
@@ -103,6 +104,7 @@ lib-v2/
 │       └── 20-persist-context.ts      # Save context snapshot for debugging
 │
 ├── compress/                         # Compression subsystem (ALL tools)
+│   ├── types.ts                      # Shared types (ToolContext, BoundaryReference) [absorbs compress/types.ts]
 │   ├── tools/                        # Model-facing tool definitions
 │   │   ├── compress.ts               # compress tool (range + message modes)
 │   │   ├── decompress.ts             # decompress tool [Class B: migrate]
@@ -110,8 +112,8 @@ lib-v2/
 │   │   ├── mark-block.ts             # mark_block + unmark_block tools [Class B: migrate]
 │   │   └── batch.ts                  # batch cleanup trigger (if exposed as tool)
 │   ├── pipeline.ts                   # prepareSession / finalizeSession (shared)
-│   ├── range-mode.ts                 # Range-mode compression logic
-│   ├── message-mode.ts               # Message-mode compression logic
+│   ├── range-mode.ts                 # Range-mode compression logic [absorbs range-utils.ts]
+│   ├── message-mode.ts               # Message-mode compression logic [absorbs message-utils.ts]
 │   ├── search.ts                     # Boundary resolution (mNNNNN → message indices)
 │   └── protected-content.ts          # Protected user messages / tags / tool outputs
 │
@@ -128,6 +130,7 @@ lib-v2/
 │   ├── query.ts                      # getLastUserMessage, getMessagesInRange, etc.
 │   ├── shape.ts                      # isMessageWithInfo, filterMessagesInPlace
 │   ├── priority.ts                   # Message priority computation
+│   ├── reasoning-strip.ts            # Strip reasoning tokens [absorbs messages/reasoning-strip.ts]
 │   └── utils.ts                      # Text part manipulation, ref stripping
 │
 ├── prompts/                          # Prompt system
@@ -153,6 +156,7 @@ lib-v2/
 │   ├── stats.ts                      # /acp stats
 │   ├── sweep.ts                      # /acp sweep
 │   ├── manual.ts                     # /acp manual
+│   ├── compression-targets.ts        # Target selection for manual/recompress [absorbs commands/compression-targets.ts]
 │   ├── decompress.ts                 # /acp decompress
 │   ├── recompress.ts                 # /acp recompress
 │   └── help.ts                       # /acp help
@@ -167,7 +171,8 @@ lib-v2/
 │   └── subagent-results.ts           # Sub-agent result caching [Class B: migrate]
 │
 ├── ui/                               # User-facing output
-│   └── notification.ts               # Compression notification builder
+│   ├── notification.ts               # Compression notification builder
+│   └── utils.ts                      # UI formatting utilities [absorbs ui/utils.ts]
 │
 └── infra/                            # Cross-cutting infrastructure
     ├── logger.ts                     # Structured logging
@@ -255,7 +260,7 @@ export function createMessageTransformHandler(deps: PipelineDeps) {
 
 ### 4.3 Config System (Split Monolith)
 
-**Current**: `config.ts` (1125 LOC) + `config-validation.ts` (636 LOC) = 1761 LOC combined.
+**Current**: `config.ts` (585 LOC) + `config-validation.ts` (636 LOC) = 1221 LOC combined.
 
 **New**: 8 focused modules:
 
@@ -282,21 +287,22 @@ Class B modules (decompress, decompress-logic, mark-block) are migrated with int
 
 ```
 Permitted dependencies:
-  plugin/*     → everything (hook adapters wire all subsystems)
-  pipeline/*   → state/*, messages/*, config/*, gc/*, prompts/*, infra/*, permissions/*
-  compress/*   → state/*, messages/*, config/*, prompts/*, search.ts, protected-content.ts
-  commands/*   → state/*, compress/*, messages/*, config/*, prompts/*, ui/*
-  gc/*         → state/* (mutations only)
-  prompts/*    → config/*, messages/* (utilities only)
-  state/*      → config/* (types), infra/* (logger)
-  messages/*   → infra/* (token-counter for queries)
-  infra/*      → (nothing — leaf modules)
-  permissions/* → config/*, state/*
+  plugin/*       → everything (hook adapters wire all subsystems)
+  pipeline/*     → state/*, messages/*, config/*, gc/*, prompts/*, infra/*, permissions/*, subagents/*
+  compress/*     → state/*, messages/*, config/*, prompts/*, infra/*, permissions/*, strategies/*
+  commands/*     → state/*, compress/*, messages/*, config/*, prompts/*, infra/*, ui/*
+  gc/*           → state/* (mutations only)
+  strategies/*   → state/*, config/*
+  prompts/*      → config/*, messages/* (utilities only)
+  state/*        → config/* (types), infra/* (logger)
+  messages/*     → infra/* (token-counter for queries)
+  infra/*        → (nothing — leaf modules)
+  permissions/*  → config/*, state/*
+  subagents/*    → state/*, config/*
+  ui/*           → state/*, config/*
 
 FORBIDDEN:
-  - pipeline/* → plugin/*     (stages must not invoke hook adapters)
-  - pipeline/* → commands/*   (stages must not invoke slash commands)
-  - pipeline/* → compress/*   (stages don't call compress tool; see §4.1 note)
+  - pipeline/* → plugin/*, commands/*, compress/*  (stages don't invoke tools or hooks)
   - state/*    → pipeline/*, compress/*, plugin/*, commands/*  (state is a sink)
   - messages/* → state/*, pipeline/*, compress/*  (pure utilities)
   - infra/*    → anything except its own internals
@@ -333,10 +339,14 @@ plugin/message-transform.ts — guard + stage runner
     ├─⑭ compute-priority:      Build message priority map
     ├─⑮ reload-prompts:        Reload prompt overrides from disk
     ├─⑯ inject-nudges:         Add context-limit/turn/iteration nudges
-    ├─⑳ inject-ids:            Tag messages with mNNNNN refs for model
-    ├─⑲ apply-manual-trigger:  Process pending manual compress (state-only, no compress call)
-    ├─⑳ strip-metadata:        Remove stale provider metadata from parts
-    └─㉑ persist-context:       Save context snapshot + deferred state persistence
+    ├─⑰ inject-ids:            Tag messages with mNNNNN refs for model
+    ├─⑱ apply-manual-trigger:  Process pending manual compress — sets state.manualMode = "active"
+    │                           so the NEXT message-transform run will inject compress nudges.
+    │                           Does NOT call the compress tool directly (respects pipeline→compress
+    │                           prohibition). The actual compression happens on the model's next
+    │                           compress tool call, triggered by the nudge injected on the next run.
+    ├─⑲ strip-metadata:        Remove stale provider metadata from parts
+    └─⑳ persist-context:       Save context snapshot + deferred state persistence
 ```
 
 ---
@@ -385,15 +395,16 @@ Phase 2d: Integration (~2 weeks)
   - index.ts (wiring)
   - E2E tests pass
 
-Phase 2e: Cutover (~1.5 weeks)
+Phase 2e: Cutover (~2.5 weeks)
   - Rewrite white-box tests for v2 module boundaries (see §7.2)
   - Run full test suite against lib-v2/
+  - Debug behavioral divergences
   - Deploy locally, test in opencode
   - Delete lib/, rename lib-v2/ → lib/
   - Switch LICENSE to MIT
   - Publish as v2.0.0
 
-Total: ~8 weeks
+Total: ~9 weeks
 ```
 
 ### 7.2 Testing Strategy
@@ -424,10 +435,10 @@ These post-fork original modules are migrated, not rewritten. They need interfac
 | compress/decompress-logic.ts | 200 | compress/tools/decompress-logic.ts | Minimal — pure logic |
 | compress/mark-block.ts | 148 | compress/tools/mark-block.ts | Import from state/mutations/ |
 | gc/merge.ts | 336 | gc/merge.ts | Import allocateBlock from state/mutations/ |
-| subagents/subagent-results.ts | 156 | subagents/subagent-results.ts | Minimal |
+| subagents/subagent-results.ts | 156 | subagents/subagent-results.ts | Route cache writes through state/mutations/ |
 | auth.ts | 37 | permissions/auth.ts | Minimal |
 | compress-permission.ts | 25 | permissions/compress-permission.ts | Minimal |
-| host-permissions.ts | 101 | permissions/host-permissions.ts | Minimal |
+| host-permissions.ts | 101 | permissions/host-permissions.ts | Route snapshot writes through state/mutations/ |
 | protected-patterns.ts | 128 | permissions/protected-patterns.ts | Minimal |
 
 **Total Class B**: ~1252 LOC. These are ranxianglei's original work, MIT-eligible.
@@ -502,13 +513,13 @@ Pin spec sources at commit `22498da` (current master after PR #23 merge). All v2
 | Metric | v1 (lib/) | v2 (lib-v2/) | Change |
 |--------|-----------|-------------|--------|
 | Source files | 70 | ~85 | +21% (pipeline decomposition) |
-| Largest file | config.ts (1125 LOC) | schema.ts (~250 LOC) | **-78%** |
+| Largest file | config.ts (585 LOC) | schema.ts (~250 LOC) | **-57%** |
 | hooks.ts | 507 LOC | message-transform.ts (~60 LOC) | **-88%** |
 | Pipeline | 1 function (23 steps) | 21 files (1 stage each) | Independently testable |
 | Max file in compress/ | range.ts (600 LOC) | range-mode.ts (~300 LOC est.) | -50% |
 | Total LOC | ~12,000 | ~11,500 (est.) | -4% (Class B migrated, not rewritten) |
 
-**Value proposition**: Not fewer files, but **smaller files**. Max file size drops 78%. Every module is independently testable. The pipeline is composable.
+**Value proposition**: Not fewer files, but **smaller files**. Max file size drops ~57% (585→250 LOC). Every module is independently testable. The pipeline is composable.
 
 ---
 
