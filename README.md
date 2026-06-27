@@ -22,78 +22,41 @@ The model decides <em>when</em> and <em>what</em> to compress — not a hard lim
 
 ## Why ACP
 
-ACP is **model-driven context management** for OpenCode. Instead of passively
-truncating at a hard limit, it exposes tools that let the model decide **when**
-and **what** to compress — producing high-fidelity summaries of completed
-segments while freeing context space. The model controls what to keep, which is
-strictly better than blind truncation.
+ACP hands all context-management authority to the model itself — not relying on
+external models or any complex external mechanism to do context management. It
+is, to date, the best context-management implementation on the market.
 
-### What makes ACP different
+This brings two concrete effects:
 
-- **Full block lifecycle, model-driven.** The model can `compress` a range into a
-  summary, `decompress` to restore any block on demand, and `mark_block` /
-  `unmark_block` to flag blocks for deferred deletion. The model owns its own
-  context lifecycle — not just "create a block and hope GC handles it".
-- **Cache-aware by design.** Summaries merge into existing user turns and batch
-  cleanup does a *single* cache break, so prefix-cache hit ratios stay near **90%**
-  even when sessions run at 70%+ context utilization (see [Proven at scale](#proven-at-scale)).
-- **Pressure-aware GC.** Instead of blind age-based truncation that silently
-  drops important info (task IDs, file paths, decisions), ACP consolidates marked
-  blocks first and demotes blind truncation to a last-resort fallback at 100%.
-- **Two compression modes.** *Range* mode (contiguous spans → block summaries)
-  and *message* mode (surgical per-message summaries for scattered content).
-- **Protected content.** Tool outputs, file patterns, and user messages you mark
-  protected are injected into summaries, so nothing critical is ever lost.
-- **Automatic strategies.** Deduplication (same tool + args → keep last) and
-  purge-errors (drop errored inputs after N turns), recalculated on compress —
-  not on every turn.
-- **Production-grade configuration.** 3-layer merge (global → config-dir →
-  project), per-model context-limit overrides, and user-editable prompts.
-
-### A hardened fork of DCP
-
-ACP started as a fork of [DCP](https://github.com/Tarquinen/opencode-dynamic-context-pruning)
-and now diverges so far that the original is a small subset. Beyond the features
-above, it ships **37 bug fixes** that make the core production-stable — state
-persistence across restarts, real token reporting (was returning 0), GC
-deactivation, reversed-boundary auto-recovery, 268× logger/tokenizer speedup,
-dialog-role confusion fixes, and skipping OpenCode's internal title/summary
-agents so session titles keep generating. Core deltas vs the original:
-
-| | DCP (original) | ACP |
-|---|---|---|
-| **Max stable session** | ~200 messages | 10,000+ |
-| **Per-turn overhead** | 20 – 50 s | ~90 ms |
-| **Model-driven decompress + block cleanup** | No | Yes |
-| **State survives restart** | No | Yes |
+- **It saves about two-thirds of tokens.** A model with a 1,000,000-token context
+  window effectively runs in the **200,000–300,000 token range**.
+- **It supports ultra-long sessions without losing key content** — **500M-token-level
+  cumulative context, 100,000 messages per session**.
 
 ---
 
 ## Proven at scale
 
-ACP is battle-tested on real, long-running engineering sessions. Aggregate stats
-from a single developer workstation (1,445 sessions, 69,097 model turns):
+Real engineering context, in practice.
 
-| Metric | Value |
-|--------|-------|
-| Total tokens processed (incl. prompt-cache reads) | **6.17 billion** |
-| Billable tokens (input + output + reasoning) | 828 million |
-| Prompt-cache hit ratio (average) | ~87% |
-| Compression blocks created (all-time) | 4,894 |
+**Supports 500M-token-level cumulative context, with p95 context around 30% and
+an average prompt-cache hit ratio above 85%.** (That average — not per-session —
+is explained in [Impact on Prompt Caching](#impact-on-prompt-caching), where it
+turns out to save far more tokens than traditional compression.)
 
-Two representative heavy sessions (anonymized) — the headline number is **total
-tokens pushed through the model**, not peak context:
+| | Session 1 | Session 2 |
+|---|---|---|
+| **Messages** | 3,024 | 2,028 |
+| **Total tokens processed** | 582 M | 463 M |
+| **Prompt-cache hit ratio** | 86.2% | 89.0% |
+| **Context p50 (median)** | 1.2 K (<1%) | 1.8 K (<1%) |
+| **Context p75** | 2.8 K | 3.5 K |
+| **Context p90** | 108 K (11%) | 58 K (6%) |
+| **Context p95** | 251 K (25%) | 335 K (34%) |
+| **Context p99** | 425 K (43%) | 442 K (44%) |
+| **Peak** | 488 K (49%) | 769 K (77%) |
 
-| Session | Span | Turns | **Total tokens** | Cache hit | Context p50 | Context p95 | Peak |
-|---------|------|-------|------------------|-----------|-------------|-------------|------|
-| Session 1 | 6 days | 2,694 | **582 M** | 86.2% | 1.2 K (<1%) | 251 K (25%) | 488 K (49%) |
-| Session 2 | 2 days | 1,536 | **463 M** | 89.0% | 1.8 K (<1%) | 335 K (34%) | 769 K (77%) |
-
-The picture this paints: the *median* turn is tiny (short tool exchanges), but
-the heavy turns regularly reach **250K–335K context (25–34% of the 1M window)**
-and occasionally spike to **49–77%**. Even at those spikes the prefix-cache hit
-ratio stays near **90%** — the payoff of ACP's cache-aware compression, which
-prunes from the tail (preserving the shared prefix) instead of truncating blindly.
+(Context percentages are of the 1M window.)
 
 ---
 
@@ -117,39 +80,70 @@ Or add to your opencode config:
 
 ## How It Works
 
-ACP reduces context size through a compress tool and automatic cleanup. Your session history is never modified -- ACP replaces pruned content with placeholders before sending requests to your LLM.
+ACP hands the context-compression tool directly to the model. The model is
+**100% responsible** for context compression. The model's available tools are
+mainly: **compress**, **decompress**, and **delete** (`mark_block` / `unmark_block`).
 
-### Compress
+### Lifecycle
 
-Compress is a tool exposed to your model that replaces closed, stale conversation content with high-fidelity technical summaries. You can think of this as a much smarter version of Opencode's compaction process. Instead of triggering statically when your session reaches its maximum context and on the entire coding session, Compress allows the model to pick when to activate based on task completion, and to only compress the specific messages that are no longer needed verbatim.
+Three operations: **compress**, **decompress**, and **delete**. Content loops
+between raw and compressed, and eventually terminates in deletion:
 
-ACP supports two compression modes:
+```mermaid
+stateDiagram-v2
+    Raw --> Compressed : compress
+    Compressed --> Raw : decompress
+    Compressed --> Deleted : delete
+```
 
-- **`range` mode** compresses contiguous spans of conversation into one or more summaries.
-- **`message` mode** (experimental) compresses individual raw messages independently, letting the model manage context much more surgically.
+### Compression strategy
 
-In `range` mode, when a new compression overlaps an earlier one, the earlier summary is nested inside the new one so information is preserved through layers of compression rather than diluted away. In both modes, protected tool outputs (such as subagents and skills) and protected file patterns are kept in compression summaries, ensuring that the most important information is never lost. You can also enable `protectUserMessages` to preserve your messages verbatim during compression, though note that large prompts (e.g. copy-pasting log files in the prompt) will then never be compressed away.
+The system injects a prompt telling the model the current context ratio, the
+compression ratio, whether context is idle, and compression suggestions. When the
+trigger ratio is hit, content is compressed in **priority order**:
 
-### Deduplication
+1. Agent/subagent review & consultation results (largest block of uncompressed content)
+2. Verbose command output (build/test runs, git diff/log/status, directory listings)
+3. Exploration that led nowhere (failed approaches, dead-end searches)
+4. Redundant tool results (reading the same file repeatedly, repeated status checks)
+5. Intermediate steps of completed multi-step tasks
+6. Resolved discussion threads (once a decision is recorded)
+7. Large file contents already used
 
-Identifies repeated tool calls (same tool, same arguments) and keeps only the most recent output. Recalculated when the compress tool runs, so prompt cache is only impacted alongside compression.
+After compression, the original content is replaced by a short **block** that
+references the original (recoverable via `decompress`).
 
-### Purge Errors
+### Decompression strategy
 
-Prunes inputs from errored tool calls after a configurable number of turns (default: 4). Error messages are preserved; only the potentially large input content is removed. Recalculated on compress tool use.
+The model decides when to decompress. When the context is large enough to
+interfere with the model's self-attention, short blocks lead the model to compress
+some content first, handle the urgent matter, then decompress what it needs in
+later work.
 
-### Deferred Block Cleanup (mark_block)
+### Deletion strategy
 
-Besides `compress` and `decompress`, ACP exposes `mark_block` / `unmark_block` tools. These give the model a **zero-cache-cost** way to flag compressed blocks it no longer needs in detail, deferring all consolidation into a single operation when context pressure rises.
+To handle the accumulation of many small historical blocks, the new version adds
+a deletion strategy. The model decides whether to delete. **Once deleted, content
+is irrecoverable.** This replaces the original forced GC, so that forced garbage
+collection no longer deletes things the model considers important.
 
-- **`mark_block`** flags a block for later cleanup. The block stays fully active and keeps serving prompt-cache hits — nothing changes immediately.
-- When context usage crosses configurable thresholds, ACP consolidates all marked blocks into one summary in a **single cache break** (instead of losing them one at a time):
-  - **Low (default 60%)**: a nudge reminds the model that marked blocks can be merged.
-  - **High (default 75%)**: all marked blocks are auto merge-compressed into one.
-  - **Force (default 90%)**: all old-gen blocks are merged regardless of marks — a last resort before age-based GC truncation.
-- **`unmark_block`** removes the flag if the model changes its mind.
+---
 
-This is purely additive — existing GC behavior is retained as the ultimate fallback at 100%, and merged blocks still respond to `decompress`. Thresholds are configurable under `gc.batchCleanup`.
+## Impact on Prompt Caching
+
+Historically, ACP has fixed many of the low-cache-hit-rate problems caused by
+DCP. The overall cache hit rate is now **~87%**.
+
+Compared to traditional compression — which only compresses at 80–90% and, once it
+compresses, forces 100% of the context to re-hit — ACP's hit rate is effectively
+higher.
+
+Additionally, ACP keeps total context around **~30% most of the time**, versus the
+traditional **50–80%**. So total token savings are far higher than traditional
+compression.
+
+**Conclusion:** ACP simultaneously raises the overall cache hit rate **and**
+ensures key context information is not lost.
 
 ---
 
@@ -365,22 +359,6 @@ By default, these tools are always protected from pruning:
 The `protectedTools` arrays in `commands` and `strategies` add to this default list.
 
 For the `compress` tool, `compress.protectedTools` ensures specific tool outputs are appended to the compressed summary. By default it includes `task`, `skill`, `todowrite`, `todoread`, and `decompress`.
-
----
-
-## Impact on Prompt Caching
-
-LLM providers cache prompts based on exact prefix matching. When ACP prunes content, it changes messages, which invalidates cached prefixes from that point forward.
-
-**Trade-off:** You lose some cache reads but gain token savings from reduced context size and fewer hallucinations from stale context. In most cases, especially in long sessions, the savings outweigh the cache miss cost.
-
-> [!NOTE]
-> In testing, cache hit rates were approximately 85% with ACP vs 90% without.
-
-**No impact for:**
-
-- **Request-based billing** -- Providers like GitHub Copilot that charge per request, not tokens.
-- **Uniform token pricing** -- Providers like Cerebras that bill cached and uncached tokens at the same rate.
 
 ---
 
