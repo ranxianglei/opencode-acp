@@ -1,75 +1,75 @@
 {
-    "$schema": "https://json.schemastore.org/package.json",
-    "name": "opencode-acp",
-    "version": "1.4.1",
-    "type": "module",
-    "description": "Active Context Pruning — model-driven context management for OpenCode (hardened fork of DCP with 34 bug fixes)",
-    "main": "./dist/index.js",
-    "types": "./dist/index.d.ts",
-    "exports": {
-        ".": {
-            "types": "./dist/index.d.ts",
-            "import": "./dist/index.js"
-        },
-        "./server": {
-            "types": "./dist/index.d.ts",
-            "import": "./dist/index.js"
-        }
+  "$schema": "https://json.schemastore.org/package.json",
+  "name": "opencode-acp",
+  "version": "1.4.2",
+  "type": "module",
+  "description": "Active Context Pruning \u2014 model-driven context management for OpenCode (hardened fork of DCP with 34 bug fixes)",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
     },
-    "scripts": {
-        "clean": "rm -rf dist",
-        "build": "npm run clean && tsup && tsc --emitDeclarationOnly",
-        "verify:package": "node scripts/verify-package.mjs",
-        "check:package": "npm run build && npm run verify:package",
-        "prepublishOnly": "npm run check:package",
-        "dev": "opencode plugin dev",
-        "typecheck": "tsc --noEmit",
-        "test": "node --import tsx --test tests/*.test.ts",
-        "format": "prettier --write .",
-        "format:check": "prettier --check .",
-        "dcp": "tsx scripts/print.ts"
-    },
-    "keywords": [
-        "opencode",
-        "opencode-plugin",
-        "plugin",
-        "context",
-        "pruning",
-        "active-context",
-        "optimization",
-        "tokens",
-        "acp"
-    ],
-    "repository": {
-        "type": "git",
-        "url": "git+https://github.com/ranxianglei/opencode-acp.git"
-    },
-    "bugs": {
-        "url": "https://github.com/ranxianglei/opencode-acp/issues"
-    },
-    "homepage": "https://github.com/ranxianglei/opencode-acp#readme",
-    "author": "ranxianglei",
-    "license": "AGPL-3.0-or-later",
-    "peerDependencies": {
-        "@opencode-ai/plugin": ">=1.4.3"
-    },
-    "dependencies": {
-        "@anthropic-ai/tokenizer": "^0.0.4",
-        "@opencode-ai/sdk": "^1.4.3",
-        "jsonc-parser": "^3.3.1",
-        "zod": "^4.3.6"
-    },
-    "devDependencies": {
-        "@opencode-ai/plugin": "^1.4.3",
-        "@types/node": "^25.5.0",
-        "prettier": "^3.8.1",
-        "tsup": "^8.5.1",
-        "tsx": "^4.21.0",
-        "typescript": "^6.0.2"
-    },
-    "files": [
-        "dist/",
-        "README.md",
-        "LICENSE"
-    ]
+    "./server": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "clean": "rm -rf dist",
+    "build": "npm run clean && tsup && tsc --emitDeclarationOnly",
+    "verify:package": "node scripts/verify-package.mjs",
+    "check:package": "npm run build && npm run verify:package",
+    "prepublishOnly": "npm run check:package",
+    "dev": "opencode plugin dev",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test tests/*.test.ts",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "dcp": "tsx scripts/print.ts"
+  },
+  "keywords": [
+    "opencode",
+    "opencode-plugin",
+    "plugin",
+    "context",
+    "pruning",
+    "active-context",
+    "optimization",
+    "tokens",
+    "acp"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ranxianglei/opencode-acp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ranxianglei/opencode-acp/issues"
+  },
+  "homepage": "https://github.com/ranxianglei/opencode-acp#readme",
+  "author": "ranxianglei",
+  "license": "AGPL-3.0-or-later",
+  "peerDependencies": {
+    "@opencode-ai/plugin": ">=1.4.3"
+  },
+  "dependencies": {
+    "@anthropic-ai/tokenizer": "^0.0.4",
+    "@opencode-ai/sdk": "^1.4.3",
+    "jsonc-parser": "^3.3.1",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@opencode-ai/plugin": "^1.4.3",
+    "@types/node": "^25.5.0",
+    "prettier": "^3.8.1",
+    "tsup": "^8.5.1",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.2"
+  },
+  "files": [
+    "dist/",
+    "README.md",
+    "LICENSE"
+  ]
 }

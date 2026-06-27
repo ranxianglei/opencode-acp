@@ -18,10 +18,12 @@ export const prune = (
     messages: WithParts[],
 ): void => {
     filterCompressedRanges(state, logger, config, messages)
-    // pruneFullTool(state, logger, messages)
-    pruneToolOutputs(state, logger, messages)
-    pruneToolInputs(state, logger, messages)
-    pruneToolErrors(state, logger, messages)
+    // [HOTFIX] Disabled pruneToolOutputs/pruneToolInputs/pruneToolErrors — they mutate
+    // existing messages in-place, breaking GLM prefix cache. Compression still works
+    // via filterCompressedRanges + model-initiated compress tool.
+    // pruneToolOutputs(state, logger, messages)
+    // pruneToolInputs(state, logger, messages)
+    // pruneToolErrors(state, logger, messages)
 }
 
 const pruneFullTool = (state: SessionState, logger: Logger, messages: WithParts[]): void => {

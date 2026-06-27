@@ -329,13 +329,13 @@ test("prune strips stale mNNNN refs from summary content (Bug 28 fix)", () => {
 // pruneToolOutputs — completed tool output replacement
 // =====================================================================
 
-test("prune replaces completed tool outputs with placeholder", () => {
+test("prune preserves completed tool outputs (prefix cache fix)", () => {
     const state = createSessionState()
     state.prune.tools.set("call-1", 1)
 
     const messages: WithParts[] = [
         assistantMessage("a1", 1, [
-            toolPart("call-1", "bash", "long output that should be replaced"),
+            toolPart("call-1", "bash", "long output that should be preserved"),
         ]),
     ]
 
@@ -344,7 +344,7 @@ test("prune replaces completed tool outputs with placeholder", () => {
     const part = messages[0]!.parts[0] as any
     assert.equal(
         part.state.output,
-        "[Output removed to save context - information superseded or no longer needed]",
+        "long output that should be preserved",
     )
 })
 
@@ -407,7 +407,7 @@ test("prune does not replace outputs for error-status tools", () => {
 // pruneToolInputs — question tool input replacement
 // =====================================================================
 
-test("prune replaces question tool input questions with placeholder", () => {
+test("prune preserves question tool inputs (prefix cache fix)", () => {
     const state = createSessionState()
     state.prune.tools.set("call-q", 1)
 
@@ -424,7 +424,7 @@ test("prune replaces question tool input questions with placeholder", () => {
     const part = messages[0]!.parts[0] as any
     assert.equal(
         part.state.input.questions,
-        "[questions removed - see output for user's answers]",
+        "What color do you prefer?",
     )
 })
 
@@ -450,7 +450,7 @@ test("prune does not replace question input for non-question tools", () => {
 // pruneToolErrors — error tool input replacement
 // =====================================================================
 
-test("prune replaces string inputs in errored tools with placeholder", () => {
+test("prune preserves error tool inputs (prefix cache fix)", () => {
     const state = createSessionState()
     state.prune.tools.set("call-err", 1)
 
@@ -467,16 +467,9 @@ test("prune replaces string inputs in errored tools with placeholder", () => {
     prune(state, logger, buildConfig(), messages)
 
     const part = messages[0]!.parts[0] as any
-    assert.equal(
-        part.state.input.command,
-        "[input removed due to failed tool call]",
-    )
-    assert.equal(
-        part.state.input.description,
-        "[input removed due to failed tool call]",
-    )
-    // Non-string values should NOT be replaced
-    assert.equal(part.state.input.count, 5, "non-string input should NOT be replaced")
+    assert.equal(part.state.input.command, "rm -rf /")
+    assert.equal(part.state.input.description, "dangerous command")
+    assert.equal(part.state.input.count, 5)
 })
 
 test("prune does not replace inputs for completed tools in error pruning", () => {
@@ -542,13 +535,14 @@ test("prune handles mixed scenario: compressed range + tool output pruning", () 
     const ids = messages.map((m) => m.info.id)
     assert.ok(!ids.includes("m2"), "m2 should be pruned by compression range")
 
-    // m3's tool output should be replaced
+    // m3's tool output should be preserved (prefix cache fix)
     const m3 = messages.find((m) => m.info.id === "m3")
     assert.ok(m3, "m3 should survive")
     const toolPartResult = m3!.parts.find((p: any) => p.type === "tool") as any
-    assert.ok(
-        toolPartResult.state.output.includes("[Output removed"),
-        "m3 tool output should be pruned",
+    assert.equal(
+        toolPartResult.state.output,
+        "output to be pruned",
+        "m3 tool output should be preserved (prefix cache fix)",
     )
 })
 
