@@ -489,7 +489,16 @@ All changes MUST follow this workflow:
 6. Commit with descriptive messages (include devlog files)
 7. Push branch and create a GitHub PR
 8. Obtain **dual-agent review** (Sections 5.3 + 5.4) on the PR
-9. Merge PR after both reviews pass
+9. **PR merge requires explicit human confirmation** — AI agents MUST NOT autonomously merge PRs or push to master. Wait for the user to explicitly say "merge" or "approve merge".
+
+### 5.1.1.1 Git Safety Rules (MANDATORY)
+
+| Rule | Enforcement |
+|------|-------------|
+| **NEVER force-push to `master`** | Under no circumstances. Not for reverts, not for fixes, not for "quick corrections". If master needs changing, create a PR. |
+| **NEVER merge PRs without explicit human authorization** | "merge" or "approve merge" must come from a human comment. Agent reviews passing ≠ authorization to merge. |
+| **NEVER remove and re-apply GitHub branch protection to force changes** | This is a circumvention of the merge policy. If protection blocks a push, the correct response is to create a PR. |
+| **NEVER delete branches or tags without human confirmation** | Preserve work for review. |
 
 ### 5.1.2 Devlog Requirement (MANDATORY)
 
