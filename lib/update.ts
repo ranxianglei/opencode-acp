@@ -39,7 +39,7 @@ export function startAutoUpdate(ctx: PluginInput, enabled: boolean): void {
         .finally(() => clearTimeout(timeout))
 }
 
-export async function checkAutoUpdate(signal: AbortSignal): Promise<UpdateResult> {
+async function checkAutoUpdate(signal: AbortSignal): Promise<UpdateResult> {
     const packageDir = await findPackageDir(PACKAGE_NAME)
     if (!packageDir) return { updated: false }
 

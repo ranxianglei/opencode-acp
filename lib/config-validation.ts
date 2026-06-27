@@ -59,7 +59,7 @@ export const VALID_CONFIG_KEYS = new Set([
     "strategies.purgeErrors.protectedTools",
 ])
 
-export function getConfigKeyPaths(obj: Record<string, any>, prefix = ""): string[] {
+function getConfigKeyPaths(obj: Record<string, any>, prefix = ""): string[] {
     const keys: string[] = []
     for (const key of Object.keys(obj)) {
         const fullKey = prefix ? `${prefix}.${key}` : key

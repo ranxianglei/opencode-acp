@@ -147,16 +147,12 @@ export async function ensureSessionInitialized(
         return
     }
 
-    // logger.info("session ID = " + sessionId)
-    // logger.info("Initializing session state", { sessionId: sessionId })
-
     resetSessionState(state)
     state.manualMode = manualModeEnabled ? "active" : false
     state.sessionId = sessionId
 
     const isSubAgent = await isSubAgentSession(client, sessionId)
     state.isSubAgent = isSubAgent
-    // logger.info("isSubAgent = " + isSubAgent)
 
     state.lastCompaction = findLastCompactionTimestamp(messages)
     state.currentTurn = countTurns(state, messages)

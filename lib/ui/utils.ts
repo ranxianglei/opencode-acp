@@ -150,7 +150,7 @@ export function formatTokenCount(tokens: number, compact?: boolean): string {
     return tokens.toString() + suffix
 }
 
-export function truncate(str: string, maxLen: number = 60): string {
+function truncate(str: string, maxLen: number = 60): string {
     if (str.length <= maxLen) return str
     return str.slice(0, maxLen - 3) + "..."
 }
@@ -229,7 +229,7 @@ export function cacheSystemPromptTokens(state: SessionState, messages: WithParts
     state.systemPromptTokens = estimatedSystemTokens > 0 ? estimatedSystemTokens : undefined
 }
 
-export function shortenPath(input: string, workingDirectory?: string): string {
+function shortenPath(input: string, workingDirectory?: string): string {
     const inPathMatch = input.match(/^(.+) in (.+)$/)
     if (inPathMatch) {
         const prefix = inPathMatch[1]
@@ -286,19 +286,4 @@ export function formatPrunedItemsList(
     return lines
 }
 
-export function formatPruningResultForTool(
-    prunedIds: string[],
-    toolMetadata: Map<string, ToolParameterEntry>,
-    workingDirectory?: string,
-): string {
-    const lines: string[] = []
-    lines.push(`Context pruning complete. Pruned ${prunedIds.length} tool outputs.`)
-    lines.push("")
 
-    if (prunedIds.length > 0) {
-        lines.push(`Semantically pruned (${prunedIds.length}):`)
-        lines.push(...formatPrunedItemsList(prunedIds, toolMetadata, workingDirectory))
-    }
-
-    return lines.join("\n").trim()
-}
