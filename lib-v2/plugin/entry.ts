@@ -5,6 +5,7 @@ import { createSessionState } from "../state/factory"
 import { createMessageTransformStages } from "../pipeline/stages"
 import { runPipeline } from "../pipeline/compose"
 import type { PipelineDeps } from "../pipeline/types"
+import { assignMessageRefs, injectMessageIds, injectCompressNudges, applyAnchoredNudges } from "../messages/inject/inject"
 
 export interface PluginContext {
     config: PluginConfig
@@ -30,6 +31,10 @@ export async function handleMessageTransform(
         logger: ctx.logger,
         client: null,
         prompts: null,
+        assignMessageRefs,
+        injectCompressNudges,
+        injectMessageIds,
+        applyAnchoredNudges,
     }
 
     await runPipeline(stages, deps, messages)

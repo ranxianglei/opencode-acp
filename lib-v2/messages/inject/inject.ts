@@ -87,10 +87,10 @@ export function injectCompressNudges(
     config: PluginConfig,
     logger: Logger,
     messages: WithParts[],
-    contextUsagePercent: number,
 ): void {
     if (config.compress.permission === "deny") return
 
+    const contextUsagePercent = computeContextUsage(state, messages)
     const ctx = buildNudgeContext(state, config, messages, contextUsagePercent)
 
     if (shouldNudgeContextLimit(ctx)) {
@@ -231,4 +231,20 @@ function canReceiveNudge(msg: WithParts): boolean {
     }
 
     return true
+}
+
+export function assignMessageRefs(
+    state: SessionState,
+    messages: WithParts[],
+): void {
+    for (const msg of messages) {
+        if (!msg.info?.id) continue
+        const rawId = msg.info.id
+        if (state.messageIds.byRawId.has(rawId)) continue
+
+        const ref = formatMessageRef(state.messageIds.nextRefIndex)
+        state.messageIds.byRawId.set(rawId, ref)
+        state.messageIds.byRef.set(ref, rawId)
+        state.messageIds.nextRefIndex++
+    }
 }

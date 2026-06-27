@@ -27,11 +27,14 @@ export interface PipelineDeps {
     ) => void
     injectMessageIds?: (
         state: SessionState,
+        config: PluginConfig,
         logger: Logger,
         messages: WithParts[],
     ) => void
     applyAnchoredNudges?: (
         state: SessionState,
+        config: PluginConfig,
+        logger: Logger,
         messages: WithParts[],
     ) => void
 }

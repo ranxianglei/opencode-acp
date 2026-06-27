@@ -83,7 +83,12 @@ export function createMessageTransformStages(): PipelineStage[] {
             name: "09-inject-message-ids",
             run: (ctx) => {
                 if (ctx.deps.injectMessageIds) {
-                    ctx.deps.injectMessageIds(ctx.deps.state, ctx.deps.logger, ctx.messages)
+                    ctx.deps.injectMessageIds(
+                        ctx.deps.state,
+                        ctx.deps.config,
+                        ctx.deps.logger,
+                        ctx.messages,
+                    )
                 }
             },
         },
@@ -91,7 +96,12 @@ export function createMessageTransformStages(): PipelineStage[] {
             name: "10-apply-anchored-nudges",
             run: (ctx) => {
                 if (ctx.deps.applyAnchoredNudges) {
-                    ctx.deps.applyAnchoredNudges(ctx.deps.state, ctx.messages)
+                    ctx.deps.applyAnchoredNudges(
+                        ctx.deps.state,
+                        ctx.deps.config,
+                        ctx.deps.logger,
+                        ctx.messages,
+                    )
                 }
             },
         },
