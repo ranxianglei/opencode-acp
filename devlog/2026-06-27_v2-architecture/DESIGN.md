@@ -180,7 +180,7 @@ lib-v2/
     └── message-refs.ts               # mNNNNN formatting/parsing (5-digit zero-padded)
 ```
 
-**File count**: ~85 files (v1 has 70). The increase is from pipeline stage decomposition (21 stages) and config split (7 files). The win is **max file size**: largest v2 file ~250 LOC vs v1's 1125 LOC (config.ts).
+**File count**: ~90 files (v1 has 70). The increase is from pipeline stage decomposition (21 stages) and config split (8 files). The win is **max file size**: largest v2 file ~250 LOC vs v1's 585 LOC (config.ts).
 
 ---
 
