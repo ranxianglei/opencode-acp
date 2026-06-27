@@ -2,6 +2,55 @@ import type { CommandContext, CommandResult } from "./types"
 import { deactivateBlock } from "../state/mutations/blocks"
 import { getActiveBlocks } from "../state/queries"
 import { formatTokenCount } from "../ui/utils"
+import type { Logger } from "../infra/logger"
+import type { SessionState, WithParts } from "../state/types"
+
+export interface DecompressCommandContext {
+    client: unknown
+    state: SessionState
+    logger: Logger
+    sessionId: string
+    messages: WithParts[]
+    args: string[]
+}
+
+export async function handleDecompressCommand(ctx: DecompressCommandContext): Promise<void> {
+    const { state, logger, args } = ctx
+
+    if (args.length === 0) {
+        logger.debug("handleDecompressCommand: no args, listing available")
+        return
+    }
+
+    for (const arg of args) {
+        const id = Number.parseInt(arg, 10)
+        if (!Number.isInteger(id) || id <= 0) {
+            continue
+        }
+        const block = state.prune.messages.blocksById.get(id)
+        if (!block) {
+            continue
+        }
+
+        const reactivatedBlockIds: number[] = []
+        if (block.active) {
+            const success = deactivateBlock(state, id, { byUser: true })
+            if (success) {
+                reactivatedBlockIds.push(id)
+                for (const childId of block.consumedBlockIds) {
+                    const child = state.prune.messages.blocksById.get(childId)
+                    if (child && !child.active) {
+                        child.active = true
+                        child.deactivatedAt = undefined
+                        child.deactivatedByBlockId = undefined
+                        state.prune.messages.activeBlockIds.add(childId)
+                        reactivatedBlockIds.push(childId)
+                    }
+                }
+            }
+        }
+    }
+}
 
 export function decompressCommand(ctx: CommandContext): CommandResult {
     const { state, args, logger } = ctx

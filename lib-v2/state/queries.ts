@@ -1,17 +1,5 @@
 import type { SessionState, CompressionBlock, WithParts } from "./types"
 
-/**
- * Read-only state queries. No function in this module writes to `state`;
- * mutation is centralized in `state/mutations/`.
- */
-
-/**
- * A message is compacted when ANY holds:
- *   1. Created strictly before `lastCompaction` (predates last context reset).
- *   2. Is the compaction summary itself — assistant `summary === true` whose
- *      creation time equals `lastCompaction` exactly.
- *   3. Has a prune entry with at least one still-active covering block.
- */
 export function isCompacted(state: SessionState, msg: WithParts): boolean {
     const info = msg.info
     if (!info) return false
@@ -29,6 +17,10 @@ export function isCompacted(state: SessionState, msg: WithParts): boolean {
     if (entry && entry.activeBlockIds.length > 0) return true
 
     return false
+}
+
+export function isMessageCompacted(state: SessionState, msg: WithParts): boolean {
+    return isCompacted(state, msg)
 }
 
 export function getActiveBlocks(state: SessionState): CompressionBlock[] {

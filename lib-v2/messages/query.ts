@@ -1,7 +1,8 @@
 import type { WithParts } from "../state/types"
+import type { PluginConfig } from "../config/types"
 import type { Part, ToolPart } from "@opencode-ai/sdk/v2"
 
-export function isIgnoredUserMessage(msg: unknown): msg is WithParts {
+export function isIgnoredUserMessage(msg: unknown): boolean {
     if (!msg || typeof msg !== "object") return false
     const m = msg as Partial<WithParts>
     if (!m.info || typeof m.info !== "object") return false
@@ -32,16 +33,36 @@ function isCompletedCompressToolPart(part: unknown): boolean {
 
 export function getLastUserMessage(
     messages: WithParts[],
-    beforeIndex: number = messages.length,
+    startIndex: number = messages.length - 1,
 ): WithParts | null {
     if (!Array.isArray(messages)) return null
-    const upper = Math.min(beforeIndex, messages.length)
-    for (let i = upper - 1; i >= 0; i--) {
+    const start = Math.min(startIndex, messages.length - 1)
+    for (let i = start; i >= 0; i--) {
         const msg = messages[i]
         if (!msg) continue
-        if (msg.info?.role === "user" && !isIgnoredUserMessage(msg)) {
+        if (msg.info?.role === "user" && !isIgnoredUserMessage(msg) && !isSyntheticMessage(msg)) {
             return msg
         }
     }
     return null
+}
+
+export function isSyntheticMessage(message: WithParts): boolean {
+    const id = message?.info?.id
+    return (
+        typeof id === "string" &&
+        (id.startsWith("msg_dcp_summary_") || id.startsWith("msg_dcp_text_"))
+    )
+}
+
+export function isProtectedUserMessage(config: PluginConfig, message: WithParts): boolean {
+    if (!message || typeof message !== "object") return false
+    if (!message.info || typeof message.info !== "object") return false
+
+    return (
+        config.compress.mode === "message" &&
+        config.compress.protectUserMessages === true &&
+        message.info.role === "user" &&
+        !isIgnoredUserMessage(message)
+    )
 }

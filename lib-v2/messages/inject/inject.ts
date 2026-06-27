@@ -4,7 +4,7 @@ import type { Logger } from "../../infra/logger"
 import type { TextPart, ToolPart } from "@opencode-ai/sdk/v2"
 import { formatMessageRef } from "../../infra/message-refs"
 import { appendToLastTextPart } from "../utils"
-import { getLastUserMessage } from "../query"
+import { getLastUserMessage, isIgnoredUserMessage, messageHasCompress } from "../query"
 import {
     shouldNudgeContextLimit,
     shouldNudgeTurn,
@@ -23,26 +23,43 @@ import {
 export function injectMessageIds(
     state: SessionState,
     config: PluginConfig,
-    logger: Logger,
     messages: WithParts[],
+    _compressionPriorities?: any,
 ): void {
-    for (const msg of messages) {
-        const id = msg.info?.id
-        if (typeof id !== "string" || id === "") continue
-
-        const ref = getOrCreateRef(state, id)
-        const protectedTag = isProtectedMessage(msg, config) ? "BLOCKED" : ref
-        const tag = `<dcp-message-id>${protectedTag}</dcp-message-id>`
-
-        injectTagIntoMessage(msg, tag)
+    if (config.compress.permission === "deny") {
+        return
     }
+
+    for (const message of messages) {
+        if (isIgnoredUserMessage(message)) {
+            continue
+        }
+
+        const messageRef = state.messageIds.byRawId.get(message.info.id)
+        if (!messageRef) {
+            continue
+        }
+
+        const isBlockedMessage =
+            message.info.role === "user" && config.compress.protectUserMessages === true
+
+        const tag = formatMessageIdTagWithAttr(
+            isBlockedMessage ? "BLOCKED" : messageRef,
+        )
+
+        injectTagIntoMessage(message, tag)
+    }
+}
+
+function formatMessageIdTagWithAttr(ref: string): string {
+    return `\n<dcp-message-id>${ref}</dcp-message-id>`
 }
 
 function getOrCreateRef(state: SessionState, rawId: string): string {
     const existing = state.messageIds.byRawId.get(rawId)
     if (existing) return existing
-    const ref = formatMessageRef(state.messageIds.nextRefIndex)
-    state.messageIds.nextRefIndex += 1
+    const ref = formatMessageRef(state.messageIds.nextRef)
+    state.messageIds.nextRef += 1
     state.messageIds.byRawId.set(rawId, ref)
     state.messageIds.byRef.set(ref, rawId)
     return ref
@@ -54,27 +71,66 @@ function isProtectedMessage(msg: WithParts, config: PluginConfig): boolean {
 }
 
 function injectTagIntoMessage(msg: WithParts, tag: string): void {
-    if (!Array.isArray(msg.parts) || msg.parts.length === 0) return
+    if (!Array.isArray(msg.parts) || msg.parts.length === 0) {
+        if (msg.info.role === "user" || msg.info.role === "assistant") {
+            msg.parts.push({
+                id: `${msg.info.id}-synthetic`,
+                messageID: msg.info.id,
+                sessionID: (msg.info as any).sessionID ?? "",
+                type: "text",
+                text: tag,
+            } as any)
+        }
+        return
+    }
 
     if (msg.info.role === "user") {
+        let injected = false
         for (const part of msg.parts) {
             if (part && part.type === "text") {
                 appendTagToTextPart(part as TextPart, tag)
+                injected = true
             }
+        }
+        if (!injected) {
+            msg.parts.push({
+                id: `${msg.info.id}-synthetic`,
+                messageID: msg.info.id,
+                sessionID: (msg.info as any).sessionID ?? "",
+                type: "text",
+                text: tag,
+            } as any)
         }
         return
     }
 
     if (msg.info.role === "assistant") {
+        let injected = false
         for (const part of msg.parts) {
             if (!part || part.type !== "tool") continue
             const toolPart = part as ToolPart
             const state = toolPart.state as { output?: unknown } | undefined
             if (state && typeof state.output === "string") {
                 state.output = `${state.output}\n\n${tag}`
+                injected = true
             }
         }
-        return
+        if (injected) return
+
+        for (const part of msg.parts) {
+            if (part && part.type === "text") {
+                appendTagToTextPart(part as TextPart, tag)
+                return
+            }
+        }
+
+        msg.parts.push({
+            id: `${msg.info.id}-synthetic`,
+            messageID: msg.info.id,
+            sessionID: (msg.info as any).sessionID ?? "",
+            type: "text",
+            text: tag,
+        } as any)
     }
 }
 
@@ -87,22 +143,36 @@ export function injectCompressNudges(
     config: PluginConfig,
     logger: Logger,
     messages: WithParts[],
+    _prompts?: any,
+    _compressionPriorities?: any,
 ): void {
     if (config.compress.permission === "deny") return
+
+    if (state.manualMode) {
+        return
+    }
+
+    const lastAssistantMessage = messages.findLast?.((message: WithParts) => message.info.role === "assistant")
+    if (lastAssistantMessage && messageHasCompress(lastAssistantMessage)) {
+        state.nudges.contextLimitAnchors.clear()
+        ;(state.nudges as any).turnNudgeAnchors?.clear?.()
+        ;(state.nudges as any).iterationNudgeAnchors?.clear?.()
+        return
+    }
 
     const contextUsagePercent = computeContextUsage(state, messages)
     const ctx = buildNudgeContext(state, config, messages, contextUsagePercent)
 
     if (shouldNudgeContextLimit(ctx)) {
-        anchorLastUser(state.nudges.contextLimitAnchors, messages, logger)
+        anchorLastUser((state.nudges as any).contextLimitAnchors ?? state.nudges.contextLimitAnchors, messages, logger)
     }
 
     if (shouldNudgeTurn(ctx)) {
-        anchorLastUser(state.nudges.turnAnchors, messages, logger)
+        anchorLastUser((state.nudges as any).turnNudgeAnchors ?? new Set(), messages, logger)
     }
 
     if (shouldNudgeIteration(ctx, config.compress.iterationNudgeThreshold)) {
-        anchorLastMessage(state.nudges.iterationAnchors, messages, logger)
+        anchorLastMessage((state.nudges as any).iterationNudgeAnchors ?? new Set(), messages, logger)
     }
 }
 
@@ -236,15 +306,63 @@ function canReceiveNudge(msg: WithParts): boolean {
 export function assignMessageRefs(
     state: SessionState,
     messages: WithParts[],
-): void {
-    for (const msg of messages) {
-        if (!msg.info?.id) continue
-        const rawId = msg.info.id
-        if (state.messageIds.byRawId.has(rawId)) continue
+): number {
+    let assigned = 0
+    let skippedSubAgentPrompt = false
 
-        const ref = formatMessageRef(state.messageIds.nextRefIndex)
-        state.messageIds.byRawId.set(rawId, ref)
-        state.messageIds.byRef.set(ref, rawId)
-        state.messageIds.nextRefIndex++
+    for (const message of messages) {
+        if (isIgnoredUserMessage(message)) {
+            continue
+        }
+
+        if (state.isSubAgent && !skippedSubAgentPrompt && message.info.role === "user") {
+            skippedSubAgentPrompt = true
+            continue
+        }
+
+        const rawMessageId = message.info.id
+        if (typeof rawMessageId !== "string" || rawMessageId.length === 0) {
+            continue
+        }
+        if (rawMessageId.startsWith("msg_dcp_summary_") || rawMessageId.startsWith("msg_dcp_text_")) {
+            continue
+        }
+
+        const existingRef = state.messageIds.byRawId.get(rawMessageId)
+        if (existingRef) {
+            if (state.messageIds.byRef.get(existingRef) !== rawMessageId) {
+                state.messageIds.byRef.set(existingRef, rawMessageId)
+            }
+            continue
+        }
+
+        const ref = allocateNextMessageRef(state)
+        state.messageIds.byRawId.set(rawMessageId, ref)
+        state.messageIds.byRef.set(ref, rawMessageId)
+        assigned++
     }
+
+    return assigned
+}
+
+const MESSAGE_REF_MIN_INDEX = 1
+const MESSAGE_REF_MAX_INDEX = 99999
+
+function allocateNextMessageRef(state: SessionState): string {
+    let candidate = Number.isInteger(state.messageIds.nextRef)
+        ? Math.max(MESSAGE_REF_MIN_INDEX, state.messageIds.nextRef)
+        : MESSAGE_REF_MIN_INDEX
+
+    while (candidate <= MESSAGE_REF_MAX_INDEX) {
+        const ref = formatMessageRef(candidate)
+        if (!state.messageIds.byRef.has(ref)) {
+            state.messageIds.nextRef = candidate + 1
+            return ref
+        }
+        candidate++
+    }
+
+    throw new Error(
+        `Message ID alias capacity exceeded. Cannot allocate more than ${formatMessageRef(MESSAGE_REF_MAX_INDEX)} aliases in this session.`,
+    )
 }

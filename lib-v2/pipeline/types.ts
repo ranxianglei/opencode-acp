@@ -4,7 +4,7 @@ import type { Logger } from "../infra/logger"
 
 export type InjectFn = (
     state: SessionState,
-    config: PluginConfig | Logger,
+    config: PluginConfig,
     loggerOrMessages: Logger | WithParts[],
     messages?: WithParts[],
 ) => void
@@ -22,14 +22,15 @@ export interface PipelineDeps {
     injectCompressNudges?: (
         state: SessionState,
         config: PluginConfig,
-        logger: Logger,
-        messages: WithParts[],
+        logger: Logger | WithParts[],
+        messages?: WithParts[],
+        prompts?: unknown,
     ) => void
     injectMessageIds?: (
         state: SessionState,
         config: PluginConfig,
-        logger: Logger,
-        messages: WithParts[],
+        loggerOrMessages: Logger | WithParts[],
+        messages?: WithParts[],
     ) => void
     applyAnchoredNudges?: (
         state: SessionState,

@@ -92,3 +92,30 @@ export function renderPriorityGuidance(
 
     return `Priority guidance: Messages containing protected tool calls (${[...protectedTools].join(", ")}) are marked BLOCKED and will never be compressed. Prioritize compressing other content first.`
 }
+
+export function renderMessagePriorityGuidance(priorityLabel: string, refs: string[]): string {
+    const refList = refs.length > 0 ? refs.join(", ") : "none"
+
+    return [
+        "Message priority context:",
+        "- Higher-priority older messages consume more context and should be compressed right away if it is safe to do so.",
+        `- ${priorityLabel}-priority message IDs before this point: ${refList}`,
+    ].join("\n")
+}
+
+export function appendGuidanceToDcpTag(nudgeText: string, guidance: string): string {
+    if (!guidance.trim()) {
+        return nudgeText
+    }
+
+    const closeTag = "</dcp-system-reminder>"
+    const closeTagIndex = nudgeText.lastIndexOf(closeTag)
+
+    if (closeTagIndex === -1) {
+        return nudgeText
+    }
+
+    const beforeClose = nudgeText.slice(0, closeTagIndex).trimEnd()
+    const afterClose = nudgeText.slice(closeTagIndex)
+    return `${beforeClose}\n\n${guidance}\n${afterClose}`
+}

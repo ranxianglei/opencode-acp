@@ -69,6 +69,7 @@ interface PersistedNudges {
 interface PersistedMessageIdMapping {
     byRawId?: Record<string, string>
     byRef?: Record<string, string>
+    nextRef?: number
     nextRefIndex?: number
 }
 
@@ -148,7 +149,7 @@ export function serializeState(state: SessionState): PersistedSessionState {
         messageIds: {
             byRawId: Object.fromEntries(state.messageIds.byRawId),
             byRef: Object.fromEntries(state.messageIds.byRef),
-            nextRefIndex: state.messageIds.nextRefIndex,
+            nextRef: state.messageIds.nextRef,
         },
     }
 }

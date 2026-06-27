@@ -72,7 +72,7 @@ export interface GCConfig {
     promotionThreshold: number
     maxBlockAge: number
     maxOldGenSummaryLength: number
-    majorGcThresholdPercent: string
+    majorGcThresholdPercent: number | `${number}%` | string
     batchCleanup: BatchCleanupConfig
 }
 

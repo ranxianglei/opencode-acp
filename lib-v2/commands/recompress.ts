@@ -2,6 +2,39 @@ import type { SessionState } from "../state/types"
 import type { CommandContext, CommandResult } from "./types"
 import { parseBlockIds } from "./decompress"
 import { formatTokenCount } from "../ui/utils"
+import type { Logger } from "../infra/logger"
+import type { WithParts } from "../state/types"
+
+export interface RecompressCommandContext {
+    client: unknown
+    state: SessionState
+    logger: Logger
+    sessionId: string
+    messages: WithParts[]
+    args: string[]
+}
+
+export async function handleRecompressCommand(ctx: RecompressCommandContext): Promise<void> {
+    const { state, args, logger } = ctx
+
+    if (args.length === 0) {
+        logger.debug("handleRecompressCommand: no args, listing available")
+        return
+    }
+
+    for (const arg of args) {
+        const id = Number.parseInt(arg, 10)
+        if (!Number.isInteger(id) || id <= 0) continue
+
+        const block = state.prune.messages.blocksById.get(id)
+        if (!block) continue
+        if (block.active) continue
+        if (!block.deactivatedByUser) continue
+
+        reactivateUserDeactivatedBlock(state, id)
+        logger.info("block recompressed by user", { blockId: id })
+    }
+}
 
 export function recompressCommand(ctx: CommandContext): CommandResult {
     const { state, args, logger } = ctx

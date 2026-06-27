@@ -174,3 +174,40 @@ function estimateMessagesTokens(messages: WithParts[]): number {
     }
     return total
 }
+
+export function appendToTextPart(part: Part, text: string): boolean {
+    if (!part || part.type !== "text") return false
+    const textPart = part as TextPart
+    textPart.text = (textPart.text ?? "") + text
+    return true
+}
+
+export function createSyntheticTextPart(message: WithParts, text: string): TextPart {
+    const info = message.info as Message
+    const sessionID = info.sessionID ?? ""
+    const messageId = info.id ?? ""
+    return {
+        id: `${messageId}-part-${Math.random().toString(36).slice(2, 8)}`,
+        sessionID,
+        messageID: messageId,
+        type: "text",
+        text,
+        synthetic: true,
+    }
+}
+
+export function hasContent(message: WithParts): boolean {
+    if (!message || !Array.isArray(message.parts) || message.parts.length === 0) {
+        return false
+    }
+    for (const part of message.parts) {
+        if (!part) continue
+        if (part.type === "text") {
+            const text = (part as TextPart).text
+            if (typeof text === "string" && text.length > 0) return true
+            continue
+        }
+        if (part.type === "tool") return true
+    }
+    return false
+}

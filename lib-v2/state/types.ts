@@ -78,14 +78,16 @@ export interface Prune {
 export interface NudgeState {
     contextLimitAnchors: Set<string>
     turnAnchors: Set<string>
+    turnNudgeAnchors: Set<string>
     iterationAnchors: Set<string>
+    iterationNudgeAnchors: Set<string>
     lastNudgeTurn: number
 }
 
 export interface MessageIdMapping {
     byRawId: Map<string, string>
     byRef: Map<string, string>
-    nextRefIndex: number
+    nextRef: number
 }
 
 export interface CompressionTimingEntry {
@@ -107,6 +109,7 @@ export interface PendingManualTrigger {
 export interface SessionState {
     sessionId: string | null
     modelContextLimit: number | undefined
+    systemPromptTokens: number | undefined
     isSubAgent: boolean
     lastCompaction: number
     currentTurn: number
@@ -118,7 +121,8 @@ export interface SessionState {
     messageIds: MessageIdMapping
     compressionTiming: CompressionTimingState
     toolParameters: Map<string, ToolParameterEntry>
-    subagentResults: Map<string, string>
+    toolIdList: string[]
+    subAgentResultCache: Map<string, string>
     manualMode: ManualModeState
     pendingManualTrigger: PendingManualTrigger | null
 }

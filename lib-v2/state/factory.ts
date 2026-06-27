@@ -12,10 +12,11 @@ export function createPruneMessagesState(): PruneMessagesState {
     }
 }
 
-export function createSessionState(): SessionState {
+export function createSessionState(sessionId: string | null = null): SessionState {
     return {
-        sessionId: null,
+        sessionId,
         modelContextLimit: undefined,
+        systemPromptTokens: undefined,
         isSubAgent: false,
         lastCompaction: 0,
         currentTurn: 0,
@@ -27,7 +28,9 @@ export function createSessionState(): SessionState {
         nudges: {
             contextLimitAnchors: new Set(),
             turnAnchors: new Set(),
+            turnNudgeAnchors: new Set(),
             iterationAnchors: new Set(),
+            iterationNudgeAnchors: new Set(),
             lastNudgeTurn: 0,
         },
         stats: {
@@ -37,14 +40,15 @@ export function createSessionState(): SessionState {
         messageIds: {
             byRawId: new Map(),
             byRef: new Map(),
-            nextRefIndex: 1,
+            nextRef: 1,
         },
         compressionTiming: {
             startsByCallId: new Map(),
             pendingByCallId: new Map(),
         },
         toolParameters: new Map(),
-        subagentResults: new Map(),
+        toolIdList: [],
+        subAgentResultCache: new Map(),
         manualMode: false,
         pendingManualTrigger: null,
     }

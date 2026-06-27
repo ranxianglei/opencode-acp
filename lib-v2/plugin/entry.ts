@@ -13,6 +13,15 @@ export interface PluginContext {
     sessionId: string | null
 }
 
+const applyAnchoredNudgesAdapter = (
+    state: SessionState,
+    config: PluginConfig,
+    logger: Logger,
+    messages: WithParts[],
+): void => {
+    applyAnchoredNudges(state, config, logger as any, messages)
+}
+
 export async function handleMessageTransform(
     messages: WithParts[],
     ctx: PluginContext,
@@ -32,9 +41,9 @@ export async function handleMessageTransform(
         client: null,
         prompts: null,
         assignMessageRefs,
-        injectCompressNudges,
-        injectMessageIds,
-        applyAnchoredNudges,
+        injectCompressNudges: injectCompressNudges as any,
+        injectMessageIds: injectMessageIds as any,
+        applyAnchoredNudges: applyAnchoredNudges as any,
     }
 
     await runPipeline(stages, deps, messages)

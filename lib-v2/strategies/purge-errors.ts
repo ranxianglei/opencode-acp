@@ -2,48 +2,120 @@ import type { SessionState, WithParts } from "../state/types"
 import type { PluginConfig } from "../config/types"
 import type { Logger } from "../infra/logger"
 
+function isToolNameProtected(toolName: string, protectedTools: string[]): boolean {
+    if (!Array.isArray(protectedTools)) return false
+    if (protectedTools.length === 0) return false
+    if (protectedTools.includes(toolName)) return true
+    return protectedTools.some((pattern) => {
+        if (!pattern.includes("*")) return false
+        const regexStr = pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*")
+        return new RegExp(`^${regexStr}$`).test(toolName)
+    })
+}
+
+function getFilePathsFromParameters(toolName: string, input: unknown): string[] {
+    if (!input || typeof input !== "object") return []
+    const obj = input as Record<string, unknown>
+    const paths: string[] = []
+    for (const key of ["filePath", "path", "file", "fileName"]) {
+        const v = obj[key]
+        if (typeof v === "string") paths.push(v)
+    }
+    return paths
+}
+
+function isFilePathProtected(filePaths: string[], patterns: string[]): boolean {
+    if (!patterns || patterns.length === 0) return false
+    for (const fp of filePaths) {
+        for (const pattern of patterns) {
+            if (!pattern) continue
+            if (pattern.includes("*")) {
+                const regexStr = pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*")
+                if (new RegExp(`^${regexStr}$`).test(fp)) return true
+            } else if (fp === pattern || fp.includes(pattern)) {
+                return true
+            }
+        }
+    }
+    return false
+}
+
+function getTotalToolTokens(state: SessionState, toolIds: string[]): number {
+    let total = 0
+    for (const id of toolIds) {
+        const entry = state.toolParameters.get(id)
+        if (entry && typeof entry.tokenCount === "number") {
+            total += entry.tokenCount
+        }
+    }
+    return total
+}
+
 export function purgeErrors(
     state: SessionState,
     logger: Logger,
     config: PluginConfig,
-    messages: WithParts[],
+    _messages: WithParts[],
 ): number {
-    if (!config.strategies.purgeErrors.enabled) return 0
+    if (state.manualMode && !config.manualMode.automaticStrategies) {
+        return 0
+    }
 
-    const protectedTools = new Set(config.strategies.purgeErrors.protectedTools)
-    const turnThreshold = config.strategies.purgeErrors.turns
-    const currentTurn = state.currentTurn
+    if (!config.strategies.purgeErrors.enabled) {
+        return 0
+    }
 
-    let prunedCount = 0
+    const allToolIds = state.toolIdList
+    if (allToolIds.length === 0) {
+        return 0
+    }
 
-    for (const msg of messages) {
-        const parts = Array.isArray(msg.parts) ? msg.parts : []
-        for (const part of parts) {
-            if (part.type !== "tool") continue
+    const unprunedIds = allToolIds.filter((id) => !state.prune.tools.has(id))
 
-            const toolPart = part as {
-                type: "tool"
-                tool: string
-                callID: string
-                state: { status: string }
-            }
+    if (unprunedIds.length === 0) {
+        return 0
+    }
 
-            if (toolPart.state.status !== "error") continue
-            if (protectedTools.has(toolPart.tool)) continue
+    const protectedTools = config.strategies.purgeErrors.protectedTools
+    const turnThreshold = Math.max(1, config.strategies.purgeErrors.turns)
 
-            const msgTurn = (msg.info as { time?: { created?: number } }).time?.created ?? 0
-            const turnsAgo = currentTurn - msgTurn
-            if (turnsAgo < turnThreshold) continue
+    const newPruneIds: string[] = []
 
-            state.prune.tools.set(toolPart.callID, 1)
-            prunedCount++
-            logger.debug("Marked errored tool input for pruning", {
-                tool: toolPart.tool,
-                callID: toolPart.callID,
-                turnsAgo,
-            })
+    for (const id of unprunedIds) {
+        const metadata = state.toolParameters.get(id)
+        if (!metadata) {
+            continue
+        }
+
+        if (isToolNameProtected(metadata.tool, protectedTools)) {
+            continue
+        }
+
+        const filePaths = getFilePathsFromParameters(metadata.tool, metadata.parameters)
+        if (isFilePathProtected(filePaths, config.protectedFilePatterns)) {
+            continue
+        }
+
+        if (metadata.status !== "error") {
+            continue
+        }
+
+        const turnAge = state.currentTurn - metadata.turn
+        if (turnAge >= turnThreshold) {
+            newPruneIds.push(id)
         }
     }
 
-    return prunedCount
+    if (newPruneIds.length > 0) {
+        state.stats.totalPruneTokens += getTotalToolTokens(state, newPruneIds)
+        for (const id of newPruneIds) {
+            const entry = state.toolParameters.get(id)
+            state.prune.tools.set(id, entry?.tokenCount ?? 0)
+        }
+        logger.debug(
+            `Marked ${newPruneIds.length} error tool calls for pruning (older than ${turnThreshold} turns)`,
+        )
+    }
+
+    return newPruneIds.length
 }
