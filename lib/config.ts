@@ -213,7 +213,7 @@ const defaultConfig: PluginConfig = {
         maxOldGenSummaryLength: 3000,
         majorGcThresholdPercent: "100%",
         batchCleanup: {
-            lowThreshold: "60%",
+            lowThreshold: "55%",
             highThreshold: "75%",
             forceThreshold: "90%",
         },
