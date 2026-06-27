@@ -22,27 +22,50 @@ The model decides <em>when</em> and <em>what</em> to compress — not a hard lim
 
 ## Why ACP
 
-ACP started as a hardened fork of [DCP](https://github.com/Tarquinen/opencode-dynamic-context-pruning), but has since diverged so far that the original is now a small subset. On top of **37 bug fixes** that make the core stable enough for production, ACP adds capabilities DCP never had — most importantly, it hands the model full control over the block lifecycle: it can **compress**, **decompress** (restore) *and* **mark for deletion** on its own, instead of only creating blocks and waiting for blind garbage collection.
+ACP is **model-driven context management** for OpenCode. Instead of passively
+truncating at a hard limit, it exposes tools that let the model decide **when**
+and **what** to compress — producing high-fidelity summaries of completed
+segments while freeing context space. The model controls what to keep, which is
+strictly better than blind truncation.
 
-| | DCP (original) | ACP (this fork) |
+### What makes ACP different
+
+- **Full block lifecycle, model-driven.** The model can `compress` a range into a
+  summary, `decompress` to restore any block on demand, and `mark_block` /
+  `unmark_block` to flag blocks for deferred deletion. The model owns its own
+  context lifecycle — not just "create a block and hope GC handles it".
+- **Cache-aware by design.** Summaries merge into existing user turns and batch
+  cleanup does a *single* cache break, so prefix-cache hit ratios stay near **90%**
+  even when sessions run at 70%+ context utilization (see [Proven at scale](#proven-at-scale)).
+- **Pressure-aware GC.** Instead of blind age-based truncation that silently
+  drops important info (task IDs, file paths, decisions), ACP consolidates marked
+  blocks first and demotes blind truncation to a last-resort fallback at 100%.
+- **Two compression modes.** *Range* mode (contiguous spans → block summaries)
+  and *message* mode (surgical per-message summaries for scattered content).
+- **Protected content.** Tool outputs, file patterns, and user messages you mark
+  protected are injected into summaries, so nothing critical is ever lost.
+- **Automatic strategies.** Deduplication (same tool + args → keep last) and
+  purge-errors (drop errored inputs after N turns), recalculated on compress —
+  not on every turn.
+- **Production-grade configuration.** 3-layer merge (global → config-dir →
+  project), per-model context-limit overrides, and user-editable prompts.
+
+### A hardened fork of DCP
+
+ACP started as a fork of [DCP](https://github.com/Tarquinen/opencode-dynamic-context-pruning)
+and now diverges so far that the original is a small subset. Beyond the features
+above, it ships **37 bug fixes** that make the core production-stable — state
+persistence across restarts, real token reporting (was returning 0), GC
+deactivation, reversed-boundary auto-recovery, 268× logger/tokenizer speedup,
+dialog-role confusion fixes, and skipping OpenCode's internal title/summary
+agents so session titles keep generating. Core deltas vs the original:
+
+| | DCP (original) | ACP |
 |---|---|---|
-| **Max stable session** | ~200 messages | 10,000+ messages |
-| **Per-turn overhead** | 20 -- 50 seconds | ~90ms |
-| **State persistence** | Lost on restart | Survives restart |
-| **Bug fixes vs DCP** | -- | 37 (state, tokens, GC, boundaries, roles, ...) |
-| **Compression modes** | range only | range + message (surgical per-message) |
-| **Compress reliability** | Fails on reversed boundaries; model gives up | Auto-recovers reversed boundaries; nested summaries preserve info across layers |
-| **Decompression** | Not exposed to the model | **Model-driven** -- the model calls `decompress` to restore any block on demand |
-| **Block cleanup / deletion** | None -- blocks only accumulate until blind age-based GC truncates them | **Model-driven** `mark_block` / `unmark_block` + 3-tier pressure-aware batch merge (one cache break, preserves info instead of blind truncation) |
-| **GC strategy** | Blind age-based truncation, fires even at low pressure -- loses important info (task IDs, etc.) | Pressure-aware batch consolidation first; blind truncation demoted to last-resort fallback at 100% |
-| **Protected content** | -- | Protected tool outputs, file patterns, and user messages are injected into summaries so nothing critical is ever lost |
-| **Prompt-cache impact** | Uncontrolled | Cache-aware -- summaries merged into existing turns; batch cleanup does a single cache break |
-| **Automatic strategies** | -- | Deduplication + purge-errors (recalculated on compress, not every turn) |
-| **Configuration** | Flat | 3-layer merge (global -> config-dir -> project) + per-model context-limit overrides + user-editable prompts |
-
-> **Active** means the model proactively decides *when* and *what* to compress -- as opposed to passive approaches that only react when context hits a hard limit. The model uses the `compress` tool to produce high-fidelity summaries of completed conversation segments, preserving important details while freeing context space. This is superior to passive truncation because the model controls what information to keep.
-
-Key fixes include: state persistence across restarts, token usage reporting (was returning 0), summary message ID resolution, GC age-based deactivation, 268x logger/tokenizer speedup, auto-swap for reversed compress boundaries, aging warning suppression at low context usage, compression summary merged into the following user turn (prevents dialog role confusion / self-Q&A loops), and skipping OpenCode's internal title/summary/compaction agents so session title generation keeps working.
+| **Max stable session** | ~200 messages | 10,000+ |
+| **Per-turn overhead** | 20 – 50 s | ~90 ms |
+| **Model-driven decompress + block cleanup** | No | Yes |
+| **State survives restart** | No | Yes |
 
 ---
 
@@ -54,22 +77,23 @@ from a single developer workstation (1,445 sessions, 69,097 model turns):
 | Metric | Value |
 |--------|-------|
 | Total tokens processed (incl. prompt-cache reads) | **6.17 billion** |
-| Billable tokens (input + output + reasoning) | **828 million** |
-| Prompt-cache hit tokens | 5.34 billion |
-| Average prompt-cache hit ratio | ~87% |
+| Billable tokens (input + output + reasoning) | 828 million |
+| Prompt-cache hit ratio (average) | ~87% |
 | Compression blocks created (all-time) | 4,894 |
-| Tokens reclaimed by compression | 61.8 million |
 
-Two representative heavy sessions:
+Two representative heavy sessions (anonymized) — the headline number is **total
+tokens pushed through the model**, not peak context:
 
-| Session | Span | Turns | Input tokens | Cache reads | Cache hit | Peak context |
-|---------|------|-------|--------------|-------------|-----------|--------------|
-| compute-problem | 6 days | 2,694 | 80.0 M | 502 M | 86.2% | 488 K (49% of 1 M) |
-| model-editing | 2 days | 1,536 | 50.9 M | 412 M | 89.0% | 769 K (77% of 1 M) |
+| Session | Span | Turns | **Total tokens** | Cache hit | Context p50 | Context p95 | Peak |
+|---------|------|-------|------------------|-----------|-------------|-------------|------|
+| Session 1 | 6 days | 2,694 | **582 M** | 86.2% | 1.2 K (<1%) | 251 K (25%) | 488 K (49%) |
+| Session 2 | 2 days | 1,536 | **463 M** | 89.0% | 1.8 K (<1%) | 335 K (34%) | 769 K (77%) |
 
-Even at **77% context utilization** the prefix-cache hit ratio stays near **90%** --
-this is the payoff of ACP's cache-aware compression: it prunes from the tail
-(preserving the shared prefix) instead of truncating blindly.
+The picture this paints: the *median* turn is tiny (short tool exchanges), but
+the heavy turns regularly reach **250K–335K context (25–34% of the 1M window)**
+and occasionally spike to **49–77%**. Even at those spikes the prefix-cache hit
+ratio stays near **90%** — the payoff of ACP's cache-aware compression, which
+prunes from the tail (preserving the shared prefix) instead of truncating blindly.
 
 ---
 
