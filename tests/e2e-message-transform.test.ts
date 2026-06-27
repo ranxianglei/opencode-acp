@@ -608,7 +608,7 @@ test("compression summary: emits standalone summary when range is last (no user 
 
 // ─── Test: Tool output pruning ───────────────────────────────────────────────
 
-test("prune: pruned tool outputs are replaced with placeholder", async () => {
+test("prune: pruned tool outputs are preserved (prefix cache fix)", async () => {
     const { state, handler } = setupPipeline()
 
     const callID = "call-read-1"
@@ -631,8 +631,8 @@ test("prune: pruned tool outputs are replaced with placeholder", async () => {
     assert.ok(tool, "tool part should be present")
     const toolOutput = (tool as any).state.output as string
     assert.ok(
-        toolOutput.startsWith("[Output removed to save context - information superseded or no longer needed]"),
-        `tool output should be replaced, got: ${toolOutput}`,
+        !toolOutput.includes("[Output removed"),
+        `tool output should be preserved, got: ${toolOutput}`,
     )
 })
 

@@ -389,7 +389,7 @@ ACP auto-migrates config from `dcp.jsonc` to `acp.jsonc` and prompts from `dcp-p
 ---
 
 <details>
-<summary><strong>Bug Fixes (37 total)</strong> -- applied on top of DCP v3.1.11</summary>
+<summary><strong>Bug Fixes (38 total)</strong> -- applied on top of DCP v3.1.11</summary>
 
 | # | Severity | Summary |
 |---|----------|---------|
@@ -419,6 +419,7 @@ ACP auto-migrates config from `dcp.jsonc` to `acp.jsonc` and prompts from `dcp-p
 | 35 | HIGH | Aging warnings shown at low context usage (<50%) -- triggers unnecessary compress, wastes tokens |
 | 36 | HIGH | Compression summary emitted as a standalone user message before the user's real turn -- model reads its own prior assistant output as user input, causing dialog role confusion / self-Q&A loops |
 | 37 | HIGH | Message-transform pipeline runs on OpenCode's hidden title/summary/compaction agent requests -- corrupts the request and shared session state, breaking session title generation |
+| 38 | CRITICAL | pruneToolOutputs/pruneToolInputs/pruneToolErrors mutate existing messages in-place -- invalidates LLM prefix cache, causing 89% of fresh input tokens to be wasted on cache-invalidating re-sends |
 
 For the complete list with root cause analysis, see the [bug tracker](https://github.com/ranxianglei/opencode-acp/issues).
 

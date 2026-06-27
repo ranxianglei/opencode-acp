@@ -305,7 +305,7 @@ test("block aging: old blocks are deactivated by major GC", async () => {
 
 // ─── Test: Tool error input pruning ─────────────────────────────────────────
 
-test("tool error pruning: error tool inputs are replaced with placeholder", async () => {
+test("tool error pruning: error tool inputs are preserved (prefix cache fix)", async () => {
     const { state, handler } = setupPipeline()
 
     const callID = "call-bash-err"
@@ -332,8 +332,8 @@ test("tool error pruning: error tool inputs are replaced with placeholder", asyn
 
     const toolState = (tool as any).state
     assert.equal(toolState.status, "error")
-    assert.equal(toolState.input.command, "[input removed due to failed tool call]")
-    assert.equal(toolState.input.cwd, "[input removed due to failed tool call]")
+    assert.equal(toolState.input.command, "rm -rf /")
+    assert.equal(toolState.input.cwd, "/home/user")
 })
 
 // ─── Test: Session switch resets state ──────────────────────────────────────
