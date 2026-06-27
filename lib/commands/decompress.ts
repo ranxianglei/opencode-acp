@@ -1,9 +1,11 @@
-import type { Logger } from "../logger"
-import type { SessionState, WithParts } from "../state"
-import { syncCompressionBlocks } from "../messages"
-import { getCurrentParams } from "../token-utils"
-import { sendIgnoredMessage } from "../ui/notification"
+import type { CommandContext, CommandResult } from "./types"
+import type { Logger } from "../infra/logger"
+import type { SessionState, WithParts } from "../state/types"
+import { deactivateBlock } from "../state/mutations/blocks"
+import { getActiveBlocks } from "../state/queries"
 import { formatTokenCount } from "../ui/utils"
+import { saveSessionState } from "../state/persistence"
+import { syncCompressionBlocks } from "../messages/sync"
 import {
     getActiveCompressionTargets,
     resolveCompressionTarget,
@@ -17,7 +19,6 @@ import {
     computeRestoredMessages,
     computeReactivatedBlockIds,
 } from "../compress/decompress-logic"
-import { saveSessionState } from "../state/persistence"
 
 export interface DecompressCommandContext {
     client: any
@@ -26,6 +27,27 @@ export interface DecompressCommandContext {
     sessionId: string
     messages: WithParts[]
     args: string[]
+}
+
+async function sendIgnoredMessage(
+    client: any,
+    sessionId: string,
+    text: string,
+    logger: Logger,
+): Promise<void> {
+    try {
+        if (client?.session?.prompt) {
+            await client.session.prompt({
+                body: { parts: [{ text }] },
+            })
+        } else if (client?.session?.createMessage) {
+            await client.session.createMessage({
+                message: { sessionID: sessionId, role: "user", content: text },
+            })
+        }
+    } catch (err) {
+        logger.debug("Failed to send ignored message", { err: String(err) })
+    }
 }
 
 function formatDecompressMessage(
@@ -68,18 +90,13 @@ function formatAvailableBlocksMessage(availableTargets: CompressionTarget[]): st
     }
 
     lines.push("Available compressions:")
-    const entries = availableTargets.map((target) => {
+    for (const target of availableTargets) {
         const topic = target.topic.replace(/\s+/g, " ").trim() || "(no topic)"
         const label = `${target.displayId} (${formatTokenCount(target.compressedTokens)})`
         const details = target.grouped
             ? `Compression #${target.runId} - ${target.blocks.length} messages`
             : `Compression #${target.runId}`
-        return { label, topic: `${details} - ${topic}` }
-    })
-
-    const labelWidth = Math.max(...entries.map((entry) => entry.label.length)) + 4
-    for (const entry of entries) {
-        lines.push(`  ${entry.label.padEnd(labelWidth)}${entry.topic}`)
+        lines.push(`  ${label}  ${details} - ${topic}`)
     }
 
     return lines.join("\n")
@@ -88,7 +105,6 @@ function formatAvailableBlocksMessage(availableTargets: CompressionTarget[]): st
 export async function handleDecompressCommand(ctx: DecompressCommandContext): Promise<void> {
     const { client, state, logger, sessionId, messages, args } = ctx
 
-    const params = getCurrentParams(state, messages, logger)
     const targetArg = args[0]
 
     if (args.length > 1) {
@@ -96,7 +112,6 @@ export async function handleDecompressCommand(ctx: DecompressCommandContext): Pr
             client,
             sessionId,
             "Invalid arguments. Usage: /acp decompress <n>",
-            params,
             logger,
         )
         return
@@ -108,7 +123,7 @@ export async function handleDecompressCommand(ctx: DecompressCommandContext): Pr
     if (!targetArg) {
         const availableTargets = getActiveCompressionTargets(messagesState)
         const message = formatAvailableBlocksMessage(availableTargets)
-        await sendIgnoredMessage(client, sessionId, message, params, logger)
+        await sendIgnoredMessage(client, sessionId, message, logger)
         return
     }
 
@@ -118,7 +133,6 @@ export async function handleDecompressCommand(ctx: DecompressCommandContext): Pr
             client,
             sessionId,
             `Please enter a compression number. Example: /acp decompress 2`,
-            params,
             logger,
         )
         return
@@ -130,7 +144,6 @@ export async function handleDecompressCommand(ctx: DecompressCommandContext): Pr
             client,
             sessionId,
             `Compression ${targetBlockId} does not exist.`,
-            params,
             logger,
         )
         return
@@ -144,7 +157,6 @@ export async function handleDecompressCommand(ctx: DecompressCommandContext): Pr
                 client,
                 sessionId,
                 `Compression ${target.displayId} is inside compression ${activeAncestorBlockId}. Restore compression ${activeAncestorBlockId} first.`,
-                params,
                 logger,
             )
             return
@@ -154,7 +166,6 @@ export async function handleDecompressCommand(ctx: DecompressCommandContext): Pr
             client,
             sessionId,
             `Compression ${target.displayId} is not active.`,
-            params,
             logger,
         )
         return
@@ -184,13 +195,87 @@ export async function handleDecompressCommand(ctx: DecompressCommandContext): Pr
         restoredTokens,
         reactivatedBlockIds,
     )
-    await sendIgnoredMessage(client, sessionId, message, params, logger)
-
-    logger.info("Decompress command completed", {
-        targetBlockId: target.displayId,
-        targetRunId: target.runId,
-        restoredMessageCount,
-        restoredTokens,
-        reactivatedBlockIds,
-    })
+    await sendIgnoredMessage(client, sessionId, message, logger)
 }
+
+export function decompressCommand(ctx: CommandContext): CommandResult {
+    const { state, args, logger } = ctx
+
+    if (args.length === 0) {
+        return { output: listDecompressible(state) }
+    }
+
+    const parsed = parseBlockIds(args)
+    if (parsed.invalid.length > 0) {
+        return {
+            output: `Invalid block id(s): ${parsed.invalid.join(", ")}. Block ids must be numbers (e.g. \`/acp decompress 3\`).`,
+            isError: true,
+        }
+    }
+
+    const lines: string[] = ["**Decompress**", ""]
+    let succeeded = 0
+    for (const id of parsed.valid) {
+        const block = state.prune.messages.blocksById.get(id)
+        if (!block) {
+            lines.push(`- b${id}: not found`)
+            continue
+        }
+        if (!block.active) {
+            lines.push(`- b${id}: already inactive (decompressed or consumed)`)
+            continue
+        }
+        const ok = deactivateBlock(state, id, { byUser: true })
+        if (ok) {
+            succeeded++
+            lines.push(`- b${id}: restored (${formatTokenCount(block.compressedTokens)} tokens)`)
+            logger.info("block decompressed by user", { blockId: id })
+        } else {
+            lines.push(`- b${id}: failed to deactivate`)
+        }
+    }
+
+    lines.push("")
+    lines.push(`Decompressed ${succeeded} of ${parsed.valid.length} block(s).`)
+
+    return { output: lines.join("\n") }
+}
+
+function listDecompressible(state: CommandContext["state"]): string {
+    const active = getActiveBlocks(state)
+    const lines: string[] = ["**Available compressions to decompress**", ""]
+    if (active.length === 0) {
+        lines.push("No active compression blocks.")
+        return lines.join("\n")
+    }
+    const sorted = [...active].sort((a, b) => a.blockId - b.blockId)
+    lines.push("id | tokens | topic")
+    for (const block of sorted) {
+        lines.push(`- b${block.blockId}: ${formatTokenCount(block.compressedTokens)} | ${block.topic || "untitled"}`)
+    }
+    lines.push("")
+    lines.push("Use \`/acp decompress <id>\` to restore a block (accepts multiple ids).")
+    return lines.join("\n")
+}
+
+interface ParsedIds {
+    valid: number[]
+    invalid: string[]
+}
+
+function parseBlockIds(args: string[]): ParsedIds {
+    const valid: number[] = []
+    const invalid: string[] = []
+    for (const raw of args) {
+        const trimmed = raw.replace(/^b/i, "").trim()
+        const id = Number.parseInt(trimmed, 10)
+        if (Number.isNaN(id) || !/^\d+$/.test(trimmed)) {
+            invalid.push(raw)
+        } else {
+            valid.push(id)
+        }
+    }
+    return { valid, invalid }
+}
+
+export { parseBlockIds }

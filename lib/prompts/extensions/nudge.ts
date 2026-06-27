@@ -1,70 +1,96 @@
-import type { SessionState, CompressionBlock } from "../../state"
-import type { GCConfig } from "../../config"
+import type { SessionState, CompressionBlock } from "../../state/types"
+import type { PluginConfig } from "../../config/types"
+import type { WithParts } from "../../state/types"
+import type { Logger } from "../../infra/logger"
+import { getActiveBlocks } from "../../state/queries"
 
-export interface BlockGuidanceContext {
-    currentTokens?: number
-    modelContextLimit?: number
+const AGING_WARNING_THRESHOLD_PERCENT = 50
+
+export function shouldShowAgingWarning(
+    config: PluginConfig,
+    state: SessionState,
+): boolean {
+    if (state.modelContextLimit === undefined || state.modelContextLimit <= 0) {
+        return false
+    }
+
+    const usagePercent = (getCurrentTokenEstimate(state) / state.modelContextLimit) * 100
+    return usagePercent >= AGING_WARNING_THRESHOLD_PERCENT
 }
 
-export function buildCompressedBlockGuidance(
+function getCurrentTokenEstimate(state: SessionState): number {
+    return state.stats.pruneTokenCounter
+}
+
+export function renderAgingWarning(
     state: SessionState,
-    gcConfig?: GCConfig,
-    context?: BlockGuidanceContext,
+    logger?: Logger,
 ): string {
-    const activeBlockIds = Array.from(state.prune.messages.activeBlockIds)
-        .filter((id) => Number.isInteger(id) && id > 0)
-        .sort((a, b) => a - b)
+    const oldGenBlocks = getOldGenBlocks(state)
+    const youngGenBlocks = getYoungGenBlocks(state)
 
-    const refs = activeBlockIds.map((id) => `b${id}`)
-    const blockCount = refs.length
-    const blockList = blockCount > 0 ? refs.join(", ") : "none"
+    if (oldGenBlocks.length === 0 && youngGenBlocks.length === 0) {
+        return ""
+    }
 
-    const lines = [
-        "Compressed block context:",
-        `- Active compressed blocks: ${blockCount} (${blockList})`,
-        "- If your selected compression range includes any listed block, include each required placeholder exactly once in the summary using `(bN)`.",
-    ]
+    const lines: string[] = []
 
-    // [FIX Bug 35] Only show aging warnings when context usage is above 50%.
-    // Showing warnings at low usage causes unnecessary compress operations that
-    // waste tokens and attention — the model preemptively re-summarizes blocks
-    // that aren't actually at risk of GC truncation.
-    const usageRatio =
-        context?.currentTokens && context?.modelContextLimit
-            ? context.currentTokens / context.modelContextLimit
-            : 0
+    if (oldGenBlocks.length > 0) {
+        const blockIds = oldGenBlocks.map((b) => `b${b.blockId}`).join(", ")
+        lines.push(
+            `Old-generation blocks at risk of GC truncation: ${blockIds}. ` +
+                `If these blocks contain details you still need, consider re-summarizing them into a fresh range before they are truncated.`,
+        )
+    }
 
-    if (gcConfig && usageRatio > 0.5) {
-        const promotionThreshold = gcConfig.promotionThreshold
-        const agingBlocks: string[] = []
-
-        for (const blockId of activeBlockIds) {
-            const block = state.prune.messages.blocksById.get(blockId)
-            if (!block) continue
-
-            const survived = block.survivedCount ?? 0
-            const gen = block.generation ?? "young"
-            const sizeK = (block.summary.length / 1000).toFixed(1)
-            const preview = block.summary.slice(0, 120).replace(/\n/g, " ")
-
-            if (gen === "old" || survived >= promotionThreshold - 2) {
-                agingBlocks.push(
-                    `  b${blockId}: age=${survived}/${promotionThreshold}, gen=${gen}, size=${sizeK}K chars — ${preview}...`,
-                )
-            }
-        }
-
-        if (agingBlocks.length > 0) {
-            lines.push("")
-            lines.push("⚠️ Block aging warning — these blocks may be truncated by GC soon:")
-            lines.push(...agingBlocks)
-            lines.push(
-                "To preserve important content: use the compress tool to re-summarize these blocks into new concise ones. Unhandled blocks will be auto-truncated.",
-            )
-        }
+    if (youngGenBlocks.length > 0 && youngGenBlocks.some((b) => b.survivedCount >= 3)) {
+        const atRisk = youngGenBlocks.filter((b) => b.survivedCount >= 3)
+        const blockIds = atRisk.map((b) => `b${b.blockId}`).join(", ")
+        lines.push(
+            `Blocks approaching old-generation promotion: ${blockIds}. ` +
+                `These will soon be eligible for summary truncation.`,
+        )
     }
 
     return lines.join("\n")
+}
+
+function getOldGenBlocks(state: SessionState): CompressionBlock[] {
+    const result: CompressionBlock[] = []
+    for (const block of state.prune.messages.blocksById.values()) {
+        if (block.active && block.generation === "old") {
+            result.push(block)
+        }
+    }
+    return result
+}
+
+function getYoungGenBlocks(state: SessionState): CompressionBlock[] {
+    const result: CompressionBlock[] = []
+    for (const block of state.prune.messages.blocksById.values()) {
+        if (block.active && block.generation !== "old") {
+            result.push(block)
+        }
+    }
+    return result
+}
+
+export function renderPriorityGuidance(
+    config: PluginConfig,
+    messages: WithParts[],
+): string {
+    const protectedTools = new Set(config.compress.protectedTools)
+    const hasProtectedContent = messages.some((msg) =>
+        msg.parts.some(
+            (part) => part.type === "tool" && protectedTools.has((part as { tool: string }).tool),
+        ),
+    )
+
+    if (!hasProtectedContent) {
+        return ""
+    }
+
+    return `Priority guidance: Messages containing protected tool calls (${[...protectedTools].join(", ")}) are marked BLOCKED and will never be compressed. Prioritize compressing other content first.`
 }
 
 export function renderMessagePriorityGuidance(priorityLabel: string, refs: string[]): string {

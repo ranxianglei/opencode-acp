@@ -1,15 +1,5 @@
-import type { SessionState } from "../state"
+import type { SessionState } from "../state/types"
 import { isIgnoredUserMessage } from "../messages/query"
-import {
-    getFilePathsFromParameters,
-    isFilePathProtected,
-    isToolNameProtected,
-} from "../protected-patterns"
-import {
-    buildSubagentResultText,
-    getSubAgentId,
-    mergeSubagentResult,
-} from "../subagents/subagent-results"
 import { fetchSessionMessages } from "./search"
 import type { SearchContext, SelectionResolution } from "./types"
 
@@ -37,8 +27,9 @@ export function appendProtectedUserMessages(
 
         const parts = Array.isArray(message.parts) ? message.parts : []
         for (const part of parts) {
-            if (part.type === "text" && typeof part.text === "string" && part.text.trim()) {
-                userTexts.push(part.text)
+            const p = part as { type?: string; text?: unknown }
+            if (p.type === "text" && typeof p.text === "string" && p.text.trim()) {
+                userTexts.push(p.text)
                 break
             }
         }
@@ -77,9 +68,10 @@ export function appendProtectedPromptInfo(
 
         const parts = Array.isArray(message.parts) ? message.parts : []
         for (const part of parts) {
-            if (part.type !== "text" || typeof part.text !== "string") continue
+            const p = part as { type?: string; text?: unknown }
+            if (p.type !== "text" || typeof p.text !== "string") continue
 
-            protectedTexts.push(...extractProtectedPromptInfo(part.text))
+            protectedTexts.push(...extractProtectedPromptInfo(p.text))
         }
     }
 
@@ -107,6 +99,71 @@ export function extractProtectedPromptInfo(text: string): string[] {
     return protectedTexts
 }
 
+function isToolNameProtected(toolName: string, protectedTools: string[]): boolean {
+    if (!Array.isArray(protectedTools)) return false
+    if (protectedTools.length === 0) return false
+    if (protectedTools.includes(toolName)) return true
+    return protectedTools.some((pattern) => {
+        if (!pattern.includes("*")) return false
+        const regexStr = pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*")
+        return new RegExp(`^${regexStr}$`).test(toolName)
+    })
+}
+
+function getFilePathsFromParameters(toolName: string, input: unknown): string[] {
+    if (!input || typeof input !== "object") return []
+    const obj = input as Record<string, unknown>
+    const paths: string[] = []
+    for (const key of ["filePath", "path", "file", "fileName"]) {
+        const v = obj[key]
+        if (typeof v === "string") paths.push(v)
+    }
+    return paths
+}
+
+function isFilePathProtected(filePaths: string[], patterns: string[]): boolean {
+    if (!patterns || patterns.length === 0) return false
+    for (const fp of filePaths) {
+        for (const pattern of patterns) {
+            if (!pattern) continue
+            if (pattern.includes("*")) {
+                const regexStr = pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*")
+                if (new RegExp(`^${regexStr}$`).test(fp)) return true
+            } else if (fp === pattern || fp.includes(pattern)) {
+                return true
+            }
+        }
+    }
+    return false
+}
+
+function getSubAgentId(part: any): string | null {
+    const output = part?.state?.output
+    if (typeof output !== "string") return null
+    const match = output.match(/ses_[A-Za-z0-9_-]+/)
+    return match ? match[0] : null
+}
+
+function buildSubagentResultText(messages: any[]): string {
+    const assistantTexts: string[] = []
+    for (const msg of messages) {
+        if (!msg || msg.info?.role !== "assistant") continue
+        const parts = Array.isArray(msg.parts) ? msg.parts : []
+        for (const part of parts) {
+            const p = part as { type?: string; text?: unknown }
+            if (p.type === "text" && typeof p.text === "string" && p.text.trim()) {
+                assistantTexts.push(p.text)
+            }
+        }
+    }
+    return assistantTexts.join("\n\n")
+}
+
+function mergeSubagentResult(originalOutput: string, subAgentResult: string): string {
+    if (!subAgentResult) return originalOutput
+    return `${originalOutput}\n\n--- Sub-agent result ---\n${subAgentResult}`
+}
+
 export async function appendProtectedTools(
     client: any,
     state: SessionState,
@@ -130,70 +187,71 @@ export async function appendProtectedTools(
 
         const parts = Array.isArray(message.parts) ? message.parts : []
         for (const part of parts) {
-            if (part.type === "tool" && part.callID) {
-                let isToolProtected = isToolNameProtected(part.tool, protectedTools)
+            const p = part as { type?: string; callID?: string; tool?: string; state?: any }
+            if (p.type !== "tool" || !p.callID) continue
 
-                if (!isToolProtected && protectedFilePatterns.length > 0) {
-                    const filePaths = getFilePathsFromParameters(part.tool, part.state?.input)
-                    if (isFilePathProtected(filePaths, protectedFilePatterns)) {
-                        isToolProtected = true
-                    }
+            let isToolProtected = isToolNameProtected(p.tool || "", protectedTools)
+
+            if (!isToolProtected && protectedFilePatterns.length > 0) {
+                const filePaths = getFilePathsFromParameters(p.tool || "", p.state?.input)
+                if (isFilePathProtected(filePaths, protectedFilePatterns)) {
+                    isToolProtected = true
+                }
+            }
+
+            if (isToolProtected) {
+                const title = `Tool: ${p.tool}`
+                let output = ""
+
+                if (p.state?.status === "completed" && p.state?.output) {
+                    output =
+                        typeof p.state.output === "string"
+                            ? p.state.output
+                            : JSON.stringify(p.state.output)
                 }
 
-                if (isToolProtected) {
-                    const title = `Tool: ${part.tool}`
-                    let output = ""
+                if (
+                    allowSubAgents &&
+                    p.tool === "task" &&
+                    p.state?.status === "completed" &&
+                    typeof p.state?.output === "string"
+                ) {
+                    const cachedSubAgentResult = state.subAgentResultCache.get(p.callID)
 
-                    if (part.state?.status === "completed" && part.state?.output) {
-                        output =
-                            typeof part.state.output === "string"
-                                ? part.state.output
-                                : JSON.stringify(part.state.output)
-                    }
-
-                    if (
-                        allowSubAgents &&
-                        part.tool === "task" &&
-                        part.state?.status === "completed" &&
-                        typeof part.state?.output === "string"
-                    ) {
-                        const cachedSubAgentResult = state.subAgentResultCache.get(part.callID)
-
-                        if (cachedSubAgentResult !== undefined) {
-                            if (cachedSubAgentResult) {
-                                output = mergeSubagentResult(
-                                    part.state.output,
-                                    cachedSubAgentResult,
+                    if (cachedSubAgentResult !== undefined) {
+                        if (cachedSubAgentResult) {
+                            output = mergeSubagentResult(
+                                p.state.output,
+                                cachedSubAgentResult,
+                            )
+                        }
+                    } else {
+                        const subAgentSessionId = getSubAgentId(part)
+                        if (subAgentSessionId) {
+                            let subAgentResultText = ""
+                            try {
+                                const subAgentMessages = await fetchSessionMessages(
+                                    client,
+                                    subAgentSessionId,
                                 )
+                                subAgentResultText = buildSubagentResultText(subAgentMessages)
+                            } catch {
+                                subAgentResultText = ""
                             }
-                        } else {
-                            const subAgentSessionId = getSubAgentId(part)
-                            if (subAgentSessionId) {
-                                let subAgentResultText = ""
-                                try {
-                                    const subAgentMessages = await fetchSessionMessages(
-                                        client,
-                                        subAgentSessionId,
-                                    )
-                                    subAgentResultText = buildSubagentResultText(subAgentMessages)
-                                } catch {
-                                    subAgentResultText = ""
-                                }
 
-                                if (subAgentResultText) {
-                                    state.subAgentResultCache.set(part.callID, subAgentResultText)
-                                    output = mergeSubagentResult(
-                                        part.state.output,
-                                        subAgentResultText,
-                                    )
-                                }
+                            if (subAgentResultText) {
+                                state.subAgentResultCache.set(p.callID, subAgentResultText)
+                                output = mergeSubagentResult(
+                                    p.state.output,
+                                    subAgentResultText,
+                                )
                             }
                         }
                     }
+                }
 
-                    if (output) {
-                        protectedOutputs.push(`\n### ${title}\n${output}`)
-                    }
+                if (output) {
+                    protectedOutputs.push(`\n### ${title}\n${output}`)
                 }
             }
         }

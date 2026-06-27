@@ -1,243 +1,240 @@
 import { createHash } from "node:crypto"
-import type { SessionState, WithParts } from "../state"
-import { isMessageCompacted } from "../state/utils"
-import type { UserMessage } from "@opencode-ai/sdk/v2"
+import type { PluginConfig } from "../config/types"
+import type { SessionState, WithParts } from "../state/types"
+import type { Message, Part, TextPart, ToolPart, UserMessage } from "@opencode-ai/sdk/v2"
+import { countTokensSync } from "../infra/token-counter"
 
-const SUMMARY_ID_HASH_LENGTH = 16
+const PAIRED_DCP_TAG = /<dcp[^>]*>[\s\S]*?<\/dcp[^>]*>/g
+const ORPHAN_OPEN_DCP_TAG = /<dcp[^>]*>/g
+const ORPHAN_CLOSE_DCP_TAG = /<\/?dcp[^>]*>/gi
+// [FIX] Only strip message-ref tags (m\d+) — block-id tags (b\d+) must survive
+// prune so they can be marked BLOCKED in message mode or preserved in range mode.
+const MESSAGE_REF_TAG = /<dcp-message-id(?=[\s>])[^>]*>m\d+<\/dcp-message-id>/g
+// Matches block-id tags regardless of attribute prefix, e.g. <dcp-message-id>b7</dcp-message-id>
+// or <dcp-message-id priority="high">b7</dcp-message-id>. Used to mark them BLOCKED.
+const BLOCK_REF_IN_TAG = /(<dcp-message-id(?=[\s>])[^>]*>)b\d+(<\/dcp-message-id>)/g
 
-// [FIX Bug 36] Delimiters wrapping a compression summary when it is merged into
-// an existing user message. The header embeds the block id so multiple blocks
-// landing on the same user message each get their own clearly delimited entry,
-// and so the prepend is idempotent across re-runs (guarded by the marker check).
-const MERGED_SUMMARY_HEADER = (blockId: number | string) =>
-    `[ACP compressed context summary (block ${blockId}) — prior conversation recap]\n`
-const MERGED_SUMMARY_FOOTER = `\n[End ACP compressed context summary]\n\n`
-const DCP_BLOCK_ID_TAG_REGEX = /(<dcp-message-id(?=[\s>])[^>]*>)b\d+(<\/dcp-message-id>)/g
-// [FIX Bug 28] Regex to strip stale mNNNN refs from compressed summaries
-const DCP_MESSAGE_REF_TAG_REGEX = /<dcp-message-id>m\d+<\/dcp-message-id>/g
-const DCP_PAIRED_TAG_REGEX = /<dcp[^>]*>[\s\S]*?<\/dcp[^>]*>/gi
-const DCP_UNPAIRED_TAG_REGEX = /<\/?dcp[^>]*>/gi
+export function stripHallucinationsFromString(text: string): string {
+    if (typeof text !== "string" || text === "") return text ?? ""
+    let result = text.replace(PAIRED_DCP_TAG, "")
+    result = result.replace(ORPHAN_OPEN_DCP_TAG, "")
+    result = result.replace(ORPHAN_CLOSE_DCP_TAG, "")
+    return result
+}
 
-const generateStableId = (prefix: string, seed: string): string => {
-    const hash = createHash("sha256").update(seed).digest("hex").slice(0, SUMMARY_ID_HASH_LENGTH)
+export function stripStaleMessageRefs(text: string): string {
+    if (typeof text !== "string" || text === "") return text ?? ""
+    // Only strip message-ref tags (m\d+). Block-id tags (b\d+) are preserved
+    // so the caller can decide to mark them BLOCKED (message mode) or keep
+    // them visible (range mode).
+    return text.replace(MESSAGE_REF_TAG, "")
+}
+
+export function replaceBlockIdsWithBlocked(text: string): string {
+    if (typeof text !== "string" || text === "") return text ?? ""
+    return text.replace(BLOCK_REF_IN_TAG, "$1BLOCKED$2")
+}
+
+export function stripHallucinations(messages: WithParts[]): void {
+    if (!Array.isArray(messages)) return
+    for (const msg of messages) {
+        if (!msg || !Array.isArray(msg.parts)) continue
+        for (const rawPart of msg.parts) {
+            if (!rawPart) continue
+            stripPart(rawPart)
+        }
+    }
+}
+
+function stripPart(part: Part): void {
+    if (part.type === "text") {
+        const textPart = part as TextPart
+        textPart.text = stripHallucinationsFromString(textPart.text)
+        return
+    }
+    if (part.type === "tool") {
+        const toolPart = part as ToolPart
+        const state = toolPart.state as { status?: string; output?: unknown }
+        if (state && typeof state.output === "string") {
+            state.output = stripHallucinationsFromString(state.output)
+        }
+    }
+}
+
+export function appendToLastTextPart(msg: WithParts, text: string): boolean {
+    if (!msg || !Array.isArray(msg.parts)) return false
+    for (let i = msg.parts.length - 1; i >= 0; i--) {
+        const part = msg.parts[i]
+        if (part && part.type === "text") {
+            return appendToTextPart(part, text)
+        }
+    }
+    return false
+}
+
+export function prependCompressionSummary(
+    msg: WithParts,
+    summary: string,
+    _blockId?: number,
+): boolean {
+    if (!msg || !msg.info) return false
+    if (msg.info.role !== "user") return false
+    if (!Array.isArray(msg.parts)) return false
+    for (const part of msg.parts) {
+        if (part && part.type === "text") {
+            const textPart = part as TextPart
+            textPart.text = summary + (textPart.text ?? "")
+            return true
+        }
+    }
+    return false
+}
+
+export function createSyntheticUserMessage(
+    base: WithParts,
+    summary: string,
+    seed: string | number,
+): WithParts {
+    const baseInfo = base.info as Message
+    const sessionID = baseInfo.sessionID ?? ""
+    const agent = (baseInfo as { agent?: string }).agent ?? "assistant"
+    const baseCreated = (baseInfo as { time?: { created?: number } }).time?.created ?? Date.now()
+    const seedStr = String(seed ?? baseInfo.id ?? "msg")
+    const id = makeStableId("msg_dcp_summary", seedStr)
+    const partId = makeStableId("prt_dcp_summary", seedStr)
+    const model = resolveUserModel(baseInfo)
+
+    const info: UserMessage = {
+        id,
+        sessionID,
+        role: "user",
+        time: { created: baseCreated },
+        agent,
+        model,
+    }
+
+    const summaryPart: TextPart = {
+        id: partId,
+        sessionID,
+        messageID: id,
+        type: "text",
+        text: summary,
+        synthetic: true,
+    }
+
+    return { info, parts: [summaryPart] }
+}
+
+function makeStableId(prefix: string, seed: string): string {
+    const hash = createHash("sha256").update(seed).digest("hex").slice(0, 16)
     return `${prefix}_${hash}`
 }
 
-export const createSyntheticUserMessage = (
-    baseMessage: WithParts,
-    content: string,
-    stableSeed?: string,
-): WithParts => {
-    const userInfo = baseMessage.info as UserMessage
-    const now = Date.now()
-    const deterministicSeed = stableSeed?.trim() || userInfo.id
-    const messageId = generateStableId("msg_dcp_summary", deterministicSeed)
-    const partId = generateStableId("prt_dcp_summary", deterministicSeed)
-
+function resolveUserModel(info: Message): { providerID: string; modelID: string } {
+    if (info.role === "user") {
+        const model = (info as { model?: { providerID?: string; modelID?: string } }).model
+        return {
+            providerID: model?.providerID ?? "",
+            modelID: model?.modelID ?? "",
+        }
+    }
+    const assistant = info as Partial<{ modelID: string; providerID: string }>
     return {
-        info: {
-            id: messageId,
-            sessionID: userInfo.sessionID,
-            role: "user" as const,
-            agent: userInfo.agent,
-            model: userInfo.model,
-            time: { created: now },
-        },
-        parts: [
-            {
-                id: partId,
-                sessionID: userInfo.sessionID,
-                messageID: messageId,
-                type: "text" as const,
-                text: content,
-            },
-        ],
+        providerID: assistant.providerID ?? "",
+        modelID: assistant.modelID ?? "",
     }
 }
 
-// [FIX Bug 36] Merge a compression summary into an existing user message by
-// prepending it (clearly delimited) to that message's first text part. This
-// avoids emitting a standalone user-role summary message adjacent to the user's
-// real turn, which previously produced two consecutive user messages and caused
-// dialog role confusion / "self-Q&A" loops. Returns true when the summary is
-// present after the call — including the idempotent case where the block's
-// marker is already in the text (no-op), matching appendToTextPart so callers
-// never fall through to a standalone message merely because of a re-run.
-export const prependCompressionSummary = (
-    message: WithParts,
-    summary: string,
-    blockId: number | string,
-): boolean => {
-    const parts = Array.isArray(message.parts) ? message.parts : []
-    const header = MERGED_SUMMARY_HEADER(blockId)
-    const marker = MERGED_SUMMARY_HEADER(blockId).trimEnd()
-
-    for (const part of parts) {
-        if (part.type !== "text") {
-            continue
-        }
-        const textPart = part as TextPart
-        const existing = typeof textPart.text === "string" ? textPart.text : ""
-        if (existing.includes(marker)) {
-            return true
-        }
-        textPart.text = `${header}${summary}${MERGED_SUMMARY_FOOTER}${existing}`
-        return true
-    }
-
-    const sessionID = (message.info as { sessionID?: string }).sessionID ?? ""
-    const messageId = (message.info as { id: string }).id
-    parts.unshift({
-        id: generateStableId("prt_dcp_prepend", `${blockId}:${messageId}`),
-        sessionID,
-        messageID: messageId,
-        type: "text" as const,
-        text: `${header}${summary}${MERGED_SUMMARY_FOOTER}`,
-    })
-    message.parts = parts
-    return true
+export function computeInputBudget(
+    config: PluginConfig,
+    state: SessionState,
+    messages: WithParts[],
+): number {
+    const maxLimit = resolveContextLimit(config, state)
+    if (maxLimit <= 0) return 0
+    const used = estimateMessagesTokens(messages)
+    return Math.max(0, maxLimit - used)
 }
 
-export const createSyntheticTextPart = (
-    baseMessage: WithParts,
-    content: string,
-    stableSeed?: string,
-) => {
-    const userInfo = baseMessage.info as UserMessage
-    const deterministicSeed = stableSeed?.trim() || userInfo.id
-    const partId = generateStableId("prt_dcp_text", deterministicSeed)
-
-    return {
-        id: partId,
-        sessionID: userInfo.sessionID,
-        messageID: userInfo.id,
-        type: "text" as const,
-        text: content,
-    }
-}
-
-type MessagePart = WithParts["parts"][number]
-type ToolPart = Extract<MessagePart, { type: "tool" }>
-type TextPart = Extract<MessagePart, { type: "text" }>
-
-export const appendToLastTextPart = (message: WithParts, injection: string): boolean => {
-    const textPart = findLastTextPart(message)
-    if (!textPart) {
-        return false
-    }
-
-    return appendToTextPart(textPart, injection)
-}
-
-const findLastTextPart = (message: WithParts): TextPart | null => {
-    for (let i = message.parts.length - 1; i >= 0; i--) {
-        const part = message.parts[i]
-        if (part.type === "text") {
-            return part
+function resolveContextLimit(config: PluginConfig, state: SessionState): number {
+    const raw = config.compress.maxContextLimit
+    const windowLimit = state.modelContextLimit
+    if (typeof raw === "number") return raw
+    if (typeof raw === "string" && raw.endsWith("%")) {
+        const pct = parseFloat(raw.slice(0, -1))
+        if (!isNaN(pct) && windowLimit && windowLimit > 0) {
+            return Math.floor((windowLimit * pct) / 100)
         }
     }
-
-    return null
+    return typeof raw === "number" ? raw : 0
 }
 
-export const appendToTextPart = (part: TextPart, injection: string): boolean => {
-    if (typeof part.text !== "string") {
-        return false
+function estimateMessagesTokens(messages: WithParts[]): number {
+    if (!Array.isArray(messages)) return 0
+    let total = 0
+    for (const msg of messages) {
+        if (!msg || !Array.isArray(msg.parts)) continue
+        for (const part of msg.parts) {
+            if (!part) continue
+            const p = part as { type?: string; text?: unknown; state?: { output?: unknown } }
+            if (typeof p.text === "string") total += countTokensSync(p.text)
+            if (p.type === "tool" && p.state && typeof p.state.output === "string") {
+                total += countTokensSync(p.state.output)
+            }
+        }
     }
+    return total
+}
+
+export function appendToTextPart(part: Part, injection: string): boolean {
+    if (!part || part.type !== "text") return false
+    const textPart = part as TextPart
+    if (typeof textPart.text !== "string") return false
 
     const normalizedInjection = injection.replace(/^\n+/, "")
     if (!normalizedInjection.trim()) {
         return false
     }
-    if (part.text.includes(normalizedInjection)) {
+    if (textPart.text.includes(normalizedInjection)) {
         return true
     }
 
-    const baseText = part.text.replace(/\n*$/, "")
-    part.text = baseText.length > 0 ? `${baseText}\n\n${normalizedInjection}` : normalizedInjection
+    const baseText = textPart.text.replace(/\n*$/, "")
+    textPart.text = baseText.length > 0 ? `${baseText}\n\n${normalizedInjection}` : normalizedInjection
     return true
 }
 
-export const appendToAllToolParts = (message: WithParts, tag: string): boolean => {
-    let injected = false
-    for (const part of message.parts) {
-        if (part.type === "tool") {
-            injected = appendToToolPart(part, tag) || injected
-        }
+export function createSyntheticTextPart(message: WithParts, text: string): TextPart {
+    const info = message.info as Message
+    const sessionID = info.sessionID ?? ""
+    const messageId = info.id ?? ""
+    return {
+        id: `${messageId}-part-${Math.random().toString(36).slice(2, 8)}`,
+        sessionID,
+        messageID: messageId,
+        type: "text",
+        text,
+        synthetic: true,
     }
-    return injected
 }
 
-const appendToToolPart = (part: ToolPart, tag: string): boolean => {
-    if (part.state?.status !== "completed" || typeof part.state.output !== "string") {
+export function hasContent(message: WithParts): boolean {
+    if (!message || !Array.isArray(message.parts) || message.parts.length === 0) {
         return false
     }
-    if (part.state.output.includes(tag)) {
-        return true
-    }
-
-    part.state.output = `${part.state.output}${tag}`
-    return true
-}
-
-export const hasContent = (message: WithParts): boolean => {
-    return message.parts.some(
-        (part) =>
-            (part.type === "text" &&
-                typeof part.text === "string" &&
-                part.text.trim().length > 0) ||
-            (part.type === "tool" &&
-                part.state?.status === "completed" &&
-                typeof part.state.output === "string"),
-    )
-}
-
-export function buildToolIdList(state: SessionState, messages: WithParts[]): string[] {
-    const toolIds: string[] = []
-    for (const msg of messages) {
-        if (isMessageCompacted(state, msg)) {
+    for (const part of message.parts) {
+        if (!part) continue
+        if (part.type === "text") {
+            const text = (part as TextPart).text
+            if (typeof text === "string" && text.trim().length > 0) return true
             continue
         }
-        const parts = Array.isArray(msg.parts) ? msg.parts : []
-        if (parts.length > 0) {
-            for (const part of parts) {
-                if (part.type === "tool" && part.callID && part.tool) {
-                    toolIds.push(part.callID)
-                }
-            }
+        if (part.type === "tool") {
+            const toolPart = part as ToolPart
+            const state = toolPart.state
+            if (state?.status === "completed" && typeof state.output === "string") return true
+            continue
         }
     }
-    state.toolIdList = toolIds
-    return toolIds
-}
-
-export const replaceBlockIdsWithBlocked = (text: string): string => {
-    return text.replace(DCP_BLOCK_ID_TAG_REGEX, "$1BLOCKED$2")
-}
-
-// [FIX Bug 28] Strip stale mNNNN refs from compressed summaries before injection
-export const stripStaleMessageRefs = (text: string): string => {
-    return text.replace(DCP_MESSAGE_REF_TAG_REGEX, "")
-}
-
-export const stripHallucinationsFromString = (text: string): string => {
-    return text.replace(DCP_PAIRED_TAG_REGEX, "").replace(DCP_UNPAIRED_TAG_REGEX, "")
-}
-
-export const stripHallucinations = (messages: WithParts[]): void => {
-    for (const message of messages) {
-        for (const part of message.parts) {
-            if (part.type === "text" && typeof part.text === "string") {
-                part.text = stripHallucinationsFromString(part.text)
-            }
-
-            if (
-                part.type === "tool" &&
-                part.state?.status === "completed" &&
-                typeof part.state.output === "string"
-            ) {
-                part.state.output = stripHallucinationsFromString(part.state.output)
-            }
-        }
-    }
+    return false
 }

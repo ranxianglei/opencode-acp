@@ -1,6 +1,11 @@
-// These format schemas are kept separate from the editable compress prompts
-// so they cannot be modified via custom prompt overrides. The schemas must
-// match the tool's input validation and are not safe to change independently.
+export function renderToolListExtension(tools: string[]): string {
+    if (tools.length === 0) return ""
+    return `Available tools: ${tools.join(", ")}`
+}
+
+export function renderProtectedToolDescription(toolName: string): string {
+    return `The "${toolName}" tool's output is protected and will never be compressed. Its results are preserved in full.`
+}
 
 export const RANGE_FORMAT_EXTENSION = `
 THE FORMAT OF COMPRESS

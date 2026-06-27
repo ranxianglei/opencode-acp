@@ -1,14 +1,8 @@
-import type { CompressionBlock, SessionState, WithParts } from "../state"
-import type { BatchCleanupConfig, GCConfig, PluginConfig } from "../config"
-import type { Logger } from "../logger"
-import { countTokens, getCurrentTokenUsage } from "../token-utils"
-import {
-    COMPRESSED_BLOCK_HEADER,
-    allocateBlockId,
-    allocateRunId,
-    wrapCompressedSummary,
-} from "../compress/state"
-import { formatBlockRef } from "../message-ids"
+import type { CompressionBlock, SessionState, WithParts } from "../state/types"
+import type { PluginConfig } from "../config/types"
+import type { Logger } from "../infra/logger"
+import { countTokensSync, getCurrentTokenUsage } from "../infra/token-counter"
+import { formatBlockRef } from "../infra/message-refs"
 
 export interface MergeMarkedResult {
     mergedCount: number
@@ -23,28 +17,36 @@ export interface BatchCleanupResult {
     nudgeText?: string
 }
 
-const DEFAULT_BATCH_CLEANUP: BatchCleanupConfig = {
-    lowThreshold: "60%",
-    highThreshold: "75%",
-    forceThreshold: "90%",
+const DEFAULT_BATCH_CLEANUP = {
+    lowThreshold: "60%" as const,
+    highThreshold: "75%" as const,
+    forceThreshold: "90%" as const,
 }
 
-function resolveBatchCleanup(gc: GCConfig): BatchCleanupConfig {
+function resolveBatchCleanup(gc: PluginConfig["gc"]) {
     return gc.batchCleanup ?? DEFAULT_BATCH_CLEANUP
 }
 
 function percentToTokens(
-    value: number | `${number}%`,
+    value: string | number,
     modelContextLimit: number,
 ): number {
     if (typeof value === "number") return value
-    const percent = parseFloat(value.slice(0, -1))
-    if (isNaN(percent)) return modelContextLimit
-    const clamped = Math.max(0, Math.min(100, Math.round(percent)))
-    return Math.round((clamped / 100) * modelContextLimit)
+    if (value.endsWith("%")) {
+        const percent = parseFloat(value.slice(0, -1))
+        if (isNaN(percent)) return modelContextLimit
+        const clamped = Math.max(0, Math.min(100, Math.round(percent)))
+        return Math.round((clamped / 100) * modelContextLimit)
+    }
+    const parsed = parseFloat(value)
+    if (!isNaN(parsed)) return parsed
+    return modelContextLimit
 }
 
-function collectActiveOldGenBlocks(state: SessionState, maxOldGenSummaryLength: number): CompressionBlock[] {
+function collectActiveOldGenBlocks(
+    state: SessionState,
+    maxOldGenSummaryLength: number,
+): CompressionBlock[] {
     const blocks: CompressionBlock[] = []
     const ids = Array.from(state.prune.messages.activeBlockIds).sort((a, b) => a - b)
     for (const id of ids) {
@@ -73,13 +75,10 @@ function collectActiveMarkedBlocks(state: SessionState): CompressionBlock[] {
 }
 
 function extractSummaryBody(summary: string): string {
-    let body = summary
-    const headerPrefix = COMPRESSED_BLOCK_HEADER + "\n"
-    if (body.startsWith(headerPrefix)) {
-        body = body.slice(headerPrefix.length)
-    }
-    body = body.replace(/\n<dcp-message-id[^>]*>b\d+<\/dcp-message-id>$/, "")
-    return body.trim()
+    return summary
+        .replace(/<dcp-message-id>[^<]*<\/dcp-message-id>$/, "")
+        .replace(/<dcp-system-reminder>[^]*?<\/dcp-system-reminder>$/, "")
+        .trim()
 }
 
 function truncateMergedSummary(merged: string, maxLength: number): string {
@@ -123,17 +122,17 @@ export function mergeMarkedBlocks(
     }
 
     const messagesState = state.prune.messages
-    const newBlockId = allocateBlockId(state)
-    const newRunId = allocateRunId(state)
+    const newBlockId = messagesState.nextBlockId++
+    const newRunId = messagesState.nextRunId++
 
     const bodies = sourceBlocks.map((block) => extractSummaryBody(block.summary))
     const mergedRaw = bodies.join("\n---\n")
     const mergedBody = truncateMergedSummary(mergedRaw, maxMergedLength)
-    const newSummary = wrapCompressedSummary(newBlockId, mergedBody)
-    const newSummaryTokens = countTokens(newSummary)
+    const newSummary = `[Compressed block ${newBlockId}]\n${mergedBody}`
+    const newSummaryTokens = countTokensSync(newSummary)
 
-    const oldest = sourceBlocks[0]
-    const newest = sourceBlocks[sourceBlocks.length - 1]
+    const oldest = sourceBlocks[0]!
+    const newest = sourceBlocks[sourceBlocks.length - 1]!
 
     const effectiveMessageIds = new Set<string>()
     const effectiveToolIds = new Set<string>()
@@ -143,7 +142,6 @@ export function mergeMarkedBlocks(
     }
 
     const sourceIds = sourceBlocks.map((b) => b.blockId)
-    const createdAt = Date.now()
 
     const mergedBlock: CompressionBlock = {
         blockId: newBlockId,
@@ -168,7 +166,7 @@ export function mergeMarkedBlocks(
         directToolIds: [],
         effectiveMessageIds: [...effectiveMessageIds],
         effectiveToolIds: [...effectiveToolIds],
-        createdAt,
+        createdAt: Date.now(),
         summary: newSummary,
         survivedCount: 0,
         generation: "old",
@@ -231,7 +229,7 @@ function buildNudgeText(state: SessionState, maxMergedLength: number): string | 
     const estimatedSavings = Math.max(0, sourceTokens - estimatedMergedTokens)
 
     return [
-        `⚠️ ${blocks.length} block(s) marked for batch cleanup (${refs}).`,
+        `${blocks.length} block(s) marked for batch cleanup (${refs}).`,
         `Merge-compressing them would free ~${estimatedSavings} tokens.`,
         blocks.length >= 2
             ? "They will auto-merge when context pressure reaches the high threshold."

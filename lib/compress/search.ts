@@ -1,9 +1,124 @@
-import type { SessionState, WithParts } from "../state"
-import { formatBlockRef, parseBoundaryId } from "../message-ids"
+import type { SessionState, WithParts } from "../state/types"
+import type { Logger } from "../infra/logger"
+import { formatBlockRef, parseBoundaryId } from "../infra/message-refs"
 import { isIgnoredUserMessage } from "../messages/query"
 import { filterMessages } from "../messages/shape"
-import { countAllMessageTokens } from "../token-utils"
-import type { BoundaryReference, SearchContext, SelectionResolution } from "./types"
+import { countTokensSync } from "../infra/token-counter"
+import type {
+    BoundaryReference,
+    SearchContext,
+    SelectionResolution,
+} from "./types"
+
+export interface ResolvedBoundary {
+    startIndex: number
+    endIndex: number
+    startMessageId: string
+    endMessageId: string
+    swapped: boolean
+}
+
+export function resolveBoundary(
+    state: SessionState,
+    messages: WithParts[],
+    startId: string,
+    endId: string,
+    logger: Logger,
+): ResolvedBoundary | null {
+    const startIdx = findMessageIndexByRef(state, messages, startId)
+    const endIdx = findMessageIndexByRef(state, messages, endId)
+
+    if (startIdx === -1) {
+        logger.warn("Could not resolve start boundary", { startId })
+        return null
+    }
+    if (endIdx === -1) {
+        logger.warn("Could not resolve end boundary", { endId })
+        return null
+    }
+
+    let startIndex = startIdx
+    let endIndex = endIdx
+    let swapped = false
+
+    if (startIndex > endIndex) {
+        const tmp = startIndex
+        startIndex = endIndex
+        endIndex = tmp
+        swapped = true
+        logger.info("Auto-swapped reversed compress boundaries", {
+            originalStart: startId,
+            originalEnd: endId,
+            resolvedStart: messages[startIndex]!.info.id,
+            resolvedEnd: messages[endIndex]!.info.id,
+        })
+    }
+
+    return {
+        startIndex,
+        endIndex,
+        startMessageId: messages[startIndex]!.info.id,
+        endMessageId: messages[endIndex]!.info.id,
+        swapped,
+    }
+}
+
+export function resolveMessageRef(
+    state: SessionState,
+    messages: WithParts[],
+    ref: string,
+    logger: Logger,
+): WithParts | null {
+    const idx = findMessageIndexByRef(state, messages, ref)
+    if (idx === -1) {
+        logger.warn("Could not resolve message ref", { ref })
+        return null
+    }
+    return messages[idx]!
+}
+
+function findMessageIndexByRef(
+    state: SessionState,
+    messages: WithParts[],
+    ref: string,
+): number {
+    const rawId = state.messageIds.byRef.get(ref)
+    if (rawId) {
+        return messages.findIndex((m) => m.info.id === rawId)
+    }
+
+    return messages.findIndex((m) => m.info.id === ref)
+}
+
+export function collectMessageIdsInRange(
+    messages: WithParts[],
+    startIndex: number,
+    endIndex: number,
+): string[] {
+    const ids: string[] = []
+    for (let i = startIndex; i <= endIndex && i < messages.length; i++) {
+        ids.push(messages[i]!.info.id)
+    }
+    return ids
+}
+
+export function collectToolCallIdsInRange(
+    messages: WithParts[],
+    startIndex: number,
+    endIndex: number,
+): string[] {
+    const ids: string[] = []
+    for (let i = startIndex; i <= endIndex && i < messages.length; i++) {
+        const parts = Array.isArray(messages[i]!.parts) ? messages[i]!.parts : []
+        for (const part of parts) {
+            if (part.type === "tool") {
+                const toolPart = part as { type: "tool"; callID: string }
+                ids.push(toolPart.callID)
+            }
+        }
+    }
+    return ids
+}
 
 export async function fetchSessionMessages(client: any, sessionId: string): Promise<WithParts[]> {
     const response = await client.session.messages({
@@ -27,7 +142,7 @@ export function buildSearchContext(state: SessionState, rawMessages: WithParts[]
         rawIndexById.set(message.info.id, index)
     }
 
-    const summaryByBlockId = new Map()
+    const summaryByBlockId = new Map<number, any>()
     for (const [blockId, block] of state.prune.messages.blocksById) {
         if (!block.active) {
             continue
@@ -97,11 +212,6 @@ export function resolveBoundaryIds(
         throw new Error("Failed to resolve boundary IDs")
     }
 
-    // [FIX Bug 34] Auto-swap reversed boundaries instead of throwing.
-    // Block IDs (bN) are assigned in creation order, which may not match
-    // conversation order. Models naturally assume bN < bM means bN is earlier,
-    // but anchor message ordering can differ. Auto-swap prevents compress failures
-    // that cause models to give up without compressing.
     if (startReference.rawIndex > endReference.rawIndex) {
         [startReference, endReference] = [endReference, startReference]
     }
@@ -145,14 +255,15 @@ export function resolveSelection(
 
         const parts = Array.isArray(rawMessage.parts) ? rawMessage.parts : []
         for (const part of parts) {
-            if (part.type !== "tool" || !part.callID) {
+            if (part.type !== "tool" || !(part as any).callID) {
                 continue
             }
-            if (toolSeen.has(part.callID)) {
+            const callID = (part as any).callID
+            if (toolSeen.has(callID)) {
                 continue
             }
-            toolSeen.add(part.callID)
-            toolIds.push(part.callID)
+            toolSeen.add(callID)
+            toolIds.push(callID)
         }
     }
 
@@ -211,6 +322,30 @@ export function resolveAnchorMessageId(startReference: BoundaryReference): strin
         throw new Error("Failed to map boundary matches back to raw messages")
     }
     return startReference.messageId
+}
+
+function countAllMessageTokens(msg: WithParts): number {
+    let total = 0
+    const parts = Array.isArray(msg.parts) ? msg.parts : []
+    for (const part of parts) {
+        const p = part as { type?: string; text?: unknown; state?: { output?: unknown; input?: unknown } }
+        if (typeof p.text === "string") {
+            total += countTokensSync(p.text)
+        }
+        if (p.type === "tool" && p.state) {
+            if (typeof p.state.output === "string") {
+                total += countTokensSync(p.state.output)
+            }
+            if (p.state.input && typeof p.state.input === "object") {
+                try {
+                    total += countTokensSync(JSON.stringify(p.state.input))
+                } catch {
+                    void 0
+                }
+            }
+        }
+    }
+    return total
 }
 
 function buildBoundaryLookup(

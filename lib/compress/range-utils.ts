@@ -1,4 +1,4 @@
-import type { CompressionBlock, SessionState } from "../state"
+import type { CompressionBlock, SessionState } from "../state/types"
 import { resolveAnchorMessageId, resolveBoundaryIds, resolveSelection } from "./search"
 import type {
     BoundaryReference,
@@ -95,7 +95,7 @@ export function validateNonOverlapping(plans: ResolvedRangeCompression[]): void 
 
     if (issues.length > 0) {
         throw new Error(
-            issues.length === 1 ? issues[0] : issues.map((issue) => `- ${issue}`).join("\n"),
+            issues.length === 1 ? issues[0]! : issues.map((issue) => `- ${issue}`).join("\n"),
         )
     }
 }
@@ -108,7 +108,7 @@ export function parseBlockPlaceholders(summary: string): ParsedBlockPlaceholder[
     while ((match = regex.exec(summary)) !== null) {
         const full = match[0]
         const blockIdPart = match[1] || match[2]
-        const parsed = Number.parseInt(blockIdPart, 10)
+        const parsed = Number.parseInt(blockIdPart!, 10)
         if (!Number.isInteger(parsed)) {
             continue
         }
@@ -192,3 +192,4 @@ export function appendMissingBlockSummaries(
     }
 }
 
+export { compressRange, collectRangeContent } from "./range-mode"

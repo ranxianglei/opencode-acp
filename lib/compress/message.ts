@@ -1,6 +1,6 @@
 import { tool } from "@opencode-ai/plugin"
-import type { ToolContext } from "./types"
-import { countTokens } from "../token-utils"
+import type { ToolContext, CompressMessageToolArgs } from "./types"
+import { countTokensSync } from "../infra/token-counter"
 import { MESSAGE_FORMAT_EXTENSION } from "../prompts/extensions/tool"
 import { formatIssues, formatResult, resolveMessages, validateArgs } from "./message-utils"
 import { finalizeSession, prepareSession, type NotificationEntry } from "./pipeline"
@@ -11,47 +11,46 @@ import {
     applyCompressionState,
     wrapCompressedSummary,
 } from "./state"
-import type { CompressMessageToolArgs } from "./types"
 
-function buildSchema() {
-    return {
-        topic: tool.schema
-            .string()
-            .describe(
-                "Short label (3-5 words) for the overall batch - e.g., 'Closed Research Notes'",
-            ),
-        content: tool.schema
-            .array(
-                tool.schema.object({
-                    messageId: tool.schema
-                        .string()
-                        .describe("Raw message ID to compress (e.g. m00001)"),
-                    topic: tool.schema
-                        .string()
-                        .describe("Short label (3-5 words) for this one message summary"),
-                    summary: tool.schema
-                        .string()
-                        .describe("Complete technical summary replacing that one message"),
-                }),
-            )
-            .describe("Batch of individual message summaries to create in one tool call"),
+export function createCompressMessageTool(ctx: any): ReturnType<typeof tool> {
+    const prompts = ctx.prompts
+    if (prompts && typeof prompts.reload === "function") {
+        prompts.reload()
     }
-}
-
-export function createCompressMessageTool(ctx: ToolContext): ReturnType<typeof tool> {
-    ctx.prompts.reload()
-    const runtimePrompts = ctx.prompts.getRuntimePrompts()
+    const runtimePrompts = prompts?.getRuntimePrompts?.() ?? {
+        compressMessage: "",
+        compressRange: "",
+    }
 
     return tool({
-        description: runtimePrompts.compressMessage + MESSAGE_FORMAT_EXTENSION,
-        args: buildSchema(),
-        async execute(args, toolCtx) {
+        description: (runtimePrompts.compressMessage || "") + MESSAGE_FORMAT_EXTENSION,
+        args: {
+            topic: tool.schema
+                .string()
+                .describe(
+                    "Short label (3-5 words) for the overall batch - e.g., 'Closed Research Notes'",
+                ),
+            content: tool.schema
+                .array(
+                    tool.schema.object({
+                        messageId: tool.schema
+                            .string()
+                            .describe("Raw message ID to compress (e.g. m00001)"),
+                        topic: tool.schema
+                            .string()
+                            .describe("Short label (3-5 words) for this one message summary"),
+                        summary: tool.schema
+                            .string()
+                            .describe("Complete technical summary replacing that one message"),
+                    }),
+                )
+                .describe("Batch of individual message summaries to create in one tool call"),
+        },
+        async execute(args: any, toolCtx: any) {
             const input = args as CompressMessageToolArgs
             validateArgs(input)
             const callId =
-                typeof (toolCtx as unknown as { callID?: unknown }).callID === "string"
-                    ? (toolCtx as unknown as { callID: string }).callID
-                    : undefined
+                typeof toolCtx?.callID === "string" ? toolCtx.callID : undefined
 
             const { rawMessages, searchContext } = await prepareSession(
                 ctx,
@@ -107,7 +106,7 @@ export function createCompressMessageTool(ctx: ToolContext): ReturnType<typeof t
             for (const { plan, summaryWithTools } of preparedPlans) {
                 const blockId = allocateBlockId(ctx.state)
                 const storedSummary = wrapCompressedSummary(blockId, summaryWithTools)
-                const summaryTokens = countTokens(storedSummary)
+                const summaryTokens = countTokensSync(storedSummary)
 
                 applyCompressionState(
                     ctx.state,

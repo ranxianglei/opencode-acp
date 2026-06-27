@@ -3,7 +3,7 @@
     "name": "opencode-acp",
     "version": "1.4.1",
     "type": "module",
-    "description": "Active Context Pruning — model-driven context management for OpenCode (hardened fork of DCP with 34 bug fixes)",
+    "description": "Active Context Pruning — model-driven context management for OpenCode",
     "main": "./dist/index.js",
     "types": "./dist/index.d.ts",
     "exports": {
@@ -49,7 +49,7 @@
     },
     "homepage": "https://github.com/ranxianglei/opencode-acp#readme",
     "author": "ranxianglei",
-    "license": "AGPL-3.0-or-later",
+    "license": "MIT",
     "peerDependencies": {
         "@opencode-ai/plugin": ">=1.4.3"
     },

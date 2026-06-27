@@ -1,125 +1,44 @@
-/**
- * DCP Manual mode command handler.
- * Handles toggling manual mode and triggering individual tool executions.
- *
- * Usage:
- *   /acp manual [on|off]  - Toggle manual mode or set explicit state
- *   /acp compress [focus]  - Trigger manual compress execution
- */
+import type { CommandContext, CommandResult } from "./types"
+import type { ManualModeState } from "../config/types"
 
-import type { Logger } from "../logger"
-import type { SessionState, WithParts } from "../state"
-import type { PluginConfig } from "../config"
-import { sendIgnoredMessage } from "../ui/notification"
-import { getCurrentParams } from "../token-utils"
-import { buildCompressedBlockGuidance } from "../prompts/extensions/nudge"
-import { isIgnoredUserMessage } from "../messages/query"
+export function manualCommand(ctx: CommandContext): CommandResult {
+    const { state, config, args, logger } = ctx
+    const configEnabled = config.manualMode.enabled
 
-const MANUAL_MODE_ON = "Manual mode is now ON. Use /acp compress to trigger context tools manually."
-
-const MANUAL_MODE_OFF = "Manual mode is now OFF."
-
-const COMPRESS_TRIGGER_PROMPT = [
-    "<compress triggered manually>",
-    "Manual mode trigger received. You must now use the compress tool.",
-    "Find the most significant completed conversation content that can be compressed into a high-fidelity technical summary.",
-    "Follow the active compress mode, preserve all critical implementation details, and choose safe targets.",
-    "Return after compress with a brief explanation of what content was compressed.",
-].join("\n\n")
-
-function getTriggerPrompt(
-    tool: "compress",
-    state: SessionState,
-    config: PluginConfig,
-    userFocus?: string,
-): string {
-    const base = COMPRESS_TRIGGER_PROMPT
-    const compressedBlockGuidance =
-        config.compress.mode === "message" ? "" : buildCompressedBlockGuidance(state, config.gc)
-
-    const sections = [base, compressedBlockGuidance]
-    if (userFocus && userFocus.trim().length > 0) {
-        sections.push(`Additional user focus:\n${userFocus.trim()}`)
+    if (args.length === 0) {
+        return { output: describeManualState(state.manualMode, configEnabled) }
     }
 
-    return sections.join("\n\n")
-}
+    const arg = args[0].toLowerCase()
+    if (arg !== "on" && arg !== "off") {
+        return {
+            output: `Unknown argument: \`${args[0]}\`. Use \`on\` or \`off\` (or no argument to show current state).`,
+            isError: true,
+        }
+    }
 
-export interface ManualCommandContext {
-    client: any
-    state: SessionState
-    config: PluginConfig
-    logger: Logger
-    sessionId: string
-    messages: WithParts[]
-}
-
-export async function handleManualToggleCommand(
-    ctx: ManualCommandContext,
-    modeArg?: string,
-): Promise<void> {
-    const { client, state, logger, sessionId, messages } = ctx
-
-    if (modeArg === "on") {
+    const before = state.manualMode
+    if (arg === "on") {
         state.manualMode = "active"
-    } else if (modeArg === "off") {
-        state.manualMode = false
     } else {
-        state.manualMode = state.manualMode ? false : "active"
-    }
-
-    const params = getCurrentParams(state, messages, logger)
-    await sendIgnoredMessage(
-        client,
-        sessionId,
-        state.manualMode ? MANUAL_MODE_ON : MANUAL_MODE_OFF,
-        params,
-        logger,
-    )
-
-    logger.info("Manual mode toggled", { manualMode: state.manualMode })
-}
-
-export async function handleManualTriggerCommand(
-    ctx: ManualCommandContext,
-    tool: "compress",
-    userFocus?: string,
-): Promise<string | null> {
-    return getTriggerPrompt(tool, ctx.state, ctx.config, userFocus)
-}
-
-export function applyPendingManualTrigger(
-    state: SessionState,
-    messages: WithParts[],
-    logger: Logger,
-): void {
-    const pending = state.pendingManualTrigger
-    if (!pending) {
-        return
-    }
-
-    if (!state.sessionId || pending.sessionId !== state.sessionId) {
+        state.manualMode = false
         state.pendingManualTrigger = null
-        return
     }
 
-    for (let i = messages.length - 1; i >= 0; i--) {
-        const msg = messages[i]
-        if (msg.info.role !== "user" || isIgnoredUserMessage(msg)) {
-            continue
-        }
+    logger.info("manual mode toggled", { before, after: state.manualMode })
 
-        for (const part of msg.parts) {
-            if (part.type !== "text" || part.ignored || part.synthetic) {
-                continue
-            }
+    return { output: describeManualState(state.manualMode, configEnabled) }
+}
 
-            part.text = pending.prompt
-            state.pendingManualTrigger = null
-            logger.debug("Applied manual prompt", { sessionId: pending.sessionId })
-            return
-        }
+function describeManualState(current: ManualModeState, configEnabled: boolean): string {
+    const lines: string[] = ["**Manual mode**", ""]
+    if (current === false) {
+        lines.push("- State: off (autonomous context management)")
+    } else if (current === "active") {
+        lines.push("- State: active (autonomous tools suspended; only explicit /acp triggers run)")
+    } else {
+        lines.push(`- State: ${current} (a compress run is pending)`)
     }
-
-    state.pendingManualTrigger = null
+    lines.push(`- Config default: ${configEnabled ? "enabled" : "disabled"}`)
+    return lines.join("\n")
 }

@@ -1,13 +1,9 @@
 import { tool } from "@opencode-ai/plugin"
-import type { ToolContext } from "./types"
-import { countTokens } from "../token-utils"
+import type { ToolContext, CompressRangeToolArgs } from "./types"
+import { countTokensSync } from "../infra/token-counter"
 import { RANGE_FORMAT_EXTENSION } from "../prompts/extensions/tool"
 import { finalizeSession, prepareSession, type NotificationEntry } from "./pipeline"
-import {
-    appendProtectedPromptInfo,
-    appendProtectedTools,
-    appendProtectedUserMessages,
-} from "./protected-content"
+import { appendProtectedPromptInfo, appendProtectedTools, appendProtectedUserMessages } from "./protected-content"
 import {
     appendMissingBlockSummaries,
     injectBlockPlaceholders,
@@ -24,49 +20,62 @@ import {
     applyCompressionState,
     wrapCompressedSummary,
 } from "./state"
-import type { CompressRangeToolArgs } from "./types"
 
-function buildSchema() {
-    return {
-        topic: tool.schema
-            .string()
-            .describe("Short label (3-5 words) for display - e.g., 'Auth System Exploration'"),
-        content: tool.schema
-            .array(
-                tool.schema.object({
-                    startId: tool.schema
-                        .string()
-                        .describe(
-                            "Message or block ID marking the beginning of range (e.g. m00001, b2)",
-                        ),
-                    endId: tool.schema
-                        .string()
-                        .describe("Message or block ID marking the end of range (e.g. m00012, b5)"),
-                    summary: tool.schema
-                        .string()
-                        .describe("Complete technical summary replacing all content in range"),
-                }),
-            )
-            .describe(
-                "One or more ranges to compress, each with start/end boundaries and a summary",
-            ),
+function extractBoundaryConsumedBlocks(
+    startReference: any,
+    endReference: any,
+): number[] {
+    const ids: number[] = []
+    if (startReference?.kind === "compressed-block" && typeof startReference.blockId === "number") {
+        ids.push(startReference.blockId)
     }
+    if (endReference?.kind === "compressed-block" && typeof endReference.blockId === "number") {
+        ids.push(endReference.blockId)
+    }
+    return ids
 }
 
-export function createCompressRangeTool(ctx: ToolContext): ReturnType<typeof tool> {
-    ctx.prompts.reload()
-    const runtimePrompts = ctx.prompts.getRuntimePrompts()
+export function createCompressRangeTool(ctx: any): ReturnType<typeof tool> {
+    const prompts = ctx.prompts
+    if (prompts && typeof prompts.reload === "function") {
+        prompts.reload()
+    }
+    const runtimePrompts = prompts?.getRuntimePrompts?.() ?? {
+        compressMessage: "",
+        compressRange: "",
+    }
 
     return tool({
-        description: runtimePrompts.compressRange + RANGE_FORMAT_EXTENSION,
-        args: buildSchema(),
-        async execute(args, toolCtx) {
+        description: (runtimePrompts.compressRange || "") + RANGE_FORMAT_EXTENSION,
+        args: {
+            topic: tool.schema
+                .string()
+                .describe("Short label (3-5 words) for display - e.g., 'Auth System Exploration'"),
+            content: tool.schema
+                .array(
+                    tool.schema.object({
+                        startId: tool.schema
+                            .string()
+                            .describe(
+                                "Message or block ID marking the beginning of range (e.g. m00001, b2)",
+                            ),
+                        endId: tool.schema
+                            .string()
+                            .describe("Message or block ID marking the end of range (e.g. m00012, b5)"),
+                        summary: tool.schema
+                            .string()
+                            .describe("Complete technical summary replacing all content in range"),
+                    }),
+                )
+                .describe(
+                    "One or more ranges to compress, each with start/end boundaries and a summary",
+                ),
+        },
+        async execute(args: any, toolCtx: any) {
             const input = args as CompressRangeToolArgs
             validateArgs(input)
             const callId =
-                typeof (toolCtx as unknown as { callID?: unknown }).callID === "string"
-                    ? (toolCtx as unknown as { callID: string }).callID
-                    : undefined
+                typeof toolCtx?.callID === "string" ? toolCtx.callID : undefined
 
             const { rawMessages, searchContext } = await prepareSession(
                 ctx,
@@ -157,12 +166,12 @@ export function createCompressRangeTool(ctx: ToolContext): ReturnType<typeof too
             for (const preparedPlan of preparedPlans) {
                 const blockId = allocateBlockId(ctx.state)
                 const storedSummary = wrapCompressedSummary(blockId, preparedPlan.finalSummary)
-                const summaryTokens = countTokens(storedSummary)
+                const summaryTokens = countTokensSync(storedSummary)
 
                 const applied = applyCompressionState(
                     ctx.state,
                     {
-                        topic: input.topic,
+                        topic: preparedPlan.entry.topic || input.topic,
                         batchTopic: input.topic,
                         startId: preparedPlan.entry.startId,
                         endId: preparedPlan.entry.endId,
@@ -197,17 +206,4 @@ export function createCompressRangeTool(ctx: ToolContext): ReturnType<typeof too
     })
 }
 
-function extractBoundaryConsumedBlocks(
-    startReference: { kind: string; blockId?: number },
-    endReference: { kind: string; blockId?: number },
-): number[] {
-    const consumed: number[] = []
-    const seen = new Set<number>()
-    for (const ref of [startReference, endReference]) {
-        if (ref.kind === "compressed-block" && ref.blockId !== undefined && !seen.has(ref.blockId)) {
-            seen.add(ref.blockId)
-            consumed.push(ref.blockId)
-        }
-    }
-    return consumed
-}
+export type { ToolContext }

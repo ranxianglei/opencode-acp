@@ -1,5 +1,5 @@
-import type { SessionState, WithParts } from "../state"
-import type { Logger } from "../logger"
+import type { SessionState, WithParts } from "../state/types"
+import type { Logger } from "../infra/logger"
 
 function sortBlocksByCreation(
     a: { createdAt: number; blockId: number },
@@ -12,14 +12,14 @@ function sortBlocksByCreation(
     return a.blockId - b.blockId
 }
 
-export const syncCompressionBlocks = (
+export function syncCompressionBlocks(
     state: SessionState,
     logger: Logger,
     messages: WithParts[],
-): void => {
+): number {
     const messagesState = state.prune.messages
     if (!messagesState?.blocksById?.size) {
-        return
+        return 0
     }
 
     const messageIds = new Set(messages.map((msg) => msg.info.id))
@@ -33,13 +33,8 @@ export const syncCompressionBlocks = (
     messagesState.activeByAnchorMessageId.clear()
 
     const now = Date.now()
-    const missingOriginBlockIds: number[] = []
     const orderedBlocks = Array.from(messagesState.blocksById.values()).sort(sortBlocksByCreation)
 
-    // [PATCH Bug 3] Removed compressMessageId presence check.
-    // Blocks should remain active even if the compress tool call message was
-    // removed by opencode's internal compaction. The block's existence IS proof
-    // that compression happened.
     for (const block of orderedBlocks) {
         if (block.deactivatedByUser) {
             block.active = false
@@ -50,13 +45,11 @@ export const syncCompressionBlocks = (
             continue
         }
 
-        // Only deactivate if anchor message is completely gone from both current messages AND DCP tracked messages
         if (
             typeof block.anchorMessageId === "string" &&
             block.anchorMessageId.length > 0 &&
             !messageIds.has(block.anchorMessageId)
         ) {
-            // If anchor exists in DCP's byMessageId (persisted), keep block active
             if (!messagesState.byMessageId.has(block.anchorMessageId)) {
                 block.active = false
                 block.deactivatedAt = now
@@ -120,11 +113,12 @@ export const syncCompressionBlocks = (
         }
     }
 
-    if (missingOriginBlockIds.length > 0 || deactivatedCount > 0 || reactivatedCount > 0) {
+    if (deactivatedCount > 0 || reactivatedCount > 0) {
         logger.info("Synced compress block state", {
-            missingOriginCount: missingOriginBlockIds.length,
             deactivatedCount,
             reactivatedCount,
         })
     }
+
+    return deactivatedCount
 }

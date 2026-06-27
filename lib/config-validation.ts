@@ -1,6 +1,8 @@
 /**
  * Pure config validation logic — no runtime dependencies (fs, jsonc-parser, etc.)
- * This module is extracted from config.ts to enable direct unit testing.
+ * This module is the v1-compatible surface used by tests that import from
+ * `lib/config-validation`. The v2 zod-based validator lives in `lib/config/schema`
+ * and is unaffected by the symbols below.
  */
 
 export const VALID_CONFIG_KEYS = new Set([
@@ -59,7 +61,7 @@ export const VALID_CONFIG_KEYS = new Set([
     "strategies.purgeErrors.protectedTools",
 ])
 
-function getConfigKeyPaths(obj: Record<string, any>, prefix = ""): string[] {
+function getConfigKeyPaths(obj: Record<string, unknown>, prefix = ""): string[] {
     const keys: string[] = []
     for (const key of Object.keys(obj)) {
         const fullKey = prefix ? `${prefix}.${key}` : key
@@ -70,14 +72,15 @@ function getConfigKeyPaths(obj: Record<string, any>, prefix = ""): string[] {
             continue
         }
 
-        if (obj[key] && typeof obj[key] === "object" && !Array.isArray(obj[key])) {
-            keys.push(...getConfigKeyPaths(obj[key], fullKey))
+        const value = (obj as Record<string, unknown>)[key]
+        if (value && typeof value === "object" && !Array.isArray(value)) {
+            keys.push(...getConfigKeyPaths(value as Record<string, unknown>, fullKey))
         }
     }
     return keys
 }
 
-export function getInvalidConfigKeys(userConfig: Record<string, any>): string[] {
+export function getInvalidConfigKeys(userConfig: Record<string, unknown>): string[] {
     const userKeys = getConfigKeyPaths(userConfig)
     return userKeys.filter((key) => !VALID_CONFIG_KEYS.has(key))
 }
@@ -174,16 +177,8 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
 
     const experimental = config.experimental
     if (experimental !== undefined) {
-        if (
-            typeof experimental !== "object" ||
-            experimental === null ||
-            Array.isArray(experimental)
-        ) {
-            errors.push({
-                key: "experimental",
-                expected: "object",
-                actual: typeof experimental,
-            })
+        if (typeof experimental !== "object" || experimental === null || Array.isArray(experimental)) {
+            errors.push({ key: "experimental", expected: "object", actual: typeof experimental })
         } else {
             if (
                 experimental.allowSubAgents !== undefined &&
@@ -212,11 +207,7 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
     const commands = config.commands
     if (commands !== undefined) {
         if (typeof commands !== "object" || commands === null || Array.isArray(commands)) {
-            errors.push({
-                key: "commands",
-                expected: "object",
-                actual: typeof commands,
-            })
+            errors.push({ key: "commands", expected: "object", actual: typeof commands })
         } else {
             if (commands.enabled !== undefined && typeof commands.enabled !== "boolean") {
                 errors.push({
@@ -238,11 +229,7 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
     const manualMode = config.manualMode
     if (manualMode !== undefined) {
         if (typeof manualMode !== "object" || manualMode === null || Array.isArray(manualMode)) {
-            errors.push({
-                key: "manualMode",
-                expected: "object",
-                actual: typeof manualMode,
-            })
+            errors.push({ key: "manualMode", expected: "object", actual: typeof manualMode })
         } else {
             if (manualMode.enabled !== undefined && typeof manualMode.enabled !== "boolean") {
                 errors.push({
@@ -268,11 +255,7 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
     const compress = config.compress
     if (compress !== undefined) {
         if (typeof compress !== "object" || compress === null || Array.isArray(compress)) {
-            errors.push({
-                key: "compress",
-                expected: "object",
-                actual: typeof compress,
-            })
+            errors.push({ key: "compress", expected: "object", actual: typeof compress })
         } else {
             if (
                 compress.mode !== undefined &&
@@ -411,7 +394,7 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
                     return
                 }
 
-                for (const [providerModelKey, limit] of Object.entries(limits)) {
+                for (const [providerModelKey, limit] of Object.entries(limits as Record<string, unknown>)) {
                     const isValidNumber = typeof limit === "number"
                     const isPercentString =
                         typeof limit === "string" && /^\d+(?:\.\d+)?%$/.test(limit)
@@ -461,11 +444,7 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
     const gc = config.gc
     if (gc !== undefined) {
         if (typeof gc !== "object" || gc === null || Array.isArray(gc)) {
-            errors.push({
-                key: "gc",
-                expected: "object",
-                actual: typeof gc,
-            })
+            errors.push({ key: "gc", expected: "object", actual: typeof gc })
         } else {
             if (gc.algorithm !== undefined && gc.algorithm !== "truncate") {
                 errors.push({
@@ -498,9 +477,7 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
                     actual: typeof gc.maxOldGenSummaryLength,
                 })
             }
-            if (
-                gc.majorGcThresholdPercent !== undefined
-            ) {
+            if (gc.majorGcThresholdPercent !== undefined) {
                 const isValidNumber = typeof gc.majorGcThresholdPercent === "number"
                 const isPercentString =
                     typeof gc.majorGcThresholdPercent === "string" &&
@@ -515,7 +492,10 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
             }
 
             const validateBatchThreshold = (
-                key: "gc.batchCleanup.lowThreshold" | "gc.batchCleanup.highThreshold" | "gc.batchCleanup.forceThreshold",
+                key:
+                    | "gc.batchCleanup.lowThreshold"
+                    | "gc.batchCleanup.highThreshold"
+                    | "gc.batchCleanup.forceThreshold",
                 value: unknown,
             ): void => {
                 const isValidNumber = typeof value === "number"
@@ -542,13 +522,22 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
                     })
                 } else {
                     if (gc.batchCleanup.lowThreshold !== undefined) {
-                        validateBatchThreshold("gc.batchCleanup.lowThreshold", gc.batchCleanup.lowThreshold)
+                        validateBatchThreshold(
+                            "gc.batchCleanup.lowThreshold",
+                            gc.batchCleanup.lowThreshold,
+                        )
                     }
                     if (gc.batchCleanup.highThreshold !== undefined) {
-                        validateBatchThreshold("gc.batchCleanup.highThreshold", gc.batchCleanup.highThreshold)
+                        validateBatchThreshold(
+                            "gc.batchCleanup.highThreshold",
+                            gc.batchCleanup.highThreshold,
+                        )
                     }
                     if (gc.batchCleanup.forceThreshold !== undefined) {
-                        validateBatchThreshold("gc.batchCleanup.forceThreshold", gc.batchCleanup.forceThreshold)
+                        validateBatchThreshold(
+                            "gc.batchCleanup.forceThreshold",
+                            gc.batchCleanup.forceThreshold,
+                        )
                     }
                 }
             }
@@ -558,11 +547,7 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
     const strategies = config.strategies
     if (strategies !== undefined) {
         if (typeof strategies !== "object" || strategies === null || Array.isArray(strategies)) {
-            errors.push({
-                key: "strategies",
-                expected: "object",
-                actual: typeof strategies,
-            })
+            errors.push({ key: "strategies", expected: "object", actual: typeof strategies })
         } else {
             const dedup = strategies.deduplication
             if (dedup !== undefined) {

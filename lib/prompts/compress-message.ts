@@ -1,4 +1,4 @@
-export const COMPRESS_MESSAGE = `Collapse selected individual messages in the conversation into detailed summaries.
+export const COMPRESS_MESSAGE_PROMPT = `Collapse selected individual messages in the conversation into detailed summaries.
 
 THE SUMMARY
 Your summary must be EXHAUSTIVE. Capture file paths, function signatures, decisions made, constraints discovered, key findings, tool outcomes, and user intent details that matter... EVERYTHING that preserves the value of the selected message after the raw message is removed.

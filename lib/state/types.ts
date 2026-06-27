@@ -1,5 +1,6 @@
-import type { CompressionTimingState } from "../compress/timing"
-import { Message, Part } from "@opencode-ai/sdk/v2"
+import type { PluginConfig } from "../config/types"
+import type { BlockGeneration, CompressionMode, ManualModeState } from "../config/types"
+import type { Message, Part } from "@opencode-ai/sdk/v2"
 
 export interface WithParts {
     info: Message
@@ -27,10 +28,6 @@ export interface PrunedMessageEntry {
     allBlockIds: number[]
     activeBlockIds: number[]
 }
-
-export type CompressionMode = "range" | "message"
-
-export type BlockGeneration = "young" | "old"
 
 export interface CompressionBlock {
     blockId: number
@@ -78,39 +75,54 @@ export interface Prune {
     messages: PruneMessagesState
 }
 
-export interface PendingManualTrigger {
-    sessionId: string
-    prompt: string
+export interface NudgeState {
+    contextLimitAnchors: Set<string>
+    turnAnchors: Set<string>
+    turnNudgeAnchors: Set<string>
+    iterationAnchors: Set<string>
+    iterationNudgeAnchors: Set<string>
+    lastNudgeTurn: number
 }
 
-export interface MessageIdState {
+export interface MessageIdMapping {
     byRawId: Map<string, string>
     byRef: Map<string, string>
     nextRef: number
 }
 
-export interface Nudges {
-    contextLimitAnchors: Set<string>
-    turnNudgeAnchors: Set<string>
-    iterationNudgeAnchors: Set<string>
+export interface CompressionTimingEntry {
+    messageId: string
+    callId: string
+    durationMs: number
+}
+
+export interface CompressionTimingState {
+    startsByCallId: Map<string, number>
+    pendingByCallId: Map<string, CompressionTimingEntry>
+}
+
+export interface PendingManualTrigger {
+    sessionId: string
+    prompt: string
 }
 
 export interface SessionState {
     sessionId: string | null
-    isSubAgent: boolean
-    manualMode: false | "active" | "compress-pending"
-    compressPermission: "ask" | "allow" | "deny" | undefined
-    pendingManualTrigger: PendingManualTrigger | null
-    prune: Prune
-    nudges: Nudges
-    stats: SessionStats
-    compressionTiming: CompressionTimingState
-    toolParameters: Map<string, ToolParameterEntry>
-    subAgentResultCache: Map<string, string>
-    toolIdList: string[]
-    messageIds: MessageIdState
-    lastCompaction: number
-    currentTurn: number
     modelContextLimit: number | undefined
     systemPromptTokens: number | undefined
+    isSubAgent: boolean
+    lastCompaction: number
+    currentTurn: number
+    compressPermission?: "ask" | "allow" | "deny" | null
+
+    prune: Prune
+    nudges: NudgeState
+    stats: SessionStats
+    messageIds: MessageIdMapping
+    compressionTiming: CompressionTimingState
+    toolParameters: Map<string, ToolParameterEntry>
+    toolIdList: string[]
+    subAgentResultCache: Map<string, string>
+    manualMode: ManualModeState
+    pendingManualTrigger: PendingManualTrigger | null
 }

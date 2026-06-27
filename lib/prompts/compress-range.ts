@@ -1,4 +1,4 @@
-export const COMPRESS_RANGE = `Collapse a range in the conversation into a detailed summary.
+export const COMPRESS_RANGE_PROMPT = `Collapse a range in the conversation into a detailed summary.
 
 THE SUMMARY
 Your summary must be EXHAUSTIVE. Capture file paths, function signatures, decisions made, constraints discovered, key findings... EVERYTHING that maintains context integrity. This is not a brief note - it is an authoritative record so faithful that the original conversation adds no value.
@@ -44,7 +44,7 @@ You specify boundaries by ID using the injected IDs visible in the conversation:
 - \`mNNNNN\` IDs identify raw messages
 - \`bN\` IDs identify previously compressed blocks
 
-Each message has an ID inside XML metadata tags like \`<dcp-message-id>...</dcp-message-id>\`.
+Each message has an ID inside XML metadata tags like \`\`.
 The same ID tag appears in every tool output of the message it belongs to — each unique ID identifies one complete message.
 Treat these tags as boundary metadata only, not as tool result content.
 

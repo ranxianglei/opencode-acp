@@ -1,45 +1,79 @@
-import { PluginConfig } from "../config"
-import { Logger } from "../logger"
-import type { SessionState, WithParts } from "../state"
-import {
-    getFilePathsFromParameters,
-    isFilePathProtected,
-    isToolNameProtected,
-} from "../protected-patterns"
-import { getTotalToolTokens } from "../token-utils"
+import type { SessionState, WithParts } from "../state/types"
+import type { PluginConfig } from "../config/types"
+import type { Logger } from "../infra/logger"
 
-/**
- * Purge Errors strategy - prunes tool inputs for tools that errored
- * after they are older than a configurable number of turns.
- * The error message is preserved, but the (potentially large) inputs
- * are removed to save context.
- *
- * Modifies the session state in place to add pruned tool call IDs.
- */
-export const purgeErrors = (
+function isToolNameProtected(toolName: string, protectedTools: string[]): boolean {
+    if (!Array.isArray(protectedTools)) return false
+    if (protectedTools.length === 0) return false
+    if (protectedTools.includes(toolName)) return true
+    return protectedTools.some((pattern) => {
+        if (!pattern.includes("*")) return false
+        const regexStr = pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*")
+        return new RegExp(`^${regexStr}$`).test(toolName)
+    })
+}
+
+function getFilePathsFromParameters(toolName: string, input: unknown): string[] {
+    if (!input || typeof input !== "object") return []
+    const obj = input as Record<string, unknown>
+    const paths: string[] = []
+    for (const key of ["filePath", "path", "file", "fileName"]) {
+        const v = obj[key]
+        if (typeof v === "string") paths.push(v)
+    }
+    return paths
+}
+
+function isFilePathProtected(filePaths: string[], patterns: string[]): boolean {
+    if (!patterns || patterns.length === 0) return false
+    for (const fp of filePaths) {
+        for (const pattern of patterns) {
+            if (!pattern) continue
+            if (pattern.includes("*")) {
+                const regexStr = pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*")
+                if (new RegExp(`^${regexStr}$`).test(fp)) return true
+            } else if (fp === pattern || fp.includes(pattern)) {
+                return true
+            }
+        }
+    }
+    return false
+}
+
+function getTotalToolTokens(state: SessionState, toolIds: string[]): number {
+    let total = 0
+    for (const id of toolIds) {
+        const entry = state.toolParameters.get(id)
+        if (entry && typeof entry.tokenCount === "number") {
+            total += entry.tokenCount
+        }
+    }
+    return total
+}
+
+export function purgeErrors(
     state: SessionState,
     logger: Logger,
     config: PluginConfig,
-    messages: WithParts[],
-): void => {
+    _messages: WithParts[],
+): number {
     if (state.manualMode && !config.manualMode.automaticStrategies) {
-        return
+        return 0
     }
 
     if (!config.strategies.purgeErrors.enabled) {
-        return
+        return 0
     }
 
     const allToolIds = state.toolIdList
     if (allToolIds.length === 0) {
-        return
+        return 0
     }
 
-    // Filter out IDs already pruned
     const unprunedIds = allToolIds.filter((id) => !state.prune.tools.has(id))
 
     if (unprunedIds.length === 0) {
-        return
+        return 0
     }
 
     const protectedTools = config.strategies.purgeErrors.protectedTools
@@ -53,7 +87,6 @@ export const purgeErrors = (
             continue
         }
 
-        // Skip protected tools
         if (isToolNameProtected(metadata.tool, protectedTools)) {
             continue
         }
@@ -63,12 +96,10 @@ export const purgeErrors = (
             continue
         }
 
-        // Only process error tools
         if (metadata.status !== "error") {
             continue
         }
 
-        // Check if the tool is old enough to prune
         const turnAge = state.currentTurn - metadata.turn
         if (turnAge >= turnThreshold) {
             newPruneIds.push(id)
@@ -85,4 +116,6 @@ export const purgeErrors = (
             `Marked ${newPruneIds.length} error tool calls for pruning (older than ${turnThreshold} turns)`,
         )
     }
+
+    return newPruneIds.length
 }

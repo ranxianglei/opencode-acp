@@ -1,4 +1,4 @@
-import type { CompressionBlock, PruneMessagesState } from "../state"
+import type { CompressionBlock, PruneMessagesState } from "../state/types"
 
 export interface CompressionTarget {
     displayId: number
@@ -75,6 +75,13 @@ export function getActiveCompressionTargets(
         .filter((block): block is CompressionBlock => !!block && block.active)
 
     return splitTargets(activeBlocks)
+}
+
+export function getRecompressableCompressionTargets(
+    messagesState: PruneMessagesState,
+    availableMessageIds: Set<string>,
+): CompressionTarget[] {
+    return getRecompressibleCompressionTargets(messagesState, availableMessageIds)
 }
 
 export function getRecompressibleCompressionTargets(

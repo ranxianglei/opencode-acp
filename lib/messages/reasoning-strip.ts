@@ -1,43 +1,60 @@
-import type { WithParts } from "../state"
+import type { WithParts } from "../state/types"
 import { getLastUserMessage } from "./query"
 
-/**
- * Mirrors opencode's differentModel handling by preserving part content while
- * dropping provider metadata on assistant parts that came from a different
- * model/provider than the current turn's user message.
- */
+type MutablePart = {
+    type: string
+    metadata?: unknown
+}
+
 export function stripStaleMetadata(messages: WithParts[]): void {
-    const lastUserMessage = getLastUserMessage(messages)
-    if (lastUserMessage?.info.role !== "user") {
-        return
+    if (!Array.isArray(messages) || messages.length === 0) return
+
+    const lastUser = getLastUserMessage(messages)
+    if (!lastUser) return
+
+    const userInfo = lastUser.info as {
+        role: string
+        model?: { modelID?: string; providerID?: string } | null
     }
+    if (!userInfo.model) return
+    const userModelID = userInfo.model.modelID
+    const userProviderID = userInfo.model.providerID
 
-    const modelID = lastUserMessage.info.model.modelID
-    const providerID = lastUserMessage.info.model.providerID
+    for (const msg of messages) {
+        if (!msg || !msg.info) continue
+        if (msg.info.role !== "assistant") continue
 
-    messages.forEach((message) => {
-        if (message.info.role !== "assistant") {
-            return
+        const assistantInfo = msg.info as {
+            role: string
+            modelID?: string
+            providerID?: string
+        }
+        const assistantModelID = assistantInfo.modelID
+        const assistantProviderID = assistantInfo.providerID
+
+        if (
+            userModelID !== undefined &&
+            userModelID !== "" &&
+            userProviderID !== undefined &&
+            userProviderID !== "" &&
+            assistantModelID === userModelID &&
+            assistantProviderID === userProviderID
+        ) {
+            continue
         }
 
-        // [FIX Bug 8] Guard against undefined modelID/providerID
-        const msgModelID = (message.info as any).modelID
-        const msgProviderID = (message.info as any).providerID
-        if (msgModelID === modelID && msgProviderID === providerID) {
-            return
+        for (const rawPart of msg.parts) {
+            if (!rawPart) continue
+            const part = rawPart as MutablePart
+            if (
+                part.type === "text" ||
+                part.type === "tool" ||
+                part.type === "reasoning"
+            ) {
+                if ("metadata" in part) {
+                    delete part.metadata
+                }
+            }
         }
-
-        message.parts = message.parts.map((part) => {
-            if (part.type !== "text" && part.type !== "tool" && part.type !== "reasoning") {
-                return part
-            }
-
-            if (!("metadata" in part)) {
-                return part
-            }
-
-            const { metadata: _metadata, ...rest } = part
-            return rest
-        })
-    })
+    }
 }

@@ -1,38 +1,26 @@
-import type { SessionState, WithParts } from "../../state"
-import type { PluginConfig } from "../../config"
+import type { PluginConfig } from "../../config/types"
+import type { SessionState, WithParts, CompressionBlock } from "../../state/types"
+import type { Logger } from "../../infra/logger"
+import type { Part, TextPart, UserMessage } from "@opencode-ai/sdk/v2"
+import { countTokensSync } from "../../infra/token-counter"
+import { getActiveBlocks } from "../../state/queries"
+import { getCurrentTokenUsage } from "../../token-utils"
+import { getActiveSummaryTokenUsage } from "../../state/utils"
+import { getLastUserMessage, isIgnoredUserMessage } from "../query"
 import {
-    appendGuidanceToDcpTag,
-    buildCompressedBlockGuidance,
-    renderMessagePriorityGuidance,
-} from "../../prompts/extensions/nudge"
-import type { RuntimePrompts } from "../../prompts/store"
-import type { UserMessage } from "@opencode-ai/sdk/v2"
-import {
-    type CompressionPriorityMap,
-    type MessagePriority,
-    listPriorityRefsBeforeIndex,
-} from "../priority"
-import {
-    appendToTextPart,
     appendToLastTextPart,
+    appendToTextPart,
     createSyntheticTextPart,
     hasContent,
 } from "../utils"
-import { getLastUserMessage, isIgnoredUserMessage, isSyntheticMessage } from "../query"
-import { getCurrentTokenUsage } from "../../token-utils"
-import { getActiveSummaryTokenUsage } from "../../state/utils"
+import {
+    appendGuidanceToDcpTag,
+    renderMessagePriorityGuidance,
+} from "../../prompts/extensions/nudge"
+import type { CompressionPriorityMap, MessagePriority } from "../priority"
+import { listPriorityRefsBeforeIndex } from "../priority"
 
-const MESSAGE_MODE_NUDGE_PRIORITY: MessagePriority = "high"
-
-export interface LastUserModelContext {
-    providerId: string | undefined
-    modelId: string | undefined
-}
-
-export interface LastNonIgnoredMessage {
-    message: WithParts
-    index: number
-}
+export { computeInputBudget as computeInputBudgetFromConfig } from "../utils"
 
 interface ModelLimit {
     context: number
@@ -48,57 +36,89 @@ export function computeInputBudget(limit: ModelLimit): number | undefined {
     return limit.input ?? Math.max(0, limit.context - (limit.output ?? 0))
 }
 
-export function getNudgeFrequency(config: PluginConfig): number {
-    return Math.max(1, Math.floor(config.compress.nudgeFrequency || 1))
+export function computeContextUsage(
+    state: SessionState,
+    messages: WithParts[],
+): number {
+    const limit = state.modelContextLimit
+    if (!limit || limit <= 0) return 0
+    const used = estimateMessagesTokens(messages)
+    if (used <= 0) return 0
+    return Math.min(100, Math.round((used / limit) * 100))
 }
 
-export function getIterationNudgeThreshold(config: PluginConfig): number {
-    return Math.max(1, Math.floor(config.compress.iterationNudgeThreshold || 1))
-}
-
-export function findLastNonIgnoredMessage(messages: WithParts[]): LastNonIgnoredMessage | null {
+export function getMessagesSinceLastUser(messages: WithParts[]): number {
+    if (!Array.isArray(messages)) return 0
     for (let i = messages.length - 1; i >= 0; i--) {
-        const message = messages[i]
-        if (isIgnoredUserMessage(message)) {
-            continue
+        const msg = messages[i]
+        if (msg && msg.info && msg.info.role === "user") {
+            return messages.length - 1 - i
         }
-        if (isSyntheticMessage(message)) {
-            continue
-        }
-        return { message, index: i }
     }
-
-    return null
+    return messages.length
 }
 
-export function countMessagesAfterIndex(messages: WithParts[], index: number): number {
-    let count = 0
-
-    for (let i = index + 1; i < messages.length; i++) {
-        const message = messages[i]
-        if (isIgnoredUserMessage(message)) {
-            continue
-        }
-        count++
+export function shouldShowBlockAgingWarning(
+    state: SessionState,
+    config: PluginConfig,
+    contextUsagePercent: number,
+): boolean {
+    if (contextUsagePercent <= 50) return false
+    const maxBlockAge = config.gc.maxBlockAge
+    if (typeof maxBlockAge !== "number" || maxBlockAge <= 0) return false
+    const agingThreshold = Math.floor(maxBlockAge / 2)
+    const active = getActiveBlocks(state)
+    for (const block of active) {
+        if (isApproachingMaxAge(block, agingThreshold)) return true
     }
-
-    return count
+    return false
 }
 
-export function getModelInfo(messages: WithParts[]): LastUserModelContext {
-    const lastUserMessage = getLastUserMessage(messages)
-    if (!lastUserMessage) {
-        return {
-            providerId: undefined,
-            modelId: undefined,
+function isApproachingMaxAge(block: CompressionBlock, agingThreshold: number): boolean {
+    if (block.generation !== "old") return false
+    const survived = typeof block.survivedCount === "number" ? block.survivedCount : 0
+    return survived >= agingThreshold
+}
+
+function estimateMessagesTokens(messages: WithParts[]): number {
+    if (!Array.isArray(messages)) return 0
+    let total = 0
+    for (const msg of messages) {
+        if (!msg || !Array.isArray(msg.parts)) continue
+        for (const part of msg.parts) {
+            if (!part) continue
+            const p = part as {
+                type?: string
+                text?: unknown
+                state?: { output?: unknown }
+            }
+            if (typeof p.text === "string") {
+                total += countTokensSync(p.text)
+            }
+            if (p.type === "tool" && p.state && typeof p.state.output === "string") {
+                total += countTokensSync(p.state.output)
+            }
         }
     }
+    return total
+}
 
-    const userInfo = lastUserMessage.info as UserMessage
-    return {
-        providerId: userInfo.model.providerID,
-        modelId: userInfo.model.modelID,
-    }
+interface ModelLimit {
+    context: number
+    input?: number
+    output?: number
+}
+
+export interface RuntimePrompts {
+    system: string
+    compressRange: string
+    compressMessage: string
+    contextLimitNudge: string
+    turnNudge: string
+    iterationNudge: string
+    manualExtension?: string
+    subagentExtension?: string
+    decompressExtension?: string
 }
 
 function resolveContextTokenLimit(
@@ -108,7 +128,7 @@ function resolveContextTokenLimit(
     modelId: string | undefined,
     threshold: "max" | "min",
 ): number | undefined {
-    const parseLimitValue = (limit: number | `${number}%` | undefined): number | undefined => {
+    const parseLimitValue = (limit: number | string | undefined): number | undefined => {
         if (limit === undefined) {
             return undefined
         }
@@ -117,7 +137,7 @@ function resolveContextTokenLimit(
             return limit
         }
 
-        if (!limit.endsWith("%") || state.modelContextLimit === undefined) {
+        if (typeof limit !== "string" || !limit.endsWith("%") || state.modelContextLimit === undefined) {
             return undefined
         }
 
@@ -146,13 +166,20 @@ function resolveContextTokenLimit(
     return parseLimitValue(globalLimit)
 }
 
+export interface ContextOverLimitsResult {
+    overMaxLimit: boolean
+    overMinLimit: boolean
+    currentTokens: number
+    modelContextLimit: number | undefined
+}
+
 export function isContextOverLimits(
     config: PluginConfig,
     state: SessionState,
     providerId: string | undefined,
     modelId: string | undefined,
     messages: WithParts[],
-) {
+): ContextOverLimitsResult {
     const summaryTokenExtension = config.compress.summaryBuffer
         ? getActiveSummaryTokenUsage(state)
         : 0
@@ -173,14 +200,14 @@ export function isContextOverLimits(
     let overMaxLimit = maxContextLimit === undefined ? false : currentTokens > maxContextLimit
     const overMinLimit = minContextLimit === undefined ? false : currentTokens >= minContextLimit
 
-    // [FIX Bug 20] Suppress overMax while cacheRead hasn't updated after compress
     if (overMaxLimit) {
         const recentCompressCount = 3
         const recentMessages = messages.slice(-recentCompressCount)
         for (const msg of recentMessages) {
             if (msg.info.role === "assistant" && msg.parts) {
                 for (const part of msg.parts) {
-                    if ((part as any).type === "tool-invocation" && (part as any).toolInvocation?.toolName === "compress") {
+                    const p = part as { type?: string; toolInvocation?: { toolName?: string } }
+                    if (p.type === "tool-invocation" && p.toolInvocation?.toolName === "compress") {
                         overMaxLimit = false
                         break
                     }
@@ -198,50 +225,67 @@ export function isContextOverLimits(
     }
 }
 
-export function addAnchor(
+const MESSAGE_MODE_NUDGE_PRIORITY: MessagePriority = "high"
+
+interface LastNonIgnoredEntry {
+    message: WithParts
+    index: number
+}
+
+function findLastNonIgnoredEntry(messages: WithParts[]): LastNonIgnoredEntry | null {
+    for (let i = messages.length - 1; i >= 0; i--) {
+        const message = messages[i]
+        if (!message || !message.info) continue
+        if (isIgnoredUserMessage(message)) continue
+        const id = message.info.id
+        if (typeof id === "string" && (id.startsWith("msg_dcp_summary_") || id.startsWith("msg_dcp_text_"))) {
+            continue
+        }
+        return { message, index: i }
+    }
+    return null
+}
+
+function collectAnchoredMessages(
     anchorMessageIds: Set<string>,
-    anchorMessageId: string,
-    anchorMessageIndex: number,
     messages: WithParts[],
-    interval: number,
-): boolean {
-    if (anchorMessageIndex < 0) {
-        return false
+): Array<{ message: WithParts; index: number }> {
+    const anchoredMessages: Array<{ message: WithParts; index: number }> = []
+
+    for (const anchorMessageId of anchorMessageIds) {
+        const index = messages.findIndex((message) => message.info.id === anchorMessageId)
+        if (index === -1) {
+            continue
+        }
+
+        anchoredMessages.push({
+            message: messages[index]!,
+            index,
+        })
     }
 
-    let latestAnchorMessageIndex = -1
-    for (let i = messages.length - 1; i >= 0; i--) {
-        if (anchorMessageIds.has(messages[i].info.id)) {
-            latestAnchorMessageIndex = i
-            break
+    return anchoredMessages
+}
+
+function collectTurnNudgeAnchors(
+    state: SessionState,
+    config: PluginConfig,
+    messages: WithParts[],
+): Set<string> {
+    const turnNudgeAnchors = new Set<string>()
+    const targetRole = config.compress.nudgeForce === "strong" ? "user" : "assistant"
+    const sourceAnchors = (state.nudges as { turnNudgeAnchors?: Set<string> }).turnNudgeAnchors
+    if (!sourceAnchors) return turnNudgeAnchors
+
+    for (const message of messages) {
+        if (!sourceAnchors.has(message.info.id)) continue
+
+        if (message.info.role === targetRole) {
+            turnNudgeAnchors.add(message.info.id)
         }
     }
 
-    const shouldAdd =
-        latestAnchorMessageIndex < 0 || anchorMessageIndex - latestAnchorMessageIndex >= interval
-    if (!shouldAdd) {
-        return false
-    }
-
-    const previousSize = anchorMessageIds.size
-    anchorMessageIds.add(anchorMessageId)
-    return anchorMessageIds.size !== previousSize
-}
-
-function buildMessagePriorityGuidance(
-    messages: WithParts[],
-    compressionPriorities: CompressionPriorityMap | undefined,
-    anchorIndex: number,
-    priority: MessagePriority,
-): string {
-    if (!compressionPriorities || compressionPriorities.size === 0) {
-        return ""
-    }
-
-    const refs = listPriorityRefsBeforeIndex(messages, compressionPriorities, anchorIndex, priority)
-    const priorityLabel = `${priority[0].toUpperCase()}${priority.slice(1)}`
-
-    return renderMessagePriorityGuidance(priorityLabel, refs)
+    return turnNudgeAnchors
 }
 
 function injectAnchoredNudge(message: WithParts, nudgeText: string): void {
@@ -268,7 +312,7 @@ function injectAnchoredNudge(message: WithParts, nudgeText: string): void {
 
     for (const part of message.parts) {
         if (part.type === "text") {
-            if (appendToTextPart(part, nudgeText)) {
+            if (appendToTextPart(part as Part, nudgeText)) {
                 return
             }
         }
@@ -283,60 +327,20 @@ function injectAnchoredNudge(message: WithParts, nudgeText: string): void {
     }
 }
 
-function collectAnchoredMessages(
-    anchorMessageIds: Set<string>,
+function buildMessagePriorityGuidance(
     messages: WithParts[],
-): Array<{ message: WithParts; index: number }> {
-    const anchoredMessages: Array<{ message: WithParts; index: number }> = []
-
-    for (const anchorMessageId of anchorMessageIds) {
-        const index = messages.findIndex((message) => message.info.id === anchorMessageId)
-        if (index === -1) {
-            continue
-        }
-
-        anchoredMessages.push({
-            message: messages[index],
-            index,
-        })
+    compressionPriorities: CompressionPriorityMap | undefined,
+    anchorIndex: number,
+    priority: MessagePriority,
+): string {
+    if (!compressionPriorities || compressionPriorities.size === 0) {
+        return ""
     }
 
-    return anchoredMessages
-}
+    const refs = listPriorityRefsBeforeIndex(messages, compressionPriorities, anchorIndex, priority)
+    const priorityLabel = `${priority[0].toUpperCase()}${priority.slice(1)}`
 
-function collectTurnNudgeAnchors(
-    state: SessionState,
-    config: PluginConfig,
-    messages: WithParts[],
-): Set<string> {
-    const turnNudgeAnchors = new Set<string>()
-    const targetRole = config.compress.nudgeForce === "strong" ? "user" : "assistant"
-
-    for (const message of messages) {
-        if (!state.nudges.turnNudgeAnchors.has(message.info.id)) continue
-
-        if (message.info.role === targetRole) {
-            turnNudgeAnchors.add(message.info.id)
-        }
-    }
-
-    return turnNudgeAnchors
-}
-
-function applyRangeModeAnchoredNudge(
-    anchorMessageIds: Set<string>,
-    messages: WithParts[],
-    baseNudgeText: string,
-    compressedBlockGuidance: string,
-): void {
-    const nudgeText = appendGuidanceToDcpTag(baseNudgeText, compressedBlockGuidance)
-    if (!nudgeText.trim()) {
-        return
-    }
-
-    for (const { message } of collectAnchoredMessages(anchorMessageIds, messages)) {
-        injectAnchoredNudge(message, nudgeText)
-    }
+    return renderMessagePriorityGuidance(priorityLabel, refs)
 }
 
 function applyMessageModeAnchoredNudge(
@@ -357,54 +361,18 @@ function applyMessageModeAnchoredNudge(
     }
 }
 
-/**
- * Resolve a config threshold (number | "NN%") to a percentage value.
- */
-function resolveThresholdPercent(
-    threshold: number | `${number}%` | undefined,
-    modelContextLimit: number | undefined,
-): number | undefined {
-    if (threshold === undefined) return undefined
-    if (typeof threshold === "number") {
-        if (!modelContextLimit) return undefined
-        return (threshold / modelContextLimit) * 100
-    }
-    const parsed = parseFloat(threshold)
-    return isNaN(parsed) ? undefined : parsed
-}
-
-/**
- * Build tiered context usage guidance based on actual config thresholds.
- * Shared by inject.ts (suffix message) and utils.ts (anchored nudges).
- */
-export function buildContextUsageGuidance(
-    config: PluginConfig,
-    currentTokens?: number,
-    modelContextLimit?: number,
-): string {
-    if (currentTokens === undefined || modelContextLimit === undefined || modelContextLimit === 0) {
-        return ""
+function applyRangeModeAnchoredNudge(
+    anchorMessageIds: Set<string>,
+    messages: WithParts[],
+    baseNudgeText: string,
+): void {
+    if (!baseNudgeText.trim()) {
+        return
     }
 
-    const pct = (currentTokens / modelContextLimit) * 100
-    const percentage = pct.toFixed(1)
-    const formatK = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n))
-
-    const minPct = resolveThresholdPercent(config.compress.minContextLimit, modelContextLimit) ?? 45
-    const maxPct = resolveThresholdPercent(config.compress.maxContextLimit, modelContextLimit) ?? 55
-
-    const base = `Context usage: ${formatK(currentTokens)} / ${formatK(modelContextLimit)} tokens (${percentage}%). ACP threshold: ${maxPct.toFixed(0)}%.`
-
-    let guidance: string
-    if (pct < minPct) {
-        guidance = " Context is ample — focus on your task. Only compress obvious waste (large terminal outputs, duplicated content)."
-    } else if (pct < maxPct) {
-        guidance = " Context is moderate — compress completed sections and high-token waste. Preserve key details."
-    } else {
-        guidance = " Context is high — compress aggressively but selectively. Preserve only what is essential."
+    for (const { message } of collectAnchoredMessages(anchorMessageIds, messages)) {
+        injectAnchoredNudge(message, baseNudgeText)
     }
-
-    return `\n\n${base}${guidance}`
 }
 
 export function applyAnchoredNudges(
@@ -437,8 +405,8 @@ export function applyAnchoredNudges(
                     nudgeParts.push(appendGuidanceToDcpTag(prompts.turnNudge, guidance))
                 }
             }
-            if (state.nudges.iterationNudgeAnchors.size > 0) {
-                for (const { index } of collectAnchoredMessages(state.nudges.iterationNudgeAnchors, messages)) {
+            if (state.nudges.iterationAnchors.size > 0) {
+                for (const { index } of collectAnchoredMessages(state.nudges.iterationAnchors, messages)) {
                     const guidance = buildMessagePriorityGuidance(messages, compressionPriorities, index, MESSAGE_MODE_NUDGE_PRIORITY)
                     nudgeParts.push(appendGuidanceToDcpTag(prompts.iterationNudge, guidance))
                 }
@@ -450,7 +418,7 @@ export function applyAnchoredNudges(
             if (turnNudgeAnchors.size > 0) {
                 nudgeParts.push(prompts.turnNudge)
             }
-            if (state.nudges.iterationNudgeAnchors.size > 0) {
+            if (state.nudges.iterationAnchors.size > 0) {
                 nudgeParts.push(prompts.iterationNudge)
             }
         }
@@ -476,7 +444,7 @@ export function applyAnchoredNudges(
             compressionPriorities,
         )
         applyMessageModeAnchoredNudge(
-            state.nudges.iterationNudgeAnchors,
+            state.nudges.iterationAnchors,
             messages,
             prompts.iterationNudge,
             compressionPriorities,
@@ -488,18 +456,65 @@ export function applyAnchoredNudges(
         state.nudges.contextLimitAnchors,
         messages,
         contextLimitNudgeWithUsage,
-        "",
     )
     applyRangeModeAnchoredNudge(
         turnNudgeAnchors,
         messages,
         prompts.turnNudge,
-        "",
     )
     applyRangeModeAnchoredNudge(
-        state.nudges.iterationNudgeAnchors,
+        state.nudges.iterationAnchors,
         messages,
         prompts.iterationNudge,
-        "",
     )
 }
+
+function resolveThresholdPercent(
+    threshold: number | string | undefined,
+    modelContextLimit: number | undefined,
+): number | undefined {
+    if (threshold === undefined) return undefined
+    if (typeof threshold === "number") {
+        if (!modelContextLimit) return undefined
+        return (threshold / modelContextLimit) * 100
+    }
+    if (typeof threshold !== "string") return undefined
+    if (!threshold.endsWith("%")) {
+        const parsed = parseFloat(threshold)
+        return isNaN(parsed) ? undefined : parsed
+    }
+    const parsed = parseFloat(threshold.slice(0, -1))
+    return isNaN(parsed) ? undefined : parsed
+}
+
+export function buildContextUsageGuidance(
+    config: PluginConfig,
+    currentTokens?: number,
+    modelContextLimit?: number,
+): string {
+    if (currentTokens === undefined || modelContextLimit === undefined || modelContextLimit === 0) {
+        return ""
+    }
+
+    const pct = (currentTokens / modelContextLimit) * 100
+    const percentage = pct.toFixed(1)
+    const formatK = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n))
+
+    const minPct = resolveThresholdPercent(config.compress.minContextLimit, modelContextLimit) ?? 45
+    const maxPct = resolveThresholdPercent(config.compress.maxContextLimit, modelContextLimit) ?? 55
+
+    const base = `Context usage: ${formatK(currentTokens)} / ${formatK(modelContextLimit)} tokens (${percentage}%). ACP threshold: ${maxPct.toFixed(0)}%.`
+
+    let guidance: string
+    if (pct < minPct) {
+        guidance = " Context is ample — focus on your task. Only compress obvious waste (large terminal outputs, duplicated content)."
+    } else if (pct < maxPct) {
+        guidance = " Context is moderate — compress completed sections and high-token waste. Preserve key details."
+    } else {
+        guidance = " Context is high — compress aggressively but selectively. Preserve only what is essential."
+    }
+
+    return `\n\n${base}${guidance}`
+}
+
+export type { TextPart, UserMessage }

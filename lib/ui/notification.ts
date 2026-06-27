@@ -1,99 +1,55 @@
-import type { Logger } from "../logger"
-import type { SessionState } from "../state"
-import {
-    formatPrunedItemsList,
-    formatProgressBar,
-    formatStatsHeader,
-    formatTokenCount,
-} from "./utils"
-import { ToolParameterEntry } from "../state"
-import { PluginConfig } from "../config"
-import { getActiveSummaryTokenUsage } from "../state/utils"
+import type { CompressionBlock, SessionState } from "../state/types"
+import type { PluginConfig } from "../config/types"
+import type { Logger } from "../infra/logger"
+import { formatTokenCount } from "./utils"
 
-export type PruneReason = "completion" | "noise" | "extraction"
-export const PRUNE_REASON_LABELS: Record<PruneReason, string> = {
-    completion: "Task Complete",
-    noise: "Noise Removal",
-    extraction: "Extraction",
+export interface NotificationInput {
+    blocks: CompressionBlock[]
+    config: PluginConfig
+    mode: "chat" | "toast"
+    style: "minimal" | "detailed" | "off"
 }
 
-interface CompressionNotificationEntry {
+export interface CompressionNotificationEntry {
     blockId: number
     runId: number
     summary: string
     summaryTokens: number
 }
 
-function buildMinimalMessage(state: SessionState, reason: PruneReason | undefined): string {
-    const reasonSuffix = reason ? ` — ${PRUNE_REASON_LABELS[reason]}` : ""
-    return (
-        formatStatsHeader(state.stats.totalPruneTokens, state.stats.pruneTokenCounter) +
-        reasonSuffix
-    )
+export function buildNotification(input: NotificationInput): string | null {
+    if (input.style === "off") return null
+
+    const activeBlocks = input.blocks.filter((b) => b.active)
+    if (activeBlocks.length === 0) return null
+
+    if (input.style === "minimal") {
+        return buildMinimalNotification(activeBlocks)
+    }
+
+    return buildDetailedNotification(activeBlocks)
 }
 
-function buildDetailedMessage(
-    state: SessionState,
-    reason: PruneReason | undefined,
-    pruneToolIds: string[],
-    toolMetadata: Map<string, ToolParameterEntry>,
-    workingDirectory: string,
-): string {
-    let message = formatStatsHeader(state.stats.totalPruneTokens, state.stats.pruneTokenCounter)
-
-    if (pruneToolIds.length > 0) {
-        const pruneTokenCounterStr = `~${formatTokenCount(state.stats.pruneTokenCounter)}`
-        const reasonLabel = reason ? ` — ${PRUNE_REASON_LABELS[reason]}` : ""
-        message += `\n\n▣ Pruning (${pruneTokenCounterStr})${reasonLabel}`
-
-        const itemLines = formatPrunedItemsList(pruneToolIds, toolMetadata, workingDirectory)
-        message += "\n" + itemLines.join("\n")
-    }
-
-    return message.trim()
+function buildMinimalNotification(blocks: CompressionBlock[]): string {
+    const totalTokens = blocks.reduce((sum, b) => sum + b.compressedTokens, 0)
+    return `Compressed ${blocks.length} block${blocks.length > 1 ? "s" : ""} (${totalTokens} tokens freed)`
 }
 
-const TOAST_BODY_MAX_LINES = 12
-const TOAST_SUMMARY_MAX_CHARS = 600
-const NOTIFICATION_SUMMARY_MAX_CHARS = 1500
+function buildDetailedNotification(blocks: CompressionBlock[]): string {
+    const lines: string[] = []
+    const totalTokens = blocks.reduce((sum, b) => sum + b.compressedTokens, 0)
 
-function truncateToastBody(body: string, maxLines: number = TOAST_BODY_MAX_LINES): string {
-    const lines = body.split("\n")
-    if (lines.length <= maxLines) {
-        return body
-    }
-    const kept = lines.slice(0, maxLines - 1)
-    const remaining = lines.length - maxLines + 1
-    return kept.join("\n") + `\n... and ${remaining} more`
-}
+    lines.push(`**Compression complete** — ${blocks.length} block${blocks.length > 1 ? "s" : ""}, ${totalTokens} tokens freed`)
+    lines.push("")
 
-function truncateToastSummary(summary: string, maxChars: number = TOAST_SUMMARY_MAX_CHARS): string {
-    if (summary.length <= maxChars) {
-        return summary
-    }
-    return summary.slice(0, maxChars - 3) + "..."
-}
-
-function buildCompressionSummary(
-    entries: CompressionNotificationEntry[],
-    state: SessionState,
-): string {
-    if (entries.length === 1) {
-        return entries[0]?.summary ?? ""
+    for (const block of blocks) {
+        const topic = block.topic || "untitled"
+        const msgs = block.directMessageIds.length
+        const tokens = block.compressedTokens
+        lines.push(`- **${block.blockId}**: ${topic} (${msgs} messages, ${tokens} tokens)`)
     }
 
-    let result = ""
-    for (const entry of entries) {
-        const topic =
-            state.prune.messages.blocksById.get(entry.blockId)?.topic ?? "(unknown topic)"
-        const section = `### ${topic}\n${entry.summary}`
-        if (result.length + section.length + 2 > NOTIFICATION_SUMMARY_MAX_CHARS) {
-            result += `\n\n... and ${entries.length - entries.indexOf(entry)} more`
-            break
-        }
-        result += (result ? "\n\n" : "") + section
-    }
-    return result
+    return lines.join("\n")
 }
 
 function getCompressionLabel(entries: CompressionNotificationEntry[]): string {
@@ -101,16 +57,11 @@ function getCompressionLabel(entries: CompressionNotificationEntry[]): string {
     if (runId === undefined) {
         return "Compression"
     }
-
     return `Compression #${runId}`
 }
 
-function formatCompressionMetrics(removedTokens: number, summaryTokens: number): string {
-    const metrics = [`-${formatTokenCount(removedTokens, true)} removed`]
-    if (summaryTokens > 0) {
-        metrics.push(`+${formatTokenCount(summaryTokens, true)} summary`)
-    }
-    return metrics.join(", ")
+function buildCompressionSummary(entries: CompressionNotificationEntry[]): string {
+    return entries.map((e) => e.summary).join("\n\n---\n\n")
 }
 
 export async function sendCompressNotification(
@@ -121,8 +72,8 @@ export async function sendCompressNotification(
     sessionId: string,
     entries: CompressionNotificationEntry[],
     batchTopic: string | undefined,
-    sessionMessageIds: string[],
-    params: any,
+    _sessionMessageIds: string[],
+    _params: any,
 ): Promise<boolean> {
     if (config.pruneNotification === "off") {
         return false
@@ -132,51 +83,17 @@ export async function sendCompressNotification(
         return false
     }
 
-    let message: string
     const compressionLabel = getCompressionLabel(entries)
-    const summary = buildCompressionSummary(entries, state)
+    const summary = buildCompressionSummary(entries)
     const summaryTokens = entries.reduce((total, entry) => total + entry.summaryTokens, 0)
     const summaryTokensStr = formatTokenCount(summaryTokens)
     const compressedTokens = entries.reduce((total, entry) => {
         const compressionBlock = state.prune.messages.blocksById.get(entry.blockId)
         if (!compressionBlock) {
-            logger.error("Compression block missing for notification", {
-                compressionId: entry.blockId,
-                sessionId,
-            })
             return total
         }
-
         return total + compressionBlock.compressedTokens
     }, 0)
-
-    const newlyCompressedMessageIds: string[] = []
-    const newlyCompressedToolIds: string[] = []
-    const seenMessageIds = new Set<string>()
-    const seenToolIds = new Set<string>()
-
-    for (const entry of entries) {
-        const compressionBlock = state.prune.messages.blocksById.get(entry.blockId)
-        if (!compressionBlock) {
-            continue
-        }
-
-        for (const messageId of compressionBlock.directMessageIds) {
-            if (seenMessageIds.has(messageId)) {
-                continue
-            }
-            seenMessageIds.add(messageId)
-            newlyCompressedMessageIds.push(messageId)
-        }
-
-        for (const toolId of compressionBlock.directToolIds) {
-            if (seenToolIds.has(toolId)) {
-                continue
-            }
-            seenToolIds.add(toolId)
-            newlyCompressedToolIds.push(toolId)
-        }
-    }
 
     const topic =
         batchTopic ??
@@ -185,63 +102,49 @@ export async function sendCompressNotification(
               "(unknown topic)")
             : "(unknown topic)")
 
-    const totalActiveSummaryTkns = getActiveSummaryTokenUsage(state)
+    let totalActiveSummaryTkns = 0
+    for (const block of state.prune.messages.blocksById.values()) {
+        if (block.active) {
+            totalActiveSummaryTkns += block.summaryTokens
+        }
+    }
     const totalGross = state.stats.totalPruneTokens + state.stats.pruneTokenCounter
     const notificationHeader = `▣ ACP | ${formatCompressionMetrics(totalGross, totalActiveSummaryTkns)}`
 
+    let message: string
     if (config.pruneNotification === "minimal") {
         message = `${notificationHeader} — ${compressionLabel}`
     } else {
         message = notificationHeader
-
-        const activePrunedMessages = new Map<string, number>()
-        for (const [messageId, entry] of state.prune.messages.byMessageId) {
-            if (entry.activeBlockIds.length > 0) {
-                activePrunedMessages.set(messageId, entry.tokenCount)
-            }
-        }
-        const progressBar = formatProgressBar(
-            sessionMessageIds,
-            activePrunedMessages,
-            newlyCompressedMessageIds,
-            50,
-        )
-        message += `\n\n${progressBar}`
         message += `\n▣ ${compressionLabel} ${formatCompressionMetrics(compressedTokens, summaryTokens)}`
         message += `\n→ Topic: ${topic}`
-        message += `\n→ Items: ${newlyCompressedMessageIds.length} messages`
-        if (newlyCompressedToolIds.length > 0) {
-            message += ` and ${newlyCompressedToolIds.length} tools compressed`
-        } else {
-            message += ` compressed`
+
+        const newlyCompressedMessageIds: string[] = []
+        const seenMessageIds = new Set<string>()
+        for (const entry of entries) {
+            const block = state.prune.messages.blocksById.get(entry.blockId)
+            if (!block) continue
+            for (const messageId of block.directMessageIds) {
+                if (!seenMessageIds.has(messageId)) {
+                    seenMessageIds.add(messageId)
+                    newlyCompressedMessageIds.push(messageId)
+                }
+            }
         }
+
+        const messageNoun = newlyCompressedMessageIds.length === 1 ? "message" : "messages"
+        message += `\n→ Items: ${newlyCompressedMessageIds.length} ${messageNoun} compressed`
+
         if (config.compress.showCompression) {
-            const displaySummary =
-                summary.length > NOTIFICATION_SUMMARY_MAX_CHARS
-                    ? truncateToastSummary(summary, NOTIFICATION_SUMMARY_MAX_CHARS)
-                    : summary
-            message += `\n→ Compression (~${summaryTokensStr}): ${displaySummary}`
+            message += `\n→ Compression (~${summaryTokensStr}): ${summary}`
         }
     }
 
     if (config.pruneNotificationType === "toast") {
-        let toastMessage = message
-        if (config.compress.showCompression) {
-            const truncatedSummary = truncateToastSummary(summary)
-            if (truncatedSummary !== summary) {
-                toastMessage = toastMessage.replace(
-                    `\n→ Compression (~${summaryTokensStr}): ${truncateToastSummary(summary, NOTIFICATION_SUMMARY_MAX_CHARS)}`,
-                    `\n→ Compression (~${summaryTokensStr}): ${truncatedSummary}`,
-                )
-            }
-        }
-        toastMessage =
-            config.pruneNotification === "minimal" ? toastMessage : truncateToastBody(toastMessage)
-
         await client.tui.showToast({
             body: {
                 title: "ACP: Compress Notification",
-                message: toastMessage,
+                message,
                 variant: "info",
                 duration: 5000,
             },
@@ -249,47 +152,16 @@ export async function sendCompressNotification(
         return true
     }
 
-    await sendIgnoredMessage(client, sessionId, message, params, logger)
-    return true
+    return false
 }
 
-export async function sendIgnoredMessage(
-    client: any,
-    sessionID: string,
-    text: string,
-    params: any,
-    logger: Logger,
-): Promise<void> {
-    const agent = params.agent || undefined
-    const variant = params.variant || undefined
-    const model =
-        params.providerId && params.modelId
-            ? {
-                  providerID: params.providerId,
-                  modelID: params.modelId,
-              }
-            : undefined
-
-    try {
-        await client.session.prompt({
-            path: {
-                id: sessionID,
-            },
-            body: {
-                noReply: true,
-                agent: agent,
-                model: model,
-                variant: variant,
-                parts: [
-                    {
-                        type: "text",
-                        text: text,
-                        ignored: true,
-                    },
-                ],
-            },
-        })
-    } catch (error: any) {
-        logger.error("Failed to send notification", { error: error.message })
+function formatCompressionMetrics(compressed: number, summary: number): string {
+    const metrics: string[] = []
+    if (compressed > 0) {
+        metrics.push(`-${formatTokenCount(compressed)} removed`)
     }
+    if (summary > 0) {
+        metrics.push(`+${formatTokenCount(summary)} summary`)
+    }
+    return metrics.join(", ")
 }

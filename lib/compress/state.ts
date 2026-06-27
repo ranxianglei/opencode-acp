@@ -1,7 +1,11 @@
-import type { CompressionBlock, PruneMessagesState, SessionState } from "../state"
-import { formatBlockRef, formatMessageIdTag } from "../message-ids"
-import type { AppliedCompressionResult, CompressionStateInput, SelectionResolution } from "./types"
-import type { GCConfig } from "../config"
+import type { CompressionBlock, PruneMessagesState, SessionState } from "../state/types"
+import { formatBlockRef, formatMessageIdTag } from "../infra/message-refs"
+import type {
+    AppliedCompressionResult,
+    CompressionStateInput,
+    SelectionResolution,
+} from "./types"
+import type { GCConfig } from "../config/types"
 
 const DEFAULT_PROMOTION_THRESHOLD = 5
 
@@ -282,3 +286,6 @@ export function applyCompressionState(
         newlyCompressedToolIds,
     }
 }
+
+export { allocateBlock, deactivateBlock, consumeBlocks } from "../state/mutations/blocks"
+export { markPruned, unmarkPruned, updateActiveBlockIds } from "../state/mutations/prune-map"

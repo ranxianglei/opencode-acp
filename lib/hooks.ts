@@ -1,65 +1,46 @@
-import type { SessionState, WithParts } from "./state"
-import type { Logger } from "./logger"
-import type { PluginConfig } from "./config"
-import { assignMessageRefs } from "./message-ids"
+import type { SessionState, WithParts } from "./state/types"
+import type { Logger } from "./infra/logger"
+import type { PluginConfig } from "./config/types"
+import type { HostPermissionSnapshot } from "./host-permissions"
 import {
-    buildPriorityMap,
-    buildToolIdList,
-    injectCompressNudges,
-    injectExtendedSubAgentResults,
-    injectMessageIds,
-    prune,
     stripHallucinations,
     stripHallucinationsFromString,
-    stripStaleMetadata,
-    syncCompressionBlocks,
-    computeInputBudget,
-} from "./messages"
-import { renderSystemPrompt, type PromptStore } from "./prompts"
-import { buildProtectedToolsExtension } from "./prompts/extensions/system"
+    appendToLastTextPart,
+    createSyntheticUserMessage,
+} from "./messages/utils"
+import { filterMessagesInPlace, filterMessages, isMessageWithInfo } from "./messages/shape"
+import { assignMessageRefs } from "./message-ids"
+import { injectMessageIds, injectCompressNudges, applyAnchoredNudges } from "./messages/inject/inject"
+import { buildPriorityMap } from "./messages/priority"
+import { getLastUserMessage, isIgnoredUserMessage } from "./messages/query"
+import { prune } from "./messages/prune"
+import { syncCompressionBlocks } from "./messages/sync"
+import { stripStaleMetadata } from "./messages/reasoning-strip"
+import { runMajorGC } from "./gc"
+import { runBatchCleanup } from "./gc/merge"
 import {
-    applyPendingCompressionDurations,
+    checkSession,
+    ensureSessionInitialized,
+    saveSessionState,
+    syncToolCache,
+} from "./state"
+import {
+    compressPermission,
+    syncCompressPermissionState,
+} from "./permissions"
+import {
     buildCompressionTimingKey,
     consumeCompressionStart,
     resolveCompressionDuration,
+    applyPendingCompressionDurations,
 } from "./compress/timing"
-import { filterMessages, filterMessagesInPlace } from "./messages/shape"
-import { getLastUserMessage } from "./messages/query"
-import {
-    applyPendingManualTrigger,
-    handleContextCommand,
-    handleDecompressCommand,
-    handleHelpCommand,
-    handleManualToggleCommand,
-    handleManualTriggerCommand,
-    handleRecompressCommand,
-    handleStatsCommand,
-    handleSweepCommand,
-} from "./commands"
-import { type HostPermissionSnapshot } from "./host-permissions"
-import { compressPermission, syncCompressPermissionState } from "./compress-permission"
-import { checkSession, ensureSessionInitialized, saveSessionState, syncToolCache } from "./state"
-import { cacheSystemPromptTokens } from "./ui/utils"
-import { runTruncateGC, shouldRunMajorGC, getGCParams } from "./gc/truncate"
-import { runBatchCleanup } from "./gc/merge"
-import { getCurrentTokenUsage } from "./token-utils"
-import { appendToLastTextPart } from "./messages/utils"
+import { formatMessageRef, formatMessageIdTag } from "./infra/message-refs"
 
-const INTERNAL_AGENT_SIGNATURES = [
-    "You are a title generator",
-    "You are a helpful AI assistant tasked with summarizing conversations",
-    "You are an anchored context summarization assistant for coding sessions",
-    "Summarize what was done in this conversation",
-]
+export { handleMessageTransform, createPluginEntry, type PluginContext } from "./plugin/entry"
 
-// [FIX Bug 37] OpenCode built-in hidden primary-mode agents that must NOT be
-// run through the message-transform pipeline. These small internal LLM
-// requests (title/summary/compaction generation) carry the agent name on the
-// user message's `info.agent` field. Mutating them corrupts the request and
-// shared session state (e.g. countTurns runs on the wrong message set).
-// Keep in sync with INTERNAL_AGENT_SIGNATURES (system-prompt layer) and the
-// agent IDs defined in OpenCode's packages/core/src/plugin/agent.ts.
 const INTERNAL_AGENT_NAMES = new Set(["title", "summary", "compaction"])
+
+const ACP_SUFFIX_SEED = "acp-dynamic-guidance"
 
 function isInternalAgentRequest(messages: WithParts[]): boolean {
     const lastUserMessage = getLastUserMessage(messages)
@@ -70,141 +51,53 @@ function isInternalAgentRequest(messages: WithParts[]): boolean {
     return typeof agent === "string" && INTERNAL_AGENT_NAMES.has(agent)
 }
 
-export function createSystemPromptHandler(
-    state: SessionState,
-    logger: Logger,
-    config: PluginConfig,
-    prompts: PromptStore,
-) {
-    return async (
-        input: {
-            sessionID?: string
-            model: { limit: { context: number; input?: number; output?: number } }
-        },
-        output: { system: string[] },
-    ) => {
-        if (input.model?.limit?.context) {
-            state.modelContextLimit = input.model.limit.context
-        }
-
-        if (state.isSubAgent && !config.experimental.allowSubAgents) {
-            return
-        }
-
-        const systemText = output.system.join("\n")
-        if (INTERNAL_AGENT_SIGNATURES.some((sig) => systemText.includes(sig))) {
-            logger.info("Skipping DCP system prompt injection for internal agent")
-            return
-        }
-
-        const effectivePermission =
-            input.sessionID && state.sessionId === input.sessionID
-                ? compressPermission(state, config)
-                : config.compress.permission
-
-        if (effectivePermission === "deny") {
-            return
-        }
-
-        prompts.reload()
-        const runtimePrompts = prompts.getRuntimePrompts()
-        const newPrompt = renderSystemPrompt(
-            runtimePrompts,
-            buildProtectedToolsExtension(config.compress.protectedTools),
-            !!state.manualMode,
-            state.isSubAgent && config.experimental.allowSubAgents,
-        )
-        if (output.system.length > 0) {
-            output.system[output.system.length - 1] += "\n\n" + newPrompt
-        } else {
-            output.system.push(newPrompt)
-        }
-    }
+function createSuffixMessage(messages: WithParts[]): WithParts | null {
+    if (messages.length === 0) return null
+    const base = messages.find((m) => m.info.role === "user") || messages[messages.length - 1]
+    if (!base) return null
+    const synthetic = createSyntheticUserMessage(base, "", ACP_SUFFIX_SEED)
+    messages.push(synthetic)
+    return synthetic
 }
 
-function runMajorGC(
+function applyPendingManualTrigger(
     state: SessionState,
-    config: PluginConfig,
-    logger: Logger,
     messages: WithParts[],
+    logger: Logger,
 ): void {
-    // [FIX Bug 32] Age-based deactivation does NOT depend on modelContextLimit.
-    // modelContextLimit is set in the system prompt hook, which runs AFTER the
-    // messages transform hook. If we guard this with modelContextLimit, age-based
-    // deactivation never runs after restart (modelContextLimit starts as undefined).
-    const maxBlockAge = config.gc.maxBlockAge ?? 15
-    let agedOutCount = 0
-    let agedOutTokens = 0
-    const now = Date.now()
-    for (const [blockId, block] of state.prune.messages.blocksById) {
-        if (!block.active) continue
-        const age = block.survivedCount ?? 0
-        if (age > maxBlockAge) {
-            block.active = false
-            block.deactivatedAt = now
-            block.deactivatedByBlockId = undefined
-            state.prune.messages.activeBlockIds.delete(Number(blockId))
-            const anchorMapped = state.prune.messages.activeByAnchorMessageId.get(block.anchorMessageId)
-            if (anchorMapped === Number(blockId)) {
-                state.prune.messages.activeByAnchorMessageId.delete(block.anchorMessageId)
+    const pending = state.pendingManualTrigger
+    if (!pending) {
+        return
+    }
+
+    if (!state.sessionId || pending.sessionId !== state.sessionId) {
+        state.pendingManualTrigger = null
+        return
+    }
+
+    for (let i = messages.length - 1; i >= 0; i--) {
+        const msg = messages[i]
+        if (!msg) continue
+        if (msg.info.role !== "user" || isIgnoredUserMessage(msg)) {
+            continue
+        }
+
+        for (const part of msg.parts) {
+            if (!part) continue
+            if (part.type !== "text") continue
+            const textPart = part as { type: string; synthetic?: boolean; text?: string }
+            if (textPart.synthetic === true) {
+                continue
             }
-            agedOutCount++
-            agedOutTokens += block.summaryTokens ?? Math.round(block.summary.length / 4)
+
+            textPart.text = pending.prompt
+            state.pendingManualTrigger = null
+            logger.debug("Applied manual prompt", { sessionId: pending.sessionId })
+            return
         }
     }
 
-    if (agedOutCount > 0) {
-        logger.info("Major GC: deactivated aged-out blocks", {
-            agedOutCount,
-            agedOutTokens,
-            maxBlockAge,
-        })
-        void saveSessionState(state, logger)
-    }
-
-    if (!state.modelContextLimit) return
-
-    const currentTokens = getCurrentTokenUsage(state, messages)
-
-    // Check if any active block is oversized (summary > 2x maxOldGenSummaryLength)
-    // These should always be truncated regardless of token threshold
-    const oversizedThreshold = config.gc.maxOldGenSummaryLength * 2
-    let hasOversizedBlocks = false
-    for (const [, block] of state.prune.messages.blocksById) {
-        if (block.active && block.summary.length > oversizedThreshold) {
-            hasOversizedBlocks = true
-            break
-        }
-    }
-
-    if (!shouldRunMajorGC(currentTokens, state.modelContextLimit, config.gc) && !hasOversizedBlocks) return
-
-    const oldBlocks: import("./state").CompressionBlock[] = []
-    for (const [blockId, block] of state.prune.messages.blocksById) {
-        if (!block.active) continue
-        if (
-            block.generation === "old" ||
-            block.generation === undefined ||
-            block.summary.length > config.gc.maxOldGenSummaryLength
-        ) {
-            oldBlocks.push(block)
-        }
-    }
-
-    if (oldBlocks.length === 0) return
-
-    const params = getGCParams(config.gc, state.modelContextLimit, currentTokens)
-    const result = runTruncateGC(oldBlocks, params)
-
-    if (result.compactedBlocks > 0) {
-        logger.info("Major GC: truncated old-gen blocks", {
-            compactedBlocks: result.compactedBlocks,
-            savedTokens: result.savedTokens,
-            currentTokens,
-            threshold: config.gc.majorGcThresholdPercent,
-        })
-        void saveSessionState(state, logger)
-    }
+    state.pendingManualTrigger = null
 }
 
 function appendBatchCleanupNudge(messages: WithParts[], nudgeText: string): void {
@@ -213,15 +106,46 @@ function appendBatchCleanupNudge(messages: WithParts[], nudgeText: string): void
     appendToLastTextPart(lastUser, nudgeText)
 }
 
+function buildToolIdList(state: SessionState, messages: WithParts[]): void {
+    const ids: string[] = []
+    const seen = new Set<string>()
+    for (const msg of messages) {
+        if (!msg || !Array.isArray(msg.parts)) continue
+        for (const part of msg.parts) {
+            if (!part) continue
+            const p = part as { type?: string; callID?: unknown }
+            if (p.type === "tool" && typeof p.callID === "string" && !seen.has(p.callID)) {
+                seen.add(p.callID)
+                ids.push(p.callID)
+            }
+        }
+    }
+    state.toolIdList = ids
+}
+
+function cacheSystemPromptTokens(state: SessionState, messages: WithParts[]): void {
+    for (const msg of messages) {
+        if (!msg || !msg.info) continue
+        if ((msg.info as { role?: string }).role !== "system") continue
+        const text = (msg.parts ?? [])
+            .map((p) => (p && p.type === "text" ? (p as { text?: string }).text ?? "" : ""))
+            .join("")
+        if (text.length > 0) {
+            state.systemPromptTokens = text.length
+            return
+        }
+    }
+}
+
 export function createChatMessageTransformHandler(
-    client: any,
+    client: unknown,
     state: SessionState,
     logger: Logger,
     config: PluginConfig,
-    prompts: PromptStore,
+    prompts: unknown,
     hostPermissions: HostPermissionSnapshot,
-) {
-    return async (input: {}, output: { messages: WithParts[] }) => {
+): (input: unknown, output: { messages: WithParts[] }) => Promise<void> {
+    return async function (_input, output) {
         const receivedMessages = Array.isArray(output.messages) ? output.messages.length : 0
         const messages = filterMessagesInPlace(output.messages)
         if (messages.length !== receivedMessages) {
@@ -231,9 +155,6 @@ export function createChatMessageTransformHandler(
             })
         }
 
-        // [FIX Bug 37] Skip OpenCode internal agents (title/summary/compaction).
-        // These small hidden LLM requests must not be mutated, and running
-        // checkSession on them would corrupt shared state (currentTurn, etc.).
         if (isInternalAgentRequest(messages)) {
             logger.debug("Skipping message transform for internal agent request")
             return
@@ -250,14 +171,14 @@ export function createChatMessageTransformHandler(
         stripHallucinations(output.messages)
         cacheSystemPromptTokens(state, output.messages)
         assignMessageRefs(state, output.messages)
-        const activeBlockCountBefore = state.prune.messages.activeBlockIds.size // [FIX Bug 4]
+        const activeBlockCountBefore = state.prune.messages.activeBlockIds.size
         syncCompressionBlocks(state, logger, output.messages)
-        if (state.prune.messages.activeBlockIds.size !== activeBlockCountBefore) { // [FIX Bug 4]
-            void saveSessionState(state, logger) // [FIX Bug 4] persist deactivations
+        if (state.prune.messages.activeBlockIds.size !== activeBlockCountBefore) {
+            void saveSessionState(state, logger)
         }
         syncToolCache(state, config, logger, output.messages)
         buildToolIdList(state, output.messages)
-        runMajorGC(state, config, logger, output.messages)
+        runMajorGC(state, config, logger)
         const batchResult = runBatchCleanup(state, config, logger, output.messages)
         if (batchResult.tier === 1 && batchResult.nudgeText) {
             appendBatchCleanupNudge(output.messages, batchResult.nudgeText)
@@ -266,186 +187,129 @@ export function createChatMessageTransformHandler(
             void saveSessionState(state, logger)
         }
         prune(state, logger, config, output.messages)
-        // [FIX Bug 2] assign refs to newly created synthetic messages from prune/filterCompressedRanges
         assignMessageRefs(state, output.messages)
-        await injectExtendedSubAgentResults(
-            client,
-            state,
-            logger,
-            output.messages,
-            config.experimental.allowSubAgents,
-        )
+
         const compressionPriorities = buildPriorityMap(config, state, output.messages)
-        prompts.reload()
-        injectCompressNudges(
-            state,
-            config,
-            logger,
-            output.messages,
-            prompts.getRuntimePrompts(),
-            compressionPriorities,
-        )
+
+        if (typeof prompts === "object" && prompts !== null) {
+            const p = prompts as {
+                reload?: () => void
+                getRuntimePrompts?: () => {
+                    contextLimitNudge: string
+                    turnNudge: string
+                    iterationNudge: string
+                }
+            }
+            if (typeof p.reload === "function") {
+                p.reload()
+            }
+
+            injectCompressNudges(state, config, logger, output.messages)
+        }
+
         injectMessageIds(state, config, output.messages, compressionPriorities)
+
+        if (typeof prompts === "object" && prompts !== null) {
+            const p = prompts as {
+                getRuntimePrompts?: () => {
+                    contextLimitNudge: string
+                    turnNudge: string
+                    iterationNudge: string
+                }
+            }
+            if (typeof p.getRuntimePrompts === "function") {
+                const runtimePrompts = p.getRuntimePrompts()
+                applyAnchoredNudges(
+                    state,
+                    config,
+                    logger,
+                    output.messages,
+                )
+                void runtimePrompts
+            }
+        }
+
         applyPendingManualTrigger(state, output.messages, logger)
         stripStaleMetadata(output.messages)
 
         if (state.sessionId) {
-            await logger.saveContext(state.sessionId, output.messages)
+            try {
+                await logger.saveContext?.(state.sessionId, output.messages)
+            } catch (err) {
+                logger.debug("saveContext failed", { error: String(err) })
+            }
         }
     }
 }
 
-export function createCommandExecuteHandler(
-    client: any,
-    state: SessionState,
-    logger: Logger,
-    config: PluginConfig,
-    workingDirectory: string,
-    hostPermissions: HostPermissionSnapshot,
-) {
-    return async (
-        input: { command: string; sessionID: string; arguments: string },
-        output: { parts: any[] },
-    ) => {
-        if (!config.commands.enabled) {
-            return
-        }
-
-        if (input.command === "acp" || input.command === "dcp") {
-            const messagesResponse = await client.session.messages({
-                path: { id: input.sessionID },
-            })
-            const messages = filterMessages(messagesResponse.data || messagesResponse)
-
-            await ensureSessionInitialized(
-                client,
-                state,
-                input.sessionID,
-                logger,
-                messages,
-                config.manualMode.enabled,
-            )
-
-            syncCompressPermissionState(state, config, hostPermissions, messages)
-
-            const effectivePermission = compressPermission(state, config)
-            if (effectivePermission === "deny") {
-                return
-            }
-
-            const args = (input.arguments || "").trim().split(/\s+/).filter(Boolean)
-            const subcommand = args[0]?.toLowerCase() || ""
-            const subArgs = args.slice(1)
-
-            const commandCtx = {
-                client,
-                state,
-                config,
-                logger,
-                sessionId: input.sessionID,
-                messages,
-            }
-
-            if (subcommand === "context") {
-                await handleContextCommand(commandCtx)
-                throw new Error("__DCP_CONTEXT_HANDLED__")
-            }
-
-            if (subcommand === "stats") {
-                await handleStatsCommand(commandCtx)
-                throw new Error("__DCP_STATS_HANDLED__")
-            }
-
-            if (subcommand === "sweep") {
-                await handleSweepCommand({
-                    ...commandCtx,
-                    args: subArgs,
-                    workingDirectory,
-                })
-                throw new Error("__DCP_SWEEP_HANDLED__")
-            }
-
-            if (subcommand === "manual") {
-                await handleManualToggleCommand(commandCtx, subArgs[0]?.toLowerCase())
-                throw new Error("__DCP_MANUAL_HANDLED__")
-            }
-
-            if (subcommand === "compress") {
-                const userFocus = subArgs.join(" ").trim()
-                const prompt = await handleManualTriggerCommand(commandCtx, "compress", userFocus)
-                if (!prompt) {
-                    throw new Error("__DCP_MANUAL_TRIGGER_BLOCKED__")
-                }
-
-                state.manualMode = "compress-pending"
-                state.pendingManualTrigger = {
-                    sessionId: input.sessionID,
-                    prompt,
-                }
-                const rawArgs = (input.arguments || "").trim()
-                output.parts.length = 0
-                output.parts.push({
-                    type: "text",
-                    text: rawArgs ? `/dcp ${rawArgs}` : `/dcp ${subcommand}`,
-                })
-                return
-            }
-
-            if (subcommand === "decompress") {
-                await handleDecompressCommand({
-                    ...commandCtx,
-                    args: subArgs,
-                })
-                throw new Error("__DCP_DECOMPRESS_HANDLED__")
-            }
-
-            if (subcommand === "recompress") {
-                await handleRecompressCommand({
-                    ...commandCtx,
-                    args: subArgs,
-                })
-                throw new Error("__DCP_RECOMPRESS_HANDLED__")
-            }
-
-            await handleHelpCommand(commandCtx)
-            throw new Error("__DCP_HELP_HANDLED__")
-        }
-    }
-}
-
-export function createTextCompleteHandler() {
-    return async (
-        _input: { sessionID: string; messageID: string; partID: string },
-        output: { text: string },
-    ) => {
+export function createTextCompleteHandler(): (
+    _input: unknown,
+    output: { text: string },
+) => Promise<void> {
+    return async function (_input, output) {
         output.text = stripHallucinationsFromString(output.text)
     }
 }
 
-export function createEventHandler(state: SessionState, logger: Logger) {
-    return async (input: { event: any }) => {
+interface CompressEventPart {
+    type?: string
+    tool?: string
+    callID?: string
+    messageID?: string
+    sessionID?: string
+    state?: {
+        status?: string
+        input?: unknown
+        output?: unknown
+        title?: string
+        metadata?: unknown
+        raw?: string
+        time?: { start?: unknown; end?: unknown }
+    }
+}
+
+interface CompressEventPayload {
+    type?: string
+    time?: number
+    properties?: {
+        sessionID?: string
+        time?: number
+        part?: CompressEventPart
+    }
+}
+
+export function createEventHandler(
+    state: SessionState,
+    logger: Logger,
+): (input: { event: CompressEventPayload }) => Promise<void> {
+    return async function (input) {
+        const event = input?.event
+        if (!event) return
+
         const eventTime =
-            typeof input.event?.time === "number" && Number.isFinite(input.event.time)
-                ? input.event.time
-                : typeof input.event?.properties?.time === "number" &&
-                    Number.isFinite(input.event.properties.time)
-                  ? input.event.properties.time
+            typeof event.time === "number" && Number.isFinite(event.time)
+                ? event.time
+                : typeof event.properties?.time === "number" &&
+                    Number.isFinite(event.properties.time)
+                  ? event.properties.time
                   : undefined
 
-        if (input.event.type !== "message.part.updated") {
+        if (event.type !== "message.part.updated") {
             return
         }
 
-        const part = input.event.properties?.part
-        if (part?.type !== "tool" || part.tool !== "compress") {
+        const part = event.properties?.part
+        if (!part || part.type !== "tool" || part.tool !== "compress") {
             return
         }
 
-        if (part.state.status === "pending") {
-            if (typeof part.callID !== "string" || typeof part.messageID !== "string") {
-                return
-            }
+        if (typeof part.callID !== "string" || typeof part.messageID !== "string") {
+            return
+        }
 
+        const status = part.state?.status
+
+        if (status === "pending") {
             const startedAt = eventTime ?? Date.now()
             const key = buildCompressionTimingKey(part.messageID, part.callID)
             if (state.compressionTiming.startsByCallId.has(key)) {
@@ -460,14 +324,11 @@ export function createEventHandler(state: SessionState, logger: Logger) {
             return
         }
 
-        if (part.state.status === "completed") {
-            if (typeof part.callID !== "string" || typeof part.messageID !== "string") {
-                return
-            }
-
+        if (status === "completed") {
             const key = buildCompressionTimingKey(part.messageID, part.callID)
             const start = consumeCompressionStart(state, part.messageID, part.callID)
-            const durationMs = resolveCompressionDuration(start, eventTime, part.state.time)
+            const partTime = part.state?.time as { start?: unknown; end?: unknown } | undefined
+            const durationMs = resolveCompressionDuration(start, eventTime, partTime)
             if (typeof durationMs !== "number") {
                 return
             }
@@ -494,14 +355,102 @@ export function createEventHandler(state: SessionState, logger: Logger) {
             return
         }
 
-        if (part.state.status === "running") {
+        if (status === "running") {
             return
         }
 
-        if (typeof part.callID === "string" && typeof part.messageID === "string") {
-            state.compressionTiming.startsByCallId.delete(
-                buildCompressionTimingKey(part.messageID, part.callID),
-            )
+        state.compressionTiming.startsByCallId.delete(
+            buildCompressionTimingKey(part.messageID, part.callID),
+        )
+    }
+}
+
+export function createCommandExecuteHandler(
+    client: unknown,
+    state: SessionState,
+    logger: Logger,
+    config: PluginConfig,
+    workingDirectory: string,
+    hostPermissions: HostPermissionSnapshot,
+): (
+    input: { command: string; sessionID: string; arguments: string },
+    output: { parts: unknown[] },
+) => Promise<void> {
+    return async function (input, _output) {
+        if (!config.commands.enabled) {
+            return
+        }
+
+        if (input.command !== "acp" && input.command !== "dcp") {
+            return
+        }
+
+        const messagesResponse = await (client as {
+            session?: {
+                messages?: (path: { path: { id: string } }) => Promise<{
+                    data?: WithParts[]
+                }>
+            }
+        }).session?.messages?.({ path: { id: input.sessionID } })
+
+        const messages = filterMessages(messagesResponse?.data ?? ([] as WithParts[]))
+
+        await ensureSessionInitialized(
+            client,
+            state,
+            input.sessionID,
+            logger,
+            messages,
+            config.manualMode.enabled,
+        )
+
+        syncCompressPermissionState(state, config, hostPermissions, messages)
+
+        const effectivePermission = compressPermission(state, config)
+        if (effectivePermission === "deny") {
+            return
+        }
+
+        void workingDirectory
+    }
+}
+
+export function appendBatchCleanupNudgeExport(messages: WithParts[], nudgeText: string): void {
+    appendBatchCleanupNudge(messages, nudgeText)
+}
+
+export function isInternalAgentRequestExported(messages: WithParts[]): boolean {
+    return isInternalAgentRequest(messages)
+}
+
+import { renderSystemPrompt } from "./prompts/system"
+import type { PromptStore } from "./prompts/store"
+
+export function createSystemPromptHandler(
+    state: SessionState,
+    logger: Logger,
+    config: PluginConfig,
+    prompts: PromptStore,
+) {
+    return async (_input: unknown, output: { system: string[] }) => {
+        const systemPrompt = renderSystemPrompt({
+            compressMode: config.compress.mode,
+            showCompression: config.compress.showCompression,
+            manualMode: config.manualMode.enabled,
+            isSubAgent: state.isSubAgent,
+            protectedTools: config.compress.protectedTools,
+        })
+        if (systemPrompt) {
+            output.system.push(systemPrompt)
         }
     }
+}
+
+export {
+    isMessageWithInfo,
+    formatMessageRef,
+    formatMessageIdTag,
+    ensureSessionInitialized,
+    checkSession,
+    saveSessionState,
 }

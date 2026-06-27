@@ -1,7 +1,7 @@
 import { readFile, rm } from "node:fs/promises"
 import { basename, dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
-import type { PluginInput } from "@opencode-ai/plugin"
+import type { Logger } from "./infra/logger"
 
 type PackageJson = {
     name?: string
@@ -15,8 +15,32 @@ type UpdateResult =
     | { updated: false }
 
 const PACKAGE_NAME = "opencode-acp"
+const NPM_REGISTRY = "https://registry.npmjs.org"
+const PACKAGE_VERSION = "2.0.0"
 
-export function startAutoUpdate(ctx: PluginInput, enabled: boolean): void {
+export interface UpdateInfo {
+    latestVersion: string | null
+    currentVersion: string
+    updateAvailable: boolean
+}
+
+export function startAutoUpdate(
+    ctx: {
+        client?: {
+            tui?: {
+                showToast?: (input: {
+                    body: {
+                        title: string
+                        message: string
+                        variant: string
+                        duration: number
+                    }
+                }) => void
+            }
+        }
+    },
+    enabled: boolean,
+): void {
     if (!enabled) return
 
     const controller = new AbortController()
@@ -25,7 +49,7 @@ export function startAutoUpdate(ctx: PluginInput, enabled: boolean): void {
         .then((result) => {
             if (!result.updated) return
             setTimeout(() => {
-                ctx.client.tui.showToast({
+                ctx.client?.tui?.showToast?.({
                     body: {
                         title: "ACP update ready",
                         message: `Updated ${result.name} from ${result.current} to ${result.latest}. Restart OpenCode to finish.`,
@@ -67,7 +91,7 @@ async function checkAutoUpdate(signal: AbortSignal): Promise<UpdateResult> {
     return { updated: true, name: pkg.name, current: pkg.version, latest }
 }
 
-async function findPackageDir(name: string) {
+async function findPackageDir(name: string): Promise<string | undefined> {
     let dir = dirname(fileURLToPath(import.meta.url))
     for (;;) {
         const pkg = await readPackageJson(join(dir, "package.json"))
@@ -79,7 +103,10 @@ async function findPackageDir(name: string) {
     }
 }
 
-export async function updateRemoveDir(packageDir: string, name: string) {
+export async function updateRemoveDir(
+    packageDir: string,
+    name: string,
+): Promise<string | undefined> {
     const packageParent = dirname(packageDir)
     const nodeModulesDir = basename(packageParent).startsWith("@")
         ? dirname(packageParent)
@@ -94,7 +121,7 @@ export async function updateRemoveDir(packageDir: string, name: string) {
     return wrapperDir
 }
 
-function wrapperSpec(wrapperDir: string, name: string) {
+function wrapperSpec(wrapperDir: string, name: string): string | undefined {
     if (name.startsWith("@")) {
         const [scope, pkg] = name.split("/")
         if (!scope || !pkg || basename(dirname(wrapperDir)) !== scope) return undefined
@@ -108,7 +135,7 @@ function wrapperSpec(wrapperDir: string, name: string) {
     return base.startsWith(prefix) ? base.slice(prefix.length) : undefined
 }
 
-export function isAutoUpdatableSpec(spec: string) {
+export function isAutoUpdatableSpec(spec: string): boolean {
     const value = spec.trim()
     if (!value) return false
     if (value === "latest" || value === "*") return true
@@ -127,13 +154,14 @@ async function readPackageJson(path: string): Promise<PackageJson | undefined> {
     }
 }
 
-async function fetchLatestVersion(name: string, signal: AbortSignal) {
+async function fetchLatestVersion(
+    name: string,
+    signal: AbortSignal,
+): Promise<string | undefined> {
     try {
         const response = await fetch(
-            `https://registry.npmjs.org/${encodeURIComponent(name)}/latest`,
-            {
-                signal,
-            },
+            `${NPM_REGISTRY}/${encodeURIComponent(name)}/latest`,
+            { signal },
         )
         if (!response.ok) return undefined
         const data: unknown = await response.json()
@@ -145,13 +173,13 @@ async function fetchLatestVersion(name: string, signal: AbortSignal) {
     }
 }
 
-export function isVersionNewer(latest: string, current: string) {
+export function isVersionNewer(latest: string, current: string): boolean {
     const next = parseVersion(latest)
     const prev = parseVersion(current)
     if (!next || !prev) return false
 
     for (let i = 0; i < 3; i++) {
-        if (next.parts[i] !== prev.parts[i]) return next.parts[i] > prev.parts[i]
+        if (next.parts[i] !== prev.parts[i]) return next.parts[i]! > prev.parts[i]!
     }
 
     if (!next.pre.length && prev.pre.length) return true
@@ -175,11 +203,47 @@ export function isVersionNewer(latest: string, current: string) {
     return false
 }
 
-function parseVersion(version: string) {
+function parseVersion(version: string): { parts: number[]; pre: string[] } | undefined {
     const match = version.match(/^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+.+)?$/)
     if (!match) return undefined
     return {
         parts: [Number(match[1]), Number(match[2]), Number(match[3])],
         pre: match[4]?.split(".") ?? [],
     }
+}
+
+export async function checkForUpdate(logger: Logger): Promise<UpdateInfo> {
+    const currentVersion = PACKAGE_VERSION
+
+    try {
+        const response = await fetch(`${NPM_REGISTRY}/${PACKAGE_NAME}/latest`, {
+            signal: AbortSignal.timeout(5000),
+        })
+
+        if (!response.ok) {
+            return { latestVersion: null, currentVersion, updateAvailable: false }
+        }
+
+        const data = (await response.json()) as { version?: string }
+        const latestVersion = data.version ?? null
+
+        if (!latestVersion) {
+            return { latestVersion: null, currentVersion, updateAvailable: false }
+        }
+
+        const updateAvailable = isVersionNewer(latestVersion, currentVersion)
+
+        if (updateAvailable) {
+            logger.info("Update available", { currentVersion, latestVersion })
+        }
+
+        return { latestVersion, currentVersion, updateAvailable }
+    } catch {
+        logger.debug("Failed to check for updates")
+        return { latestVersion: null, currentVersion, updateAvailable: false }
+    }
+}
+
+export function compareVersions(a: string, b: string): number {
+    return isVersionNewer(a, b) ? 1 : isVersionNewer(b, a) ? -1 : 0
 }

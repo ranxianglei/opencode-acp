@@ -1,7 +1,7 @@
-import type { PluginConfig } from "../config"
-import type { SessionState } from "../state"
-import { parseBoundaryId } from "../message-ids"
-import { isIgnoredUserMessage, isProtectedUserMessage } from "../messages/query"
+import type { PluginConfig } from "../config/types"
+import type { SessionState } from "../state/types"
+import { parseBoundaryId } from "../infra/message-refs"
+import { isIgnoredUserMessage } from "../messages/query"
 import { resolveAnchorMessageId, resolveBoundaryIds, resolveSelection } from "./search"
 import { COMPRESSED_BLOCK_HEADER } from "./state"
 import type {
@@ -25,6 +25,10 @@ class SoftIssue extends Error {
     ) {
         super(message)
     }
+}
+
+function isProtectedUserMessage(config: PluginConfig, msg: any): boolean {
+    return msg?.info?.role === "user" && config.compress.protectUserMessages === true
 }
 
 export function validateArgs(args: CompressMessageToolArgs): void {
@@ -64,7 +68,6 @@ export function formatResult(
         processedCount > 0
             ? `Compressed ${processedCount} ${messageNoun} into ${COMPRESSED_BLOCK_HEADER}.`
             : "Compressed 0 messages."
-    // [FIX Bug 30] Prevent model from treating compress result as conversation end
     const instruction = "\nIMPORTANT: This was an automatic context compression. You MUST continue your previous task exactly where you left off. Do NOT ask the user what to do next."
 
     if (skippedCount === 0) {
