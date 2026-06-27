@@ -34,3 +34,31 @@
 - typecheck: pass
 - tests: 407 pass, 0 fail
 - No runtime behavior changes (only removed dead code + reduced exports)
+
+### Tier 1 Test Coverage (Step 2)
+
+**Goal:** Establish behavioral test coverage for the 8 critical untested modules to serve as spec for clean-room rewrite.
+
+**New test files (7 files, 66 new tests):**
+
+| File | Tests | Module |
+|------|-------|--------|
+| tests/prune.test.ts | 16 | messages/prune.ts — filterCompressedRanges, pruneToolOutputs, pruneToolInputs, pruneToolErrors |
+| tests/reasoning-strip.test.ts | 7 | messages/reasoning-strip.ts — stripStaleMetadata |
+| tests/sync.test.ts | 8 | messages/sync.ts — syncCompressionBlocks |
+| tests/protected-content.test.ts | 14 | compress/protected-content.ts — extractProtectedPromptInfo, appendProtectedUserMessages, appendProtectedPromptInfo |
+| tests/persistence.test.ts | 7 | state/persistence.ts — saveSessionState, loadSessionState |
+| tests/inject.test.ts | 9 | messages/inject/inject.ts — injectMessageIds, injectCompressNudges |
+| tests/pipeline.test.ts | 5 | compress/pipeline.ts — prepareSession, finalizeSession |
+
+**Modules NOT tested:** config.ts merge logic (8th Tier 1 module) — filesystem-dependent, reads from 3 config layers. Config *validation* already covered by config-validation.test.ts.
+
+**Verification:**
+- typecheck: pass (exit 0)
+- tests: 473 pass, 0 fail (was 407)
+- Dual-agent review: both APPROVED
+
+**Branch rebase:**
+- Feature branch rebased onto GitHub master `6bd554b` (was based on stale local master `f0315a6`)
+- Resolved merge conflict caused by README commits diverging between local and GitHub
+- Force-pushed to both gitea and GitHub as `a8c2d40`
