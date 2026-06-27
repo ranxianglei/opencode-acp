@@ -2,7 +2,7 @@ import type { SessionState, WithParts } from "../state"
 import type { Logger } from "../logger"
 import type { PluginConfig } from "../config"
 import { isMessageCompacted } from "../state/utils"
-import { createSyntheticUserMessage, replaceBlockIdsWithBlocked, stripStaleMessageRefs } from "./utils"
+import { createSyntheticUserMessage, prependCompressionSummary, replaceBlockIdsWithBlocked, stripStaleMessageRefs } from "./utils"
 import { getLastUserMessage } from "./query"
 import type { UserMessage } from "@opencode-ai/sdk/v2"
 
@@ -171,7 +171,8 @@ const filterCompressedRanges = (
 
     const result: WithParts[] = []
 
-    for (const msg of messages) {
+    for (let i = 0; i < messages.length; i++) {
+        const msg = messages[i]!
         const msgId = msg.info.id
 
         // Check if there's a summary to inject at this anchor point
@@ -190,59 +191,74 @@ const filterCompressedRanges = (
                     blockId: (summary as { blockId?: unknown }).blockId,
                 })
             } else {
-                // Find user message for variant and as base for synthetic message
-                const msgIndex = messages.indexOf(msg)
-                const userMessage = getLastUserMessage(messages, msgIndex)
                 // [FIX Bug 28] Strip stale mNNNN refs before injection
                 const _cleaned = stripStaleMessageRefs(rawSummaryContent)
+                const summaryContent =
+                    config.compress.mode === "message"
+                        ? replaceBlockIdsWithBlocked(_cleaned)
+                        : _cleaned
 
-                if (userMessage) {
-                    const userInfo = userMessage.info as UserMessage
-                    const summaryContent =
-                        config.compress.mode === "message"
-                            ? replaceBlockIdsWithBlocked(_cleaned)
-                            : _cleaned
-                    const summarySeed = `${summary.blockId}:${summary.anchorMessageId}`
-                    result.push(
-                        createSyntheticUserMessage(userMessage, summaryContent, summarySeed),
-                    )
+                // [FIX Bug 36] When the next surviving message is a user turn, merge the
+                // summary into it instead of emitting a standalone user-role summary
+                // message. The old behavior placed a synthetic user message immediately
+                // before the user's real turn ([summary(user), user(user)]), which the
+                // model often read as two user turns — misattributing the assistant's
+                // prior output to the user and triggering "self-Q&A" loops. Merging
+                // yields a single user turn ([user: recap ‖ real reply]) so no fake
+                // conversational turn is perceived.
+                const nextSurviving = findNextSurvivingMessage(messages, i, state)
+                const merged =
+                    nextSurviving !== null &&
+                    nextSurviving.info.role === "user" &&
+                    prependCompressionSummary(nextSurviving, summaryContent, summary.blockId)
 
-                    logger.info("Injected compress summary", {
+                if (merged) {
+                    logger.info("Merged compress summary into following user message", {
                         anchorMessageId: msgId,
+                        targetMessageId: nextSurviving!.info.id,
                         summaryLength: summaryContent.length,
                     })
                 } else {
-                    // [FIX Bug 1] no preceding user message — build fallback base so summary is always injected
-                    const anchorInfo = msg.info as any
-                    const fallbackBase: WithParts = {
-                        info: {
-                            id: anchorInfo.id || msgId,
-                            sessionID: anchorInfo.sessionID || "",
-                            role: "user" as const,
-                            agent: anchorInfo.agent || "code",
-                            model:
-                                anchorInfo.model || {
-                                    providerID: "",
-                                    modelID: "",
-                                    variant: undefined,
-                                },
-                            time: { created: anchorInfo.time?.created || Date.now() },
-                        },
-                        parts: [],
-                    }
-                    const summaryContent =
-                        config.compress.mode === "message"
-                            ? replaceBlockIdsWithBlocked(_cleaned)
-                            : _cleaned
+                    // [FIX Bug 1] fallback when no suitable user message to merge into:
+                    // emit a standalone synthetic user message (prior behavior).
+                    const userMessage = getLastUserMessage(messages, i)
                     const summarySeed = `${summary.blockId}:${summary.anchorMessageId}`
-                    result.push(
-                        createSyntheticUserMessage(fallbackBase, summaryContent, summarySeed),
-                    )
+                    if (userMessage) {
+                        result.push(
+                            createSyntheticUserMessage(userMessage, summaryContent, summarySeed),
+                        )
 
-                    logger.info("Injected compress summary (fallback, no preceding user message)", {
-                        anchorMessageId: msgId,
-                        summaryLength: summaryContent.length,
-                    })
+                        logger.info("Injected compress summary", {
+                            anchorMessageId: msgId,
+                            summaryLength: summaryContent.length,
+                        })
+                    } else {
+                        const anchorInfo = msg.info as any
+                        const fallbackBase: WithParts = {
+                            info: {
+                                id: anchorInfo.id || msgId,
+                                sessionID: anchorInfo.sessionID || "",
+                                role: "user" as const,
+                                agent: anchorInfo.agent || "code",
+                                model:
+                                    anchorInfo.model || {
+                                        providerID: "",
+                                        modelID: "",
+                                        variant: undefined,
+                                    },
+                                time: { created: anchorInfo.time?.created || Date.now() },
+                            },
+                            parts: [],
+                        }
+                        result.push(
+                            createSyntheticUserMessage(fallbackBase, summaryContent, summarySeed),
+                        )
+
+                        logger.info("Injected compress summary (fallback, no preceding user message)", {
+                            anchorMessageId: msgId,
+                            summaryLength: summaryContent.length,
+                        })
+                    }
                 }
             }
         }
@@ -260,4 +276,25 @@ const filterCompressedRanges = (
     // Replace messages array contents
     messages.length = 0
     messages.push(...result)
+}
+
+// [FIX Bug 36] First surviving (non-pruned) message at or after startIndex.
+// Starts the scan at startIndex inclusive to handle both anchor layouts: when
+// the anchor is itself part of the pruned range (message-start ranges) it is
+// skipped, and when the anchor survives (block-anchor ranges) it is returned —
+// in either case this yields the next real turn the model sees after the recap.
+const findNextSurvivingMessage = (
+    messages: WithParts[],
+    startIndex: number,
+    state: SessionState,
+): WithParts | null => {
+    for (let j = startIndex; j < messages.length; j++) {
+        const candidate = messages[j]!
+        const entry = state.prune.messages.byMessageId.get(candidate.info.id)
+        if (entry && entry.activeBlockIds.length > 0) {
+            continue
+        }
+        return candidate
+    }
+    return null
 }

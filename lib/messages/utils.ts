@@ -4,6 +4,14 @@ import { isMessageCompacted } from "../state/utils"
 import type { UserMessage } from "@opencode-ai/sdk/v2"
 
 const SUMMARY_ID_HASH_LENGTH = 16
+
+// [FIX Bug 36] Delimiters wrapping a compression summary when it is merged into
+// an existing user message. The header embeds the block id so multiple blocks
+// landing on the same user message each get their own clearly delimited entry,
+// and so the prepend is idempotent across re-runs (guarded by the marker check).
+const MERGED_SUMMARY_HEADER = (blockId: number | string) =>
+    `[ACP compressed context summary (block ${blockId}) — prior conversation recap]\n`
+const MERGED_SUMMARY_FOOTER = `\n[End ACP compressed context summary]\n\n`
 const DCP_BLOCK_ID_TAG_REGEX = /(<dcp-message-id(?=[\s>])[^>]*>)b\d+(<\/dcp-message-id>)/g
 // [FIX Bug 28] Regex to strip stale mNNNN refs from compressed summaries
 const DCP_MESSAGE_REF_TAG_REGEX = /<dcp-message-id>m\d+<\/dcp-message-id>/g
@@ -45,6 +53,49 @@ export const createSyntheticUserMessage = (
             },
         ],
     }
+}
+
+// [FIX Bug 36] Merge a compression summary into an existing user message by
+// prepending it (clearly delimited) to that message's first text part. This
+// avoids emitting a standalone user-role summary message adjacent to the user's
+// real turn, which previously produced two consecutive user messages and caused
+// dialog role confusion / "self-Q&A" loops. Returns true when the summary is
+// present after the call — including the idempotent case where the block's
+// marker is already in the text (no-op), matching appendToTextPart so callers
+// never fall through to a standalone message merely because of a re-run.
+export const prependCompressionSummary = (
+    message: WithParts,
+    summary: string,
+    blockId: number | string,
+): boolean => {
+    const parts = Array.isArray(message.parts) ? message.parts : []
+    const header = MERGED_SUMMARY_HEADER(blockId)
+    const marker = MERGED_SUMMARY_HEADER(blockId).trimEnd()
+
+    for (const part of parts) {
+        if (part.type !== "text") {
+            continue
+        }
+        const textPart = part as TextPart
+        const existing = typeof textPart.text === "string" ? textPart.text : ""
+        if (existing.includes(marker)) {
+            return true
+        }
+        textPart.text = `${header}${summary}${MERGED_SUMMARY_FOOTER}${existing}`
+        return true
+    }
+
+    const sessionID = (message.info as { sessionID?: string }).sessionID ?? ""
+    const messageId = (message.info as { id: string }).id
+    parts.unshift({
+        id: generateStableId("prt_dcp_prepend", `${blockId}:${messageId}`),
+        sessionID,
+        messageID: messageId,
+        type: "text" as const,
+        text: `${header}${summary}${MERGED_SUMMARY_FOOTER}`,
+    })
+    message.parts = parts
+    return true
 }
 
 export const createSyntheticTextPart = (
