@@ -8,9 +8,7 @@ export async function runPipeline(
 ): Promise<void> {
     const ctx: PipelineContext = {
         messages,
-        state: deps.state,
-        config: deps.config,
-        logger: deps.logger,
+        deps,
         shouldSkip: false,
     }
 
