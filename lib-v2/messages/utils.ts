@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto"
 import type { PluginConfig } from "../config/types"
 import type { SessionState, WithParts } from "../state/types"
 import type { Message, Part, TextPart, ToolPart, UserMessage } from "@opencode-ai/sdk/v2"
@@ -5,10 +6,13 @@ import { countTokensSync } from "../infra/token-counter"
 
 const PAIRED_DCP_TAG = /<dcp[^>]*>[\s\S]*?<\/dcp[^>]*>/g
 const ORPHAN_OPEN_DCP_TAG = /<dcp[^>]*>/g
-const ORPHAN_CLOSE_DCP_TAG = /<\/dcp[^>]*>/g
-const ANY_MESSAGE_ID_TAG = /<dcp-message-id[^>]*>[\s\S]*?<\/dcp-message-id>/g
-const ORPHAN_MESSAGE_ID_TAG = /<\/?dcp-message-id[^>]*>/g
-const BLOCK_REF_IN_TAG = /<dcp-message-id>b\d+<\/dcp-message-id>/g
+const ORPHAN_CLOSE_DCP_TAG = /<\/?dcp[^>]*>/gi
+// [FIX] Only strip message-ref tags (m\d+) — block-id tags (b\d+) must survive
+// prune so they can be marked BLOCKED in message mode or preserved in range mode.
+const MESSAGE_REF_TAG = /<dcp-message-id(?=[\s>])[^>]*>m\d+<\/dcp-message-id>/g
+// Matches block-id tags regardless of attribute prefix, e.g. <dcp-message-id>b7</dcp-message-id>
+// or <dcp-message-id priority="high">b7</dcp-message-id>. Used to mark them BLOCKED.
+const BLOCK_REF_IN_TAG = /(<dcp-message-id(?=[\s>])[^>]*>)b\d+(<\/dcp-message-id>)/g
 
 export function stripHallucinationsFromString(text: string): string {
     if (typeof text !== "string" || text === "") return text ?? ""
@@ -20,14 +24,15 @@ export function stripHallucinationsFromString(text: string): string {
 
 export function stripStaleMessageRefs(text: string): string {
     if (typeof text !== "string" || text === "") return text ?? ""
-    let result = text.replace(ANY_MESSAGE_ID_TAG, "")
-    result = result.replace(ORPHAN_MESSAGE_ID_TAG, "")
-    return result
+    // Only strip message-ref tags (m\d+). Block-id tags (b\d+) are preserved
+    // so the caller can decide to mark them BLOCKED (message mode) or keep
+    // them visible (range mode).
+    return text.replace(MESSAGE_REF_TAG, "")
 }
 
 export function replaceBlockIdsWithBlocked(text: string): string {
     if (typeof text !== "string" || text === "") return text ?? ""
-    return text.replace(BLOCK_REF_IN_TAG, "<dcp-message-id>BLOCKED</dcp-message-id>")
+    return text.replace(BLOCK_REF_IN_TAG, "$1BLOCKED$2")
 }
 
 export function stripHallucinations(messages: WithParts[]): void {
@@ -61,9 +66,7 @@ export function appendToLastTextPart(msg: WithParts, text: string): boolean {
     for (let i = msg.parts.length - 1; i >= 0; i--) {
         const part = msg.parts[i]
         if (part && part.type === "text") {
-            const textPart = part as TextPart
-            textPart.text = (textPart.text ?? "") + text
-            return true
+            return appendToTextPart(part, text)
         }
     }
     return false
@@ -96,7 +99,9 @@ export function createSyntheticUserMessage(
     const sessionID = baseInfo.sessionID ?? ""
     const agent = (baseInfo as { agent?: string }).agent ?? "assistant"
     const baseCreated = (baseInfo as { time?: { created?: number } }).time?.created ?? Date.now()
-    const id = `${baseInfo.id ?? "msg"}-summary-${seed}`
+    const seedStr = String(seed ?? baseInfo.id ?? "msg")
+    const id = makeStableId("msg_dcp_summary", seedStr)
+    const partId = makeStableId("prt_dcp_summary", seedStr)
     const model = resolveUserModel(baseInfo)
 
     const info: UserMessage = {
@@ -109,7 +114,7 @@ export function createSyntheticUserMessage(
     }
 
     const summaryPart: TextPart = {
-        id: `${id}-part`,
+        id: partId,
         sessionID,
         messageID: id,
         type: "text",
@@ -120,11 +125,17 @@ export function createSyntheticUserMessage(
     return { info, parts: [summaryPart] }
 }
 
+function makeStableId(prefix: string, seed: string): string {
+    const hash = createHash("sha256").update(seed).digest("hex").slice(0, 16)
+    return `${prefix}_${hash}`
+}
+
 function resolveUserModel(info: Message): { providerID: string; modelID: string } {
     if (info.role === "user") {
+        const model = (info as { model?: { providerID?: string; modelID?: string } }).model
         return {
-            providerID: info.model.providerID ?? "",
-            modelID: info.model.modelID ?? "",
+            providerID: model?.providerID ?? "",
+            modelID: model?.modelID ?? "",
         }
     }
     const assistant = info as Partial<{ modelID: string; providerID: string }>
@@ -175,10 +186,21 @@ function estimateMessagesTokens(messages: WithParts[]): number {
     return total
 }
 
-export function appendToTextPart(part: Part, text: string): boolean {
+export function appendToTextPart(part: Part, injection: string): boolean {
     if (!part || part.type !== "text") return false
     const textPart = part as TextPart
-    textPart.text = (textPart.text ?? "") + text
+    if (typeof textPart.text !== "string") return false
+
+    const normalizedInjection = injection.replace(/^\n+/, "")
+    if (!normalizedInjection.trim()) {
+        return false
+    }
+    if (textPart.text.includes(normalizedInjection)) {
+        return true
+    }
+
+    const baseText = textPart.text.replace(/\n*$/, "")
+    textPart.text = baseText.length > 0 ? `${baseText}\n\n${normalizedInjection}` : normalizedInjection
     return true
 }
 
@@ -204,10 +226,15 @@ export function hasContent(message: WithParts): boolean {
         if (!part) continue
         if (part.type === "text") {
             const text = (part as TextPart).text
-            if (typeof text === "string" && text.length > 0) return true
+            if (typeof text === "string" && text.trim().length > 0) return true
             continue
         }
-        if (part.type === "tool") return true
+        if (part.type === "tool") {
+            const toolPart = part as ToolPart
+            const state = toolPart.state
+            if (state?.status === "completed" && typeof state.output === "string") return true
+            continue
+        }
     }
     return false
 }

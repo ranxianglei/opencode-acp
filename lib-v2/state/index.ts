@@ -1,4 +1,5 @@
-export { createSessionState } from "./factory"
+import { createSessionState } from "./factory"
+export { createSessionState }
 export { saveSessionState, loadSessionState, deleteSessionState, serializeState } from "./persistence"
 export { cacheToolParameters, getCachedToolParameters, getAllCachedParameters, clearToolCache, removeCachedEntry } from "./tool-cache"
 export { isCompacted, getActiveBlocks, getBlockByAnchor, getMessageRef, getRawIdByRef } from "./queries"
@@ -10,6 +11,7 @@ export type { SessionState, CompressionBlock, PrunedMessageEntry, PruneMessagesS
 import type { SessionState as SessionStateType, WithParts as WithPartsType } from "./types"
 import type { Logger } from "../infra/logger"
 import { loadSessionState } from "./persistence"
+import { applyPendingCompressionDurations } from "../compress/timing"
 
 export async function ensureSessionInitialized(
     client: unknown,
@@ -23,8 +25,23 @@ export async function ensureSessionInitialized(
         return
     }
 
+    const fresh = createSessionState()
     state.sessionId = sessionId
+    state.modelContextLimit = fresh.modelContextLimit
+    state.systemPromptTokens = fresh.systemPromptTokens
+    state.isSubAgent = false
+    state.lastCompaction = 0
+    state.currentTurn = 0
+    state.compressPermission = undefined
+    state.prune = fresh.prune
+    state.nudges = fresh.nudges
+    state.stats = fresh.stats
+    state.messageIds = fresh.messageIds
+    state.toolParameters = fresh.toolParameters
+    state.toolIdList = fresh.toolIdList
+    state.subAgentResultCache = fresh.subAgentResultCache
     state.manualMode = manualModeEnabled ? "active" : false
+    state.pendingManualTrigger = null
 
     try {
         const result = await (client as {
@@ -38,18 +55,31 @@ export async function ensureSessionInitialized(
 
     state.lastCompaction = findLastSummaryTimestamp(messages)
 
-    try {
-        const persisted = await loadSessionState(sessionId, logger)
-        if (persisted !== null) {
-            const anyState = state as unknown as {
-                prune: SessionStateType["prune"]
-                stats: SessionStateType["stats"]
-                messageIds: SessionStateType["messageIds"]
+    const persisted = await loadSessionState(sessionId, logger)
+    if (persisted) {
+        try {
+            const persistedAny = persisted as any
+            if (persisted.prune?.messages && typeof persisted.prune.messages === "object") {
+                const { loadPruneMessagesState } = await import("./utils")
+                state.prune.messages = loadPruneMessagesState(persisted.prune.messages as any)
             }
-            void anyState
+            if (persisted.stats) {
+                state.stats = {
+                    pruneTokenCounter: persisted.stats.pruneTokenCounter || 0,
+                    totalPruneTokens: persisted.stats.totalPruneTokens || 0,
+                }
+            }
+            if (persistedAny._persistedLastCompaction !== undefined) {
+                state.lastCompaction = Math.max(state.lastCompaction, persistedAny._persistedLastCompaction)
+            }
+        } catch (err) {
+            logger.debug("Failed to apply persisted state", { error: String(err) })
         }
-    } catch (err) {
-        logger.debug("Failed to load persisted state", { error: String(err) })
+    }
+
+    const applied = applyPendingCompressionDurations(state)
+    if (applied > 0) {
+        logger.debug("Applied pending compression durations during session init", { applied })
     }
 }
 

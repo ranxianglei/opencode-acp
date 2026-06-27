@@ -2,8 +2,7 @@ import type { PluginConfig } from "../config/types"
 import type { SessionState, WithParts } from "../state/types"
 import { countTokensSync } from "../infra/token-counter"
 import { isMessageWithInfo } from "./shape"
-import { messageHasCompress, isIgnoredUserMessage, isProtectedUserMessage } from "./query"
-import { isMessageCompacted } from "../state/utils"
+import { messageHasCompress, isIgnoredUserMessage } from "./query"
 import type { Priority } from "./types"
 
 const HIGH_PRIORITY_TOKENS = 500
@@ -14,6 +13,12 @@ const V1_MEDIUM_PRIORITY_MIN_TOKENS = 500
 
 export type MessagePriority = "low" | "medium" | "high"
 
+export function classifyMessagePriority(tokenCount: number): MessagePriority {
+    if (tokenCount >= V1_HIGH_PRIORITY_MIN_TOKENS) return "high"
+    if (tokenCount >= V1_MEDIUM_PRIORITY_MIN_TOKENS) return "medium"
+    return "low"
+}
+
 export interface CompressionPriorityEntry {
     ref: string
     tokenCount: number
@@ -22,46 +27,30 @@ export interface CompressionPriorityEntry {
 
 export type CompressionPriorityMap = Map<string, CompressionPriorityEntry>
 
-export function classifyMessagePriority(tokenCount: number): MessagePriority {
-    if (tokenCount >= V1_HIGH_PRIORITY_MIN_TOKENS) return "high"
-    if (tokenCount >= V1_MEDIUM_PRIORITY_MIN_TOKENS) return "medium"
-    return "low"
+function isProtectedUserMessage(config: PluginConfig, msg: any): boolean {
+    return msg?.info?.role === "user" && config.compress.protectUserMessages === true
 }
 
-export function classifyMessage(msg: unknown): Priority {
-    if (!isMessageWithInfo(msg)) return "low"
-    if (msg.info.role === "user") return "high"
-    if (msg.info.role === "assistant") {
-        if (messageHasCompress(msg)) return "high"
-        const tokens = estimateMessageTokens(msg)
-        if (tokens >= HIGH_PRIORITY_TOKENS) return "high"
-        if (tokens >= MEDIUM_PRIORITY_TOKENS) return "medium"
-        return "low"
+function isMessageCompacted(state: SessionState, msg: WithParts): boolean {
+    // Match v1 semantics: when lastCompaction <= 0, no messages are considered
+    // compacted yet (the pruneEntry alone doesn't imply active compaction in
+    // a fresh session). This keeps newly-mapped messages visible to priority
+    // classification until a real compaction event sets lastCompaction.
+    if (state.lastCompaction <= 0) return false
+    const created = (msg.info as { time?: { created?: number } }).time?.created
+    if (created !== undefined) {
+        if (created < state.lastCompaction) return true
+        if (created === state.lastCompaction && (msg.info as { summary?: boolean }).summary === true) return true
     }
-    return "low"
-}
-
-function estimateMessageTokens(msg: WithParts): number {
-    let total = 0
-    for (const part of msg.parts) {
-        if (!part) continue
-        const p = part as { type?: string; text?: unknown; state?: { output?: unknown } }
-        if (typeof p.text === "string") {
-            total += countTokensSync(p.text)
-        }
-        if (p.type === "tool" && p.state && typeof p.state.output === "string") {
-            total += countTokensSync(p.state.output)
-        }
-    }
-    return total
+    const entry = state.prune.messages.byMessageId.get(msg.info.id)
+    return !!(entry && entry.activeBlockIds.length > 0)
 }
 
 function countAllMessageTokens(message: WithParts): number {
-    if (!message || !Array.isArray(message.parts)) return 0
     let total = 0
-    for (const part of message.parts) {
-        if (!part) continue
-        const p = part as { type?: string; text?: unknown; state?: { output?: unknown } }
+    const parts = Array.isArray(message.parts) ? message.parts : []
+    for (const part of parts) {
+        const p = part as { type?: string; text?: unknown; state?: { output?: unknown; input?: unknown } }
         if (typeof p.text === "string") {
             total += countTokensSync(p.text)
         }
@@ -69,14 +58,11 @@ function countAllMessageTokens(message: WithParts): number {
             if (typeof p.state.output === "string") {
                 total += countTokensSync(p.state.output)
             }
-            const input = (p.state as { input?: unknown }).input
-            if (typeof input === "string") {
-                total += countTokensSync(input)
-            } else if (input && typeof input === "object") {
+            if (p.state.input && typeof p.state.input === "object") {
                 try {
-                    total += countTokensSync(JSON.stringify(input))
+                    total += countTokensSync(JSON.stringify(p.state.input))
                 } catch {
-                    void input
+                    void 0
                 }
             }
         }
@@ -139,4 +125,32 @@ export function listPriorityRefsBeforeIndex(
     }
 
     return refs
+}
+
+export function classifyMessage(msg: unknown): Priority {
+    if (!isMessageWithInfo(msg)) return "low"
+    if (msg.info.role === "user") return "high"
+    if (msg.info.role === "assistant") {
+        if (messageHasCompress(msg)) return "high"
+        const tokens = estimateMessageTokens(msg)
+        if (tokens >= HIGH_PRIORITY_TOKENS) return "high"
+        if (tokens >= MEDIUM_PRIORITY_TOKENS) return "medium"
+        return "low"
+    }
+    return "low"
+}
+
+function estimateMessageTokens(msg: WithParts): number {
+    let total = 0
+    for (const part of msg.parts) {
+        if (!part) continue
+        const p = part as { type?: string; text?: unknown; state?: { output?: unknown } }
+        if (typeof p.text === "string") {
+            total += countTokensSync(p.text)
+        }
+        if (p.type === "tool" && p.state && typeof p.state.output === "string") {
+            total += countTokensSync(p.state.output)
+        }
+    }
+    return total
 }

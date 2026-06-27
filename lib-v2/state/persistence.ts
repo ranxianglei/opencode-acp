@@ -1,5 +1,5 @@
 import { promises as fs } from "node:fs"
-import { join, dirname } from "node:path"
+import { join } from "node:path"
 import { homedir } from "node:os"
 import type { Logger } from "../infra/logger"
 import type {
@@ -9,8 +9,20 @@ import type {
     PruneMessagesState,
 } from "./types"
 
-const STORAGE_BASE = join(homedir(), ".local", "share", "opencode", "storage", "plugin", "acp")
-const DCP_STORAGE_BASE = join(homedir(), ".local", "share", "opencode", "storage", "plugin", "dcp")
+function getStorageBase(): string {
+    const xdgData = process.env.XDG_DATA_HOME
+    const root = xdgData && xdgData.length > 0 ? xdgData : join(homedir(), ".local", "share")
+    return join(root, "opencode", "storage", "plugin", "acp")
+}
+
+function getDcpStorageBase(): string {
+    const xdgData = process.env.XDG_DATA_HOME
+    const root = xdgData && xdgData.length > 0 ? xdgData : join(homedir(), ".local", "share")
+    return join(root, "opencode", "storage", "plugin", "dcp")
+}
+
+const STORAGE_BASE = getStorageBase()
+const DCP_STORAGE_BASE = getDcpStorageBase()
 
 interface PersistedPrunedMessageEntry {
     tokenCount: number
@@ -167,11 +179,50 @@ export async function loadSessionState(
     try {
         const raw = await fs.readFile(filePath, "utf-8")
         const parsed = JSON.parse(raw) as PersistedSessionState
+        const normalized = normalizePersistedState(parsed)
+        if (normalized === null) {
+            logger.warn("Loaded session state is missing required fields", { sessionId })
+            return null
+        }
         logger.info("Loaded session state from disk", { sessionId })
-        return parsed
+        return normalized
     } catch {
         return null
     }
+}
+
+function normalizePersistedState(
+    parsed: unknown,
+): PersistedSessionState | null {
+    if (!parsed || typeof parsed !== "object") {
+        return null
+    }
+
+    const obj = parsed as Partial<PersistedSessionState>
+    if (!obj.prune || !obj.stats) {
+        return null
+    }
+
+    if (obj.nudges) {
+        obj.nudges.contextLimitAnchors = dedupeStringArray(obj.nudges.contextLimitAnchors)
+        obj.nudges.turnAnchors = dedupeStringArray(obj.nudges.turnAnchors)
+        obj.nudges.iterationAnchors = dedupeStringArray(obj.nudges.iterationAnchors)
+    }
+
+    return obj as PersistedSessionState
+}
+
+function dedupeStringArray(value: unknown): string[] | undefined {
+    if (!Array.isArray(value)) return undefined
+    const seen = new Set<string>()
+    const out: string[] = []
+    for (const entry of value) {
+        if (typeof entry !== "string" || entry.length === 0) continue
+        if (seen.has(entry)) continue
+        seen.add(entry)
+        out.push(entry)
+    }
+    return out
 }
 
 export async function deleteSessionState(sessionId: string, logger: Logger): Promise<void> {

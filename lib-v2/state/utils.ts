@@ -7,9 +7,10 @@ import type {
 } from "./types"
 import { isMessageWithInfo } from "../messages/shape"
 import { createPruneMessagesState } from "./factory"
+import { isCompacted } from "./queries"
 
 export { createPruneMessagesState, createSessionState } from "./factory"
-export { isMessageCompacted } from "./queries"
+export { isMessageCompacted, isCompacted } from "./queries"
 
 export function getActiveSummaryTokenUsage(state: SessionState): number {
     let total = 0
@@ -23,13 +24,23 @@ export function getActiveSummaryTokenUsage(state: SessionState): number {
     return total
 }
 
-export function countTurns(messages: WithParts[]): number {
-    let count = 0
+export function countTurns(state: SessionState, messages: WithParts[]): number {
+    let turnCount = 0
     for (const msg of messages) {
-        if (!isMessageWithInfo(msg)) continue
-        if (msg.info.role === "user") count++
+        if (!isMessageWithInfo(msg)) {
+            continue
+        }
+        if (isCompacted(state, msg)) {
+            continue
+        }
+        const parts = Array.isArray(msg.parts) ? msg.parts : []
+        for (const part of parts) {
+            if (part.type === "step-start") {
+                turnCount++
+            }
+        }
     }
-    return count
+    return turnCount
 }
 
 export function findLastCompactionTimestamp(messages: WithParts[]): number {

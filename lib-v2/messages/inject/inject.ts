@@ -1,10 +1,22 @@
 import type { PluginConfig } from "../../config/types"
 import type { SessionState, WithParts } from "../../state/types"
 import type { Logger } from "../../infra/logger"
-import type { TextPart, ToolPart } from "@opencode-ai/sdk/v2"
-import { formatMessageRef } from "../../infra/message-refs"
-import { appendToLastTextPart } from "../utils"
-import { getLastUserMessage, isIgnoredUserMessage, messageHasCompress } from "../query"
+import type { TextPart, ToolPart, Part } from "@opencode-ai/sdk/v2"
+import { formatMessageRef, formatMessageIdTag } from "../../infra/message-refs"
+import {
+    appendToLastTextPart,
+    appendToTextPart,
+    createSyntheticTextPart,
+    createSyntheticUserMessage,
+    hasContent,
+} from "../utils"
+import {
+    getLastUserMessage,
+    isIgnoredUserMessage,
+    isSyntheticMessage,
+    messageHasCompress,
+} from "../query"
+import { getCurrentTokenUsage } from "../../token-utils"
 import {
     shouldNudgeContextLimit,
     shouldNudgeTurn,
@@ -15,6 +27,7 @@ import {
     type NudgeContext,
 } from "../../prompts/nudges"
 import {
+    buildContextUsageGuidance,
     computeContextUsage,
     getMessagesSinceLastUser,
     shouldShowBlockAgingWarning,
@@ -24,7 +37,7 @@ export function injectMessageIds(
     state: SessionState,
     config: PluginConfig,
     messages: WithParts[],
-    _compressionPriorities?: any,
+    compressionPriorities?: Map<string, { priority?: string }>,
 ): void {
     if (config.compress.permission === "deny") {
         return
@@ -43,16 +56,65 @@ export function injectMessageIds(
         const isBlockedMessage =
             message.info.role === "user" && config.compress.protectUserMessages === true
 
-        const tag = formatMessageIdTagWithAttr(
+        const priorityEntry = compressionPriorities?.get(message.info.id)
+        const priority =
+            config.compress.mode === "message" && !isBlockedMessage
+                ? priorityEntry?.priority
+                : undefined
+
+        const tag = formatMessageIdTag(
             isBlockedMessage ? "BLOCKED" : messageRef,
+            priority ? { priority } : undefined,
         )
 
-        injectTagIntoMessage(message, tag)
-    }
-}
+        if (message.info.role === "user") {
+            let injected = false
+            for (const part of message.parts) {
+                if (part && part.type === "text") {
+                    injected = appendToTextPart(part as Part, tag) || injected
+                }
+            }
 
-function formatMessageIdTagWithAttr(ref: string): string {
-    return `\n<dcp-message-id>${ref}</dcp-message-id>`
+            if (injected) {
+                continue
+            }
+
+            message.parts.push(createSyntheticTextPart(message, tag))
+            continue
+        }
+
+        if (message.info.role !== "assistant") {
+            continue
+        }
+
+        if (!hasContent(message)) {
+            continue
+        }
+
+        let injected = false
+        for (const part of message.parts) {
+            if (!part || part.type !== "tool") continue
+            const toolPart = part as ToolPart
+            const st = toolPart.state as { status?: string; output?: unknown } | undefined
+            if (st && st.status === "completed" && typeof st.output === "string") {
+                st.output = `${st.output}\n\n${tag}`
+                injected = true
+            }
+        }
+        if (injected) continue
+
+        if (appendToLastTextPart(message, tag)) {
+            continue
+        }
+
+        const syntheticPart = createSyntheticTextPart(message, tag)
+        const firstToolIndex = message.parts.findIndex((p) => p && (p as { type?: string }).type === "tool")
+        if (firstToolIndex === -1) {
+            message.parts.push(syntheticPart)
+        } else {
+            message.parts.splice(firstToolIndex, 0, syntheticPart)
+        }
+    }
 }
 
 function getOrCreateRef(state: SessionState, rawId: string): string {
@@ -68,70 +130,6 @@ function getOrCreateRef(state: SessionState, rawId: string): string {
 function isProtectedMessage(msg: WithParts, config: PluginConfig): boolean {
     if (msg.info.role === "user" && config.compress.protectUserMessages) return true
     return false
-}
-
-function injectTagIntoMessage(msg: WithParts, tag: string): void {
-    if (!Array.isArray(msg.parts) || msg.parts.length === 0) {
-        if (msg.info.role === "user" || msg.info.role === "assistant") {
-            msg.parts.push({
-                id: `${msg.info.id}-synthetic`,
-                messageID: msg.info.id,
-                sessionID: (msg.info as any).sessionID ?? "",
-                type: "text",
-                text: tag,
-            } as any)
-        }
-        return
-    }
-
-    if (msg.info.role === "user") {
-        let injected = false
-        for (const part of msg.parts) {
-            if (part && part.type === "text") {
-                appendTagToTextPart(part as TextPart, tag)
-                injected = true
-            }
-        }
-        if (!injected) {
-            msg.parts.push({
-                id: `${msg.info.id}-synthetic`,
-                messageID: msg.info.id,
-                sessionID: (msg.info as any).sessionID ?? "",
-                type: "text",
-                text: tag,
-            } as any)
-        }
-        return
-    }
-
-    if (msg.info.role === "assistant") {
-        let injected = false
-        for (const part of msg.parts) {
-            if (!part || part.type !== "tool") continue
-            const toolPart = part as ToolPart
-            const state = toolPart.state as { output?: unknown } | undefined
-            if (state && typeof state.output === "string") {
-                state.output = `${state.output}\n\n${tag}`
-                injected = true
-            }
-        }
-        if (injected) return
-
-        for (const part of msg.parts) {
-            if (part && part.type === "text") {
-                appendTagToTextPart(part as TextPart, tag)
-                return
-            }
-        }
-
-        msg.parts.push({
-            id: `${msg.info.id}-synthetic`,
-            messageID: msg.info.id,
-            sessionID: (msg.info as any).sessionID ?? "",
-            type: "text",
-            text: tag,
-        } as any)
-    }
 }
 
 function appendTagToTextPart(part: TextPart, tag: string): void {
@@ -174,6 +172,56 @@ export function injectCompressNudges(
     if (shouldNudgeIteration(ctx, config.compress.iterationNudgeThreshold)) {
         anchorLastMessage((state.nudges as any).iterationNudgeAnchors ?? new Set(), messages, logger)
     }
+
+    const modelContextLimit = state.modelContextLimit
+    const currentTokens = getCurrentTokenUsage(state, messages)
+    const suffixMessage = createSuffixMessage(messages)
+    if (suffixMessage) {
+        injectContextUsage(suffixMessage, config, currentTokens, modelContextLimit)
+        injectVisibleIdRange(state, messages, suffixMessage)
+    }
+}
+
+const ACP_SUFFIX_SEED = "acp-dynamic-guidance"
+
+function createSuffixMessage(messages: WithParts[]): WithParts | null {
+    if (!Array.isArray(messages) || messages.length === 0) return null
+    const base = messages.find((m) => m.info.role === "user") || messages[messages.length - 1]
+    if (!base) return null
+    const synthetic = createSyntheticUserMessage(base, "", ACP_SUFFIX_SEED)
+    if (messages.some((m) => m.info.id === synthetic.info.id)) {
+        return messages.find((m) => m.info.id === synthetic.info.id) ?? null
+    }
+    messages.push(synthetic)
+    return synthetic
+}
+
+function injectContextUsage(
+    target: WithParts,
+    config: PluginConfig,
+    currentTokens?: number,
+    modelContextLimit?: number,
+): void {
+    const usageTag = buildContextUsageGuidance(config, currentTokens, modelContextLimit)
+    if (!usageTag) return
+    appendToLastTextPart(target, usageTag)
+}
+
+function injectVisibleIdRange(state: SessionState, messages: WithParts[], target: WithParts): void {
+    const visibleRefs: string[] = []
+    for (const message of messages) {
+        if (!message || !message.info) continue
+        if (isSyntheticMessage(message)) continue
+        const ref = state.messageIds.byRawId.get(message.info.id)
+        if (ref) visibleRefs.push(ref)
+    }
+    if (visibleRefs.length === 0) return
+
+    visibleRefs.sort()
+    const first = visibleRefs[0]!
+    const last = visibleRefs[visibleRefs.length - 1]!
+    const rangeTag = `\n\n[Visible message IDs: ${first} to ${last} (${visibleRefs.length} messages). Only use IDs in this range for compress.]`
+    appendToLastTextPart(target, rangeTag)
 }
 
 function buildNudgeContext(
