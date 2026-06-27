@@ -1,0 +1,1 @@
+export { runMajorGC } from "./truncate"
