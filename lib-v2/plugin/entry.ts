@@ -20,7 +20,8 @@ export async function handleMessageTransform(
         return messages
     }
 
-    const state = createSessionState(ctx.sessionId)
+    const state = createSessionState()
+    state.sessionId = ctx.sessionId
     const stages = createMessageTransformStages()
 
     const deps: PipelineDeps = {

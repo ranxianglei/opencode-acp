@@ -24,7 +24,7 @@ function getCurrentTokenEstimate(state: SessionState): number {
 
 export function renderAgingWarning(
     state: SessionState,
-    logger?: { warn: (msg: string, ctx?: unknown) => void },
+    logger?: Logger,
 ): string {
     const oldGenBlocks = getOldGenBlocks(state)
     const youngGenBlocks = getYoungGenBlocks(state)

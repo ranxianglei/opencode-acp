@@ -28,14 +28,19 @@ function resolveBatchCleanup(gc: PluginConfig["gc"]) {
 }
 
 function percentToTokens(
-    value: number | `${number}%`,
+    value: string | number,
     modelContextLimit: number,
 ): number {
     if (typeof value === "number") return value
-    const percent = parseFloat(value.slice(0, -1))
-    if (isNaN(percent)) return modelContextLimit
-    const clamped = Math.max(0, Math.min(100, Math.round(percent)))
-    return Math.round((clamped / 100) * modelContextLimit)
+    if (value.endsWith("%")) {
+        const percent = parseFloat(value.slice(0, -1))
+        if (isNaN(percent)) return modelContextLimit
+        const clamped = Math.max(0, Math.min(100, Math.round(percent)))
+        return Math.round((clamped / 100) * modelContextLimit)
+    }
+    const parsed = parseFloat(value)
+    if (!isNaN(parsed)) return parsed
+    return modelContextLimit
 }
 
 function collectActiveOldGenBlocks(
