@@ -4,8 +4,8 @@ import type { Logger } from "../infra/logger"
 
 export function purgeErrors(
     state: SessionState,
-    config: PluginConfig,
     logger: Logger,
+    config: PluginConfig,
     messages: WithParts[],
 ): number {
     if (!config.strategies.purgeErrors.enabled) return 0

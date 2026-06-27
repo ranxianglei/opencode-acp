@@ -18,8 +18,8 @@ function hashInput(input: unknown): string {
 
 export function deduplicate(
     state: SessionState,
-    config: PluginConfig,
     logger: Logger,
+    config: PluginConfig,
     messages: WithParts[],
 ): number {
     if (!config.strategies.deduplication.enabled) return 0

@@ -42,7 +42,7 @@ export function createMessageTransformStages(): PipelineStage[] {
             name: "04-deduplicate",
             run: (ctx) => {
                 if (ctx.deps.config.strategies.deduplication.enabled) {
-                    deduplicate(ctx.deps.state, ctx.deps.config, ctx.deps.logger, ctx.messages)
+                    deduplicate(ctx.deps.state, ctx.deps.logger, ctx.deps.config, ctx.messages)
                 }
             },
         },
@@ -50,7 +50,7 @@ export function createMessageTransformStages(): PipelineStage[] {
             name: "05-purge-errors",
             run: (ctx) => {
                 if (ctx.deps.config.strategies.purgeErrors.enabled) {
-                    purgeErrors(ctx.deps.state, ctx.deps.config, ctx.deps.logger, ctx.messages)
+                    purgeErrors(ctx.deps.state, ctx.deps.logger, ctx.deps.config, ctx.messages)
                 }
             },
         },
