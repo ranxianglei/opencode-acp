@@ -110,6 +110,7 @@ export interface SessionState {
     isSubAgent: boolean
     lastCompaction: number
     currentTurn: number
+    compressPermission?: "ask" | "allow" | "deny" | null
 
     prune: Prune
     nudges: NudgeState
@@ -117,6 +118,7 @@ export interface SessionState {
     messageIds: MessageIdMapping
     compressionTiming: CompressionTimingState
     toolParameters: Map<string, ToolParameterEntry>
+    subagentResults: Map<string, string>
     manualMode: ManualModeState
     pendingManualTrigger: PendingManualTrigger | null
 }

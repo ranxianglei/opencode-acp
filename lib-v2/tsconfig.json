@@ -6,6 +6,7 @@
         "noEmit": true,
         "rootDir": ".",
         "baseUrl": ".",
+        "ignoreDeprecations": "6.0",
         "paths": {
             "@acp-v2/*": ["./*"]
         }

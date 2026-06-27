@@ -44,6 +44,7 @@ export function createSessionState(): SessionState {
             pendingByCallId: new Map(),
         },
         toolParameters: new Map(),
+        subagentResults: new Map(),
         manualMode: false,
         pendingManualTrigger: null,
     }
