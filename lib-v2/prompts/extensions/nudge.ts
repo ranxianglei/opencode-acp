@@ -1,6 +1,7 @@
 import type { SessionState, CompressionBlock } from "../../state/types"
 import type { PluginConfig } from "../../config/types"
 import type { WithParts } from "../../state/types"
+import type { Logger } from "../../infra/logger"
 import { getActiveBlocks } from "../../state/queries"
 
 const AGING_WARNING_THRESHOLD_PERCENT = 50
