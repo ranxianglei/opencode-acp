@@ -17,12 +17,19 @@ export function buildCompressedBlockGuidance(
 
     const refs = activeBlockIds.map((id) => `b${id}`)
     const blockCount = refs.length
-    const blockList = blockCount > 0 ? refs.join(", ") : "none"
+    let blockList: string
+    if (blockCount <= 20) {
+        blockList = blockCount > 0 ? refs.join(", ") : "none"
+    } else {
+        const recent = refs.slice(-20).join(", ")
+        blockList = `${recent} (+${blockCount - 20} older, use decompress to access by ID)`
+    }
 
     const lines = [
         "Compressed block context:",
         `- Active compressed blocks: ${blockCount} (${blockList})`,
         "- If your selected compression range includes any listed block, include each required placeholder exactly once in the summary using `(bN)`.",
+        "- 💡 When you've finished using tool outputs, compress them — you can decompress later if needed. Lean context improves accuracy.",
     ]
 
     // [FIX Bug 35] Only show aging warnings when context usage is above 50%.
