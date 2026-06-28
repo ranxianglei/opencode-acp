@@ -10,15 +10,15 @@ COMPRESSION PHILOSOPHY
 
 Compression replaces raw conversation content with dense summaries. When used correctly, it keeps your context sharp and focused. When used carelessly, it destroys information you need.
 
-The key principle: compress proactively to keep context lean, but selectively. Large tool outputs (shell, diffs, logs) can be compressed into summaries at any time — you can decompress later if needed. Extract and keep what matters: user intent, key decisions, file paths, and important findings — even if buried in large messages. Compress everything else, including verbose parts of user messages, large code dumps, and long discussions.
+The key principle: compress based on context pressure, not habit. When context is ample, compress rarely or not at all. When context is tight, compress aggressively but selectively. The runtime context usage indicator tells you the current pressure level.
 
 Target the largest UNCOMPRESSED content first. Savings scale with original size — compressing a 5000-token tool output frees far more than re-shrinking an already-summarized 300-token block.
 
 CONTEXT PRESSURE LEVELS
 
-- Normal: Be frugal — compress tool outputs you've finished using into summaries. You can decompress later. Extract and keep what matters from any message; compress verbose parts — including large logs in user messages or generated code.
-- Elevated: Context is growing. Compress completed sections and high-token waste more urgently.
-- Critical: Compress aggressively now. Every compression should free meaningful tokens. Preserve only what is essential for the current task.
+- Ample: Context is well below the threshold. Do NOT compress unless there is obvious waste (huge terminal dumps, duplicated content). Focus entirely on your task.
+- Moderate: Context is approaching the threshold. Compress completed sections proactively. Prioritize high-token waste over minor cleanup.
+- High: Context has exceeded the threshold. Compress aggressively. Every compression should free meaningful tokens. Preserve only what is essential for the current task.
 
 WHAT TO COMPRESS FIRST (high value, low risk)
 

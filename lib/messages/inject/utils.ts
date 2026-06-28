@@ -393,15 +393,15 @@ export function buildContextUsageGuidance(
     const minPct = resolveThresholdPercent(config.compress.minContextLimit, modelContextLimit) ?? 45
     const maxPct = resolveThresholdPercent(config.compress.maxContextLimit, modelContextLimit) ?? 55
 
-    const base = `Context usage: ${formatK(currentTokens)} / ${formatK(modelContextLimit)} tokens (${percentage}%).`
+    const base = `Context usage: ${formatK(currentTokens)} / ${formatK(modelContextLimit)} tokens (${percentage}%). ACP threshold: ${maxPct.toFixed(0)}%.`
 
     let guidance: string
     if (pct < minPct) {
-        guidance = " 💡 Be frugal with context — compress tool outputs you've finished using into summaries. You can decompress later; nothing is permanently lost. Lean context means better accuracy. Extract and keep what matters: user intent, key decisions, file paths, and important findings — even if buried in large messages. Compress everything else, including verbose parts of any message."
+        guidance = " Context is ample — focus on your task. Only compress obvious waste (large terminal outputs, duplicated content)."
     } else if (pct < maxPct) {
-        guidance = " ⚠️ Context is growing — compress completed sections and high-token waste now. Preserve key details."
+        guidance = " Context is moderate — compress completed sections and high-token waste. Preserve key details."
     } else {
-        guidance = " 🔥 Context is high — compress aggressively but selectively. Preserve only what is essential."
+        guidance = " Context is high — compress aggressively but selectively. Preserve only what is essential."
     }
 
     return `\n\n${base}${guidance}`

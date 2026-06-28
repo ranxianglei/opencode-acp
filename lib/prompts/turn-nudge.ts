@@ -1,12 +1,12 @@
 export const TURN_NUDGE = `
 <system-reminder>
-Context is getting full. If you've finished reading tool outputs or exploration results, compress them — you can decompress later if needed. This keeps your focus on the current task and improves accuracy.
+Context is getting full. Compress closed/older conversation ranges now.
 
 {
   "topic": "Short Label",
   "content": [{ "startId": "<visible message ID>", "endId": "<visible message ID>", "summary": "..." }]
 }
 
-⚠️ ONLY use IDs from  tags visible above. Do NOT invent or copy example IDs.
+⚠️ ONLY use IDs from <dcp-message-id> tags visible above. Do NOT invent or copy example IDs.
 </system-reminder>
 `
