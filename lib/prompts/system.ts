@@ -16,9 +16,9 @@ Target the largest UNCOMPRESSED content first. Savings scale with original size 
 
 CONTEXT PRESSURE LEVELS
 
-- Normal: Be frugal — compress tool outputs you've finished using into summaries. You can decompress later. Extract and keep what matters from any message; compress verbose parts — including large logs in user messages or generated code.
-- Elevated: Context is growing. Compress completed sections and high-token waste more urgently.
-- Critical: Compress aggressively now. Every compression should free meaningful tokens. Preserve only what is essential for the current task.
+- Normal: Be frugal — compress large completed outputs into summaries. You can decompress later if needed.
+- Elevated: Context is growing — compress completed sections and high-token waste now.
+- Critical: Compress aggressively now — preserve only what is essential for the current task.
 
 WHAT TO COMPRESS FIRST (high value, low risk)
 

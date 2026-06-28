@@ -18,12 +18,48 @@ export const prune = (
     messages: WithParts[],
 ): void => {
     filterCompressedRanges(state, logger, config, messages)
+    stripStepMarkers(messages)
     // [HOTFIX] Disabled pruneToolOutputs/pruneToolInputs/pruneToolErrors — they mutate
     // existing messages in-place, breaking GLM prefix cache. Compression still works
     // via filterCompressedRanges + model-initiated compress tool.
     // pruneToolOutputs(state, logger, messages)
     // pruneToolInputs(state, logger, messages)
     // pruneToolErrors(state, logger, messages)
+}
+
+const MAX_STEP_FINISH_REASON = 50
+
+const stripStepMarkers = (messages: WithParts[]): void => {
+    for (const msg of messages) {
+        const parts = Array.isArray(msg.parts) ? msg.parts : []
+        let changed = false
+        const filtered: typeof parts = []
+
+        for (const part of parts) {
+            if (part.type === "step-start") {
+                changed = true
+                continue
+            }
+
+            if (part.type === "step-finish") {
+                const reason = (part as { reason?: unknown }).reason
+                if (typeof reason === "string" && reason.length > MAX_STEP_FINISH_REASON) {
+                    filtered.push({
+                        ...part,
+                        reason: reason.slice(0, MAX_STEP_FINISH_REASON) + "...",
+                    })
+                    changed = true
+                    continue
+                }
+            }
+
+            filtered.push(part)
+        }
+
+        if (changed) {
+            msg.parts = filtered
+        }
+    }
 }
 
 const pruneFullTool = (state: SessionState, logger: Logger, messages: WithParts[]): void => {

@@ -30,6 +30,8 @@ export interface CompressConfig {
     protectedTools: string[]
     protectTags: boolean
     protectUserMessages: boolean
+    maxSummaryLength: number
+    minCompressRange: number
 }
 
 export interface Commands {
@@ -196,6 +198,8 @@ const defaultConfig: PluginConfig = {
         protectedTools: [...COMPRESS_DEFAULT_PROTECTED_TOOLS],
         protectTags: false,
         protectUserMessages: false,
+        maxSummaryLength: 100,
+        minCompressRange: 2000,
     },
     strategies: {
         deduplication: {
@@ -403,6 +407,8 @@ function mergeCompress(
         protectedTools: [...new Set([...base.protectedTools, ...(override.protectedTools ?? [])])],
         protectTags: override.protectTags ?? base.protectTags,
         protectUserMessages: override.protectUserMessages ?? base.protectUserMessages,
+        maxSummaryLength: override.maxSummaryLength ?? base.maxSummaryLength,
+        minCompressRange: override.minCompressRange ?? base.minCompressRange,
     }
 }
 

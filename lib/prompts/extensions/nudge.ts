@@ -39,7 +39,7 @@ export function buildCompressedBlockGuidance(
     }
 
     if (blockCount > 50) {
-        lines.push(`- 🔀 You have ${blockCount} blocks — consider merging adjacent same-topic blocks instead of finding new content to compress. This permanently reduces per-turn overhead.`)
+        lines.push(`- 🔀 You have ${blockCount} blocks — to reduce overhead, use compress to consolidate adjacent same-topic blocks into one summary (cover the full range including old blocks).`)
     }
 
     // [FIX Bug 35] Only show aging warnings when context usage is above 50%.
