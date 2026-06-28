@@ -24,10 +24,16 @@ export interface BatchCleanupResult {
 }
 
 const DEFAULT_BATCH_CLEANUP: BatchCleanupConfig = {
-    lowThreshold: "60%",
+    lowThreshold: "55%",
     highThreshold: "75%",
     forceThreshold: "90%",
 }
+
+/** Minimum marked-block count to trigger escalation nudge (tier 2 active compress). */
+const ESCALATE_MIN_MARKED = 3
+
+/** Minimum marked/old-gen ratio to trigger escalation nudge. */
+const ESCALATE_MIN_RATIO = 0.4
 
 function resolveBatchCleanup(gc: GCConfig): BatchCleanupConfig {
     return gc.batchCleanup ?? DEFAULT_BATCH_CLEANUP
@@ -62,11 +68,15 @@ function collectActiveOldGenBlocks(state: SessionState, maxOldGenSummaryLength: 
 }
 
 function collectActiveMarkedBlocks(state: SessionState): CompressionBlock[] {
-    const ids = Array.from(state.prune.messages.markedForCleanup).sort((a, b) => a - b)
+    const messagesState = state.prune.messages
+    const ids = Array.from(messagesState.markedForCleanup).sort((a, b) => a - b)
     const blocks: CompressionBlock[] = []
     for (const id of ids) {
-        const block = state.prune.messages.blocksById.get(id)
-        if (!block || !block.active) continue
+        const block = messagesState.blocksById.get(id)
+        if (!block || !block.active) {
+            messagesState.markedForCleanup.delete(id)
+            continue
+        }
         blocks.push(block)
     }
     return blocks
@@ -218,25 +228,67 @@ export function mergeMarkedBlocks(
     return { mergedCount: sourceBlocks.length, savedTokens }
 }
 
-function buildNudgeText(state: SessionState, maxMergedLength: number): string | undefined {
-    const blocks = collectActiveMarkedBlocks(state)
-    if (blocks.length < 1) return undefined
-
-    const refs = blocks.map((b) => formatBlockRef(b.blockId)).join(", ")
-    const sourceTokens = blocks.reduce(
+function estimateTokens(blocks: CompressionBlock[]): number {
+    return blocks.reduce(
         (sum, block) => sum + (block.summaryTokens || Math.round(block.summary.length / 4)),
         0,
     )
-    const estimatedMergedTokens = Math.round(maxMergedLength / 4)
-    const estimatedSavings = Math.max(0, sourceTokens - estimatedMergedTokens)
+}
+
+function buildNudgeText(state: SessionState, maxMergedLength: number): string | undefined {
+    const marked = collectActiveMarkedBlocks(state)
+    const oldGen = collectActiveOldGenBlocks(state, maxMergedLength)
+
+    if (oldGen.length === 0) return undefined
+
+    const oldGenIds = new Set(oldGen.map((b) => b.blockId))
+    const markedOldGen = marked.filter((b) => oldGenIds.has(b.blockId))
+    const markedOldGenCount = markedOldGen.length
+    const oldGenCount = oldGen.length
+    const ratio = markedOldGenCount / oldGenCount
+    const ratioPct = Math.round(ratio * 100)
+    const escalateMinPct = Math.round(ESCALATE_MIN_RATIO * 100)
+
+    // Escalation: enough old-gen blocks marked → urge active compress now
+    if (markedOldGenCount >= ESCALATE_MIN_MARKED && ratio >= ESCALATE_MIN_RATIO) {
+        const refs = marked.map((b) => formatBlockRef(b.blockId)).join(", ")
+        const firstRef = formatBlockRef(marked[0].blockId)
+        const lastRef = formatBlockRef(marked[marked.length - 1].blockId)
+        const estimatedSavings = Math.max(0, estimateTokens(marked) - Math.round(maxMergedLength / 4))
+
+        return [
+            `🔥 ${markedOldGenCount}/${oldGenCount} old-gen blocks marked (${ratioPct}%) — ready for batch cleanup.`,
+            `Compressing ${refs} (range ${firstRef}–${lastRef}) would free ~${estimatedSavings} tokens in one cache break.`,
+            `Call compress with this range now to consolidate them.`,
+        ].join(" ")
+    }
+
+    // Some marks, not enough to escalate → keep marking
+    if (marked.length >= 1) {
+        const refs = marked.map((b) => formatBlockRef(b.blockId)).join(", ")
+        const estimatedSavings = Math.max(0, estimateTokens(marked) - Math.round(maxMergedLength / 4))
+
+        return [
+            `⚠️ ${marked.length} block(s) marked for batch cleanup (${refs}).`,
+            `Merge-compressing them would free ~${estimatedSavings} tokens.`,
+            marked.length >= 2
+                ? "They will auto-merge when context pressure reaches the high threshold."
+                : "A single marked block won't auto-merge on its own — use compress to consolidate it, or unmark_block if no longer needed.",
+            `Mark more old-gen blocks (need ≥${ESCALATE_MIN_MARKED} at ≥${escalateMinPct}%) to trigger batch cleanup sooner.`,
+            "To act now, use compress with a range covering these blocks.",
+        ].join(" ")
+    }
+
+    // No marks yet → guide the model to start marking (fixes chicken-and-egg deadlock)
+    const shown = oldGen.slice(0, 5)
+    const oldGenRefs = shown.map((b) => formatBlockRef(b.blockId)).join(", ")
+    const more = oldGenCount > 5 ? ` (+${oldGenCount - 5} more)` : ""
 
     return [
-        `⚠️ ${blocks.length} block(s) marked for batch cleanup (${refs}).`,
-        `Merge-compressing them would free ~${estimatedSavings} tokens.`,
-        blocks.length >= 2
-            ? "They will auto-merge when context pressure reaches the high threshold."
-            : "A single marked block won't auto-merge on its own — use compress to consolidate it, or unmark_block if no longer needed.",
-        "To act now, use compress with a range covering these blocks.",
+        `📋 Context pressure rising — ${oldGenCount} old-gen compressed block(s) occupy ~${estimateTokens(oldGen)} tokens (${oldGenRefs}${more}).`,
+        `Review which blocks contain information you no longer need, and use mark_block to flag them.`,
+        `Once enough are marked (≥${ESCALATE_MIN_MARKED} at ≥${escalateMinPct}% of old-gen), they'll be batch-merged in one cache break to preserve cache hit rate.`,
+        `Do NOT mark blocks you may still need.`,
     ].join(" ")
 }
 
@@ -292,26 +344,25 @@ export function runBatchCleanup(
 
     if (currentTokens >= highTokens) {
         const marked = collectActiveMarkedBlocks(state)
-        if (marked.length < 2) {
-            return noop
+        if (marked.length >= 2) {
+            const ids = marked.map((b) => b.blockId)
+            const result = mergeMarkedBlocks(state, ids, maxMergedLength)
+            if (result.mergedCount > 0) {
+                logger.info("Batch cleanup tier 2 (high): merged marked blocks", {
+                    mergedCount: result.mergedCount,
+                    savedTokens: result.savedTokens,
+                    currentTokens,
+                    highThreshold: batchCleanup.highThreshold,
+                })
+                return {
+                    tier: 2,
+                    action: "merge",
+                    mergedCount: result.mergedCount,
+                    savedTokens: result.savedTokens,
+                }
+            }
         }
-        const ids = marked.map((b) => b.blockId)
-        const result = mergeMarkedBlocks(state, ids, maxMergedLength)
-        if (result.mergedCount === 0) {
-            return noop
-        }
-        logger.info("Batch cleanup tier 2 (high): merged marked blocks", {
-            mergedCount: result.mergedCount,
-            savedTokens: result.savedTokens,
-            currentTokens,
-            highThreshold: batchCleanup.highThreshold,
-        })
-        return {
-            tier: 2,
-            action: "merge",
-            mergedCount: result.mergedCount,
-            savedTokens: result.savedTokens,
-        }
+        // Not enough marks or merge produced nothing — fall through to nudge
     }
 
     if (currentTokens >= lowTokens) {
