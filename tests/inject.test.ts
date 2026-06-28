@@ -3,6 +3,7 @@ import test from "node:test"
 import type { PluginConfig } from "../lib/config"
 import { Logger } from "../lib/logger"
 import { injectMessageIds, injectCompressNudges } from "../lib/messages/inject/inject"
+import { createSyntheticUserMessage } from "../lib/messages/utils"
 import { createSessionState, type WithParts } from "../lib/state"
 import { formatMessageIdTag } from "../lib/message-ids"
 
@@ -155,4 +156,34 @@ test("formatMessageIdTag produces dcp-message-id tag", () => {
     const tag = formatMessageIdTag("m00001")
     assert.ok(tag.includes("m00001"))
     assert.ok(tag.includes("dcp-message-id"))
+})
+
+// OpenCode's SessionPrompt.ensureTitle treats a user message as "real" only when
+// NOT all of its parts are synthetic (opencode prompt.ts:
+//   m.info.role === "user" && !m.parts.every(p => "synthetic" in p && p.synthetic)
+// ) and bails out unless the conversation contains EXACTLY one real user message.
+// ACP's compress-nudge suffix message is created via createSyntheticUserMessage and
+// pushed as a second user message; if it counted as real, title generation would
+// never be scheduled. This test locks the contract: the suffix message must be
+// all-synthetic so ensureTitle still sees exactly one real user message.
+const isOpenCodeRealUserMessage = (m: WithParts): boolean =>
+    m.info.role === "user" && !m.parts.every((p) => "synthetic" in p && (p as { synthetic?: unknown }).synthetic === true)
+
+test("createSyntheticUserMessage produces an all-synthetic user message that ensureTitle does not count as real", () => {
+    const base = userMsg("u1", "hello")
+    const synthetic = createSyntheticUserMessage(base, "")
+
+    assert.ok(
+        synthetic.parts.every((p) => "synthetic" in p && (p as { synthetic?: unknown }).synthetic === true),
+        "every part of a createSyntheticUserMessage result must carry synthetic:true",
+    )
+    assert.equal(isOpenCodeRealUserMessage(synthetic), false, "synthetic user message must NOT be a 'real' user message")
+    assert.equal(isOpenCodeRealUserMessage(base), true, "a plain user message must still be 'real'")
+
+    const conversation = [base, synthetic]
+    assert.equal(
+        conversation.filter(isOpenCodeRealUserMessage).length,
+        1,
+        "after ACP injects its suffix message the conversation must still have exactly one real user message (ensureTitle precondition)",
+    )
 })
