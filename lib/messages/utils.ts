@@ -50,6 +50,7 @@ export const createSyntheticUserMessage = (
                 messageID: messageId,
                 type: "text" as const,
                 text: content,
+                synthetic: true,
             },
         ],
     }
