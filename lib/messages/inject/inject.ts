@@ -55,6 +55,26 @@ function createSuffixMessage(messages: WithParts[]): WithParts | null {
     return synthetic
 }
 
+function shouldInjectPerMessageNudge(
+    state: SessionState,
+    config: PluginConfig,
+    currentTokens?: number,
+    modelContextLimit?: number,
+): boolean {
+    const turn = state.currentTurn ?? 0
+    const lastTurn = state.nudges.lastPerMessageNudgeTurn ?? 0
+    const turnsSinceLast = turn - lastTurn
+
+    const tokens = currentTokens ?? 0
+    const lastTokens = state.nudges.lastPerMessageNudgeTokens ?? 0
+    const tokenGrowth = tokens - lastTokens
+    const tokenGrowthPercent = modelContextLimit ? (tokenGrowth / modelContextLimit) * 100 : 0
+
+    const frequency = config.compress.nudgeFrequency ?? 5
+    const growthThreshold = config.compress.perMessageNudgeGrowthPercent ?? 3
+    return turnsSinceLast >= frequency || tokenGrowthPercent >= growthThreshold
+}
+
 export const injectCompressNudges = (
     state: SessionState,
     config: PluginConfig,
@@ -164,13 +184,21 @@ export const injectCompressNudges = (
 
     applyAnchoredNudges(state, config, messages, prompts, compressionPriorities, currentTokens, modelContextLimit, suffixMessage)
 
-    injectContextUsage(suffixMessage, config, currentTokens, modelContextLimit)
+    // Gate per-message nudges: only inject full guidance when context has grown
+    const shouldNudge = shouldInjectPerMessageNudge(state, config, currentTokens, modelContextLimit)
+
+    injectContextUsage(suffixMessage, config, currentTokens, modelContextLimit, !shouldNudge)
 
     if (config.compress.mode !== "message") {
-        const blockGuidance = buildCompressedBlockGuidance(state, config.gc, { currentTokens, modelContextLimit })
+        const blockGuidance = buildCompressedBlockGuidance(state, config.gc, { currentTokens, modelContextLimit, includeHint: shouldNudge })
         if (blockGuidance.trim() && suffixMessage) {
             appendToLastTextPart(suffixMessage, "\n\n" + blockGuidance)
         }
+    }
+
+    if (shouldNudge) {
+        state.nudges.lastPerMessageNudgeTurn = state.currentTurn ?? 0
+        state.nudges.lastPerMessageNudgeTokens = currentTokens ?? 0
     }
 
     injectVisibleIdRange(state, messages, suffixMessage)
@@ -185,9 +213,10 @@ function injectContextUsage(
     config: PluginConfig,
     currentTokens?: number,
     modelContextLimit?: number,
+    minimal: boolean = false,
 ): void {
     if (!target) return
-    const usageTag = buildContextUsageGuidance(config, currentTokens, modelContextLimit)
+    const usageTag = buildContextUsageGuidance(config, currentTokens, modelContextLimit, minimal)
     if (!usageTag) return
 
     for (const part of target.parts) {

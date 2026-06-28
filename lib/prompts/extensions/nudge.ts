@@ -4,6 +4,7 @@ import type { GCConfig } from "../../config"
 export interface BlockGuidanceContext {
     currentTokens?: number
     modelContextLimit?: number
+    includeHint?: boolean
 }
 
 export function buildCompressedBlockGuidance(
@@ -25,12 +26,21 @@ export function buildCompressedBlockGuidance(
         blockList = `${recent} (+${blockCount - 20} older, use decompress to access by ID)`
     }
 
+    const includeHint = context?.includeHint ?? true
+
     const lines = [
         "Compressed block context:",
         `- Active compressed blocks: ${blockCount} (${blockList})`,
         "- If your selected compression range includes any listed block, include each required placeholder exactly once in the summary using `(bN)`.",
-        "- 💡 When you've finished using tool outputs, compress them — you can decompress later if needed. Lean context improves accuracy.",
     ]
+
+    if (includeHint) {
+        lines.push("- 💡 When you've finished using tool outputs, compress them — you can decompress later if needed. Lean context improves accuracy.")
+    }
+
+    if (blockCount > 50) {
+        lines.push(`- 🔀 You have ${blockCount} blocks — consider merging adjacent same-topic blocks instead of finding new content to compress. This permanently reduces per-turn overhead.`)
+    }
 
     // [FIX Bug 35] Only show aging warnings when context usage is above 50%.
     // Showing warnings at low usage causes unnecessary compress operations that

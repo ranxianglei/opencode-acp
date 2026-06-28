@@ -78,6 +78,8 @@ export function createSessionState(): SessionState {
             contextLimitAnchors: new Set<string>(),
             turnNudgeAnchors: new Set<string>(),
             iterationNudgeAnchors: new Set<string>(),
+            lastPerMessageNudgeTurn: 0,
+            lastPerMessageNudgeTokens: 0,
         },
         stats: {
             pruneTokenCounter: 0,
@@ -116,6 +118,8 @@ export function resetSessionState(state: SessionState): void {
         contextLimitAnchors: new Set<string>(),
         turnNudgeAnchors: new Set<string>(),
         iterationNudgeAnchors: new Set<string>(),
+        lastPerMessageNudgeTurn: 0,
+        lastPerMessageNudgeTokens: 0,
     }
     state.stats = {
         pruneTokenCounter: 0,
@@ -173,6 +177,8 @@ export async function ensureSessionInitialized(
     state.nudges.iterationNudgeAnchors = new Set<string>(
         persisted.nudges.iterationNudgeAnchors || [],
     )
+    state.nudges.lastPerMessageNudgeTurn = persisted.nudges.lastPerMessageNudgeTurn ?? 0
+    state.nudges.lastPerMessageNudgeTokens = persisted.nudges.lastPerMessageNudgeTokens ?? 0
     state.stats = {
         pruneTokenCounter: persisted.stats?.pruneTokenCounter || 0,
         totalPruneTokens: persisted.stats?.totalPruneTokens || 0,
