@@ -5,6 +5,7 @@ import {
     createCompressRangeTool,
     createDecompressTool,
     createMarkBlockTool,
+    createMergeBlocksTool,
     createUnmarkBlockTool,
 } from "./lib/compress"
 import {
@@ -93,6 +94,7 @@ const server: Plugin = (async (ctx) => {
                 decompress: createDecompressTool(compressToolContext),
                 mark_block: createMarkBlockTool(compressToolContext),
                 unmark_block: createUnmarkBlockTool(compressToolContext),
+                merge_blocks: createMergeBlocksTool(compressToolContext),
             }),
         },
         config: async (opencodeConfig) => {
@@ -113,7 +115,7 @@ const server: Plugin = (async (ctx) => {
 
             const toolsToAdd: string[] = []
             if (config.compress.permission !== "deny" && !config.experimental.allowSubAgents) {
-                toolsToAdd.push("compress", "decompress", "mark_block", "unmark_block")
+                toolsToAdd.push("compress", "decompress", "mark_block", "unmark_block", "merge_blocks")
             }
 
             if (toolsToAdd.length > 0) {

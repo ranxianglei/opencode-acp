@@ -71,29 +71,110 @@ test("CONTEXT_LIMIT_NUDGE frames compression as a step with decompress safety ne
     assert.doesNotMatch(CONTEXT_LIMIT_NUDGE, /\b(MUST|CRITICAL)\b/)
 })
 
-test("buildCompressedBlockGuidance lists every active block ID when there are 20 or fewer", () => {
+test("buildCompressedBlockGuidance lists every active block ID with topic when there are 20 or fewer", () => {
     const state = createSessionState()
     for (const id of [1, 2, 3]) {
         state.prune.messages.activeBlockIds.add(id)
+        state.prune.messages.blocksById.set(id, {
+            blockId: id,
+            runId: id,
+            active: true,
+            deactivatedByUser: false,
+            compressedTokens: 100,
+            summaryTokens: 100,
+            durationMs: 0,
+            mode: "range",
+            topic: `topic-${id}`,
+            startId: "m0",
+            endId: "m5",
+            anchorMessageId: `a-${id}`,
+            compressMessageId: `c-${id}`,
+            compressCallId: undefined,
+            includedBlockIds: [],
+            consumedBlockIds: [],
+            parentBlockIds: [],
+            directMessageIds: [],
+            directToolIds: [],
+            effectiveMessageIds: [],
+            effectiveToolIds: [],
+            createdAt: 1000,
+            deactivatedAt: undefined,
+            deactivatedByBlockId: undefined,
+            summary: "summary body",
+            survivedCount: 0,
+            generation: "young",
+        })
     }
 
     const guidance = buildCompressedBlockGuidance(state)
 
-    assert.match(guidance, /b1, b2, b3/)
+    assert.match(guidance, /b1: "topic-1", b2: "topic-2", b3: "topic-3"/)
     assert.doesNotMatch(guidance, /older, use decompress to access by ID/)
 })
 
-test("buildCompressedBlockGuidance summarizes older blocks when there are more than 20 active", () => {
+test("buildCompressedBlockGuidance summarizes older blocks with range + savings when there are more than 20 active", () => {
     const state = createSessionState()
     // 25 blocks (ids 1..25): the 20 most recent are 6..25, leaving 5 older.
     for (let id = 1; id <= 25; id++) {
         state.prune.messages.activeBlockIds.add(id)
+        state.prune.messages.blocksById.set(id, {
+            blockId: id,
+            runId: id,
+            active: true,
+            deactivatedByUser: false,
+            compressedTokens: 100,
+            summaryTokens: 200,
+            durationMs: 0,
+            mode: "range",
+            topic: `t-${id}`,
+            startId: "m0",
+            endId: "m5",
+            anchorMessageId: `a-${id}`,
+            compressMessageId: `c-${id}`,
+            compressCallId: undefined,
+            includedBlockIds: [],
+            consumedBlockIds: [],
+            parentBlockIds: [],
+            directMessageIds: [],
+            directToolIds: [],
+            effectiveMessageIds: [],
+            effectiveToolIds: [],
+            createdAt: 1000,
+            deactivatedAt: undefined,
+            deactivatedByBlockId: undefined,
+            summary: "summary body",
+            survivedCount: 0,
+            generation: "young",
+        })
     }
 
     const guidance = buildCompressedBlockGuidance(state)
 
-    assert.match(guidance, /\(\+5 older, use decompress to access by ID\)/)
+    assert.match(guidance, /b6-b25 \+ 5 older\. Total: ~5K tokens compressed/)
     assert.match(guidance, /b25/)
+})
+
+test("buildCompressedBlockGuidance shows merge hint when more than 50 blocks active", () => {
+    const state = createSessionState()
+    for (let id = 1; id <= 60; id++) {
+        state.prune.messages.activeBlockIds.add(id)
+    }
+
+    const guidance = buildCompressedBlockGuidance(state)
+
+    assert.match(guidance, /merge_blocks tool/)
+    assert.match(guidance, /You have 60 blocks/)
+})
+
+test("buildCompressedBlockGuidance omits merge hint when block count is at or below 50", () => {
+    const state = createSessionState()
+    for (let id = 1; id <= 50; id++) {
+        state.prune.messages.activeBlockIds.add(id)
+    }
+
+    const guidance = buildCompressedBlockGuidance(state)
+
+    assert.doesNotMatch(guidance, /merge_blocks/)
 })
 
 test("buildContextUsageGuidance low tier says 'Be frugal' and leaks no threshold numbers", () => {

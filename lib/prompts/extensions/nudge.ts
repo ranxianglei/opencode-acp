@@ -7,6 +7,17 @@ export interface BlockGuidanceContext {
     includeHint?: boolean
 }
 
+const MERGE_NUDGE_THRESHOLD = 50
+
+function summarizeTokensForBlock(block: CompressionBlock): number {
+    return block.summaryTokens || Math.round(block.summary.length / 4)
+}
+
+function quoteTopic(topic: string | undefined): string {
+    const trimmed = (topic || "").replace(/\s+/g, " ").trim()
+    return `"${trimmed.length > 0 ? trimmed : "(no topic)"}"`
+}
+
 export function buildCompressedBlockGuidance(
     state: SessionState,
     gcConfig?: GCConfig,
@@ -16,21 +27,48 @@ export function buildCompressedBlockGuidance(
         .filter((id) => Number.isInteger(id) && id > 0)
         .sort((a, b) => a - b)
 
-    const refs = activeBlockIds.map((id) => `b${id}`)
-    const blockCount = refs.length
+    const blockCount = activeBlockIds.length
     let blockList: string
+    let savingsSuffix = ""
+
     if (blockCount <= 20) {
-        blockList = blockCount > 0 ? refs.join(", ") : "none"
+        if (blockCount === 0) {
+            blockList = "none"
+        } else {
+            const entries = activeBlockIds.map((id) => {
+                const block = state.prune.messages.blocksById.get(id)
+                return `b${id}: ${quoteTopic(block?.topic)}`
+            })
+            blockList = entries.join(", ")
+        }
     } else {
-        const recent = refs.slice(-20).join(", ")
-        blockList = `${recent} (+${blockCount - 20} older, use decompress to access by ID)`
+        const recentIds = activeBlockIds.slice(-20)
+        const recentFirst = recentIds[0]!
+        const recentLast = recentIds[recentIds.length - 1]!
+        const olderCount = blockCount - recentIds.length
+        const recentRange =
+            recentIds.length > 1 && recentLast - recentFirst === recentIds.length - 1
+                ? `b${recentFirst}-b${recentLast}`
+                : recentIds.map((id) => `b${id}`).join(", ")
+        const olderLabel = olderCount > 0 ? ` + ${olderCount} older` : ""
+        blockList = `${recentRange}${olderLabel}`
+
+        let totalTokens = 0
+        for (const id of activeBlockIds) {
+            const block = state.prune.messages.blocksById.get(id)
+            if (block) {
+                totalTokens += summarizeTokensForBlock(block)
+            }
+        }
+        const totalK = totalTokens >= 1000 ? `${(totalTokens / 1000).toFixed(1).replace(".0", "")}K` : `${totalTokens}`
+        savingsSuffix = `. Total: ~${totalK} tokens compressed`
     }
 
     const includeHint = context?.includeHint ?? true
 
     const lines = [
         "Compressed block context:",
-        `- Active compressed blocks: ${blockCount} (${blockList})`,
+        `- Active compressed blocks: ${blockCount} (${blockList}${savingsSuffix})`,
         "- If your selected compression range includes any listed block, include each required placeholder exactly once in the summary using `(bN)`.",
     ]
 
@@ -38,8 +76,10 @@ export function buildCompressedBlockGuidance(
         lines.push("- 💡 When you've finished using tool outputs, compress them — you can decompress later if needed. Lean context improves accuracy.")
     }
 
-    if (blockCount > 50) {
-        lines.push(`- 🔀 You have ${blockCount} blocks — consider merging adjacent same-topic blocks instead of finding new content to compress. This permanently reduces per-turn overhead.`)
+    if (blockCount > MERGE_NUDGE_THRESHOLD) {
+        lines.push(
+            `- 🔀 You have ${blockCount} blocks — use the merge_blocks tool to merge adjacent same-topic blocks. Example: merge_blocks with blockIds "${activeBlockIds[0]}-${activeBlockIds[1]}".`,
+        )
     }
 
     // [FIX Bug 35] Only show aging warnings when context usage is above 50%.

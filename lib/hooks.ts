@@ -32,6 +32,7 @@ import {
     handleHelpCommand,
     handleManualToggleCommand,
     handleManualTriggerCommand,
+    handleMergeBlocksCommand,
     handleRecompressCommand,
     handleStatsCommand,
     handleSweepCommand,
@@ -405,6 +406,14 @@ export function createCommandExecuteHandler(
                     args: subArgs,
                 })
                 throw new Error("__DCP_RECOMPRESS_HANDLED__")
+            }
+
+            if (subcommand === "merge-blocks") {
+                await handleMergeBlocksCommand({
+                    ...commandCtx,
+                    args: subArgs,
+                })
+                throw new Error("__DCP_MERGE_BLOCKS_HANDLED__")
             }
 
             await handleHelpCommand(commandCtx)

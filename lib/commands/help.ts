@@ -30,6 +30,7 @@ const TOOL_COMMANDS: Record<string, [string, string]> = {
     compress: ["/acp compress [focus]", "Trigger manual compress tool execution"],
     decompress: ["/acp decompress <n>", "Restore selected compression"],
     recompress: ["/acp recompress <n>", "Re-apply a user-decompressed compression"],
+    "merge-blocks": ["/acp merge-blocks <range|list>", "Merge adjacent compressed blocks into one"],
 }
 
 function getVisibleCommands(state: SessionState, config: PluginConfig): [string, string][] {
@@ -39,6 +40,7 @@ function getVisibleCommands(state: SessionState, config: PluginConfig): [string,
         commands.push(TOOL_COMMANDS.compress)
         commands.push(TOOL_COMMANDS.decompress)
         commands.push(TOOL_COMMANDS.recompress)
+        commands.push(TOOL_COMMANDS["merge-blocks"]!)
     }
 
     return commands
