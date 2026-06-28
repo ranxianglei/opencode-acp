@@ -381,6 +381,7 @@ export function buildContextUsageGuidance(
     config: PluginConfig,
     currentTokens?: number,
     modelContextLimit?: number,
+    minimal: boolean = false,
 ): string {
     if (currentTokens === undefined || modelContextLimit === undefined || modelContextLimit === 0) {
         return ""
@@ -395,9 +396,13 @@ export function buildContextUsageGuidance(
 
     const base = `Context usage: ${formatK(currentTokens)} / ${formatK(modelContextLimit)} tokens (${percentage}%).`
 
+    if (minimal) {
+        return `\n\n${base}`
+    }
+
     let guidance: string
     if (pct < minPct) {
-        guidance = " 💡 Be frugal with context — compress tool outputs you've finished using into summaries. You can decompress later; nothing is permanently lost. Lean context means better accuracy. Extract and keep what matters: user intent, key decisions, file paths, and important findings — even if buried in large messages. Compress everything else, including verbose parts of any message."
+        guidance = " 💡 Be frugal with context — if you see large completed outputs (>2000 tokens), compress them into summaries. If everything is already compressed, skip this nudge. You can decompress later if needed. Extract and keep what matters: user intent, key decisions, file paths, and important findings. Compress everything else."
     } else if (pct < maxPct) {
         guidance = " ⚠️ Context is growing — compress completed sections and high-token waste now. Preserve key details."
     } else {
