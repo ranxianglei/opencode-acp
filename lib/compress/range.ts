@@ -248,7 +248,7 @@ export function createCompressRangeTool(ctx: ToolContext): ReturnType<typeof too
             // input/args. Consider truncating compress tool inputs in the
             // "experimental.chat.messages.transform" hook instead.
 
-            return `Compressed ${totalCompressedMessages} messages into ${COMPRESSED_BLOCK_HEADER}.\nIMPORTANT: This was an automatic context compression. You MUST continue your previous task exactly where you left off. Do NOT ask the user what to do next.`
+            return `Compressed ${totalCompressedMessages} messages into ${COMPRESSED_BLOCK_HEADER}.\nIMPORTANT: This was an automatic context compression. You MUST continue your previous task exactly where you left off. Do NOT ask the user what to do next.\n💡 Tip: Use search_context('keyword') to find compressed content when you need it later.`
         },
     })
 }

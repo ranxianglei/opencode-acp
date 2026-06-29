@@ -286,6 +286,17 @@ interface SearchResult {
     action: string
 }
 
+function countOccurrences(text: string, term: string): number {
+    if (!text || !term) return 0
+    let count = 0
+    let idx = 0
+    while ((idx = text.indexOf(term, idx)) !== -1) {
+        count++
+        idx += term.length
+    }
+    return count
+}
+
 function buildSearchPreview(text: string, firstTerm: string): string {
     if (!text) return ""
     const matchIdx = text.toLowerCase().indexOf(firstTerm)
@@ -314,6 +325,10 @@ export function createSearchContextTool(ctx: ToolContext): ReturnType<typeof too
                 .number()
                 .optional()
                 .describe("Maximum results to return (default: 10)"),
+            deep: tool.schema
+                .boolean()
+                .optional()
+                .describe("If true, also search visible (uncompressed) messages. Slower but more thorough (default: false)"),
         },
         async execute(args) {
             const query = (args.query || "").toLowerCase().trim()
@@ -325,6 +340,7 @@ export function createSearchContextTool(ctx: ToolContext): ReturnType<typeof too
 
             const queryTerms = query.split(/\s+/).filter((t) => t.length > 0)
             const results: SearchResult[] = []
+            const MIN_RELEVANCE = 0.10
 
             const blocksById = ctx.state.prune.messages.blocksById
             for (const [blockId, block] of blocksById) {
@@ -333,14 +349,38 @@ export function createSearchContextTool(ctx: ToolContext): ReturnType<typeof too
                 const topic = (block.topic || "").toLowerCase()
                 const summary = (block.summary || "").toLowerCase()
 
+                // TF-based scoring: count ALL occurrences, weight by position
                 let relevance = 0
+                let termsHit = 0
                 for (const term of queryTerms) {
-                    if (topic.includes(term)) relevance += 0.3
-                    if (summary.includes(term)) relevance += 0.15
+                    let termHit = false
+                    // Topic matches (high weight, capped per term)
+                    const topicCount = countOccurrences(topic, term)
+                    if (topicCount > 0) {
+                        relevance += Math.min(topicCount * 0.15, 0.45)
+                        termHit = true
+                    }
+                    // Summary matches (lower weight, compounds with frequency)
+                    const summaryCount = countOccurrences(summary, term)
+                    if (summaryCount > 0) {
+                        relevance += Math.min(summaryCount * 0.04, 0.20)
+                        termHit = true
+                    }
+                    if (termHit) termsHit++
+                }
+                // All-terms-matched bonus: 20% boost
+                if (termsHit === queryTerms.length && queryTerms.length > 1) {
+                    relevance *= 1.2
+                }
+                // Exact phrase match bonus
+                if (queryTerms.length > 1 && query.includes(" ")) {
+                    if (topic.includes(query) || summary.includes(query)) {
+                        relevance += 0.25
+                    }
                 }
                 relevance = Math.min(relevance, 1.0)
 
-                if (relevance <= 0) continue
+                if (relevance < MIN_RELEVANCE) continue
 
                 const origSummary = block.summary || ""
                 const preview = buildSearchPreview(origSummary, queryTerms[0])
