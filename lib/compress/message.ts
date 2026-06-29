@@ -13,7 +13,7 @@ import {
 } from "./state"
 import type { CompressMessageToolArgs } from "./types"
 
-function buildSchema() {
+function buildSchema(maxSummaryLength: number) {
     return {
         topic: tool.schema
             .string()
@@ -31,7 +31,9 @@ function buildSchema() {
                         .describe("Short label (3-5 words) for this one message summary"),
                     summary: tool.schema
                         .string()
-                        .describe("Complete technical summary replacing that one message"),
+                        .describe(
+                            `Complete technical summary replacing that one message. Aim for <=${maxSummaryLength} chars; exceed only when strictly necessary to preserve critical detail (file paths, decisions, signatures, exact values). Never pad.`,
+                        ),
                 }),
             )
             .describe("Batch of individual message summaries to create in one tool call"),
@@ -44,16 +46,16 @@ export function createCompressMessageTool(ctx: ToolContext): ReturnType<typeof t
 
     return tool({
         description: runtimePrompts.compressMessage + MESSAGE_FORMAT_EXTENSION,
-        args: buildSchema(),
+        args: buildSchema(ctx.config.compress.maxSummaryLength),
         async execute(args, toolCtx) {
             const input = args as CompressMessageToolArgs
             validateArgs(input)
 
-            const maxSummaryLength = ctx.config.compress.maxSummaryLength
+            const maxSummaryLengthHard = ctx.config.compress.maxSummaryLengthHard
             for (const entry of input.content) {
-                if (entry.summary.length > maxSummaryLength) {
+                if (entry.summary.length > maxSummaryLengthHard) {
                     throw new Error(
-                        `Summary too long (${entry.summary.length} chars, max ${maxSummaryLength}). Write a shorter summary focusing on key conclusions only.`,
+                        `Summary too long (${entry.summary.length} chars, hard ceiling ${maxSummaryLengthHard}). Aim for <=${ctx.config.compress.maxSummaryLength}; exceed only when strictly necessary. Rewrite more concisely.`,
                     )
                 }
             }

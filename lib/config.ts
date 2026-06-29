@@ -31,6 +31,7 @@ export interface CompressConfig {
     protectTags: boolean
     protectUserMessages: boolean
     maxSummaryLength: number
+    maxSummaryLengthHard: number
     minCompressRange: number
 }
 
@@ -197,6 +198,7 @@ const defaultConfig: PluginConfig = {
         protectTags: false,
         protectUserMessages: false,
         maxSummaryLength: 200,
+        maxSummaryLengthHard: 800,
         minCompressRange: 2000,
     },
     strategies: {
@@ -406,6 +408,7 @@ function mergeCompress(
         protectTags: override.protectTags ?? base.protectTags,
         protectUserMessages: override.protectUserMessages ?? base.protectUserMessages,
         maxSummaryLength: override.maxSummaryLength ?? base.maxSummaryLength,
+        maxSummaryLengthHard: override.maxSummaryLengthHard ?? base.maxSummaryLengthHard,
         minCompressRange: override.minCompressRange ?? base.minCompressRange,
     }
 }

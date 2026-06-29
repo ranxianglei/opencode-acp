@@ -26,7 +26,7 @@ import {
 } from "./state"
 import type { CompressRangeToolArgs } from "./types"
 
-function buildSchema() {
+function buildSchema(maxSummaryLength: number) {
     return {
         topic: tool.schema
             .string()
@@ -44,7 +44,9 @@ function buildSchema() {
                         .describe("Message or block ID marking the end of range (e.g. m00012, b5)"),
                     summary: tool.schema
                         .string()
-                        .describe("Complete technical summary replacing all content in range"),
+                        .describe(
+                            `Complete technical summary replacing all content in range. Aim for <=${maxSummaryLength} chars; exceed only when strictly necessary to preserve critical detail (file paths, decisions, signatures, exact values). Never pad.`,
+                        ),
                 }),
             )
             .describe(
@@ -59,16 +61,16 @@ export function createCompressRangeTool(ctx: ToolContext): ReturnType<typeof too
 
     return tool({
         description: runtimePrompts.compressRange + RANGE_FORMAT_EXTENSION,
-        args: buildSchema(),
+        args: buildSchema(ctx.config.compress.maxSummaryLength),
         async execute(args, toolCtx) {
             const input = args as CompressRangeToolArgs
             validateArgs(input)
 
-            const maxSummaryLength = ctx.config.compress.maxSummaryLength
+            const maxSummaryLengthHard = ctx.config.compress.maxSummaryLengthHard
             for (const entry of input.content) {
-                if (entry.summary.length > maxSummaryLength) {
+                if (entry.summary.length > maxSummaryLengthHard) {
                     throw new Error(
-                        `Summary too long (${entry.summary.length} chars, max ${maxSummaryLength}). Write a shorter summary focusing on key conclusions only.`,
+                        `Summary too long (${entry.summary.length} chars, hard ceiling ${maxSummaryLengthHard}). Aim for <=${ctx.config.compress.maxSummaryLength}; exceed only when strictly necessary. Rewrite more concisely.`,
                     )
                 }
             }
