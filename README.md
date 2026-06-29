@@ -82,18 +82,20 @@ Or add to your opencode config:
 
 ACP hands the context-compression tool directly to the model. The model is
 **100% responsible** for context compression. The model's available tools are
-mainly: **compress**, **decompress**, and **delete** (`mark_block` / `unmark_block`).
+mainly: **compress** and **decompress**. A hardcoded 100% GC fallback acts as
+a safety net when the context window is completely full.
 
 ### Lifecycle
 
-Three operations: **compress**, **decompress**, and **delete**. Content loops
-between raw and compressed, and eventually terminates in deletion:
+Two operations: **compress** and **decompress**. Content loops between raw and
+compressed. When context hits 100%, old-gen block summaries are truncated as
+a last resort:
 
 ```mermaid
 stateDiagram-v2
     Raw --> Compressed : compress
     Compressed --> Raw : decompress
-    Compressed --> Deleted : delete
+    Compressed --> Truncated : GC at 100%
 ```
 
 ### Compression strategy
@@ -305,7 +307,7 @@ Each level overrides the previous, so project settings take priority over global
             "protectedTools": [],
         },
     },
-    // Garbage collection and batch cleanup
+    // Garbage collection — hardcoded 100% fallback only
     "gc": {
         "algorithm": "truncate",
         // young → old generation promotion after this many survivals
@@ -314,18 +316,8 @@ Each level overrides the previous, so project settings take priority over global
         "maxBlockAge": 15,
         // truncate old-gen summaries exceeding this length (chars)
         "maxOldGenSummaryLength": 3000,
-        // run major GC when context usage exceeds this
+        // run major GC when context usage exceeds this (hardcoded, not configurable)
         "majorGcThresholdPercent": "100%",
-        // Three-tier batch merge-cleanup for blocks flagged via mark_block.
-        // Accepts a number or "X%" of the model context window.
-        "batchCleanup": {
-            // At/above this usage, remind the model about marked blocks
-            "lowThreshold": "60%",
-            // At/above this usage, auto merge-compress all marked blocks into one
-            "highThreshold": "75%",
-            // At/above this usage, force-merge all old-gen blocks (before GC)
-            "forceThreshold": "90%",
-        },
     },
 }
 ```
@@ -354,7 +346,7 @@ To reset an override, delete the matching file from your overrides directory.
 ### Protected Tools
 
 By default, these tools are always protected from pruning:
-`task`, `skill`, `todowrite`, `todoread`, `compress`, `decompress`, `mark_block`, `unmark_block`, `batch`, `plan_enter`, `plan_exit`, `write`, `edit`
+`task`, `skill`, `todowrite`, `todoread`, `compress`, `decompress`, `batch`, `plan_enter`, `plan_exit`, `write`, `edit`
 
 The `protectedTools` arrays in `commands` and `strategies` add to this default list.
 
