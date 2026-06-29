@@ -82,14 +82,20 @@ export function createCompressMessageTool(ctx: ToolContext): ReturnType<typeof t
             const minCompressRange = ctx.config.compress.minCompressRange
             if (minCompressRange > 0) {
                 let totalChars = 0
+                const counted = new Set<string>()
                 for (const plan of plans) {
                     for (const messageId of plan.selection.messageIds) {
+                        if (counted.has(messageId)) continue
+                        counted.add(messageId)
                         const rawMessage = searchContext.rawMessagesById.get(messageId)
                         if (rawMessage) {
                             totalChars += countMessageCharacters(rawMessage)
                         }
                     }
                 }
+                // Intentionally throws after prepareSession: the char count needs
+                // resolved plans + rawMessages, only available post-prepare. No state
+                // is persisted (finalizeSession/saveSessionState never runs).
                 if (totalChars < minCompressRange) {
                     throw new Error(
                         `Range too small (${totalChars} chars, min ${minCompressRange}). Not worth compressing — overhead exceeds savings.`,

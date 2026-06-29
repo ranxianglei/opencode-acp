@@ -44,12 +44,14 @@ const stripStepMarkers = (messages: WithParts[]): void => {
             if (part.type === "step-finish") {
                 const reason = (part as { reason?: unknown }).reason
                 if (typeof reason === "string" && reason.length > MAX_STEP_FINISH_REASON) {
-                    filtered.push({
-                        ...part,
-                        reason: reason.slice(0, MAX_STEP_FINISH_REASON) + "...",
-                    })
-                    changed = true
-                    continue
+                    const truncated = reason.slice(0, MAX_STEP_FINISH_REASON) + "..."
+                    // Skip when already truncated: keeps `changed` false on idempotent
+                    // re-runs so the parts array reference (and prefix cache) stays stable.
+                    if (truncated !== reason) {
+                        filtered.push({ ...part, reason: truncated })
+                        changed = true
+                        continue
+                    }
                 }
             }
 

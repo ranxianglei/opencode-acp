@@ -100,6 +100,9 @@ export function createCompressRangeTool(ctx: ToolContext): ReturnType<typeof too
                         }
                     }
                 }
+                // Intentionally throws after prepareSession: the char count needs
+                // resolved plans + rawMessages, only available post-prepare. No state
+                // is persisted (finalizeSession/saveSessionState never runs).
                 if (totalChars < minCompressRange) {
                     throw new Error(
                         `Range too small (${totalChars} chars, min ${minCompressRange}). Not worth compressing — overhead exceeds savings.`,

@@ -587,3 +587,109 @@ test("prune preserves message order for surviving messages", () => {
     assert.ok(m1Idx < m3Idx, "m1 should come before m3")
     assert.ok(m3Idx < m4Idx, "m3 should come before m4")
 })
+
+// =====================================================================
+// stripStepMarkers — step-start removal + step-finish truncation
+// =====================================================================
+
+function stepStartPart(msgId: string, id: string) {
+    return { id, messageID: msgId, sessionID: SID, type: "step-start" as const }
+}
+
+function stepFinishPart(msgId: string, id: string, reason: string) {
+    return { id, messageID: msgId, sessionID: SID, type: "step-finish" as const, reason }
+}
+
+test("stripStepMarkers removes step-start parts entirely", () => {
+    const state = createSessionState()
+    const messages: WithParts[] = [
+        assistantMessage("a1", 1, [
+            stepStartPart("a1", "a1-ss"),
+            textPart("a1", "a1-t", "real content"),
+        ]),
+    ]
+
+    prune(state, logger, buildConfig(), messages)
+
+    const types = messages[0]!.parts.map((p: any) => p.type)
+    assert.ok(!types.includes("step-start"), "step-start should be removed")
+    assert.ok(types.includes("text"), "text part should remain")
+})
+
+test("stripStepMarkers truncates long step-finish reason to 50 chars", () => {
+    const state = createSessionState()
+    const longReason = "x".repeat(155)
+    const messages: WithParts[] = [
+        assistantMessage("a1", 1, [
+            stepFinishPart("a1", "a1-sf", longReason),
+        ]),
+    ]
+
+    prune(state, logger, buildConfig(), messages)
+
+    const sf = messages[0]!.parts.find((p: any) => p.type === "step-finish") as any
+    assert.ok(sf, "step-finish part should remain")
+    assert.equal(sf.reason.length, 53, "reason should be 50 chars + '...'")
+    assert.ok(sf.reason.endsWith("..."), "truncated reason should end with '...'")
+})
+
+test("stripStepMarkers preserves short step-finish reason unchanged", () => {
+    const state = createSessionState()
+    const messages: WithParts[] = [
+        assistantMessage("a1", 1, [
+            stepFinishPart("a1", "a1-sf", "short reason"),
+        ]),
+    ]
+
+    prune(state, logger, buildConfig(), messages)
+
+    const sf = messages[0]!.parts.find((p: any) => p.type === "step-finish") as any
+    assert.equal(sf.reason, "short reason", "short reason should be preserved")
+})
+
+test("stripStepMarkers is idempotent: second run keeps parts reference stable", () => {
+    const state = createSessionState()
+    const longReason = "y".repeat(120)
+    const messages: WithParts[] = [
+        assistantMessage("a1", 1, [
+            stepStartPart("a1", "a1-ss"),
+            stepFinishPart("a1", "a1-sf", longReason),
+            textPart("a1", "a1-t", "keep me"),
+        ]),
+    ]
+
+    prune(state, logger, buildConfig(), messages)
+    const partsRefAfterFirst = messages[0]!.parts
+    const reasonAfterFirst = (partsRefAfterFirst.find((p: any) => p.type === "step-finish") as any).reason
+
+    // Second pass over already-stripped messages
+    prune(state, logger, buildConfig(), messages)
+
+    // Prefix-cache invariant: parts array must NOT be reassigned on idempotent re-run
+    assert.equal(
+        messages[0]!.parts,
+        partsRefAfterFirst,
+        "parts array reference must stay stable on idempotent re-run (prefix cache)",
+    )
+    const reasonAfterSecond = (messages[0]!.parts.find((p: any) => p.type === "step-finish") as any).reason
+    assert.equal(reasonAfterSecond, reasonAfterFirst, "reason must be byte-identical on re-run")
+})
+
+test("stripStepMarkers leaves messages without step markers untouched", () => {
+    const state = createSessionState()
+    const messages: WithParts[] = [
+        assistantMessage("a1", 1, [
+            textPart("a1", "a1-t", "plain text only"),
+            toolPart("call-1", "bash", "output"),
+        ]),
+    ]
+    const originalParts = messages[0]!.parts
+
+    prune(state, logger, buildConfig(), messages)
+
+    assert.equal(
+        messages[0]!.parts,
+        originalParts,
+        "parts array reference unchanged when no step markers present",
+    )
+})

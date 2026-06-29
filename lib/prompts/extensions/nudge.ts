@@ -39,7 +39,36 @@ export function buildCompressedBlockGuidance(
     }
 
     if (blockCount > 50) {
-        lines.push(`- 🔀 You have ${blockCount} blocks — to reduce overhead, use compress to consolidate adjacent same-topic blocks into one summary (cover the full range including old blocks).`)
+        const oldBlockIds = activeBlockIds.slice(0, Math.max(0, blockCount - 20))
+        const oldBlocks = oldBlockIds
+            .map((id) => state.prune.messages.blocksById.get(id))
+            .filter((b): b is CompressionBlock => b !== undefined)
+
+        if (oldBlocks.length > 5) {
+            const totalTokens = oldBlocks.reduce((sum, b) => sum + (b.summaryTokens ?? 0), 0)
+            const totalK = Math.max(1, Math.round(totalTokens / 1000))
+
+            const targets: string[] = []
+            const chunkSize = Math.ceil(oldBlocks.length / 3)
+            for (let i = 0; i < 3 && i * chunkSize < oldBlocks.length; i++) {
+                const chunk = oldBlocks.slice(i * chunkSize, (i + 1) * chunkSize)
+                if (chunk.length < 2) continue
+                const start = chunk[0].startId
+                const end = chunk[chunk.length - 1].endId
+                if (!start || !end) continue
+                const chunkTokens = chunk.reduce((s, b) => s + (b.summaryTokens ?? 0), 0)
+                const chunkK = Math.max(1, Math.round(chunkTokens / 1000))
+                targets.push(`  • compress ${start}→${end}: ${chunk.length} blocks (~${chunkK}K tokens)`)
+            }
+
+            if (targets.length > 0) {
+                lines.push(`- 🔀 ${oldBlocks.length} old blocks using ~${totalK}K tokens. Consolidate into ${targets.length}:`)
+                lines.push(...targets)
+                lines.push(`  Each summary ≤200 chars, include (bN) for consumed blocks. Cover full range in one compress call.`)
+            }
+        } else {
+            lines.push(`- 🔀 You have ${blockCount} blocks — use compress to consolidate adjacent same-topic blocks.`)
+        }
     }
 
     // [FIX Bug 35] Only show aging warnings when context usage is above 50%.
