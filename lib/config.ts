@@ -103,8 +103,6 @@ const DEFAULT_PROTECTED_TOOLS = [
     "todoread",
     "compress",
     "decompress",
-    "mark_block",
-    "unmark_block",
     "batch",
     "plan_enter",
     "plan_exit",

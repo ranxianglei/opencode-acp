@@ -43,7 +43,6 @@ import { cacheSystemPromptTokens } from "./ui/utils"
 import { runTruncateGC, shouldRunMajorGC, getGCParams } from "./gc/truncate"
 import { runBatchCleanup } from "./gc/merge"
 import { getCurrentTokenUsage } from "./token-utils"
-import { appendToLastTextPart } from "./messages/utils"
 
 const INTERNAL_AGENT_SIGNATURES = [
     "You are a title generator",
@@ -207,12 +206,6 @@ function runMajorGC(
     }
 }
 
-function appendBatchCleanupNudge(messages: WithParts[], nudgeText: string): void {
-    const lastUser = getLastUserMessage(messages)
-    if (!lastUser) return
-    appendToLastTextPart(lastUser, nudgeText)
-}
-
 export function createChatMessageTransformHandler(
     client: any,
     state: SessionState,
@@ -259,9 +252,6 @@ export function createChatMessageTransformHandler(
         buildToolIdList(state, output.messages)
         runMajorGC(state, config, logger, output.messages)
         const batchResult = runBatchCleanup(state, config, logger, output.messages)
-        if (batchResult.tier === 1 && batchResult.nudgeText) {
-            appendBatchCleanupNudge(output.messages, batchResult.nudgeText)
-        }
         if (batchResult.mergedCount > 0) {
             void saveSessionState(state, logger)
         }
