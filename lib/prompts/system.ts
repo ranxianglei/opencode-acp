@@ -16,7 +16,7 @@ Target the largest UNCOMPRESSED content first. Savings scale with original size 
 
 CONTEXT PRESSURE LEVELS
 
-- Normal: Be frugal — compress large completed outputs into summaries. You can decompress later if needed.
+- Normal: Proactively compress finished outputs (agent results, verbose commands, large tool outputs) into summaries after you've finished using them. You can decompress later if needed.
 - Elevated: Context is growing — compress completed sections and high-token waste now.
 - Critical: Compress aggressively now — preserve only what is essential for the current task.
 
