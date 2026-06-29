@@ -164,7 +164,18 @@ export function validateSummaryPlaceholders(
     placeholders.length = 0
     placeholders.push(...validPlaceholders)
 
-    return strictRequiredIds.filter((id) => !keptPlaceholderIds.has(id))
+    const missingIds = strictRequiredIds.filter((id) => !keptPlaceholderIds.has(id))
+    // [Plan B] Missing placeholders are non-fatal: the compress pipeline
+    // auto-detects every consumed block in range, so the model no longer
+    // needs to manually list (bN) placeholders in its summary.
+    if (missingIds.length > 0) {
+        console.warn(
+            `[ACP] compress summary omitted placeholders for required blocks: ${missingIds
+                .map((id) => `b${id}`)
+                .join(", ")}. They will be auto-attached as consumed blocks.`,
+        )
+    }
+    return missingIds
 }
 
 export function injectBlockPlaceholders(

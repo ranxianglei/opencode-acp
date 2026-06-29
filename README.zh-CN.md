@@ -73,17 +73,17 @@ opencode plugin opencode-acp@latest --global
 
 ## 工作原理
 
-ACP 把上下文压缩工具直接交给模型。模型对上下文压缩**负全责**。模型可用的工具主要是：**compress**、**decompress** 和 **delete**（`mark_block` / `unmark_block`）。
+ACP 把上下文压缩工具直接交给模型。模型对上下文压缩**负全责**。模型可用的工具主要是：**compress** 和 **decompress**。当上下文达到 100% 时，系统自动触发 GC 截断作为兜底。
 
 ### 生命周期
 
-三个操作：**压缩**、**解压缩**、**删除**。内容在原始与压缩之间循环，最终以删除终结：
+两个操作：**压缩**、**解压缩**。内容在原始与压缩之间循环。当上下文达到 100% 时，GC 自动截断老年代 block 作为兜底：
 
 ```mermaid
 stateDiagram-v2
     Raw --> Compressed : compress
     Compressed --> Raw : decompress
-    Compressed --> Deleted : delete
+    Compressed --> GC_Truncated : GC (100%)
 ```
 
 ### 压缩策略
@@ -104,9 +104,9 @@ stateDiagram-v2
 
 由模型决定何时解压。当上下文大到足以干扰模型的 self-attention 时，简短的 block 会让模型先压缩一部分内容，处理完紧急事务，再在后续工作中按需解压。
 
-### 删除策略
+### GC 兜底
 
-为了应对大量小块历史内容的堆积，新版本增加了删除策略。由模型决定是否删除。**一旦删除，内容不可恢复。** 这取代了原先的强制 GC，使得强制垃圾回收不再删除模型认为重要的内容。
+当上下文达到 100% 时，系统自动截断老年代 block 摘要，防止上下文溢出。这是最后的兜底机制，不影响模型的正常压缩/解压操作。
 
 ---
 
@@ -289,18 +289,8 @@ ACP 使用自己的配置文件，按以下顺序搜索：
         "maxBlockAge": 15,
         // 截断超过此长度（字符）的老年代摘要
         "maxOldGenSummaryLength": 3000,
-        // 上下文使用率超过此值时执行主 GC
+        // 上下文使用率超过此值时执行主 GC（兜底，硬编码为 100%）
         "majorGcThresholdPercent": "100%",
-        // 通过 mark_block 标记的块的三级批量合并清理阈值。
-        // 接受数字或 "X%"（模型上下文窗口的百分比）。
-        "batchCleanup": {
-            // 达到此使用率时，提醒模型已标记的块
-            "lowThreshold": "60%",
-            // 达到此使用率时，自动将所有已标记块合并压缩为一个
-            "highThreshold": "75%",
-            // 达到此使用率时，强制合并所有老年代块（GC 之前）
-            "forceThreshold": "90%",
-        },
     },
 }
 ```
@@ -329,7 +319,7 @@ ACP 暴露六个可编辑的 prompt：
 ### 受保护工具
 
 默认情况下，以下工具始终受保护不被剪枝：
-`task`、`skill`、`todowrite`、`todoread`、`compress`、`decompress`、`mark_block`、`unmark_block`、`batch`、`plan_enter`、`plan_exit`、`write`、`edit`
+`task`、`skill`、`todowrite`、`todoread`、`compress`、`decompress`、`batch`、`plan_enter`、`plan_exit`、`write`、`edit`
 
 `commands` 和 `strategies` 中的 `protectedTools` 数组会添加到此默认列表。
 

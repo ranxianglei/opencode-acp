@@ -178,3 +178,18 @@ export function countAllMessageTokens(msg: WithParts): number {
     if (texts.length === 0) return 0
     return estimateTokensBatch(texts)
 }
+
+export function countMessageCharacters(msg: WithParts): number {
+    const parts = Array.isArray(msg.parts) ? msg.parts : []
+    let total = 0
+    for (const part of parts) {
+        if (part.type === "text" && typeof part.text === "string") {
+            total += part.text.length
+        } else {
+            for (const content of extractToolContent(part)) {
+                total += content.length
+            }
+        }
+    }
+    return total
+}

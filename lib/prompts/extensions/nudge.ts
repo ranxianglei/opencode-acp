@@ -5,6 +5,12 @@ export interface BlockGuidanceContext {
     currentTokens?: number
     modelContextLimit?: number
     includeHint?: boolean
+    /**
+     * Raw message IDs currently visible in the model's context window.
+     * When provided, the directive nudge only suggests ranges whose anchor
+     * messages are still visible, preventing stale-ID and backwards-range bugs.
+     */
+    visibleMessageIds?: Set<string>
 }
 
 export function buildCompressedBlockGuidance(
@@ -31,7 +37,7 @@ export function buildCompressedBlockGuidance(
     const lines = [
         "Compressed block context:",
         `- Active compressed blocks: ${blockCount} (${blockList})`,
-        "- If your selected compression range includes any listed block, include each required placeholder exactly once in the summary using `(bN)`.",
+        "- System auto-detects blocks in range — no need to manually list (bN) placeholders. Just write a short prose summary.",
     ]
 
     if (includeHint) {
@@ -39,7 +45,54 @@ export function buildCompressedBlockGuidance(
     }
 
     if (blockCount > 50) {
-        lines.push(`- 🔀 You have ${blockCount} blocks — consider merging adjacent same-topic blocks instead of finding new content to compress. This permanently reduces per-turn overhead.`)
+        const oldBlockIds = activeBlockIds.slice(0, Math.max(0, blockCount - 20))
+        const allOldBlocks = oldBlockIds
+            .map((id) => state.prune.messages.blocksById.get(id))
+            .filter((b): b is CompressionBlock => b !== undefined)
+
+        // [Plan B] Filter to blocks whose anchor message is still visible, then
+        // build suggestion ranges from anchor refs (mNNNNN) instead of stored
+        // block startId/endId. This avoids suggesting IDs that are no longer
+        // visible and prevents backwards ranges (end < start).
+        const visibleMessageIds = context?.visibleMessageIds
+        const visibleOldBlocks =
+            visibleMessageIds === undefined
+                ? allOldBlocks
+                : allOldBlocks.filter((b) => b.anchorMessageId && visibleMessageIds.has(b.anchorMessageId))
+
+        if (visibleOldBlocks.length > 5) {
+            const blocksWithRef = visibleOldBlocks
+                .map((block) => {
+                    const ref = state.messageIds.byRawId.get(block.anchorMessageId)
+                    return ref ? { block, ref } : null
+                })
+                .filter((x): x is { block: CompressionBlock; ref: string } => x !== null)
+                .sort((a, b) => a.ref.localeCompare(b.ref))
+
+            const totalTokens = blocksWithRef.reduce((s, x) => s + (x.block.summaryTokens ?? 0), 0)
+            const totalK = Math.max(1, Math.round(totalTokens / 1000))
+
+            const targets: string[] = []
+            const chunkSize = Math.ceil(blocksWithRef.length / 3)
+            for (let i = 0; i < 3 && i * chunkSize < blocksWithRef.length; i++) {
+                const chunk = blocksWithRef.slice(i * chunkSize, (i + 1) * chunkSize)
+                if (chunk.length < 2) continue
+                // Sorted by ref above guarantees startRef <= endRef.
+                const startRef = chunk[0].ref
+                const endRef = chunk[chunk.length - 1].ref
+                const chunkTokens = chunk.reduce((s, x) => s + (x.block.summaryTokens ?? 0), 0)
+                const chunkK = Math.max(1, Math.round(chunkTokens / 1000))
+                targets.push(`  • compress ${startRef}→${endRef}: ${chunk.length} blocks (~${chunkK}K tokens)`)
+            }
+
+            if (targets.length > 0) {
+                lines.push(`- 🔀 ${blocksWithRef.length} old blocks using ~${totalK}K tokens. Consolidate into ${targets.length}:`)
+                lines.push(...targets)
+                lines.push(`  System auto-detects blocks in range — no need to manually list (bN) placeholders. Just write a short prose summary.`)
+            }
+        } else {
+            lines.push(`- 🔀 You have ${blockCount} blocks — use compress to consolidate adjacent same-topic blocks.`)
+        }
     }
 
     // [FIX Bug 35] Only show aging warnings when context usage is above 50%.

@@ -402,11 +402,11 @@ export function buildContextUsageGuidance(
 
     let guidance: string
     if (pct < minPct) {
-        guidance = " 💡 Be frugal with context — if you see large completed outputs (>2000 tokens), compress them into summaries. If everything is already compressed, skip this nudge. You can decompress later if needed. Extract and keep what matters: user intent, key decisions, file paths, and important findings. Compress everything else."
+        guidance = " 💡 Be frugal with context. If any visible tool output exceeds 5000 characters and you've finished reading it, compress it into a summary now — don't keep large outputs 'just in case'. You can decompress later if needed."
     } else if (pct < maxPct) {
-        guidance = " ⚠️ Context is growing — compress completed sections and high-token waste now. Preserve key details."
+        guidance = " ⚠️ Context is growing — compress completed sections and high-token waste now."
     } else {
-        guidance = " 🔥 Context is high — compress aggressively but selectively. Preserve only what is essential."
+        guidance = " 🔥 Context is high — compress aggressively, preserve only what is essential."
     }
 
     return `\n\n${base}${guidance}`

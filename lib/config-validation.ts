@@ -40,6 +40,9 @@ export const VALID_CONFIG_KEYS = new Set([
     "compress.protectedTools",
     "compress.protectTags",
     "compress.protectUserMessages",
+    "compress.maxSummaryLength",
+    "compress.maxSummaryLengthHard",
+    "compress.minCompressRange",
     "gc",
     "gc.algorithm",
     "gc.promotionThreshold",
@@ -375,6 +378,84 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
                     key: "compress.protectUserMessages",
                     expected: "boolean",
                     actual: typeof compress.protectUserMessages,
+                })
+            }
+
+            if (
+                compress.maxSummaryLength !== undefined &&
+                typeof compress.maxSummaryLength !== "number"
+            ) {
+                errors.push({
+                    key: "compress.maxSummaryLength",
+                    expected: "number",
+                    actual: typeof compress.maxSummaryLength,
+                })
+            }
+
+            if (
+                typeof compress.maxSummaryLength === "number" &&
+                compress.maxSummaryLength < 1
+            ) {
+                errors.push({
+                    key: "compress.maxSummaryLength",
+                    expected: "positive number (>= 1)",
+                    actual: `${compress.maxSummaryLength}`,
+                })
+            }
+
+            if (
+                compress.maxSummaryLengthHard !== undefined &&
+                typeof compress.maxSummaryLengthHard !== "number"
+            ) {
+                errors.push({
+                    key: "compress.maxSummaryLengthHard",
+                    expected: "number",
+                    actual: typeof compress.maxSummaryLengthHard,
+                })
+            }
+
+            if (
+                typeof compress.maxSummaryLengthHard === "number" &&
+                compress.maxSummaryLengthHard < 1
+            ) {
+                errors.push({
+                    key: "compress.maxSummaryLengthHard",
+                    expected: "positive number (>= 1)",
+                    actual: `${compress.maxSummaryLengthHard}`,
+                })
+            }
+
+            if (
+                typeof compress.maxSummaryLength === "number" &&
+                typeof compress.maxSummaryLengthHard === "number" &&
+                compress.maxSummaryLengthHard < compress.maxSummaryLength
+            ) {
+                errors.push({
+                    key: "compress.maxSummaryLengthHard",
+                    expected: `>= maxSummaryLength (${compress.maxSummaryLength})`,
+                    actual: `${compress.maxSummaryLengthHard}`,
+                })
+            }
+
+            if (
+                compress.minCompressRange !== undefined &&
+                typeof compress.minCompressRange !== "number"
+            ) {
+                errors.push({
+                    key: "compress.minCompressRange",
+                    expected: "number",
+                    actual: typeof compress.minCompressRange,
+                })
+            }
+
+            if (
+                typeof compress.minCompressRange === "number" &&
+                compress.minCompressRange < 0
+            ) {
+                errors.push({
+                    key: "compress.minCompressRange",
+                    expected: "non-negative number (>= 0)",
+                    actual: `${compress.minCompressRange}`,
                 })
             }
 

@@ -359,13 +359,19 @@ test("mergeMarkedBlocks: reports saved tokens as reduction from source summaries
 
 const logger = new Logger(false)
 
-test("runBatchCleanup: below low threshold (50%) → noop tier 0", () => {
+// =====================================================================
+// runBatchCleanup — hardcoded 100% force fallback only.
+// The mark_block mechanism and the multi-tier (low/high/force) batch
+// cleanup were retired; only a single last-resort merge at 100% remains.
+// =====================================================================
+
+test("runBatchCleanup: below 100% (95%) → noop tier 0", () => {
     const blocks = [
-        makeBlock({ blockId: 1, anchorMessageId: "a1", summary: wrapCompressedSummary(1, "one") }),
-        makeBlock({ blockId: 2, runId: 2, anchorMessageId: "a2", summary: wrapCompressedSummary(2, "two") }),
+        makeBlock({ blockId: 1, anchorMessageId: "a1", summary: wrapCompressedSummary(1, "one"), generation: "old" }),
+        makeBlock({ blockId: 2, runId: 2, anchorMessageId: "a2", summary: wrapCompressedSummary(2, "two"), generation: "old" }),
     ]
-    const state = makeState(blocks, { modelContextLimit: 1000, marked: [1, 2] })
-    const messages: WithParts[] = [makeAssistantMessage("a1", 500)]
+    const state = makeState(blocks, { modelContextLimit: 1000 })
+    const messages: WithParts[] = [makeAssistantMessage("a1", 950)]
 
     const result = runBatchCleanup(state, buildConfig(), logger, messages)
     assert.equal(result.tier, 0)
@@ -374,59 +380,7 @@ test("runBatchCleanup: below low threshold (50%) → noop tier 0", () => {
     assert.equal(state.prune.messages.activeBlockIds.size, 2)
 })
 
-test("runBatchCleanup: above low threshold (55%) with marked blocks → tier 1 nudge", () => {
-    const blocks = [
-        makeBlock({ blockId: 1, anchorMessageId: "a1", summary: wrapCompressedSummary(1, "one") }),
-        makeBlock({ blockId: 2, runId: 2, anchorMessageId: "a2", summary: wrapCompressedSummary(2, "two") }),
-    ]
-    const state = makeState(blocks, { modelContextLimit: 1000, marked: [1, 2] })
-    const messages: WithParts[] = [makeAssistantMessage("a1", 600)]
-
-    const result = runBatchCleanup(state, buildConfig(), logger, messages)
-    assert.equal(result.tier, 1)
-    assert.equal(result.action, "nudge")
-    assert.equal(result.mergedCount, 0)
-    assert.ok(result.nudgeText, "nudge text should be provided")
-    assert.ok(result.nudgeText!.includes("b1"))
-    assert.ok(result.nudgeText!.includes("b2"))
-    assert.equal(state.prune.messages.activeBlockIds.size, 2)
-})
-
-test("runBatchCleanup: at high threshold (75%) with >= 2 marked blocks → tier 2 merge", () => {
-    const blocks = [
-        makeBlock({ blockId: 1, anchorMessageId: "a1", summary: wrapCompressedSummary(1, "one") }),
-        makeBlock({ blockId: 2, runId: 2, anchorMessageId: "a2", summary: wrapCompressedSummary(2, "two") }),
-    ]
-    const state = makeState(blocks, { modelContextLimit: 1000, marked: [1, 2] })
-    const messages: WithParts[] = [makeAssistantMessage("a1", 750)]
-
-    const result = runBatchCleanup(state, buildConfig(), logger, messages)
-    assert.equal(result.tier, 2)
-    assert.equal(result.action, "merge")
-    assert.equal(result.mergedCount, 2)
-    assert.ok(result.savedTokens >= 0)
-    assert.equal(state.prune.messages.markedForCleanup.size, 0)
-    assert.equal(state.prune.messages.activeBlockIds.size, 1)
-})
-
-test("runBatchCleanup: at high threshold (75%) with 1 marked block → tier 1 nudge (not enough for merge)", () => {
-    const blocks = [
-        makeBlock({ blockId: 1, anchorMessageId: "a1", summary: wrapCompressedSummary(1, "one") }),
-        makeBlock({ blockId: 2, runId: 2, anchorMessageId: "a2", summary: wrapCompressedSummary(2, "two") }),
-    ]
-    const state = makeState(blocks, { modelContextLimit: 1000, marked: [1] })
-    const messages: WithParts[] = [makeAssistantMessage("a1", 750)]
-
-    const result = runBatchCleanup(state, buildConfig(), logger, messages)
-    assert.equal(result.tier, 1, "should fall through to nudge when merge conditions unmet")
-    assert.equal(result.action, "nudge")
-    assert.equal(result.mergedCount, 0)
-    assert.ok(result.nudgeText, "nudge text should be provided")
-    assert.ok(result.nudgeText!.includes("b1"), "nudge should reference the marked block")
-    assert.equal(state.prune.messages.activeBlockIds.size, 2)
-})
-
-test("runBatchCleanup: at force threshold (90%) with >= 2 old-gen blocks → tier 3 force merge", () => {
+test("runBatchCleanup: at 100% with >= 2 old-gen blocks → tier 3 force merge", () => {
     const blocks = [
         makeBlock({
             blockId: 1,
@@ -443,7 +397,7 @@ test("runBatchCleanup: at force threshold (90%) with >= 2 old-gen blocks → tie
         }),
     ]
     const state = makeState(blocks, { modelContextLimit: 1000 })
-    const messages: WithParts[] = [makeAssistantMessage("a1", 900)]
+    const messages: WithParts[] = [makeAssistantMessage("a1", 1000)]
 
     const result = runBatchCleanup(state, buildConfig(), logger, messages)
     assert.equal(result.tier, 3)
@@ -452,12 +406,26 @@ test("runBatchCleanup: at force threshold (90%) with >= 2 old-gen blocks → tie
     assert.equal(state.prune.messages.activeBlockIds.size, 1)
 })
 
+test("runBatchCleanup: at 100% with < 2 old-gen blocks → noop", () => {
+    const blocks = [
+        makeBlock({ blockId: 1, anchorMessageId: "a1", summary: wrapCompressedSummary(1, "one"), generation: "old" }),
+    ]
+    const state = makeState(blocks, { modelContextLimit: 1000 })
+    const messages: WithParts[] = [makeAssistantMessage("a1", 1000)]
+
+    const result = runBatchCleanup(state, buildConfig(), logger, messages)
+    assert.equal(result.tier, 0)
+    assert.equal(result.action, "none")
+    assert.equal(result.mergedCount, 0)
+    assert.equal(state.prune.messages.activeBlockIds.size, 1)
+})
+
 test("runBatchCleanup: modelContextLimit undefined → noop", () => {
     const blocks = [
         makeBlock({ blockId: 1, anchorMessageId: "a1", summary: wrapCompressedSummary(1, "one") }),
         makeBlock({ blockId: 2, runId: 2, anchorMessageId: "a2", summary: wrapCompressedSummary(2, "two") }),
     ]
-    const state = makeState(blocks, { modelContextLimit: undefined, marked: [1, 2] })
+    const state = makeState(blocks, { modelContextLimit: undefined })
     const messages: WithParts[] = [makeAssistantMessage("a1", 999999)]
 
     const result = runBatchCleanup(state, buildConfig(), logger, messages)
@@ -466,159 +434,20 @@ test("runBatchCleanup: modelContextLimit undefined → noop", () => {
     assert.equal(result.mergedCount, 0)
 })
 
-test("runBatchCleanup: tier ordering — force takes precedence over high and low at 95%", () => {
+test("runBatchCleanup: mark tiers removed — marked blocks below 100% → noop (no nudge, no merge)", () => {
     const blocks = [
-        makeBlock({
-            blockId: 1,
-            anchorMessageId: "a1",
-            summary: wrapCompressedSummary(1, "one"),
-            generation: "old",
-        }),
-        makeBlock({
-            blockId: 2,
-            runId: 2,
-            anchorMessageId: "a2",
-            summary: wrapCompressedSummary(2, "two"),
-            generation: "old",
-        }),
+        makeBlock({ blockId: 1, anchorMessageId: "a1", summary: wrapCompressedSummary(1, "one"), generation: "old" }),
+        makeBlock({ blockId: 2, runId: 2, anchorMessageId: "a2", summary: wrapCompressedSummary(2, "two"), generation: "old" }),
+        makeBlock({ blockId: 3, runId: 3, anchorMessageId: "a3", summary: wrapCompressedSummary(3, "three"), generation: "old" }),
     ]
-    const state = makeState(blocks, { modelContextLimit: 1000, marked: [1, 2] })
-    const messages: WithParts[] = [makeAssistantMessage("a1", 950)]
-
-    const result = runBatchCleanup(state, buildConfig(), logger, messages)
-    assert.equal(result.tier, 3, "force tier must win over high/low when usage >= 90%")
-    assert.equal(result.action, "merge")
-})
-
-test("runBatchCleanup: at high threshold with unmarked old-gen → tier 1 nudge (mark guidance, fixes chicken-and-egg)", () => {
-    const blocks = [
-        makeBlock({
-            blockId: 1,
-            anchorMessageId: "a1",
-            summary: wrapCompressedSummary(1, "one"),
-            generation: "old",
-        }),
-        makeBlock({
-            blockId: 2,
-            runId: 2,
-            anchorMessageId: "a2",
-            summary: wrapCompressedSummary(2, "two"),
-            generation: "old",
-        }),
-    ]
-    const state = makeState(blocks, { modelContextLimit: 1000 })
+    // Legacy marks that would previously have triggered tier 1/2 — now ignored.
+    const state = makeState(blocks, { modelContextLimit: 1000, marked: [1, 2, 3] })
     const messages: WithParts[] = [makeAssistantMessage("a1", 800)]
 
     const result = runBatchCleanup(state, buildConfig(), logger, messages)
-    assert.equal(result.tier, 1, "should nudge even without marks — fixes chicken-and-egg deadlock")
-    assert.equal(result.action, "nudge")
-    assert.ok(result.nudgeText, "nudge text should be provided")
-    assert.ok(result.nudgeText!.includes("mark_block"), "should guide model to use mark_block")
-    assert.ok(result.nudgeText!.includes("b1"), "should reference old-gen blocks")
-    assert.ok(result.nudgeText!.includes("b2"))
-})
-
-test("runBatchCleanup: tier 1b nudge — no marks, old-gen blocks → guides marking", () => {
-    const blocks = [
-        makeBlock({ blockId: 1, anchorMessageId: "a1", summary: wrapCompressedSummary(1, "one"), generation: "old" }),
-        makeBlock({ blockId: 2, runId: 2, anchorMessageId: "a2", summary: wrapCompressedSummary(2, "two"), generation: "old" }),
-        makeBlock({ blockId: 3, runId: 3, anchorMessageId: "a3", summary: wrapCompressedSummary(3, "three"), generation: "old" }),
-    ]
-    const state = makeState(blocks, { modelContextLimit: 1000 })
-    const messages: WithParts[] = [makeAssistantMessage("a1", 560)]
-
-    const result = runBatchCleanup(state, buildConfig(), logger, messages)
-    assert.equal(result.tier, 1)
-    assert.equal(result.action, "nudge")
-    assert.ok(result.nudgeText!.includes("mark_block"))
-    assert.ok(result.nudgeText!.includes("3 old-gen"))
-    assert.ok(!result.nudgeText!.includes("🔥"), "should not show escalation emoji without marks")
-})
-
-test("runBatchCleanup: tier 1 escalation — ≥3 marked at ≥40% → urges active compress", () => {
-    const blocks = [
-        makeBlock({ blockId: 1, anchorMessageId: "a1", summary: wrapCompressedSummary(1, "one"), generation: "old" }),
-        makeBlock({ blockId: 2, runId: 2, anchorMessageId: "a2", summary: wrapCompressedSummary(2, "two"), generation: "old" }),
-        makeBlock({ blockId: 3, runId: 3, anchorMessageId: "a3", summary: wrapCompressedSummary(3, "three"), generation: "old" }),
-        makeBlock({ blockId: 4, runId: 4, anchorMessageId: "a4", summary: wrapCompressedSummary(4, "four"), generation: "old" }),
-    ]
-    const state = makeState(blocks, { modelContextLimit: 1000, marked: [1, 2, 3] })
-    const messages: WithParts[] = [makeAssistantMessage("a1", 560)]
-
-    const result = runBatchCleanup(state, buildConfig(), logger, messages)
-    assert.equal(result.tier, 1)
-    assert.equal(result.action, "nudge")
-    assert.ok(result.nudgeText!.includes("🔥"), "should show escalation indicator")
-    assert.ok(result.nudgeText!.includes("3/4"), "should show marked/total ratio")
-    assert.ok(result.nudgeText!.includes("75%"), "should show percentage")
-    assert.ok(result.nudgeText!.includes("compress"), "should urge compress action")
-    assert.ok(result.nudgeText!.includes("b1") && result.nudgeText!.includes("b3"), "should reference range")
-})
-
-test("runBatchCleanup: tier 1 count gate — 2 marked (100% ratio) but < 3 count → no escalation", () => {
-    const blocks = [
-        makeBlock({ blockId: 1, anchorMessageId: "a1", summary: wrapCompressedSummary(1, "one"), generation: "old" }),
-        makeBlock({ blockId: 2, runId: 2, anchorMessageId: "a2", summary: wrapCompressedSummary(2, "two"), generation: "old" }),
-    ]
-    const state = makeState(blocks, { modelContextLimit: 1000, marked: [1, 2] })
-    const messages: WithParts[] = [makeAssistantMessage("a1", 560)]
-
-    const result = runBatchCleanup(state, buildConfig(), logger, messages)
-    assert.equal(result.tier, 1)
-    assert.ok(result.nudgeText!.includes("⚠️"), "should show some-marks indicator, not escalation")
-    assert.ok(!result.nudgeText!.includes("🔥"), "should NOT escalate with only 2 marked blocks")
-})
-
-test("runBatchCleanup: tier 1 ratio gate — 3 marked out of 10 (30%) → no escalation", () => {
-    const blocks: CompressionBlock[] = []
-    for (let i = 1; i <= 10; i++) {
-        blocks.push(makeBlock({
-            blockId: i,
-            runId: i,
-            anchorMessageId: `a${i}`,
-            summary: wrapCompressedSummary(i, `block ${i}`),
-            generation: "old",
-        }))
-    }
-    const state = makeState(blocks, { modelContextLimit: 1000, marked: [1, 2, 3] })
-    const messages: WithParts[] = [makeAssistantMessage("a1", 560)]
-
-    const result = runBatchCleanup(state, buildConfig(), logger, messages)
-    assert.equal(result.tier, 1)
-    assert.ok(result.nudgeText!.includes("⚠️"), "should show some-marks indicator, not escalation")
-    assert.ok(!result.nudgeText!.includes("🔥"), "should NOT escalate with 30% ratio < 40% threshold")
-    assert.ok(result.nudgeText!.includes("b1"), "should still reference marked blocks")
-})
-
-test("runBatchCleanup: young-gen block marked → escalation ratio uses old-gen subset only", () => {
-    const blocks = [
-        makeBlock({ blockId: 1, anchorMessageId: "a1", summary: wrapCompressedSummary(1, "one"), generation: "old" }),
-        makeBlock({ blockId: 2, runId: 2, anchorMessageId: "a2", summary: wrapCompressedSummary(2, "two"), generation: "old" }),
-        makeBlock({ blockId: 3, runId: 3, anchorMessageId: "a3", summary: wrapCompressedSummary(3, "three"), generation: "old" }),
-        makeBlock({ blockId: 4, runId: 4, anchorMessageId: "a4", summary: wrapCompressedSummary(4, "four"), generation: "old" }),
-        makeBlock({ blockId: 5, runId: 5, anchorMessageId: "a5", summary: wrapCompressedSummary(5, "young"), generation: "young" }),
-    ]
-    // Mark 2 old-gen + 1 young-gen = 3 total, but only 2 old-gen
-    const state = makeState(blocks, { modelContextLimit: 1000, marked: [1, 2, 5] })
-    const messages: WithParts[] = [makeAssistantMessage("a1", 560)]
-
-    const result = runBatchCleanup(state, buildConfig(), logger, messages)
-    assert.equal(result.tier, 1)
-    assert.ok(!result.nudgeText!.includes("🔥"), "should NOT escalate: only 2 old-gen marked < 3 minimum")
-    assert.ok(result.nudgeText!.includes("⚠️"), "should show some-marks indicator")
-})
-
-test("collectActiveMarkedBlocks: sweeps stale marks for deactivated blocks", () => {
-    const block1 = makeBlock({ blockId: 1, anchorMessageId: "a1", summary: wrapCompressedSummary(1, "one"), generation: "old" })
-    const block2 = makeBlock({ blockId: 2, runId: 2, anchorMessageId: "a2", summary: wrapCompressedSummary(2, "two"), generation: "old" })
-    const state = makeState([block1, block2], { modelContextLimit: 1000, marked: [1, 2] })
-
-    // Simulate block 2 being deactivated by something other than merge/unmark
-    block2.active = false
-
-    const messages: WithParts[] = [makeAssistantMessage("a1", 560)]
-    runBatchCleanup(state, buildConfig(), logger, messages)
-
-    assert.equal(state.prune.messages.markedForCleanup.has(2), false, "stale mark for deactivated block should be swept")
-    assert.equal(state.prune.messages.markedForCleanup.has(1), true, "active block mark should remain")
+    assert.equal(result.tier, 0, "no nudge/merge below 100% even with marks")
+    assert.equal(result.action, "none")
+    assert.equal(result.mergedCount, 0)
+    assert.ok(!result.nudgeText, "no nudge text — mark_block nudge is retired")
+    assert.equal(state.prune.messages.activeBlockIds.size, 3)
 })

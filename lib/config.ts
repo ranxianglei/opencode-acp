@@ -30,6 +30,9 @@ export interface CompressConfig {
     protectedTools: string[]
     protectTags: boolean
     protectUserMessages: boolean
+    maxSummaryLength: number
+    maxSummaryLengthHard: number
+    minCompressRange: number
 }
 
 export interface Commands {
@@ -101,8 +104,6 @@ const DEFAULT_PROTECTED_TOOLS = [
     "todoread",
     "compress",
     "decompress",
-    "mark_block",
-    "unmark_block",
     "batch",
     "plan_enter",
     "plan_exit",
@@ -196,6 +197,9 @@ const defaultConfig: PluginConfig = {
         protectedTools: [...COMPRESS_DEFAULT_PROTECTED_TOOLS],
         protectTags: false,
         protectUserMessages: false,
+        maxSummaryLength: 200,
+        maxSummaryLengthHard: 800,
+        minCompressRange: 2000,
     },
     strategies: {
         deduplication: {
@@ -403,6 +407,9 @@ function mergeCompress(
         protectedTools: [...new Set([...base.protectedTools, ...(override.protectedTools ?? [])])],
         protectTags: override.protectTags ?? base.protectTags,
         protectUserMessages: override.protectUserMessages ?? base.protectUserMessages,
+        maxSummaryLength: override.maxSummaryLength ?? base.maxSummaryLength,
+        maxSummaryLengthHard: override.maxSummaryLengthHard ?? base.maxSummaryLengthHard,
+        minCompressRange: override.minCompressRange ?? base.minCompressRange,
     }
 }
 

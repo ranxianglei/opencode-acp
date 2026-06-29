@@ -1,6 +1,6 @@
 import { tool } from "@opencode-ai/plugin"
 import type { ToolContext } from "./types"
-import { countTokens } from "../token-utils"
+import { countMessageCharacters, countTokens } from "../token-utils"
 import { MESSAGE_FORMAT_EXTENSION } from "../prompts/extensions/tool"
 import { formatIssues, formatResult, resolveMessages, validateArgs } from "./message-utils"
 import { finalizeSession, prepareSession, type NotificationEntry } from "./pipeline"
@@ -13,7 +13,7 @@ import {
 } from "./state"
 import type { CompressMessageToolArgs } from "./types"
 
-function buildSchema() {
+function buildSchema(maxSummaryLength: number) {
     return {
         topic: tool.schema
             .string()
@@ -31,7 +31,9 @@ function buildSchema() {
                         .describe("Short label (3-5 words) for this one message summary"),
                     summary: tool.schema
                         .string()
-                        .describe("Complete technical summary replacing that one message"),
+                        .describe(
+                            `Complete technical summary replacing that one message. Aim for <=${maxSummaryLength} chars; exceed only when strictly necessary to preserve critical detail (file paths, decisions, signatures, exact values). Never pad.`,
+                        ),
                 }),
             )
             .describe("Batch of individual message summaries to create in one tool call"),
@@ -44,10 +46,20 @@ export function createCompressMessageTool(ctx: ToolContext): ReturnType<typeof t
 
     return tool({
         description: runtimePrompts.compressMessage + MESSAGE_FORMAT_EXTENSION,
-        args: buildSchema(),
+        args: buildSchema(ctx.config.compress.maxSummaryLength),
         async execute(args, toolCtx) {
             const input = args as CompressMessageToolArgs
             validateArgs(input)
+
+            const maxSummaryLengthHard = ctx.config.compress.maxSummaryLengthHard
+            for (const entry of input.content) {
+                if (entry.summary.length > maxSummaryLengthHard) {
+                    throw new Error(
+                        `Summary too long (${entry.summary.length} chars, hard ceiling ${maxSummaryLengthHard}). Aim for <=${ctx.config.compress.maxSummaryLength}; exceed only when strictly necessary. Rewrite more concisely.`,
+                    )
+                }
+            }
+
             const callId =
                 typeof (toolCtx as unknown as { callID?: unknown }).callID === "string"
                     ? (toolCtx as unknown as { callID: string }).callID
@@ -67,6 +79,30 @@ export function createCompressMessageTool(ctx: ToolContext): ReturnType<typeof t
 
             if (plans.length === 0 && skippedCount > 0) {
                 throw new Error(formatIssues(skippedIssues, skippedCount))
+            }
+
+            const minCompressRange = ctx.config.compress.minCompressRange
+            if (minCompressRange > 0) {
+                let totalChars = 0
+                const counted = new Set<string>()
+                for (const plan of plans) {
+                    for (const messageId of plan.selection.messageIds) {
+                        if (counted.has(messageId)) continue
+                        counted.add(messageId)
+                        const rawMessage = searchContext.rawMessagesById.get(messageId)
+                        if (rawMessage) {
+                            totalChars += countMessageCharacters(rawMessage)
+                        }
+                    }
+                }
+                // Intentionally throws after prepareSession: the char count needs
+                // resolved plans + rawMessages, only available post-prepare. No state
+                // is persisted (finalizeSession/saveSessionState never runs).
+                if (totalChars < minCompressRange) {
+                    throw new Error(
+                        `Range too small (${totalChars} chars, min ${minCompressRange}). Not worth compressing — overhead exceeds savings.`,
+                    )
+                }
             }
 
             const notifications: NotificationEntry[] = []
@@ -139,6 +175,14 @@ export function createCompressMessageTool(ctx: ToolContext): ReturnType<typeof t
             }
 
             await finalizeSession(ctx, toolCtx, rawMessages, notifications, input.topic)
+
+            // TODO: compress input cleanup needs OpenCode API support.
+            // After execution, the stored tool part's input still contains the full
+            // summaries (duplicated in the block). The ToolContext exposes no API to
+            // modify stored parts; rawMessages are fetched copies that don't persist;
+            // and "tool.execute.after" can only modify output/title/metadata, not
+            // input/args. Consider truncating compress tool inputs in the
+            // "experimental.chat.messages.transform" hook instead.
 
             return formatResult(plans.length, skippedIssues, skippedCount)
         },
