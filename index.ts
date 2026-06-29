@@ -4,6 +4,7 @@ import {
     createCompressMessageTool,
     createCompressRangeTool,
     createDecompressTool,
+    createSearchContextTool,
 } from "./lib/compress"
 import {
     compressDisabledByOpencode,
@@ -89,6 +90,7 @@ const server: Plugin = (async (ctx) => {
                         ? createCompressMessageTool(compressToolContext)
                         : createCompressRangeTool(compressToolContext),
                 decompress: createDecompressTool(compressToolContext),
+                search_context: createSearchContextTool(compressToolContext),
             }),
         },
         config: async (opencodeConfig) => {
@@ -109,7 +111,7 @@ const server: Plugin = (async (ctx) => {
 
             const toolsToAdd: string[] = []
             if (config.compress.permission !== "deny" && !config.experimental.allowSubAgents) {
-                toolsToAdd.push("compress", "decompress")
+                toolsToAdd.push("compress", "decompress", "search_context")
             }
 
             if (toolsToAdd.length > 0) {
