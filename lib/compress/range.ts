@@ -172,10 +172,22 @@ export function createCompressRangeTool(ctx: ToolContext): ReturnType<typeof too
                     injected.consumedBlockIds,
                 )
 
-                const mergeConsumedBlockIds = extractBoundaryConsumedBlocks(
+                // [Plan B] Auto-detect consumed blocks: requiredBlockIds already
+                // covers every active block whose anchor is in [start, end]; merge
+                // with boundary blocks (when start/end is a bN ref) and dedup.
+                const boundaryConsumed = extractBoundaryConsumedBlocks(
                     plan.selection.startReference,
                     plan.selection.endReference,
                 )
+                const seenConsumed = new Set<number>()
+                const mergeConsumedBlockIds = [
+                    ...plan.selection.requiredBlockIds,
+                    ...boundaryConsumed,
+                ].filter((id) => {
+                    if (seenConsumed.has(id)) return false
+                    seenConsumed.add(id)
+                    return true
+                })
 
                 preparedPlans.push({
                     entry: plan.entry,

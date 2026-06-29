@@ -190,7 +190,15 @@ export const injectCompressNudges = (
     injectContextUsage(suffixMessage, config, currentTokens, modelContextLimit, !shouldNudge)
 
     if (config.compress.mode !== "message") {
-        const blockGuidance = buildCompressedBlockGuidance(state, config.gc, { currentTokens, modelContextLimit, includeHint: shouldNudge })
+        const visibleMessageIds = new Set<string>(
+            messages.map((message) => message.info.id),
+        )
+        const blockGuidance = buildCompressedBlockGuidance(state, config.gc, {
+            currentTokens,
+            modelContextLimit,
+            includeHint: shouldNudge,
+            visibleMessageIds,
+        })
         if (blockGuidance.trim() && suffixMessage) {
             appendToLastTextPart(suffixMessage, "\n\n" + blockGuidance)
         }
