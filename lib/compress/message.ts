@@ -55,7 +55,7 @@ export function createCompressMessageTool(ctx: ToolContext): ReturnType<typeof t
             for (const entry of input.content) {
                 if (entry.summary.length > maxSummaryLengthHard) {
                     throw new Error(
-                        `Summary too long (${entry.summary.length} chars, hard ceiling ${maxSummaryLengthHard}). Aim for <=${ctx.config.compress.maxSummaryLength}; exceed only when strictly necessary. Rewrite more concisely.`,
+                        `Summary too long (${entry.summary.length} chars; limit ${maxSummaryLengthHard}). Rewrite to under ${maxSummaryLengthHard} chars — keep only the most essential details (conclusions, file paths, decisions, exact values) and drop verbose narration or raw dumps.`,
                     )
                 }
             }

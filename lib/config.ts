@@ -198,7 +198,7 @@ const defaultConfig: PluginConfig = {
         protectTags: false,
         protectUserMessages: false,
         maxSummaryLength: 200,
-        maxSummaryLengthHard: 800,
+        maxSummaryLengthHard: 3000,
         minCompressRange: 2000,
     },
     strategies: {
