@@ -180,7 +180,7 @@ test("compress range rebuilds subagent message refs after session state was rese
     )
 
     // [Bug 30 fix] Result now includes IMPORTANT continuation instruction
-    assert.equal(result, "Compressed 2 messages into [Compressed conversation section].\nIMPORTANT: This was an automatic context compression. You MUST continue your previous task exactly where you left off. Do NOT ask the user what to do next.")
+    assert.equal(result, "Compressed 2 messages into [Compressed conversation section].\nIMPORTANT: This was an automatic context compression. You MUST continue your previous task exactly where you left off. Do NOT ask the user what to do next.\n💡 Tip: Use search_context('keyword') to find compressed content when you need it later.")
     assert.equal(state.sessionId, sessionID)
     assert.equal(state.isSubAgent, true)
     assert.equal(state.messageIds.byRef.get("m00001"), "msg-assistant-1")
@@ -331,7 +331,7 @@ test("compress range mode batches multiple ranges into one notification", async 
     )
 
     // [Bug 30 fix] Result now includes IMPORTANT continuation instruction
-    assert.equal(result, "Compressed 2 messages into [Compressed conversation section].\nIMPORTANT: This was an automatic context compression. You MUST continue your previous task exactly where you left off. Do NOT ask the user what to do next.")
+    assert.equal(result, "Compressed 2 messages into [Compressed conversation section].\nIMPORTANT: This was an automatic context compression. You MUST continue your previous task exactly where you left off. Do NOT ask the user what to do next.\n💡 Tip: Use search_context('keyword') to find compressed content when you need it later.")
     assert.equal(state.prune.messages.blocksById.size, 2)
     assert.equal(toastCalls.length, 1)
     // [ACP rebrand] DCP → ACP in notification headers

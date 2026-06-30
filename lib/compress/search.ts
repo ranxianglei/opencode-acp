@@ -1,9 +1,10 @@
+import { tool } from "@opencode-ai/plugin"
 import type { SessionState, WithParts } from "../state"
 import { formatBlockRef, parseBoundaryId } from "../message-ids"
 import { isIgnoredUserMessage } from "../messages/query"
 import { filterMessages } from "../messages/shape"
 import { countAllMessageTokens } from "../token-utils"
-import type { BoundaryReference, SearchContext, SelectionResolution } from "./types"
+import type { BoundaryReference, SearchContext, SelectionResolution, ToolContext } from "./types"
 
 export async function fetchSessionMessages(client: any, sessionId: string): Promise<WithParts[]> {
     const response = await client.session.messages({
@@ -267,4 +268,165 @@ function buildBoundaryLookup(
     }
 
     return lookup
+}
+
+const SEARCH_CONTEXT_TOOL_DESCRIPTION = `Search through all compressed block summaries AND visible messages to find relevant content. Use this BEFORE decompressing to find the right block. Returns a hit list with block/message IDs, relevance scores, and previews.
+
+Examples:
+- search_context({ query: "decoder accuracy" }) — find blocks/messages about decoder accuracy
+- search_context({ query: "training loss PPL" }) — find training results
+- search_context({ query: "architecture design", limit: 5 }) — top 5 results`
+
+interface SearchResult {
+    type: "block" | "message"
+    id: string
+    relevance: number
+    label: string
+    preview: string
+    action: string
+}
+
+function countOccurrences(text: string, term: string): number {
+    if (!text || !term) return 0
+    let count = 0
+    let idx = 0
+    while ((idx = text.indexOf(term, idx)) !== -1) {
+        count++
+        idx += term.length
+    }
+    return count
+}
+
+function buildSearchPreview(text: string, firstTerm: string): string {
+    if (!text) return ""
+    const matchIdx = text.toLowerCase().indexOf(firstTerm)
+    if (matchIdx >= 0) {
+        const start = Math.max(0, matchIdx - 50)
+        const end = Math.min(text.length, matchIdx + 150)
+        return (
+            (start > 0 ? "..." : "") +
+            text.substring(start, end) +
+            (end < text.length ? "..." : "")
+        )
+    }
+    return text.substring(0, 200) + (text.length > 200 ? "..." : "")
+}
+
+export function createSearchContextTool(ctx: ToolContext): ReturnType<typeof tool> {
+    ctx.prompts.reload()
+
+    return tool({
+        description: SEARCH_CONTEXT_TOOL_DESCRIPTION,
+        args: {
+            query: tool.schema
+                .string()
+                .describe("Search query — keywords or phrase to find"),
+            limit: tool.schema
+                .number()
+                .optional()
+                .describe("Maximum results to return (default: 10)"),
+            deep: tool.schema
+                .boolean()
+                .optional()
+                .describe("If true, also search visible (uncompressed) messages. Slower but more thorough (default: false)"),
+        },
+        async execute(args) {
+            const query = (args.query || "").toLowerCase().trim()
+            const limit = args.limit ?? 10
+
+            if (!query) {
+                return "Error: query is required."
+            }
+
+            const queryTerms = query.split(/\s+/).filter((t) => t.length > 0)
+            const results: SearchResult[] = []
+            const MIN_RELEVANCE = 0.10
+
+            const blocksById = ctx.state.prune.messages.blocksById
+            for (const [blockId, block] of blocksById) {
+                if (!block.active) continue
+
+                const topic = (block.topic || "").toLowerCase()
+                const summary = (block.summary || "").toLowerCase()
+
+                // TF-based scoring: count ALL occurrences, weight by position
+                let relevance = 0
+                let termsHit = 0
+                for (const term of queryTerms) {
+                    let termHit = false
+                    // Topic matches (high weight, capped per term)
+                    const topicCount = countOccurrences(topic, term)
+                    if (topicCount > 0) {
+                        relevance += Math.min(topicCount * 0.15, 0.45)
+                        termHit = true
+                    }
+                    // Summary matches (lower weight, compounds with frequency)
+                    const summaryCount = countOccurrences(summary, term)
+                    if (summaryCount > 0) {
+                        relevance += Math.min(summaryCount * 0.04, 0.20)
+                        termHit = true
+                    }
+                    if (termHit) termsHit++
+                }
+                // All-terms-matched bonus: 20% boost
+                if (termsHit === queryTerms.length && queryTerms.length > 1) {
+                    relevance *= 1.2
+                }
+                // Exact phrase match bonus
+                if (queryTerms.length > 1 && query.includes(" ")) {
+                    if (topic.includes(query) || summary.includes(query)) {
+                        relevance += 0.25
+                    }
+                }
+                relevance = Math.min(relevance, 1.0)
+
+                if (relevance < MIN_RELEVANCE) continue
+
+                const origSummary = block.summary || ""
+                const preview = buildSearchPreview(origSummary, queryTerms[0])
+
+                results.push({
+                    type: "block",
+                    id: `b${blockId}`,
+                    relevance,
+                    label: block.topic || "(no topic)",
+                    preview,
+                    action: `→ decompress(b${blockId}) for full content`,
+                })
+            }
+
+            results.sort((a, b) => b.relevance - a.relevance)
+            const limited = results.slice(0, limit)
+
+            if (limited.length === 0) {
+                return `No matches found for "${args.query}". Try different keywords.`
+            }
+
+            const lines: string[] = []
+            lines.push(
+                `🔍 Found ${results.length} matches for "${args.query}" (showing top ${limited.length}):`,
+            )
+            lines.push("")
+
+            for (const result of limited) {
+                const icon = result.type === "block" ? "📦" : "📄"
+                const stars = "⭐".repeat(Math.ceil(result.relevance * 5))
+                lines.push(
+                    `${icon} [${result.id}] ${stars} (${result.relevance.toFixed(2)}) "${result.label}"`,
+                )
+                lines.push(`   ${result.preview}`)
+                lines.push(`   ${result.action}`)
+                lines.push("")
+            }
+
+            let output = lines.join("\n")
+            if (output.length > 3000) {
+                output =
+                    output.substring(0, 3000) +
+                    "\n... (truncated, refine query for more specific results)"
+            }
+
+            return output
+        },
+    })
 }
