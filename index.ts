@@ -5,6 +5,7 @@ import {
     createCompressRangeTool,
     createDecompressTool,
     createSearchContextTool,
+    createSetCompressionProfileTool,
 } from "./lib/compress"
 import {
     compressDisabledByOpencode,
@@ -91,6 +92,7 @@ const server: Plugin = (async (ctx) => {
                         : createCompressRangeTool(compressToolContext),
                 decompress: createDecompressTool(compressToolContext),
                 search_context: createSearchContextTool(compressToolContext),
+                set_compression_profile: createSetCompressionProfileTool(compressToolContext),
             }),
         },
         config: async (opencodeConfig) => {
@@ -111,7 +113,7 @@ const server: Plugin = (async (ctx) => {
 
             const toolsToAdd: string[] = []
             if (config.compress.permission !== "deny" && !config.experimental.allowSubAgents) {
-                toolsToAdd.push("compress", "decompress", "search_context")
+                toolsToAdd.push("compress", "decompress", "search_context", "set_compression_profile")
             }
 
             if (toolsToAdd.length > 0) {

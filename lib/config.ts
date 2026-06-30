@@ -3,6 +3,7 @@ import { join, dirname } from "path"
 import { homedir } from "os"
 import { parse } from "jsonc-parser/lib/esm/main.js"
 import type { PluginInput } from "@opencode-ai/plugin"
+import type { CompressionProfile } from "./compress/profile"
 import { VALID_CONFIG_KEYS, getInvalidConfigKeys, validateConfigTypes, type ValidationError } from "./config-validation"
 
 
@@ -89,6 +90,7 @@ export interface PluginConfig {
     protectedFilePatterns: string[]
     compress: CompressConfig
     gc: GCConfig
+    compressionProfile: CompressionProfile
     strategies: {
         deduplication: Deduplication
         purgeErrors: PurgeErrors
@@ -201,6 +203,7 @@ const defaultConfig: PluginConfig = {
         maxSummaryLengthHard: 800,
         minCompressRange: 2000,
     },
+    compressionProfile: "balanced",
     strategies: {
         deduplication: {
             enabled: true,
@@ -500,8 +503,11 @@ function mergeGC(base: GCConfig, override?: Partial<GCConfig>): GCConfig {
     }
 }
 
-function mergeLayer(config: PluginConfig, data: Record<string, any>): PluginConfig {
-    return {
+function isValidCompressionProfile(value: unknown): value is CompressionProfile {
+    return value === "aggressive" || value === "balanced" || value === "conservative"
+}
+
+function mergeLayer(config: PluginConfig, data: Record<string, any>): PluginConfig {    return {
         enabled: data.enabled ?? config.enabled,
         autoUpdate: data.autoUpdate ?? config.autoUpdate,
         debug: data.debug ?? config.debug,
@@ -519,6 +525,9 @@ function mergeLayer(config: PluginConfig, data: Record<string, any>): PluginConf
         ],
         compress: mergeCompress(config.compress, data.compress as CompressOverride),
         gc: mergeGC(config.gc, data.gc as Partial<GCConfig>),
+        compressionProfile: isValidCompressionProfile(data.compressionProfile)
+            ? data.compressionProfile
+            : config.compressionProfile,
         strategies: mergeStrategies(config.strategies, data.strategies as any),
     }
 }

@@ -16,6 +16,7 @@ import {
     computeInputBudget,
 } from "./messages"
 import { renderSystemPrompt, type PromptStore } from "./prompts"
+import { buildSystemPrompt } from "./prompts/system"
 import { buildProtectedToolsExtension } from "./prompts/extensions/system"
 import {
     applyPendingCompressionDurations,
@@ -23,6 +24,7 @@ import {
     consumeCompressionStart,
     resolveCompressionDuration,
 } from "./compress/timing"
+import { getSessionProfile } from "./compress/profile"
 import { filterMessages, filterMessagesInPlace } from "./messages/shape"
 import { getLastUserMessage } from "./messages/query"
 import {
@@ -107,8 +109,12 @@ export function createSystemPromptHandler(
 
         prompts.reload()
         const runtimePrompts = prompts.getRuntimePrompts()
+        const effectiveProfile = state.sessionId
+            ? getSessionProfile(state.sessionId, config.compressionProfile)
+            : config.compressionProfile
+        const profileSystem = `<dcp-system-reminder>\n${buildSystemPrompt(effectiveProfile).trim()}\n</dcp-system-reminder>`
         const newPrompt = renderSystemPrompt(
-            runtimePrompts,
+            { ...runtimePrompts, system: profileSystem },
             buildProtectedToolsExtension(config.compress.protectedTools),
             !!state.manualMode,
             state.isSubAgent && config.experimental.allowSubAgents,

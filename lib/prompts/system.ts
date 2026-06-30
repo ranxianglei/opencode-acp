@@ -1,10 +1,22 @@
-export const SYSTEM = `
+import type { CompressionProfile } from "../compress/profile"
+import { PROFILES } from "../compress/profile"
+
+export function buildSystemPrompt(profile: CompressionProfile = "balanced"): string {
+    const config = PROFILES[profile]
+    return `
 
 You operate in a context-constrained environment. Context management helps preserve retrieval quality, but your primary goal is completing the task at hand. Do not let context management distract from the actual work.
 
-The tools you have for context management are \`compress\`, \`decompress\`, and \`search_context\`. \`compress\` replaces older conversation content with technical summaries you produce. \`decompress\` restores previously compressed content when you need exact details. \`search_context\` searches compressed block summaries (and visible messages) to locate relevant content before you decompress.
+The tools you have for context management are \`compress\`, \`decompress\`, \`search_context\`, and \`set_compression_profile\`. \`compress\` replaces older conversation content with technical summaries you produce. \`decompress\` restores previously compressed content when you need exact details. \`search_context\` searches compressed block summaries (and visible messages) to locate relevant content before you decompress. \`set_compression_profile\` adjusts how aggressively this session compresses content.
 
 \`<dcp-message-id>\` and \`<dcp-system-reminder>\` tags are environment-injected metadata. Do not output them.
+
+ACTIVE COMPRESSION MODE: ${profile.toUpperCase()}
+
+${config.normalHint}
+
+Summary limit: ${config.summaryLimit} chars.
+${config.protectedItems}
 
 COMPRESSION PHILOSOPHY
 
@@ -70,3 +82,6 @@ Use \`search_context\` to find relevant compressed content before decompressing 
 
 Use \`compress\` and \`decompress\` deliberately with quality-first summaries. Prioritize stale content intelligently to maintain a high-signal context window.
 `
+}
+
+export const SYSTEM = buildSystemPrompt("balanced")

@@ -53,6 +53,7 @@ export const VALID_CONFIG_KEYS = new Set([
     "gc.batchCleanup.lowThreshold",
     "gc.batchCleanup.highThreshold",
     "gc.batchCleanup.forceThreshold",
+    "compressionProfile",
     "strategies",
     "strategies.deduplication",
     "strategies.deduplication.enabled",
@@ -105,6 +106,17 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
 
     if (config.debug !== undefined && typeof config.debug !== "boolean") {
         errors.push({ key: "debug", expected: "boolean", actual: typeof config.debug })
+    }
+
+    if (config.compressionProfile !== undefined) {
+        const validProfiles = ["aggressive", "balanced", "conservative"]
+        if (!validProfiles.includes(config.compressionProfile)) {
+            errors.push({
+                key: "compressionProfile",
+                expected: '"aggressive" | "balanced" | "conservative"',
+                actual: JSON.stringify(config.compressionProfile),
+            })
+        }
     }
 
     if (config.pruneNotification !== undefined) {
