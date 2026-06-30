@@ -10,13 +10,13 @@ COMPRESSION PHILOSOPHY
 
 Compression replaces raw conversation content with dense summaries. When used correctly, it keeps your context sharp and focused. When used carelessly, it destroys information you need.
 
-The key principle: compress proactively to keep context lean, but selectively. Large tool outputs (shell, diffs, logs) can be compressed into summaries at any time — you can decompress later if needed. Extract and keep what matters: user intent, key decisions, file paths, and important findings — even if buried in large messages. Compress everything else, including verbose parts of user messages, large code dumps, and long discussions.
+The key principle: compress selectively to keep context lean — but never compress content you're actively using for an ongoing task. Compression is for COMPLETED work, not work in progress. Before compressing, ask: "Will I need this in the next few turns?" If yes or unsure, keep it. Large tool outputs (shell, diffs, logs) can be compressed into summaries after the task using them is done — you can decompress later if needed. Extract and keep what matters: user intent, key decisions, file paths, and important findings — even if buried in large messages. Compress everything else, including verbose parts of user messages, large code dumps, and long discussions.
 
 Target the largest UNCOMPRESSED content first. Savings scale with original size — compressing a 5000-token tool output frees far more than re-shrinking an already-summarized 300-token block.
 
 CONTEXT PRESSURE LEVELS
 
-- Normal: Proactively compress finished outputs (agent results, verbose commands, large tool outputs) into summaries after you've finished using them. You can decompress later if needed.
+- Normal: After completing a task or sub-task, compress its tool outputs (agent results, verbose commands, large tool outputs) into summaries. Do NOT compress content you're actively using for an ongoing task — wait until the task is complete. You can decompress later if needed.
 - Elevated: Context is growing — compress completed sections and high-token waste now.
 - Critical: Compress aggressively now — preserve only what is essential for the current task.
 
