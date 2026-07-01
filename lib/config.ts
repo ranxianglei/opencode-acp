@@ -24,13 +24,12 @@ export interface CompressConfig {
     modelMaxLimits?: Record<string, number | `${number}%`>
     modelMinLimits?: Record<string, number | `${number}%`>
     nudgeFrequency: number
-    perMessageNudgeGrowthPercent: number
+    minNudgeContextPercent: number
     iterationNudgeThreshold: number
     nudgeForce: "strong" | "soft"
     protectedTools: string[]
     protectTags: boolean
     protectUserMessages: boolean
-    maxSummaryLength: number
     maxSummaryLengthHard: number
     minCompressRange: number
 }
@@ -191,14 +190,13 @@ const defaultConfig: PluginConfig = {
         maxContextLimit: "55%",
         minContextLimit: "45%",
         nudgeFrequency: 5,
-        perMessageNudgeGrowthPercent: 3,
+        minNudgeContextPercent: 15,
         iterationNudgeThreshold: 15,
         nudgeForce: "soft",
         protectedTools: [...COMPRESS_DEFAULT_PROTECTED_TOOLS],
         protectTags: false,
         protectUserMessages: false,
-        maxSummaryLength: 200,
-        maxSummaryLengthHard: 3000,
+        maxSummaryLengthHard: 4000,
         minCompressRange: 2000,
     },
     strategies: {
@@ -401,13 +399,12 @@ function mergeCompress(
         modelMaxLimits: override.modelMaxLimits ?? base.modelMaxLimits,
         modelMinLimits: override.modelMinLimits ?? base.modelMinLimits,
         nudgeFrequency: override.nudgeFrequency ?? base.nudgeFrequency,
-        perMessageNudgeGrowthPercent: override.perMessageNudgeGrowthPercent ?? base.perMessageNudgeGrowthPercent,
+        minNudgeContextPercent: override.minNudgeContextPercent ?? base.minNudgeContextPercent,
         iterationNudgeThreshold: override.iterationNudgeThreshold ?? base.iterationNudgeThreshold,
         nudgeForce: override.nudgeForce ?? base.nudgeForce,
         protectedTools: [...new Set([...base.protectedTools, ...(override.protectedTools ?? [])])],
         protectTags: override.protectTags ?? base.protectTags,
         protectUserMessages: override.protectUserMessages ?? base.protectUserMessages,
-        maxSummaryLength: override.maxSummaryLength ?? base.maxSummaryLength,
         maxSummaryLengthHard: override.maxSummaryLengthHard ?? base.maxSummaryLengthHard,
         minCompressRange: override.minCompressRange ?? base.minCompressRange,
     }

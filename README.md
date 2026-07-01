@@ -419,6 +419,34 @@ For the complete list with root cause analysis, see the [bug tracker](https://gi
 
 ---
 
+## Changelog
+
+### v1.7.0 — Principle-Driven Prompts
+
+**Philosophy**: Replaced verbose context-management guidance with 4 concise principles injected every turn. The model now sees *what matters* (principles) instead of *what to do* (rigid rules).
+
+**Prompt changes**:
+- 4 principles replace CONTEXT PRESSURE LEVELS, 7-item priority list, DO NOT RE-COMPRESS rules
+- Context display simplified: absolute token count only, no percentage
+- `<acp-context>` tag wrapping (backward compatible with `<dcp-context>`)
+
+**Hybrid Tips frequency**:
+- 💡 Light Tips (15-45%): Every turn — non-disruptive reminder
+- ⚠️ Warning Tips (45%+): Key nodes only — first crossing or 10pp growth, prevents over-compression
+
+**Config simplification**:
+- Removed `hardNudgeContextPercent` — merged into `minContextLimit`/`maxContextLimit`
+- Removed `perMessageNudgeGrowthPercent` — light Tips show every turn
+- `maxSummaryLength` default: 200 → 2000
+- `maxSummaryLengthHard` default: 3000 → 4000
+
+**Bug fixes**:
+- Windows path validation: `os.tmpdir()` + `path.relative()` (was hardcoded `/tmp/`)
+- Compress after-detection: reset warning tracking
+- Dead code cleanup: `shouldInjectPerMessageNudge`, no-op template
+
+---
+
 ## License
 
 AGPL-3.0-or-later -- This project is a fork of [@tarquinen/opencode-dcp](https://github.com/Tarquinen/opencode-dynamic-context-pruning). Original copyright belongs to the original author. Modifications and bug fixes by ranxianglei.

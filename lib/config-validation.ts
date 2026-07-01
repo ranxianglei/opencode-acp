@@ -34,13 +34,12 @@ export const VALID_CONFIG_KEYS = new Set([
     "compress.modelMaxLimits",
     "compress.modelMinLimits",
     "compress.nudgeFrequency",
-    "compress.perMessageNudgeGrowthPercent",
+    "compress.minNudgeContextPercent",
     "compress.iterationNudgeThreshold",
     "compress.nudgeForce",
     "compress.protectedTools",
     "compress.protectTags",
     "compress.protectUserMessages",
-    "compress.maxSummaryLength",
     "compress.maxSummaryLengthHard",
     "compress.minCompressRange",
     "gc",
@@ -321,17 +320,6 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
             }
 
             if (
-                compress.perMessageNudgeGrowthPercent !== undefined &&
-                typeof compress.perMessageNudgeGrowthPercent !== "number"
-            ) {
-                errors.push({
-                    key: "compress.perMessageNudgeGrowthPercent",
-                    expected: "number",
-                    actual: typeof compress.perMessageNudgeGrowthPercent,
-                })
-            }
-
-            if (
                 compress.iterationNudgeThreshold !== undefined &&
                 typeof compress.iterationNudgeThreshold !== "number"
             ) {
@@ -382,28 +370,6 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
             }
 
             if (
-                compress.maxSummaryLength !== undefined &&
-                typeof compress.maxSummaryLength !== "number"
-            ) {
-                errors.push({
-                    key: "compress.maxSummaryLength",
-                    expected: "number",
-                    actual: typeof compress.maxSummaryLength,
-                })
-            }
-
-            if (
-                typeof compress.maxSummaryLength === "number" &&
-                compress.maxSummaryLength < 1
-            ) {
-                errors.push({
-                    key: "compress.maxSummaryLength",
-                    expected: "positive number (>= 1)",
-                    actual: `${compress.maxSummaryLength}`,
-                })
-            }
-
-            if (
                 compress.maxSummaryLengthHard !== undefined &&
                 typeof compress.maxSummaryLengthHard !== "number"
             ) {
@@ -421,18 +387,6 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
                 errors.push({
                     key: "compress.maxSummaryLengthHard",
                     expected: "positive number (>= 1)",
-                    actual: `${compress.maxSummaryLengthHard}`,
-                })
-            }
-
-            if (
-                typeof compress.maxSummaryLength === "number" &&
-                typeof compress.maxSummaryLengthHard === "number" &&
-                compress.maxSummaryLengthHard < compress.maxSummaryLength
-            ) {
-                errors.push({
-                    key: "compress.maxSummaryLengthHard",
-                    expected: `>= maxSummaryLength (${compress.maxSummaryLength})`,
                     actual: `${compress.maxSummaryLengthHard}`,
                 })
             }

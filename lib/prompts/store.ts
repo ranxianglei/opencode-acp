@@ -121,7 +121,7 @@ export const PROMPT_KEYS: PromptKey[] = [
 const HTML_COMMENT_REGEX = /<!--[\s\S]*?-->/g
 const LEGACY_INLINE_COMMENT_LINE_REGEX = /^[ \t]*\/\/.*?\/\/[ \t]*$/gm
 const DCP_SYSTEM_REMINDER_TAG_REGEX =
-    /^\s*<dcp-system-reminder\b[^>]*>[\s\S]*<\/dcp-system-reminder>\s*$/i
+    /^\s*<dcp-system-reminder\b[^>]*>[\s\S]*<\/(?:dcp|acp)-system-reminder>\s*$/i
 const DEFAULTS_README_FILE = "README.md"
 
 const BUNDLED_EDITABLE_PROMPTS: Record<EditablePromptField, string> = {
@@ -218,7 +218,7 @@ function unwrapDcpTagIfWrapped(content: string): string {
     if (DCP_SYSTEM_REMINDER_TAG_REGEX.test(trimmed)) {
         return trimmed
             .replace(/^\s*<dcp-system-reminder\b[^>]*>\s*/i, "")
-            .replace(/\s*<\/dcp-system-reminder>\s*$/i, "")
+            .replace(/\s*<\/(?:dcp|acp)-system-reminder>\s*$/i, "")
             .trim()
     }
 
@@ -233,7 +233,7 @@ function normalizeReminderPromptContent(content: string): string {
     }
 
     const startsWrapped = /^\s*<dcp-system-reminder\b[^>]*>/i.test(normalized)
-    const endsWrapped = /<\/dcp-system-reminder>\s*$/i.test(normalized)
+    const endsWrapped = /<\/(?:dcp|acp)-system-reminder>\s*$/i.test(normalized)
 
     if (startsWrapped !== endsWrapped) {
         return ""

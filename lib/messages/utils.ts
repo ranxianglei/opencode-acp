@@ -12,11 +12,11 @@ const SUMMARY_ID_HASH_LENGTH = 16
 const MERGED_SUMMARY_HEADER = (blockId: number | string) =>
     `[ACP compressed context summary (block ${blockId}) — prior conversation recap]\n`
 const MERGED_SUMMARY_FOOTER = `\n[End ACP compressed context summary]\n\n`
-const DCP_BLOCK_ID_TAG_REGEX = /(<dcp-message-id(?=[\s>])[^>]*>)b\d+(<\/dcp-message-id>)/g
+const DCP_BLOCK_ID_TAG_REGEX = /(<dcp-message-id(?=[\s>])[^>]*>)b\d+(<\/(?:dcp|acp)-message-id>)/g
 // [FIX Bug 28] Regex to strip stale mNNNN refs from compressed summaries
-const DCP_MESSAGE_REF_TAG_REGEX = /<dcp-message-id>m\d+<\/dcp-message-id>/g
-const DCP_PAIRED_TAG_REGEX = /<dcp[^>]*>[\s\S]*?<\/dcp[^>]*>/gi
-const DCP_UNPAIRED_TAG_REGEX = /<\/?dcp[^>]*>/gi
+const DCP_MESSAGE_REF_TAG_REGEX = /<dcp-message-id>m\d+<\/(?:dcp|acp)-message-id>/g
+const DCP_PAIRED_TAG_REGEX = /<dcp[^>]*>[\s\S]*?<\/(?:dcp|acp)[^>]*>/gi
+const DCP_UNPAIRED_TAG_REGEX = /<\/?(?:dcp|acp)[^>]*>/gi
 
 const generateStableId = (prefix: string, seed: string): string => {
     const hash = createHash("sha256").update(seed).digest("hex").slice(0, SUMMARY_ID_HASH_LENGTH)
