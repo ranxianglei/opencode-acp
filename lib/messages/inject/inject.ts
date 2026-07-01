@@ -70,8 +70,15 @@ function shouldInjectPerMessageNudge(
     const tokenGrowth = tokens - lastTokens
     const tokenGrowthPercent = modelContextLimit ? (tokenGrowth / modelContextLimit) * 100 : 0
 
+    // Minimum threshold: don't nudge if context is already lean
+    const contextPercent = modelContextLimit ? (tokens / modelContextLimit) * 100 : 0
+    const minNudgePercent = config.compress.minNudgeContextPercent ?? 15
+    if (contextPercent < minNudgePercent) {
+        return false
+    }
+
     const frequency = config.compress.nudgeFrequency ?? 5
-    const growthThreshold = config.compress.perMessageNudgeGrowthPercent ?? 3
+    const growthThreshold = config.compress.perMessageNudgeGrowthPercent ?? 10
     return turnsSinceLast >= frequency || tokenGrowthPercent >= growthThreshold
 }
 

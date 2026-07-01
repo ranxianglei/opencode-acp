@@ -16,7 +16,7 @@ Target the largest UNCOMPRESSED content first. Savings scale with original size 
 
 CONTEXT PRESSURE LEVELS
 
-- Normal: After completing a task or sub-task, compress its tool outputs (agent results, verbose commands, large tool outputs) into summaries. Do NOT compress content you're actively using for an ongoing task — wait until the task is complete. You can decompress later if needed.
+- Normal: After completing a task or sub-task, compress its tool outputs (agent results, verbose commands, large tool outputs) into summaries — but ONLY if context exceeds 15%. Below 15%, your context is already lean; skip compression and keep full detail. Do NOT compress content you're actively using for an ongoing task — wait until the task is complete. You can decompress later if needed.
 - Elevated: Context is growing — compress completed sections and high-token waste now.
 - Critical: Compress aggressively now — preserve only what is essential for the current task.
 

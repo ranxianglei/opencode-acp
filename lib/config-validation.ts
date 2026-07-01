@@ -35,6 +35,7 @@ export const VALID_CONFIG_KEYS = new Set([
     "compress.modelMinLimits",
     "compress.nudgeFrequency",
     "compress.perMessageNudgeGrowthPercent",
+    "compress.minNudgeContextPercent",
     "compress.iterationNudgeThreshold",
     "compress.nudgeForce",
     "compress.protectedTools",
@@ -328,6 +329,17 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
                     key: "compress.perMessageNudgeGrowthPercent",
                     expected: "number",
                     actual: typeof compress.perMessageNudgeGrowthPercent,
+                })
+            }
+
+            if (
+                compress.minNudgeContextPercent !== undefined &&
+                typeof compress.minNudgeContextPercent !== "number"
+            ) {
+                errors.push({
+                    key: "compress.minNudgeContextPercent",
+                    expected: "number",
+                    actual: typeof compress.minNudgeContextPercent,
                 })
             }
 
