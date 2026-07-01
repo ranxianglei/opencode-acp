@@ -61,18 +61,19 @@ function shouldInjectPerMessageNudge(
     currentTokens?: number,
     modelContextLimit?: number,
 ): boolean {
-    const turn = state.currentTurn ?? 0
-    const lastTurn = state.nudges.lastPerMessageNudgeTurn ?? 0
-    const turnsSinceLast = turn - lastTurn
-
     const tokens = currentTokens ?? 0
-    const lastTokens = state.nudges.lastPerMessageNudgeTokens ?? 0
-    const tokenGrowth = tokens - lastTokens
-    const tokenGrowthPercent = modelContextLimit ? (tokenGrowth / modelContextLimit) * 100 : 0
+    const pct = modelContextLimit ? (tokens / modelContextLimit) * 100 : 0
 
-    const frequency = config.compress.nudgeFrequency ?? 5
-    const growthThreshold = config.compress.perMessageNudgeGrowthPercent ?? 3
-    return turnsSinceLast >= frequency || tokenGrowthPercent >= growthThreshold
+    // Below minimum threshold — no tips
+    const minPercent = config.compress.minNudgeContextPercent ?? 15
+    if (pct < minPercent) return false
+
+    // Fire every N percentage points (absolute, not relative)
+    const lastTokens = state.nudges.lastPerMessageNudgeTokens ?? 0
+    const lastPct = modelContextLimit ? (lastTokens / modelContextLimit) * 100 : 0
+    const growthThreshold = config.compress.perMessageNudgeGrowthPercent ?? 10
+
+    return (pct - lastPct) >= growthThreshold
 }
 
 export const injectCompressNudges = (
@@ -205,6 +206,13 @@ export const injectCompressNudges = (
     }
 
     if (shouldNudge) {
+        const pct = modelContextLimit ? ((currentTokens ?? 0) / modelContextLimit) * 100 : 0
+        const tips = pct >= 65
+            ? "\n\n⚠️ Context is high. Keep context tidy to reduce overflow risk. Tools: compress, decompress, search_context."
+            : "\n\n💡 Tools: compress, decompress, search_context."
+        if (suffixMessage) {
+            appendToLastTextPart(suffixMessage, tips)
+        }
         state.nudges.lastPerMessageNudgeTurn = state.currentTurn ?? 0
         state.nudges.lastPerMessageNudgeTokens = currentTokens ?? 0
     }
@@ -251,7 +259,7 @@ function injectVisibleIdRange(state: SessionState, messages: WithParts[], target
     visibleRefs.sort()
     const first = visibleRefs[0]
     const last = visibleRefs[visibleRefs.length - 1]
-    const rangeTag = `\n\n[Visible message IDs: ${first} to ${last} (${visibleRefs.length} messages). Only use IDs in this range for compress.]`
+    const rangeTag = `\n\n[Visible messages: ${first} to ${last} (${visibleRefs.length} messages)]`
 
     for (const part of target.parts) {
         if (part.type === "text") {

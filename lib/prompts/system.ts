@@ -4,69 +4,15 @@ You operate in a context-constrained environment. Context management helps prese
 
 The tools you have for context management are \`compress\`, \`decompress\`, and \`search_context\`. \`compress\` replaces older conversation content with technical summaries you produce. \`decompress\` restores previously compressed content when you need exact details. \`search_context\` searches compressed block summaries (and visible messages) to locate relevant content before you decompress.
 
-\`<dcp-message-id>\` and \`<dcp-system-reminder>\` tags are environment-injected metadata. Do not output them.
-
 COMPRESSION PHILOSOPHY
 
-Compression replaces raw conversation content with dense summaries. When used correctly, it keeps your context sharp and focused. When used carelessly, it destroys information you need.
+All compression serves the primary task, but be frugal. Two failure modes to avoid:
+- Over-compression: Compressing too aggressively loses critical details, decisions, and state needed for your task. This directly harms task quality.
+- Under-compression: Failing to compress verbose outputs causes context overflow, reducing accuracy and eventually blocking your work.
 
-The key principle: compress selectively to keep context lean — but never compress content you're actively using for an ongoing task. Compression is for COMPLETED work, not work in progress. Before compressing, ask: "Will I need this in the next few turns?" If yes or unsure, keep it. Large tool outputs (shell, diffs, logs) can be compressed into summaries after the task using them is done — you can decompress later if needed. Extract and keep what matters: user intent, key decisions, file paths, and important findings — even if buried in large messages. Compress everything else, including verbose parts of user messages, large code dumps, and long discussions.
+Balance is key. Compress selectively to keep context lean. But never compress content you're actively using for an ongoing task. Use \`search_context\` to find compressed content when needed, and \`decompress\` to restore details.
 
-Target the largest UNCOMPRESSED content first. Savings scale with original size — compressing a 5000-token tool output frees far more than re-shrinking an already-summarized 300-token block.
+BE FRUGAL
 
-CONTEXT PRESSURE LEVELS
-
-- Normal: After completing a task or sub-task, compress its tool outputs (agent results, verbose commands, large tool outputs) into summaries. Do NOT compress content you're actively using for an ongoing task — wait until the task is complete. You can decompress later if needed.
-- Elevated: Context is growing — compress completed sections and high-token waste now.
-- Critical: Compress aggressively now — preserve only what is essential for the current task.
-
-WHAT TO COMPRESS FIRST (high value, low risk)
-
-- Agent/subagent review and consultation results: Prime compression targets when context pressure rises — the surrounding reasoning and tool-call chatter is typically the largest block of uncompressed content. Note: if the agent tool is in your protected list, its output is auto-preserved in the summary, so the savings come from the surrounding conversation, not the agent output itself. Compress once you have fully consumed the results (all recommended actions applied or recorded in files). Recover via \`decompress\` while the block is still active. Re-invoking the agent is a last resort — it is a fresh run, not a cache hit.
-- Verbose command output (build/test runs, git diff/log/status, publish logs, directory listings): Once you have read the result, compress. Keep only the verdict — pass/fail status, commit hash, version number, or count. For failures, keep the specific error messages and file/line references needed to act on them. The full output is reproducible by re-running the command.
-- Exploration that led nowhere (failed approaches, dead-end searches): Compress to a one-line note about what was tried and why it failed.
-- Redundant tool results (reading the same file multiple times, repeated status checks, exhausted search results): Keep only the most recent result.
-- Intermediate steps of completed multi-step tasks: Once the task is done, compress the process. Keep only the final outcome.
-- Resolved discussion threads (clarification rounds, negotiated requirements, design debate that reached a decision): Once a conclusion is recorded, compress the back-and-forth. Keep the decision and its rationale.
-- Large file contents that have already been used and are no longer needed: Compress to a summary of key functions, types, or patterns.
-
-DO NOT RE-COMPRESS (low value, diminishing returns)
-
-- Already-compressed block summaries: Re-compressing a summary into a shorter summary saves negligible tokens. If a block needs better detail, use \`decompress\` to restore it, then compress the original content properly. Exception: if a block-aging warning flags specific block IDs as facing GC truncation, re-summarize exactly those flagged blocks into a fresh range — this preserves detail that GC would otherwise destroy.
-- Short messages (1-3 sentences): The compression overhead (block metadata, summary structure) may exceed the tokens saved.
-- Content whose immediate use is complete — the task it supported is done and no open todo/plan references it. If still in active use, let it stay.
-- User instructions and requirements: These must remain visible until the task is complete.
-- Tool calls that are still pending or in-progress: Wait until the result is returned and consumed.
-
-WHAT TO COMPRESS CAREFULLY (high risk - verify before compressing)
-
-- Temporary secrets/keys/tokens needed later: Do NOT compress unless recorded elsewhere
-- File paths and directory structures: Keep in summary - losing these wastes tokens rediscovering them
-- Key function/method signatures and APIs: Summarize with exact names and signatures
-- Critical error messages and stack traces: Keep the error type and key detail in summary
-- User preferences and requirements: These must survive compression intact
-- Architectural decisions and rationale: Summarize the decision, not just the conclusion
-
-BEFORE COMPRESSING IMPORTANT CONTENT
-
-Verify the information is persisted in one of:
-- A file you have written or edited
-- An issue, PR, or devlog entry
-- The compression summary itself (include the critical bits explicitly)
-
-If it is not persisted anywhere, either persist it first or include it explicitly in your compression summary.
-
-AFTER COMPRESSING
-
-Generate recovery breadcrumbs in your summary so future-you can reconstruct the context:
-- Reference specific files by path
-- Include key variable names, function signatures, or configuration values
-- Note what was decided and why, not just what was done
-- Example: "Implemented auth check in src/middleware.ts using validateToken() from auth.ts - user table is users not user"
-
-If you later realize you need the original details from a compressed block, use \`decompress\` to restore them. You can decompress, read the content, then re-compress if needed.
-
-Use \`search_context\` to find relevant compressed content before decompressing — it returns ranked matches across all active block summaries so you can pick the right block ID without inflating context by trial-and-error decompression.
-
-Use \`compress\` and \`decompress\` deliberately with quality-first summaries. Prioritize stale content intelligently to maintain a high-signal context window.
+Be frugal with context — compress obvious waste promptly. Examples include verbose command output (build/test logs, git diff/status, npm install), sub-agent results once consumed, experiment/training logs (keep final metrics only), duplicate file reads, and failed explorations. Any content that is finished serving the task and would not be needed in upcoming turns should be compressed — not just these examples.
 `

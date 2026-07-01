@@ -22,7 +22,11 @@ export function buildCompressedBlockGuidance(
         .filter((id) => Number.isInteger(id) && id > 0)
         .sort((a, b) => a - b)
 
-    const refs = activeBlockIds.map((id) => `b${id}`)
+    const refs = activeBlockIds.map((id) => {
+        const block = state.prune.messages.blocksById.get(id)
+        const tokens = block?.summaryTokens ?? 0
+        return `b${id}${tokens > 0 ? ` (${tokens}t)` : ""}`
+    })
     const blockCount = refs.length
     let blockList: string
     if (blockCount <= 20) {
@@ -35,13 +39,11 @@ export function buildCompressedBlockGuidance(
     const includeHint = context?.includeHint ?? true
 
     const lines = [
-        "Compressed block context:",
-        `- Active compressed blocks: ${blockCount} (${blockList})`,
-        "- System auto-detects blocks in range — no need to manually list (bN) placeholders. Just write a short prose summary.",
+        `- Compressed blocks: ${blockCount} (${blockList})`,
     ]
 
     if (includeHint) {
-        lines.push("- 💡 When you've finished using tool outputs, compress them — you can decompress later if needed. Lean context improves accuracy.")
+        lines.push("- 💡 Tools: compress, decompress, search_context.")
     }
 
     if (blockCount > 50) {
@@ -90,8 +92,6 @@ export function buildCompressedBlockGuidance(
                 lines.push(...targets)
                 lines.push(`  System auto-detects blocks in range — no need to manually list (bN) placeholders. Just write a short prose summary.`)
             }
-        } else {
-            lines.push(`- 🔀 You have ${blockCount} blocks — use compress to consolidate adjacent same-topic blocks.`)
         }
     }
 
