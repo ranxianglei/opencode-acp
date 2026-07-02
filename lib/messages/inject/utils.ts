@@ -391,25 +391,7 @@ export function buildContextUsageGuidance(
     const percentage = pct.toFixed(1)
     const formatK = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n))
 
-    const minPct = resolveThresholdPercent(config.compress.minContextLimit, modelContextLimit) ?? 45
-    const maxPct = resolveThresholdPercent(config.compress.maxContextLimit, modelContextLimit) ?? 55
-
-    const base = `Context usage: ${formatK(currentTokens)} / ${formatK(modelContextLimit)} tokens (${percentage}%).`
-
-    if (minimal) {
-        return `\n\n${base}`
-    }
-
-    let guidance: string
-    if (pct < minPct) {
-        guidance = " 💡 Be frugal with context. If any visible tool output exceeds 5000 characters and you've finished reading it, compress it into a summary now — don't keep large outputs 'just in case'. You can decompress later if needed."
-    } else if (pct < maxPct) {
-        guidance = " ⚠️ Context is growing — compress completed sections and high-token waste now."
-    } else {
-        guidance = " 🔥 Context is high — compress aggressively, preserve only what is essential."
-    }
-
-    return `\n\n${base}${guidance}`
+    return `\n\nContext usage: ${formatK(currentTokens)} / ${formatK(modelContextLimit)} tokens (${percentage}%).`
 }
 
 export function applyAnchoredNudges(

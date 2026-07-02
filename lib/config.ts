@@ -25,6 +25,7 @@ export interface CompressConfig {
     modelMinLimits?: Record<string, number | `${number}%`>
     nudgeFrequency: number
     perMessageNudgeGrowthPercent: number
+    minNudgeContextPercent: number
     iterationNudgeThreshold: number
     nudgeForce: "strong" | "soft"
     protectedTools: string[]
@@ -192,6 +193,7 @@ const defaultConfig: PluginConfig = {
         minContextLimit: "45%",
         nudgeFrequency: 5,
         perMessageNudgeGrowthPercent: 3,
+        minNudgeContextPercent: 15,
         iterationNudgeThreshold: 15,
         nudgeForce: "soft",
         protectedTools: [...COMPRESS_DEFAULT_PROTECTED_TOOLS],
@@ -402,6 +404,7 @@ function mergeCompress(
         modelMinLimits: override.modelMinLimits ?? base.modelMinLimits,
         nudgeFrequency: override.nudgeFrequency ?? base.nudgeFrequency,
         perMessageNudgeGrowthPercent: override.perMessageNudgeGrowthPercent ?? base.perMessageNudgeGrowthPercent,
+        minNudgeContextPercent: override.minNudgeContextPercent ?? base.minNudgeContextPercent,
         iterationNudgeThreshold: override.iterationNudgeThreshold ?? base.iterationNudgeThreshold,
         nudgeForce: override.nudgeForce ?? base.nudgeForce,
         protectedTools: [...new Set([...base.protectedTools, ...(override.protectedTools ?? [])])],

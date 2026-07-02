@@ -82,6 +82,10 @@ function buildSchema() {
         blockId: tool.schema
             .string()
             .describe('Block reference to decompress (e.g., "b0", "b2")'),
+        toFile: tool.schema
+            .string()
+            .optional()
+            .describe("If provided, writes restored content to this file path instead of inflating context. Block stays compressed. Use read tool to access specific parts. Example: '/tmp/block52.txt'"),
     }
 }
 
@@ -119,6 +123,33 @@ export function createDecompressTool(ctx: ToolContext): ReturnType<typeof tool> 
                     return `Error: Block ${target.displayId} is nested inside active block ${activeAncestorBlockId}. Decompress block ${activeAncestorBlockId} first.`
                 }
                 return `Error: Block ${target.displayId} is not active. It may have already been decompressed.`
+            }
+
+            if (args.toFile) {
+                const block = activeBlocks[0]
+                const msgIds = new Set(block.effectiveMessageIds ?? [])
+                const blockMessages = rawMessages.filter((m) => {
+                    const id = (m as { id?: string }).id ?? (m as { messageId?: string }).messageId ?? ""
+                    return msgIds.has(id)
+                })
+                const lines = blockMessages.map((m) => {
+                    const msg = m as { role?: string; type?: string; content?: unknown; text?: string }
+                    const role = msg.role || msg.type || "unknown"
+                    const content =
+                        typeof msg.content === "string"
+                            ? msg.content
+                            : typeof msg.text === "string"
+                              ? msg.text
+                              : JSON.stringify(msg.content || msg.text || "")
+                    return `[${role}]\n${content}`
+                })
+                const { writeFile } = await import("fs/promises")
+                const fileContent =
+                    lines.length > 0
+                        ? lines.join("\n\n---\n\n")
+                        : (block.summary ?? "(no content available)")
+                await writeFile(args.toFile as string, fileContent, "utf-8")
+                return `Block b${target.displayId} content (${blockMessages.length} messages, ${fileContent.length} chars) written to ${args.toFile}. Block stays compressed — context unchanged. Use read tool to access specific parts.`
             }
 
             const activeMessagesBefore = snapshotActiveMessages(messagesState)
