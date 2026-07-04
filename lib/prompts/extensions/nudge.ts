@@ -1,6 +1,14 @@
 import type { SessionState, CompressionBlock } from "../../state"
 import type { GCConfig } from "../../config"
 
+function formatBlockAge(createdAt: number): string {
+    const elapsed = Date.now() - createdAt
+    if (elapsed < 60_000) return "just now"
+    if (elapsed < 3_600_000) return `${Math.floor(elapsed / 60_000)}m ago`
+    if (elapsed < 86_400_000) return `${Math.floor(elapsed / 3_600_000)}h ago`
+    return `${Math.floor(elapsed / 86_400_000)}d ago`
+}
+
 export interface BlockGuidanceContext {
     currentTokens?: number
     modelContextLimit?: number
@@ -22,29 +30,24 @@ export function buildCompressedBlockGuidance(
         .filter((id) => Number.isInteger(id) && id > 0)
         .sort((a, b) => a - b)
 
-    const refs = activeBlockIds.map((id) => {
-        const block = state.prune.messages.blocksById.get(id)
-        const tokens = block?.summaryTokens ?? 0
-        return `b${id}${tokens > 0 ? ` (${tokens}t)` : ""}`
-    })
-    const blockCount = refs.length
-    let blockList: string
-    if (blockCount <= 20) {
-        blockList = blockCount > 0 ? refs.join(", ") : "none"
-    } else {
-        const recent = refs.slice(-20).join(", ")
-        blockList = `${recent} (+${blockCount - 20} older, use decompress to access by ID)`
-    }
+    const blockCount = activeBlockIds.length
 
-    const includeHint = context?.includeHint ?? true
+    const blocksForStats = activeBlockIds
+        .map((id) => state.prune.messages.blocksById.get(id))
+        .filter((b): b is CompressionBlock => b !== undefined && b.active)
+    const totalSummaryTokens = blocksForStats.reduce((s, b) => s + (b.summaryTokens ?? 0), 0)
+    const totalSummaryDisplay =
+        totalSummaryTokens >= 1000
+            ? `${(totalSummaryTokens / 1000).toFixed(1)}K`
+            : String(totalSummaryTokens)
+    const lastBlock = blocksForStats.length > 0
+        ? blocksForStats.reduce((latest, b) => (b.createdAt > latest.createdAt ? b : latest))
+        : null
+    const ageStr = lastBlock ? formatBlockAge(lastBlock.createdAt) : "never"
 
     const lines = [
-        `- Compressed blocks: ${blockCount} (${blockList})`,
+        `- Compressed blocks: ${blockCount} (${totalSummaryDisplay} summary, last ${ageStr}). Use acp_status for details.`,
     ]
-
-    if (includeHint) {
-        lines.push("- 💡 Tools: compress, decompress, search_context.")
-    }
 
     if (blockCount > 50) {
         const oldBlockIds = activeBlockIds.slice(0, Math.max(0, blockCount - 20))
