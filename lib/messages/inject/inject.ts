@@ -178,11 +178,10 @@ export const injectCompressNudges = (
             config.compress?.nudgeGrowthTokens ?? resolveAdaptiveNudgeGrowth(modelContextLimit),
     })
 
-    injectContextUsage(suffixMessage, config, currentTokens, modelContextLimit)
-
     let tipsText: string | null = null
 
     if (decision.shouldNudge) {
+        injectContextUsage(suffixMessage, config, currentTokens, modelContextLimit)
         if (decision.tipsVariant === "maxLimit") {
             tipsText = "\n\n⚠️ Context limit reached — compress now. Prioritize consumed tool outputs.\n\n{ \"topic\": \"...\", \"content\": [{ \"startId\": \"<ID>\", \"endId\": \"<ID>\", \"summary\": \"...\" }] }\n\nOnly use IDs from visible messages above. Compress older work first."
         } else if (decision.tipsVariant === "minLimit") {
