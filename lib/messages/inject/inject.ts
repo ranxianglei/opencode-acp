@@ -24,6 +24,7 @@ import {
     addAnchor,
     applyAnchoredNudges,
     buildContextUsageGuidance,
+    computeShouldNudge,
     countMessagesAfterIndex,
     findLastNonIgnoredMessage,
     getIterationNudgeThreshold,
@@ -165,21 +166,24 @@ export const injectCompressNudges = (
 
     applyAnchoredNudges(state, config, messages, prompts, compressionPriorities, currentTokens, modelContextLimit, suffixMessage)
 
-    const contextPct = modelContextLimit && currentTokens ? (currentTokens / modelContextLimit) * 100 : 0
-    const minPercent = config.compress?.minNudgeContextPercent ?? 15
-    const growthTokens = config.compress?.nudgeGrowthTokens ?? 6000
-    const lastNudgeTokens = state.nudges.lastPerMessageNudgeTokens ?? 0
-    const growthSinceLastNudge = (currentTokens ?? 0) - lastNudgeTokens
-    const shouldNudge = lastNudgeTokens === 0 || growthSinceLastNudge >= growthTokens
+    const decision = computeShouldNudge({
+        currentTokens,
+        modelContextLimit,
+        overMinLimit,
+        overMaxLimit,
+        lastNudgeTokens: state.nudges.lastPerMessageNudgeTokens ?? 0,
+        minNudgeContextPercent: config.compress?.minNudgeContextPercent ?? 15,
+        nudgeGrowthTokens: config.compress?.nudgeGrowthTokens ?? 6000,
+    })
 
     injectContextUsage(suffixMessage, config, currentTokens, modelContextLimit)
 
     let tipsText: string | null = null
 
-    if (contextPct >= minPercent && shouldNudge) {
-        if (overMaxLimit) {
+    if (decision.shouldNudge) {
+        if (decision.tipsVariant === "maxLimit") {
             tipsText = "\n\n⚠️ Context limit reached — compress now. Prioritize consumed tool outputs.\n\n{ \"topic\": \"...\", \"content\": [{ \"startId\": \"<ID>\", \"endId\": \"<ID>\", \"summary\": \"...\" }] }\n\nOnly use IDs from visible messages above. Compress older work first."
-        } else if (overMinLimit) {
+        } else if (decision.tipsVariant === "minLimit") {
             tipsText = "\n\n⚠️ Context is growing — consider compressing older work. Tools: compress, decompress, search_context."
         } else {
             tipsText = "\n\n💡 Tools: compress, decompress, search_context."

@@ -198,6 +198,50 @@ export function isContextOverLimits(
     }
 }
 
+export type TipsVariant = "maxLimit" | "minLimit" | "normal"
+
+export interface NudgeDecision {
+    shouldNudge: boolean
+    tipsVariant: TipsVariant | null
+}
+
+/**
+ * Per-message Tips decision (pure — extracted for unit testing).
+ * Nudge when contextPct >= floor AND (first nudge | growth >= step | over max limit).
+ */
+export function computeShouldNudge(params: {
+    currentTokens: number | undefined
+    modelContextLimit: number | undefined
+    overMinLimit: boolean
+    overMaxLimit: boolean
+    lastNudgeTokens: number
+    minNudgeContextPercent: number
+    nudgeGrowthTokens: number
+}): NudgeDecision {
+    const { currentTokens, modelContextLimit, overMinLimit, overMaxLimit } = params
+    const contextPct =
+        modelContextLimit && currentTokens ? (currentTokens / modelContextLimit) * 100 : 0
+
+    const lastNudgeTokens = params.lastNudgeTokens ?? 0
+    const growthSinceLastNudge = (currentTokens ?? 0) - lastNudgeTokens
+    const frequencyTriggered =
+        lastNudgeTokens === 0 ||
+        growthSinceLastNudge >= params.nudgeGrowthTokens ||
+        overMaxLimit
+
+    const shouldNudge = contextPct >= params.minNudgeContextPercent && frequencyTriggered
+    if (!shouldNudge) {
+        return { shouldNudge: false, tipsVariant: null }
+    }
+
+    const tipsVariant: TipsVariant = overMaxLimit
+        ? "maxLimit"
+        : overMinLimit
+          ? "minLimit"
+          : "normal"
+    return { shouldNudge: true, tipsVariant }
+}
+
 export function addAnchor(
     anchorMessageIds: Set<string>,
     anchorMessageId: string,
