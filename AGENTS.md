@@ -380,15 +380,32 @@ CI is configured via GitHub Actions (PR #2): typecheck + test + build on Node 22
 
 ### 3.4 Deployment (Local Testing)
 
+**One command** — build + deploy to the local opencode plugin cache:
+
 ```bash
-# Build
-npm run build
+./scripts/dev-deploy.sh           # Type check + build + deploy
+./scripts/dev-deploy.sh --check   # Tests + type check + build + deploy
+./scripts/dev-deploy.sh --no-build # Deploy existing dist/ only
+```
 
-# Deploy to local opencode cache
-cp -r dist/ ~/.cache/opencode/node_modules/opencode-acp/dist/
+opencode resolves `opencode-acp@latest` to:
+```
+~/.cache/opencode/packages/opencode-acp@latest/node_modules/opencode-acp/
+```
 
-# Or reinstall from local
-npm install --save ~/projects/opencode-acp --prefix ~/.cache/opencode
+**⚠️ Restart opencode after deploying** — the running process caches the module in memory. To pick up changes, kill the opencode process and restart.
+
+**Verify the deployed bundle has your changes:**
+```bash
+grep -c 'your-feature-name' ~/.cache/opencode/packages/opencode-acp@latest/node_modules/opencode-acp/dist/index.js
+```
+
+**Common mistake**: Deploying to `~/.cache/opencode/node_modules/opencode-acp/` (wrong path — that's the old resolution path, not where `@latest` resolves).
+
+**ACP debug logs** (for verifying injection behavior):
+```
+~/.config/opencode/logs/acp/context/<session_id>/<timestamp>.json   # per-request message snapshots
+~/.config/opencode/logs/acp/daily/<date>.log                        # session load/save events
 ```
 
 ### 3.5 npm Publishing
