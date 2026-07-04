@@ -95,6 +95,8 @@ export interface Nudges {
     iterationNudgeAnchors: Set<string>
     lastPerMessageNudgeTurn: number
     lastPerMessageNudgeTokens: number
+    /** Set by injectCompressNudges; read by system prompt handler next turn (1-turn lag). Undefined = first turn. */
+    shouldInjectThisTurn: boolean | undefined
 }
 
 export interface SessionState {

@@ -105,6 +105,10 @@ export function createSystemPromptHandler(
             return
         }
 
+        if (state.nudges.shouldInjectThisTurn === false && !state.manualMode) {
+            return
+        }
+
         prompts.reload()
         const runtimePrompts = prompts.getRuntimePrompts()
         const newPrompt = renderSystemPrompt(

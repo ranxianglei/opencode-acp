@@ -80,6 +80,7 @@ export function createSessionState(): SessionState {
             iterationNudgeAnchors: new Set<string>(),
             lastPerMessageNudgeTurn: 0,
             lastPerMessageNudgeTokens: 0,
+            shouldInjectThisTurn: undefined,
         },
         stats: {
             pruneTokenCounter: 0,
@@ -120,6 +121,7 @@ export function resetSessionState(state: SessionState): void {
         iterationNudgeAnchors: new Set<string>(),
         lastPerMessageNudgeTurn: 0,
         lastPerMessageNudgeTokens: 0,
+        shouldInjectThisTurn: undefined,
     }
     state.stats = {
         pruneTokenCounter: 0,

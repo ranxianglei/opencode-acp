@@ -178,6 +178,8 @@ export const injectCompressNudges = (
             config.compress?.nudgeGrowthTokens ?? resolveAdaptiveNudgeGrowth(modelContextLimit),
     })
 
+    state.nudges.shouldInjectThisTurn = decision.shouldNudge
+
     let tipsText: string | null = null
 
     if (decision.shouldNudge) {
