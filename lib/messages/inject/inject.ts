@@ -55,26 +55,6 @@ function createSuffixMessage(messages: WithParts[]): WithParts | null {
     return synthetic
 }
 
-function shouldInjectPerMessageNudge(
-    state: SessionState,
-    config: PluginConfig,
-    currentTokens?: number,
-    modelContextLimit?: number,
-): boolean {
-    const turn = state.currentTurn ?? 0
-    const lastTurn = state.nudges.lastPerMessageNudgeTurn ?? 0
-    const turnsSinceLast = turn - lastTurn
-
-    const tokens = currentTokens ?? 0
-    const lastTokens = state.nudges.lastPerMessageNudgeTokens ?? 0
-    const tokenGrowth = tokens - lastTokens
-    const tokenGrowthPercent = modelContextLimit ? (tokenGrowth / modelContextLimit) * 100 : 0
-
-    const frequency = config.compress.nudgeFrequency ?? 5
-    const growthThreshold = config.compress.perMessageNudgeGrowthPercent ?? 3
-    return turnsSinceLast >= frequency || tokenGrowthPercent >= growthThreshold
-}
-
 export const injectCompressNudges = (
     state: SessionState,
     config: PluginConfig,
@@ -98,6 +78,7 @@ export const injectCompressNudges = (
         state.nudges.contextLimitAnchors.clear()
         state.nudges.turnNudgeAnchors.clear()
         state.nudges.iterationNudgeAnchors.clear()
+        state.nudges.lastPerMessageNudgeTokens = 0
         void saveSessionState(state, logger)
         return
     }
@@ -184,10 +165,34 @@ export const injectCompressNudges = (
 
     applyAnchoredNudges(state, config, messages, prompts, compressionPriorities, currentTokens, modelContextLimit, suffixMessage)
 
-    // Gate per-message nudges: only inject full guidance when context has grown
-    const shouldNudge = shouldInjectPerMessageNudge(state, config, currentTokens, modelContextLimit)
+    const contextPct = modelContextLimit && currentTokens ? (currentTokens / modelContextLimit) * 100 : 0
+    const minPercent = config.compress?.minNudgeContextPercent ?? 15
 
-    injectContextUsage(suffixMessage, config, currentTokens, modelContextLimit, !shouldNudge)
+    injectContextUsage(suffixMessage, config, currentTokens, modelContextLimit)
+
+    // Determine tips tier: light (every turn) vs warning (key nodes only)
+    let tipsText: string | null = null
+
+    if (overMaxLimit || overMinLimit) {
+        // Warning zone: show at key nodes only (first crossing or 10pp growth)
+        const lastWarnPct = state.nudges.lastPerMessageNudgeTokens && modelContextLimit
+            ? (state.nudges.lastPerMessageNudgeTokens / modelContextLimit) * 100
+            : 0
+        const growthSinceWarn = contextPct - lastWarnPct
+        if (lastWarnPct === 0 || growthSinceWarn >= 10) {
+            tipsText = overMaxLimit
+                ? "\n\n⚠️ Context limit reached — compress now. Prioritize consumed tool outputs.\n\n{ \"topic\": \"...\", \"content\": [{ \"startId\": \"<ID>\", \"endId\": \"<ID>\", \"summary\": \"...\" }] }\n\nOnly use IDs from visible messages above. Compress older work first."
+                : "\n\n⚠️ Context is growing — consider compressing older work. Tools: compress, decompress, search_context."
+            state.nudges.lastPerMessageNudgeTokens = currentTokens ?? 0
+            state.nudges.lastPerMessageNudgeTurn = state.currentTurn ?? 0
+        }
+    } else if (contextPct >= minPercent) {
+        tipsText = "\n\n💡 Tools: compress, decompress, search_context."
+        // Reset warning tracking when context drops below warning zone
+        if (state.nudges.lastPerMessageNudgeTokens) {
+            state.nudges.lastPerMessageNudgeTokens = 0
+        }
+    }
 
     if (config.compress.mode !== "message") {
         const visibleMessageIds = new Set<string>(
@@ -196,7 +201,7 @@ export const injectCompressNudges = (
         const blockGuidance = buildCompressedBlockGuidance(state, config.gc, {
             currentTokens,
             modelContextLimit,
-            includeHint: shouldNudge,
+            includeHint: tipsText !== null,
             visibleMessageIds,
         })
         if (blockGuidance.trim() && suffixMessage) {
@@ -204,12 +209,15 @@ export const injectCompressNudges = (
         }
     }
 
-    if (shouldNudge) {
-        state.nudges.lastPerMessageNudgeTurn = state.currentTurn ?? 0
-        state.nudges.lastPerMessageNudgeTokens = currentTokens ?? 0
+    if (tipsText && suffixMessage) {
+        appendToLastTextPart(suffixMessage, tipsText)
     }
 
     injectVisibleIdRange(state, messages, suffixMessage)
+
+    if (suffixMessage) {
+        appendToLastTextPart(suffixMessage, "\n</acp-context>")
+    }
 
     if (anchorsChanged) {
         void saveSessionState(state, logger)
@@ -221,11 +229,11 @@ function injectContextUsage(
     config: PluginConfig,
     currentTokens?: number,
     modelContextLimit?: number,
-    minimal: boolean = false,
 ): void {
     if (!target) return
-    const usageTag = buildContextUsageGuidance(config, currentTokens, modelContextLimit, minimal)
-    if (!usageTag) return
+    const rawUsage = buildContextUsageGuidance(config, currentTokens, modelContextLimit)
+    if (!rawUsage) return
+    const usageTag = rawUsage
 
     for (const part of target.parts) {
         if (part.type === "text") {
@@ -251,7 +259,7 @@ function injectVisibleIdRange(state: SessionState, messages: WithParts[], target
     visibleRefs.sort()
     const first = visibleRefs[0]
     const last = visibleRefs[visibleRefs.length - 1]
-    const rangeTag = `\n\n[Visible message IDs: ${first} to ${last} (${visibleRefs.length} messages). Only use IDs in this range for compress.]`
+    const rangeTag = `\n\n[Visible messages: ${first} to ${last} (${visibleRefs.length} messages)]`
 
     for (const part of target.parts) {
         if (part.type === "text") {

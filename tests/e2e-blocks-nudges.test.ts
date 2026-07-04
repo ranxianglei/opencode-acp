@@ -211,7 +211,7 @@ test("nudge injection: context usage tag injected when modelContextLimit is set"
     assert.ok(suffixMessage, "suffix message should be created")
     const textParts = suffixMessage!.parts.filter((p: any) => p.type === "text")
     const combinedText = textParts.map((p: any) => p.text).join("")
-    assert.ok(combinedText.includes("Context usage:"), "should inject context usage tag")
+    assert.ok(combinedText.includes("Context:"), "should inject context tag")
 })
 
 // ─── Test: No nudge when permission is denied ───────────────────────────────
@@ -240,7 +240,7 @@ test("nudge injection: no context usage tag when permission is denied", async ()
     assert.ok(lastUser)
     const textParts = lastUser!.parts.filter((p: any) => p.type === "text" && !p.synthetic)
     const originalText = textParts.map((p: any) => p.text).join("")
-    assert.ok(!originalText.includes("Context usage:"), "should NOT inject context usage with deny")
+    assert.ok(!originalText.includes("Context:"), "should NOT inject context with deny")
 })
 
 // ─── Test: Block deactivation by age (major GC) ─────────────────────────────
@@ -434,8 +434,8 @@ test("visible ID range: range tag injected into suffix message", async () => {
     const textParts = suffixMessage!.parts.filter((p: any) => p.type === "text")
     const combinedText = textParts.map((p: any) => p.text).join("")
     assert.ok(
-        combinedText.includes("[Visible message IDs:"),
-        "should inject visible ID range tag",
+        combinedText.includes("[Visible messages:"),
+        "should inject visible messages tag",
     )
     assert.ok(
         combinedText.includes("messages"),

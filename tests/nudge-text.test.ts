@@ -96,21 +96,43 @@ test("buildCompressedBlockGuidance summarizes older blocks when there are more t
     assert.match(guidance, /b25/)
 })
 
-test("buildContextUsageGuidance low tier says 'Be frugal' and leaks no threshold numbers", () => {
-    const guidance = buildContextUsageGuidance(buildConfig(), LOW_USAGE, MODEL_CONTEXT_LIMIT)
+test("buildContextUsageGuidance returns context number without compression guidance", () => {
+    const low = buildContextUsageGuidance(buildConfig(), LOW_USAGE, MODEL_CONTEXT_LIMIT)
+    const mid = buildContextUsageGuidance(buildConfig(), MODERATE_USAGE, MODEL_CONTEXT_LIMIT)
+    const high = buildContextUsageGuidance(buildConfig(), HIGH_USAGE, MODEL_CONTEXT_LIMIT)
 
-    assert.match(guidance, /Be frugal/)
-    assert.doesNotMatch(guidance, /threshold/i)
+    assert.match(low, /Context:/)
+    assert.match(mid, /Context:/)
+    assert.match(high, /Context:/)
+
+    assert.match(low, /be frugal/i)
+    assert.doesNotMatch(low, /MUST|aggressive|critical/i)
+    assert.doesNotMatch(mid, /growing|MUST|aggressive/i)
+    assert.doesNotMatch(high, /aggressive|MUST/i)
 })
 
-test("buildContextUsageGuidance moderate tier says 'Context is growing'", () => {
-    const guidance = buildContextUsageGuidance(buildConfig(), MODERATE_USAGE, MODEL_CONTEXT_LIMIT)
+test("buildCompressedBlockGuidance shows token counts for blocks with summaryTokens", () => {
+    const state = createSessionState()
+    for (const id of [1, 2, 3]) {
+        state.prune.messages.activeBlockIds.add(id)
+        state.prune.messages.blocksById.set(id, { summaryTokens: id * 100 } as never)
+    }
 
-    assert.match(guidance, /Context is growing/)
+    const guidance = buildCompressedBlockGuidance(state)
+
+    assert.match(guidance, /b1 \(100t\)/)
+    assert.match(guidance, /b2 \(200t\)/)
+    assert.match(guidance, /b3 \(300t\)/)
 })
 
-test("buildContextUsageGuidance high tier says 'Context is high'", () => {
-    const guidance = buildContextUsageGuidance(buildConfig(), HIGH_USAGE, MODEL_CONTEXT_LIMIT)
+test("buildCompressedBlockGuidance omits token count when summaryTokens is 0 or missing", () => {
+    const state = createSessionState()
+    for (const id of [1, 2]) {
+        state.prune.messages.activeBlockIds.add(id)
+    }
 
-    assert.match(guidance, /Context is high/)
+    const guidance = buildCompressedBlockGuidance(state)
+
+    assert.match(guidance, /b1/)
+    assert.doesNotMatch(guidance, /b1 \(0t\)/)
 })

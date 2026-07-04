@@ -13,7 +13,7 @@ import {
 } from "./state"
 import type { CompressMessageToolArgs } from "./types"
 
-function buildSchema(maxSummaryLength: number) {
+function buildSchema() {
     return {
         topic: tool.schema
             .string()
@@ -32,11 +32,15 @@ function buildSchema(maxSummaryLength: number) {
                     summary: tool.schema
                         .string()
                         .describe(
-                            `Complete technical summary replacing that one message. Aim for <=${maxSummaryLength} chars; exceed only when strictly necessary to preserve critical detail (file paths, decisions, signatures, exact values). Never pad.`,
+                            "Complete technical summary replacing that one message. Keep only essential details (conclusions, file paths, decisions, exact values, etc.).",
                         ),
                 }),
             )
             .describe("Batch of individual message summaries to create in one tool call"),
+        summaryMaxChars: tool.schema
+            .number()
+            .optional()
+            .describe("Override max summary length (default max: 4000 chars). Use when content is important and needs more detail — don't lose critical info just to fit the limit."),
     }
 }
 
@@ -46,16 +50,16 @@ export function createCompressMessageTool(ctx: ToolContext): ReturnType<typeof t
 
     return tool({
         description: runtimePrompts.compressMessage + MESSAGE_FORMAT_EXTENSION,
-        args: buildSchema(ctx.config.compress.maxSummaryLength),
+        args: buildSchema(),
         async execute(args, toolCtx) {
             const input = args as CompressMessageToolArgs
             validateArgs(input)
 
-            const maxSummaryLengthHard = ctx.config.compress.maxSummaryLengthHard
+            const maxLen = (args as { summaryMaxChars?: number }).summaryMaxChars ?? ctx.config.compress.maxSummaryLengthHard
             for (const entry of input.content) {
-                if (entry.summary.length > maxSummaryLengthHard) {
+                if (entry.summary.length > maxLen) {
                     throw new Error(
-                        `Summary too long (${entry.summary.length} chars; limit ${maxSummaryLengthHard}). Rewrite to under ${maxSummaryLengthHard} chars — keep only the most essential details (conclusions, file paths, decisions, exact values) and drop verbose narration or raw dumps.`,
+                        `Summary too long (${entry.summary.length} chars, max ${maxLen}).\n1. If this summary is nearly the same size as the original content, it may not be worth compressing — skip it.\n2. Strip noise (failed attempts, verbose outputs) but keep project-critical details (file paths, decisions, exact values).\n3. For important content needing detail, pass summaryMaxChars to increase the limit — don't lose critical info just to fit. Example: add "summaryMaxChars": 6000 to the tool call args.`,
                     )
                 }
             }

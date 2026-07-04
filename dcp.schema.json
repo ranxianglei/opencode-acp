@@ -1,8 +1,8 @@
 {
     "$schema": "http://json-schema.org/draft-07/schema#",
     "$id": "https://raw.githubusercontent.com/ranxianglei/opencode-acp/master/dcp.schema.json",
-    "title": "DCP Plugin Configuration",
-    "description": "Configuration schema for the OpenCode Dynamic Context Pruning plugin",
+    "title": "ACP Plugin Configuration",
+    "description": "Configuration schema for the OpenCode Agent Context Pruning plugin",
     "type": "object",
     "additionalProperties": false,
     "properties": {
@@ -27,13 +27,20 @@
         },
         "pruneNotification": {
             "type": "string",
-            "enum": ["off", "minimal", "detailed"],
+            "enum": [
+                "off",
+                "minimal",
+                "detailed"
+            ],
             "default": "detailed",
             "description": "Level of notification shown when context management occurs"
         },
         "pruneNotificationType": {
             "type": "string",
-            "enum": ["chat", "toast"],
+            "enum": [
+                "chat",
+                "toast"
+            ],
             "default": "chat",
             "description": "Where to display notifications (chat message or toast notification)"
         },
@@ -135,13 +142,20 @@
             "properties": {
                 "mode": {
                     "type": "string",
-                    "enum": ["range", "message"],
+                    "enum": [
+                        "range",
+                        "message"
+                    ],
                     "default": "range",
                     "description": "Compression mode. 'range' compresses spans into block summaries, 'message' compresses individual raw messages."
                 },
                 "permission": {
                     "type": "string",
-                    "enum": ["ask", "allow", "deny"],
+                    "enum": [
+                        "ask",
+                        "allow",
+                        "deny"
+                    ],
                     "default": "allow",
                     "description": "Permission mode (deny disables the tool)"
                 },
@@ -225,7 +239,10 @@
                 },
                 "nudgeForce": {
                     "type": "string",
-                    "enum": ["strong", "soft"],
+                    "enum": [
+                        "strong",
+                        "soft"
+                    ],
                     "default": "soft",
                     "description": "Controls how likely compression is after user messages. 'strong' is more likely, 'soft' is less likely."
                 },
@@ -246,6 +263,18 @@
                     "type": "boolean",
                     "default": false,
                     "description": "When enabled, your messages are never lost during compression"
+                },
+                "minNudgeContextPercent": {
+                    "type": "number",
+                    "default": 15,
+                    "minimum": 0,
+                    "description": "Minimum context usage percent to show per-message nudges"
+                },
+                "maxSummaryLengthHard": {
+                    "type": "number",
+                    "default": 4000,
+                    "minimum": 1,
+                    "description": "Hard limit for summary length in characters"
                 }
             },
             "default": {
@@ -260,7 +289,9 @@
                 "nudgeForce": "soft",
                 "protectedTools": [],
                 "protectTags": false,
-                "protectUserMessages": false
+                "protectUserMessages": false,
+                "minNudgeContextPercent": 15,
+                "maxSummaryLengthHard": 3000
             }
         },
         "gc": {
@@ -270,7 +301,9 @@
             "properties": {
                 "algorithm": {
                     "type": "string",
-                    "enum": ["truncate"],
+                    "enum": [
+                        "truncate"
+                    ],
                     "default": "truncate"
                 },
                 "promotionThreshold": {
@@ -288,8 +321,13 @@
                 "majorGcThresholdPercent": {
                     "default": "100%",
                     "oneOf": [
-                        { "type": "number" },
-                        { "type": "string", "pattern": "^\\d+(?:\\.\\d+)?%$" }
+                        {
+                            "type": "number"
+                        },
+                        {
+                            "type": "string",
+                            "pattern": "^\\d+(?:\\.\\d+)?%$"
+                        }
                     ]
                 },
                 "batchCleanup": {
@@ -301,24 +339,39 @@
                             "default": "60%",
                             "description": "Nudge tier: at/above this usage, a reminder to merge marked blocks is injected.",
                             "oneOf": [
-                                { "type": "number" },
-                                { "type": "string", "pattern": "^\\d+(?:\\.\\d+)?%$" }
+                                {
+                                    "type": "number"
+                                },
+                                {
+                                    "type": "string",
+                                    "pattern": "^\\d+(?:\\.\\d+)?%$"
+                                }
                             ]
                         },
                         "highThreshold": {
                             "default": "75%",
                             "description": "Auto merge tier: at/above this usage, all marked blocks are merge-compressed into one.",
                             "oneOf": [
-                                { "type": "number" },
-                                { "type": "string", "pattern": "^\\d+(?:\\.\\d+)?%$" }
+                                {
+                                    "type": "number"
+                                },
+                                {
+                                    "type": "string",
+                                    "pattern": "^\\d+(?:\\.\\d+)?%$"
+                                }
                             ]
                         },
                         "forceThreshold": {
                             "default": "90%",
                             "description": "Force merge tier: at/above this usage, all old-gen blocks are merged regardless of marks.",
                             "oneOf": [
-                                { "type": "number" },
-                                { "type": "string", "pattern": "^\\d+(?:\\.\\d+)?%$" }
+                                {
+                                    "type": "number"
+                                },
+                                {
+                                    "type": "string",
+                                    "pattern": "^\\d+(?:\\.\\d+)?%$"
+                                }
                             ]
                         }
                     }

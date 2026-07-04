@@ -391,6 +391,34 @@ ACP 在首次启动时自动将配置从 `dcp.jsonc` 迁移到 `acp.jsonc`，将
 
 ---
 
+## 更新日志
+
+### v1.7.0 — 原则驱动提示
+
+**理念**：用 4 条简洁原则替代冗长的上下文管理指导。模型现在看到的是*重要原则*而非*死板规则*。
+
+**提示变更**：
+- 4 条原则替代 CONTEXT PRESSURE LEVELS、7 项优先级列表、DO NOT RE-COMPRESS 规则
+- 上下文显示简化：仅显示绝对 token 数，不显示百分比
+- `<acp-context>` 标签包裹（向后兼容 `<dcp-context>`）
+
+**混合 Tips 频率**：
+- 💡 轻量提示（15-45%）：每轮显示 — 不打扰
+- ⚠️ 警告提示（45%+）：仅关键节点 — 首次跨越或增长 10pp，防止过度压缩
+
+**配置简化**：
+- 移除 `hardNudgeContextPercent` — 合并到 `minContextLimit`/`maxContextLimit`
+- 移除 `perMessageNudgeGrowthPercent` — 轻量提示每轮显示
+- `maxSummaryLength` 默认值：200 → 2000
+- `maxSummaryLengthHard` 默认值：3000 → 4000
+
+**Bug 修复**：
+- Windows 路径校验：`os.tmpdir()` + `path.relative()`（原硬编码 `/tmp/`）
+- 压缩检测后：重置警告追踪
+- 死代码清理：`shouldInjectPerMessageNudge`、空操作模板
+
+---
+
 ## 许可证
 
 AGPL-3.0-or-later — 本项目是 [@tarquinen/opencode-dcp](https://github.com/Tarquinen/opencode-dynamic-context-pruning) 的分支。原始版权归原始作者所有。修改和错误修复由 ranxianglei 完成。

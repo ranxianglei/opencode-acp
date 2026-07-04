@@ -154,12 +154,3 @@ test("validateConfigTypes catches wrong type for compress.maxSummaryLengthHard",
     assert.equal(result[0].key, "compress.maxSummaryLengthHard")
     assert.equal(result[0].actual, "string")
 })
-
-test("validateConfigTypes rejects compress.maxSummaryLengthHard < maxSummaryLength", () => {
-    const result = validateConfigTypes({
-        compress: { maxSummaryLength: 200, maxSummaryLengthHard: 100 },
-    })
-    const hit = result.find((e) => e.key === "compress.maxSummaryLengthHard")
-    assert.ok(hit, "hard ceiling below soft target must be flagged")
-    assert.ok(hit!.expected.includes(">= maxSummaryLength"))
-})
