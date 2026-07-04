@@ -136,6 +136,29 @@ test("custom nudgeGrowthTokens respected", () => {
     assert.equal(loose.shouldNudge, false)
 })
 
+test("regression: post-compress lastNudgeTokens=currentTokens prevents immediate re-nudge", () => {
+    // Regression: compress previously reset lastPerMessageNudgeTokens to 0, which
+    // caused lastNudgeTokens===0 to re-trigger a nudge every turn (bypassing growth gate).
+    // Fix: set to post-compress token level so growth counter restarts correctly.
+    const postCompressTokens = 250_000
+
+    const immediate = computeShouldNudge({
+        ...baseParams,
+        currentTokens: postCompressTokens + 3_000,
+        lastNudgeTokens: postCompressTokens,
+        nudgeGrowthTokens: 50_000,
+    })
+    assert.equal(immediate.shouldNudge, false)
+
+    const afterGrowth = computeShouldNudge({
+        ...baseParams,
+        currentTokens: postCompressTokens + 55_000,
+        lastNudgeTokens: postCompressTokens,
+        nudgeGrowthTokens: 50_000,
+    })
+    assert.equal(afterGrowth.shouldNudge, true)
+})
+
 test("resolveAdaptiveNudgeGrowth: undefined limit returns floor", () => {
     assert.equal(resolveAdaptiveNudgeGrowth(undefined), 6000)
 })

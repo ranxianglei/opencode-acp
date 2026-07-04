@@ -76,17 +76,7 @@ export const injectCompressNudges = (
     const lastMessage = findLastNonIgnoredMessage(messages)
     const lastAssistantMessage = messages.findLast((message) => message.info.role === "assistant")
 
-    if (lastAssistantMessage && messageHasCompress(lastAssistantMessage)) {
-        state.nudges.contextLimitAnchors.clear()
-        state.nudges.turnNudgeAnchors.clear()
-        state.nudges.iterationNudgeAnchors.clear()
-        state.nudges.lastPerMessageNudgeTokens = 0
-        void saveSessionState(state, logger)
-        return
-    }
-
     const { providerId, modelId } = getModelInfo(messages)
-    let anchorsChanged = false
 
     const { overMaxLimit, overMinLimit, currentTokens, modelContextLimit } = isContextOverLimits(
         config,
@@ -95,6 +85,17 @@ export const injectCompressNudges = (
         modelId,
         messages,
     )
+
+    if (lastAssistantMessage && messageHasCompress(lastAssistantMessage)) {
+        state.nudges.contextLimitAnchors.clear()
+        state.nudges.turnNudgeAnchors.clear()
+        state.nudges.iterationNudgeAnchors.clear()
+        state.nudges.lastPerMessageNudgeTokens = currentTokens ?? 0
+        void saveSessionState(state, logger)
+        return
+    }
+
+    let anchorsChanged = false
 
     if (!overMinLimit) {
         const hadTurnAnchors = state.nudges.turnNudgeAnchors.size > 0
