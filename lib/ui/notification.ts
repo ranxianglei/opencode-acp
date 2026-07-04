@@ -112,20 +112,10 @@ function formatCompressionMetrics(removedTokens: number, summaryTokens: number):
     return metrics.join(", ")
 }
 
-function formatContextTransition(
-    tokensBefore: number,
-    tokensAfter: number,
-    contextLimit: number | undefined,
-): string {
+function formatContextTransition(tokensBefore: number, tokensAfter: number): string {
     const beforeStr = formatTokenCount(tokensBefore, true)
     const afterStr = formatTokenCount(tokensAfter, true)
-    if (!contextLimit || contextLimit <= 0) {
-        return `Context ${beforeStr}→${afterStr}`
-    }
-    const pctBefore = Math.round((tokensBefore / contextLimit) * 100)
-    const pctAfter = Math.round((tokensAfter / contextLimit) * 100)
-    const limitStr = formatTokenCount(contextLimit, true)
-    return `Context ${pctBefore}%→${pctAfter}% (${beforeStr}→${afterStr} of ${limitStr})`
+    return `Context ${beforeStr}→${afterStr}`
 }
 
 export async function sendCompressNotification(
@@ -208,7 +198,6 @@ export async function sendCompressNotification(
     const notificationHeader = `▣ ACP | ${formatContextTransition(
         contextTokensBefore,
         contextTokensAfter,
-        state.modelContextLimit,
     )}`
 
     if (config.pruneNotification === "minimal") {
