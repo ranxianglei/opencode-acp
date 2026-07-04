@@ -92,6 +92,8 @@ export async function finalizeSession(
         .filter((msg) => !isIgnoredUserMessage(msg))
         .map((msg) => msg.info.id)
 
+    const contextTokensBefore = getCurrentTokenUsage(ctx.state, rawMessages)
+
     await sendCompressNotification(
         ctx.client,
         ctx.logger,
@@ -102,5 +104,6 @@ export async function finalizeSession(
         batchTopic,
         sessionMessageIds,
         params,
+        contextTokensBefore,
     )
 }
