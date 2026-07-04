@@ -279,7 +279,7 @@
                 "nudgeGrowthTokens": {
                     "type": "number",
                     "default": 6000,
-                    "description": "Token growth required between per-message nudges (absolute, not percentage). Shows Tips only after context grows by this many tokens."
+                    "description": "Token growth required between per-message nudges (absolute, not percentage). Shows Tips only after context grows by this many tokens. Default is adaptive: 5% of modelContextLimit, clamped to [6000, 50000] — e.g. 128K→6.4K, 200K→10K, 1M→50K."
                 }
             },
             "default": {

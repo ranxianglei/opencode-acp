@@ -242,6 +242,18 @@ export function computeShouldNudge(params: {
     return { shouldNudge: true, tipsVariant }
 }
 
+const NUDGE_GROWTH_FLOOR = 6000
+const NUDGE_GROWTH_CAP = 50000
+const NUDGE_GROWTH_RATIO = 0.05
+
+export function resolveAdaptiveNudgeGrowth(modelContextLimit: number | undefined): number {
+    if (!modelContextLimit || modelContextLimit <= 0) return NUDGE_GROWTH_FLOOR
+    return Math.min(
+        NUDGE_GROWTH_CAP,
+        Math.max(NUDGE_GROWTH_FLOOR, Math.round(modelContextLimit * NUDGE_GROWTH_RATIO)),
+    )
+}
+
 export function addAnchor(
     anchorMessageIds: Set<string>,
     anchorMessageId: string,

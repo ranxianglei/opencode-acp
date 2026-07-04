@@ -31,6 +31,7 @@ import {
     getNudgeFrequency,
     getModelInfo,
     isContextOverLimits,
+    resolveAdaptiveNudgeGrowth,
 } from "./utils"
 import { buildCompressedBlockGuidance } from "../../prompts/extensions/nudge"
 
@@ -173,7 +174,8 @@ export const injectCompressNudges = (
         overMaxLimit,
         lastNudgeTokens: state.nudges.lastPerMessageNudgeTokens ?? 0,
         minNudgeContextPercent: config.compress?.minNudgeContextPercent ?? 15,
-        nudgeGrowthTokens: config.compress?.nudgeGrowthTokens ?? 6000,
+        nudgeGrowthTokens:
+            config.compress?.nudgeGrowthTokens ?? resolveAdaptiveNudgeGrowth(modelContextLimit),
     })
 
     injectContextUsage(suffixMessage, config, currentTokens, modelContextLimit)

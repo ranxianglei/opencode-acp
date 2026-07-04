@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { computeShouldNudge } from "../lib/messages/inject/utils"
+import { computeShouldNudge, resolveAdaptiveNudgeGrowth } from "../lib/messages/inject/utils"
 
 const baseParams = {
     currentTokens: 0,
@@ -134,4 +134,36 @@ test("custom nudgeGrowthTokens respected", () => {
         nudgeGrowthTokens: 5000,
     })
     assert.equal(loose.shouldNudge, false)
+})
+
+test("resolveAdaptiveNudgeGrowth: undefined limit returns floor", () => {
+    assert.equal(resolveAdaptiveNudgeGrowth(undefined), 6000)
+})
+
+test("resolveAdaptiveNudgeGrowth: zero/negative limit returns floor", () => {
+    assert.equal(resolveAdaptiveNudgeGrowth(0), 6000)
+    assert.equal(resolveAdaptiveNudgeGrowth(-100), 6000)
+})
+
+test("resolveAdaptiveNudgeGrowth: tiny context floored at 6K", () => {
+    assert.equal(resolveAdaptiveNudgeGrowth(10_000), 6000)
+    assert.equal(resolveAdaptiveNudgeGrowth(50_000), 6000)
+    assert.equal(resolveAdaptiveNudgeGrowth(100_000), 6000)
+})
+
+test("resolveAdaptiveNudgeGrowth: 128K mainstream model", () => {
+    assert.equal(resolveAdaptiveNudgeGrowth(128_000), 6400)
+})
+
+test("resolveAdaptiveNudgeGrowth: 200K → 10K", () => {
+    assert.equal(resolveAdaptiveNudgeGrowth(200_000), 10_000)
+})
+
+test("resolveAdaptiveNudgeGrowth: 1M → 50K (5% exact)", () => {
+    assert.equal(resolveAdaptiveNudgeGrowth(1_000_000), 50_000)
+})
+
+test("resolveAdaptiveNudgeGrowth: multi-million capped at 50K", () => {
+    assert.equal(resolveAdaptiveNudgeGrowth(2_000_000), 50_000)
+    assert.equal(resolveAdaptiveNudgeGrowth(10_000_000), 50_000)
 })
