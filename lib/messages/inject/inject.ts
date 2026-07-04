@@ -191,31 +191,31 @@ export const injectCompressNudges = (
         }
         state.nudges.lastPerMessageNudgeTokens = currentTokens ?? 0
         state.nudges.lastPerMessageNudgeTurn = state.currentTurn ?? 0
-    }
 
-    if (config.compress.mode !== "message") {
-        const visibleMessageIds = new Set<string>(
-            messages.map((message) => message.info.id),
-        )
-        const blockGuidance = buildCompressedBlockGuidance(state, config.gc, {
-            currentTokens,
-            modelContextLimit,
-            includeHint: tipsText !== null,
-            visibleMessageIds,
-        })
-        if (blockGuidance.trim() && suffixMessage) {
-            appendToLastTextPart(suffixMessage, "\n\n" + blockGuidance)
+        if (config.compress.mode !== "message") {
+            const visibleMessageIds = new Set<string>(
+                messages.map((message) => message.info.id),
+            )
+            const blockGuidance = buildCompressedBlockGuidance(state, config.gc, {
+                currentTokens,
+                modelContextLimit,
+                includeHint: tipsText !== null,
+                visibleMessageIds,
+            })
+            if (blockGuidance.trim() && suffixMessage) {
+                appendToLastTextPart(suffixMessage, "\n\n" + blockGuidance)
+            }
         }
-    }
 
-    if (tipsText && suffixMessage) {
-        appendToLastTextPart(suffixMessage, tipsText)
-    }
+        if (tipsText && suffixMessage) {
+            appendToLastTextPart(suffixMessage, tipsText)
+        }
 
-    injectVisibleIdRange(state, messages, suffixMessage)
+        injectVisibleIdRange(state, messages, suffixMessage)
+    }
 
     if (suffixMessage) {
-        appendToLastTextPart(suffixMessage, "\n</acp-context>")
+        appendToLastTextPart(suffixMessage, "\n")
     }
 
     if (anchorsChanged) {
