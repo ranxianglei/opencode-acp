@@ -275,6 +275,11 @@
                     "default": 4000,
                     "minimum": 1,
                     "description": "Hard limit for summary length in characters"
+                },
+                "nudgeGrowthTokens": {
+                    "type": "number",
+                    "default": 6000,
+                    "description": "Token growth required between per-message nudges (absolute, not percentage). Shows Tips only after context grows by this many tokens."
                 }
             },
             "default": {
@@ -291,7 +296,8 @@
                 "protectTags": false,
                 "protectUserMessages": false,
                 "minNudgeContextPercent": 15,
-                "maxSummaryLengthHard": 3000
+                "maxSummaryLengthHard": 3000,
+                "nudgeGrowthTokens": 6000
             }
         },
         "gc": {

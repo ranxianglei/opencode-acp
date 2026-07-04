@@ -167,31 +167,25 @@ export const injectCompressNudges = (
 
     const contextPct = modelContextLimit && currentTokens ? (currentTokens / modelContextLimit) * 100 : 0
     const minPercent = config.compress?.minNudgeContextPercent ?? 15
+    const growthTokens = config.compress?.nudgeGrowthTokens ?? 6000
+    const lastNudgeTokens = state.nudges.lastPerMessageNudgeTokens ?? 0
+    const growthSinceLastNudge = (currentTokens ?? 0) - lastNudgeTokens
+    const shouldNudge = lastNudgeTokens === 0 || growthSinceLastNudge >= growthTokens
 
     injectContextUsage(suffixMessage, config, currentTokens, modelContextLimit)
 
-    // Determine tips tier: light (every turn) vs warning (key nodes only)
     let tipsText: string | null = null
 
-    if (overMaxLimit || overMinLimit) {
-        // Warning zone: show at key nodes only (first crossing or 10pp growth)
-        const lastWarnPct = state.nudges.lastPerMessageNudgeTokens && modelContextLimit
-            ? (state.nudges.lastPerMessageNudgeTokens / modelContextLimit) * 100
-            : 0
-        const growthSinceWarn = contextPct - lastWarnPct
-        if (lastWarnPct === 0 || growthSinceWarn >= 10) {
-            tipsText = overMaxLimit
-                ? "\n\n⚠️ Context limit reached — compress now. Prioritize consumed tool outputs.\n\n{ \"topic\": \"...\", \"content\": [{ \"startId\": \"<ID>\", \"endId\": \"<ID>\", \"summary\": \"...\" }] }\n\nOnly use IDs from visible messages above. Compress older work first."
-                : "\n\n⚠️ Context is growing — consider compressing older work. Tools: compress, decompress, search_context."
-            state.nudges.lastPerMessageNudgeTokens = currentTokens ?? 0
-            state.nudges.lastPerMessageNudgeTurn = state.currentTurn ?? 0
+    if (contextPct >= minPercent && shouldNudge) {
+        if (overMaxLimit) {
+            tipsText = "\n\n⚠️ Context limit reached — compress now. Prioritize consumed tool outputs.\n\n{ \"topic\": \"...\", \"content\": [{ \"startId\": \"<ID>\", \"endId\": \"<ID>\", \"summary\": \"...\" }] }\n\nOnly use IDs from visible messages above. Compress older work first."
+        } else if (overMinLimit) {
+            tipsText = "\n\n⚠️ Context is growing — consider compressing older work. Tools: compress, decompress, search_context."
+        } else {
+            tipsText = "\n\n💡 Tools: compress, decompress, search_context."
         }
-    } else if (contextPct >= minPercent) {
-        tipsText = "\n\n💡 Tools: compress, decompress, search_context."
-        // Reset warning tracking when context drops below warning zone
-        if (state.nudges.lastPerMessageNudgeTokens) {
-            state.nudges.lastPerMessageNudgeTokens = 0
-        }
+        state.nudges.lastPerMessageNudgeTokens = currentTokens ?? 0
+        state.nudges.lastPerMessageNudgeTurn = state.currentTurn ?? 0
     }
 
     if (config.compress.mode !== "message") {
