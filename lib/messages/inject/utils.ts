@@ -457,8 +457,6 @@ export function applyAnchoredNudges(
     modelContextLimit?: number,
     suffixMessage?: WithParts | null,
 ): void {
-    const contextUsageInfo = buildContextUsageGuidance(config, currentTokens, modelContextLimit)
-    const contextLimitNudgeWithUsage = prompts.contextLimitNudge + contextUsageInfo
     const turnNudgeAnchors = collectTurnNudgeAnchors(state, config, messages)
 
     if (suffixMessage) {
@@ -468,7 +466,7 @@ export function applyAnchoredNudges(
             if (state.nudges.contextLimitAnchors.size > 0) {
                 for (const { index } of collectAnchoredMessages(state.nudges.contextLimitAnchors, messages)) {
                     const guidance = buildMessagePriorityGuidance(messages, compressionPriorities, index, MESSAGE_MODE_NUDGE_PRIORITY)
-                    nudgeParts.push(appendGuidanceToDcpTag(contextLimitNudgeWithUsage, guidance))
+                    nudgeParts.push(appendGuidanceToDcpTag(prompts.contextLimitNudge, guidance))
                 }
             }
             if (turnNudgeAnchors.size > 0) {
@@ -485,7 +483,7 @@ export function applyAnchoredNudges(
             }
         } else {
             if (state.nudges.contextLimitAnchors.size > 0) {
-                nudgeParts.push(contextLimitNudgeWithUsage)
+                nudgeParts.push(prompts.contextLimitNudge)
             }
             if (turnNudgeAnchors.size > 0) {
                 nudgeParts.push(prompts.turnNudge)
@@ -506,7 +504,7 @@ export function applyAnchoredNudges(
         applyMessageModeAnchoredNudge(
             state.nudges.contextLimitAnchors,
             messages,
-            contextLimitNudgeWithUsage,
+            prompts.contextLimitNudge,
             compressionPriorities,
         )
         applyMessageModeAnchoredNudge(
@@ -527,7 +525,7 @@ export function applyAnchoredNudges(
     applyRangeModeAnchoredNudge(
         state.nudges.contextLimitAnchors,
         messages,
-        contextLimitNudgeWithUsage,
+        prompts.contextLimitNudge,
         "",
     )
     applyRangeModeAnchoredNudge(
