@@ -210,7 +210,8 @@ export const injectCompressNudges = (
             const toolGrowth = composition.toolTokens - state.nudges.lastToolOutputNudgeTokens
             if (toolGrowth >= toolOutputThreshold) {
                 const fmt = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n))
-                toolOutputReminder = `\n\n💡 ${fmt(toolGrowth)} new tool outputs accumulated (${fmt(composition.toolTokens)} total). Extract key facts from consumed outputs, then compress. Maintain principles — ignore if outputs are still needed.`
+                const topRanges = composition.largestRanges.slice(0, 5).map((r) => `${r.ref} (${fmt(r.tokens)})`).join(", ")
+                toolOutputReminder = `\n\n💡 ${fmt(toolGrowth)} new tool outputs accumulated (${fmt(composition.toolTokens)} total). Largest: ${topRanges}. Use compress tool to compress consumed ranges. Maintain principles — ignore if outputs are still needed.`
                 state.nudges.lastToolOutputNudgeTokens = composition.toolTokens
                 anchorsChanged = true
             }
@@ -243,7 +244,8 @@ export const injectCompressNudges = (
             }
             if (composition.largestRanges.length > 0) {
                 const ranges = composition.largestRanges.map((r) => `${r.ref} (${fmt(r.tokens)})`).join(", ")
-                breakdown += `\nLargest messages: ${ranges} — compress these ranges first.`
+                breakdown += `\nLargest messages: ${ranges}`
+                breakdown += `\nUse compress tool on these ranges. Ignore if content is still needed.`
             }
             appendToLastTextPart(suffixMessage, breakdown)
         }

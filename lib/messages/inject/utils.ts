@@ -606,6 +606,6 @@ export function estimateContextComposition(
         summaryTokens,
         messageTokens,
         total: toolTokens + summaryTokens + messageTokens,
-        largestRanges: perMessage.slice(0, 5),
+        largestRanges: perMessage.slice(0, 10),
     }
 }
