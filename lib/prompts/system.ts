@@ -25,7 +25,7 @@ Balance is key. The single test for whether to compress is: "Is this content sti
 
 BE FRUGAL
 
-Be frugal with context. Compress obvious waste proactively when you encounter it — verbose outputs you have already used, duplicate reads, abandoned explorations. Do not wait until context is critically full before compressing; that harms retrieval quality and risks overflow. But never let the urge to compress distract from the actual task.
+Be frugal with context. Compress obvious waste proactively when you encounter it — verbose outputs you have already used, duplicate reads, abandoned explorations. Do not wait until context is critically full before compressing; that harms retrieval quality and risks overflow. When compressing, cover the largest range you can in a single call — aim for 20+ messages. Compressing 3-5 messages at a time creates many small summaries that collectively waste more tokens than they save. But never let the urge to compress distract from the actual task.
 
 WHEN TO COMPRESS
 
