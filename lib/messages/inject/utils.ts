@@ -549,3 +549,35 @@ export function applyAnchoredNudges(
         "",
     )
 }
+
+export interface ContextComposition {
+    toolTokens: number
+    summaryTokens: number
+    messageTokens: number
+    total: number
+}
+
+export function estimateContextComposition(messages: WithParts[]): ContextComposition {
+    let toolTokens = 0
+    let summaryTokens = 0
+    let messageTokens = 0
+
+    for (const msg of messages) {
+        const isSummary = (msg.info as any)?.summary === true
+        for (const part of msg.parts || []) {
+            if (part.type === "text" && typeof (part as any).text === "string") {
+                const tokens = Math.round((part as any).text.length / 4)
+                if (isSummary) {
+                    summaryTokens += tokens
+                } else {
+                    messageTokens += tokens
+                }
+            } else if (part.type !== "text" && part.type !== "reasoning") {
+                const raw = JSON.stringify(part)
+                toolTokens += Math.round(raw.length / 4)
+            }
+        }
+    }
+
+    return { toolTokens, summaryTokens, messageTokens, total: toolTokens + summaryTokens + messageTokens }
+}

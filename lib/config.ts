@@ -26,6 +26,7 @@ export interface CompressConfig {
     nudgeFrequency: number
     minNudgeContextPercent: number
     nudgeGrowthTokens?: number
+    toolOutputNudgeThreshold?: number
     iterationNudgeThreshold: number
     nudgeForce: "strong" | "soft"
     protectedTools: string[]
