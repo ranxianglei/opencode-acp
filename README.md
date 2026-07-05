@@ -421,7 +421,43 @@ For the complete list with root cause analysis, see the [bug tracker](https://gi
 
 ## Changelog
 
-### v1.7.0 — Principle-Driven Prompts
+### v1.8.1 — Adaptive Nudge Frequency + System Prompt Gating
+
+**Problem**: Large-context models (1M+) over-compressed at 20-30% context because Tips fired every 6K tokens (0.6% of 1M). System prompt injected every turn added constant pressure.
+
+**Adaptive nudgeGrowthTokens**:
+- Default is now adaptive: 5% of `modelContextLimit`, clamped to [6000, 50000]
+  - 128K → 6.4K, 200K → 10K, 500K → 25K, 1M → 50K, 2M+ → 50K (cap)
+- Users can still set explicit `nudgeGrowthTokens` to override
+- Removed hardcoded `6000` from schema defaults (was shadowing adaptive logic)
+
+**System prompt gating**:
+- SYSTEM prompt + `<dcp-system-reminder>` tags now pulse at `nudgeGrowthTokens` frequency
+- Between nudges: system prompt injects **nothing** — zero compression noise
+- First turn (`undefined` sentinel): always injects (establishes baseline)
+
+**New tool: `acp_status`**:
+- On-demand inspection of all compressed blocks (ID, tokens, age, topic)
+- Replaces verbose block list in suffix with one-liner: `Compressed blocks: N (XK summary, last Ym ago). Use acp_status for details.`
+
+**Compress notification improvement**:
+- Header shows context before→after: `▣ ACP | Context 251.2K→249.3K`
+- No percentage or limit shown (prevents model from anchoring on ceiling)
+
+**Bug fixes**:
+- `lastPerMessageNudgeTokens` reset to `0` after compress bypassed growth gate (feedback loop)
+- Schema default `6000` shadowed `resolveAdaptiveNudgeGrowth()` — adaptive never activated
+- `applyAnchoredNudges` + `injectContextUsage` duplicated context usage text
+- `lastNudgeTokens === 0` sentinel replaced with `undefined` (explicit "never nudged")
+
+**Tooling**:
+- `scripts/dev-deploy.sh` — one-command build + deploy (auto-detects node, typecheck, build, deploy)
+- Post-compress state transition integration tests (3 new)
+- `acp_status` dedicated tests (7 new)
+
+---
+
+### v1.8.0 — Principle-Driven Prompts
 
 **Philosophy**: Replaced verbose context-management guidance with 4 concise principles injected every turn. The model now sees *what matters* (principles) instead of *what to do* (rigid rules).
 
