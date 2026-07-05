@@ -91,7 +91,7 @@ export const injectCompressNudges = (
         state.nudges.turnNudgeAnchors.clear()
         state.nudges.iterationNudgeAnchors.clear()
         state.nudges.lastPerMessageNudgeTokens = currentTokens
-        void saveSessionState(state, logger)
+        saveSessionState(state, logger).catch(() => {})
         return
     }
 
@@ -229,7 +229,7 @@ export const injectCompressNudges = (
     }
 
     if (anchorsChanged) {
-        void saveSessionState(state, logger)
+        saveSessionState(state, logger).catch(() => {})
     }
 }
 
