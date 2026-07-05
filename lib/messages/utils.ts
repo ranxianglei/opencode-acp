@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto"
 import type { SessionState, WithParts } from "../state"
 import { isMessageCompacted } from "../state/utils"
-import type { UserMessage } from "@opencode-ai/sdk/v2"
+import type { AssistantMessage, Message, UserMessage } from "@opencode-ai/sdk/v2"
 
 const SUMMARY_ID_HASH_LENGTH = 16
 
@@ -9,9 +9,11 @@ const SUMMARY_ID_HASH_LENGTH = 16
 // an existing user message. The header embeds the block id so multiple blocks
 // landing on the same user message each get their own clearly delimited entry,
 // and so the prepend is idempotent across re-runs (guarded by the marker check).
+// [FIX Bug 37] Tagged as system metadata (not user content) so the model does
+// not misattribute the assistant's prior compression summary as a user turn.
 const MERGED_SUMMARY_HEADER = (blockId: number | string) =>
-    `[ACP compressed context summary (block ${blockId}) — prior conversation recap]\n`
-const MERGED_SUMMARY_FOOTER = `\n[End ACP compressed context summary]\n\n`
+    `<acp-compression-summary>\n[ACP model-generated recap (block ${blockId}) — NOT a user message]\n`
+const MERGED_SUMMARY_FOOTER = `\n</acp-compression-summary>\n\n`
 const DCP_BLOCK_ID_TAG_REGEX = /(<dcp-message-id(?=[\s>])[^>]*>)b\d+(<\/(?:dcp|acp)-message-id>)/g
 // [FIX Bug 28] Regex to strip stale mNNNN refs from compressed summaries
 const DCP_MESSAGE_REF_TAG_REGEX = /<dcp-message-id>m\d+<\/(?:dcp|acp)-message-id>/g
@@ -23,38 +25,67 @@ const generateStableId = (prefix: string, seed: string): string => {
     return `${prefix}_${hash}`
 }
 
+export const createSyntheticMessage = (
+    baseMessage: WithParts,
+    content: string,
+    stableSeed?: string,
+    role: "user" | "assistant" = "user",
+): WithParts => {
+    const baseInfo = baseMessage.info
+    const now = Date.now()
+    const deterministicSeed = stableSeed?.trim() || baseInfo.id
+    const messageId = generateStableId("msg_dcp_summary", deterministicSeed)
+    const partId = generateStableId("prt_dcp_summary", deterministicSeed)
+
+    const parts = [
+        {
+            id: partId,
+            sessionID: baseInfo.sessionID,
+            messageID: messageId,
+            type: "text" as const,
+            text: content,
+            synthetic: true,
+        },
+    ]
+
+    if (role === "assistant") {
+        const isAssistant = baseInfo.role === "assistant"
+        const assistantBase = isAssistant ? baseInfo : undefined
+        const userModel = !isAssistant ? (baseInfo as UserMessage).model : undefined
+        const info: AssistantMessage = {
+            id: messageId,
+            sessionID: baseInfo.sessionID,
+            role: "assistant",
+            time: { created: now },
+            parentID: assistantBase?.parentID ?? "",
+            modelID: assistantBase?.modelID ?? userModel?.modelID ?? "",
+            providerID: assistantBase?.providerID ?? userModel?.providerID ?? "",
+            mode: assistantBase?.mode ?? "code",
+            agent: baseInfo.agent ?? "code",
+            path: assistantBase?.path ?? { cwd: "", root: "" },
+            cost: 0,
+            tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+        }
+        return { info, parts }
+    }
+
+    const userInfo = baseInfo as UserMessage
+    const info: UserMessage = {
+        id: messageId,
+        sessionID: userInfo.sessionID,
+        role: "user",
+        agent: userInfo.agent,
+        model: userInfo.model,
+        time: { created: now },
+    }
+    return { info, parts }
+}
+
 export const createSyntheticUserMessage = (
     baseMessage: WithParts,
     content: string,
     stableSeed?: string,
-): WithParts => {
-    const userInfo = baseMessage.info as UserMessage
-    const now = Date.now()
-    const deterministicSeed = stableSeed?.trim() || userInfo.id
-    const messageId = generateStableId("msg_dcp_summary", deterministicSeed)
-    const partId = generateStableId("prt_dcp_summary", deterministicSeed)
-
-    return {
-        info: {
-            id: messageId,
-            sessionID: userInfo.sessionID,
-            role: "user" as const,
-            agent: userInfo.agent,
-            model: userInfo.model,
-            time: { created: now },
-        },
-        parts: [
-            {
-                id: partId,
-                sessionID: userInfo.sessionID,
-                messageID: messageId,
-                type: "text" as const,
-                text: content,
-                synthetic: true,
-            },
-        ],
-    }
-}
+): WithParts => createSyntheticMessage(baseMessage, content, stableSeed, "user")
 
 // [FIX Bug 36] Merge a compression summary into an existing user message by
 // prepending it (clearly delimited) to that message's first text part. This
