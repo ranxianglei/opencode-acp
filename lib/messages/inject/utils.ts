@@ -552,10 +552,28 @@ export function applyAnchoredNudges(
 
 export interface ContextComposition {
     toolTokens: number
+    codeTokens: number
     summaryTokens: number
     messageTokens: number
     total: number
     largestRanges: { ref: string; tokens: number }[]
+    largestToolRanges: { ref: string; tokens: number }[]
+    largestCodeRanges: { ref: string; tokens: number }[]
+    largestMessageRanges: { ref: string; tokens: number }[]
+}
+
+function estimateCodeTokens(text: string): number {
+    let codeChars = 0
+    let inCode = false
+    for (const line of text.split("\n")) {
+        if (line.trim().startsWith("```")) {
+            inCode = !inCode
+            codeChars += line.length + 1
+            continue
+        }
+        if (inCode) codeChars += line.length + 1
+    }
+    return Math.round(codeChars / 4)
 }
 
 export function estimateContextComposition(
@@ -563,9 +581,13 @@ export function estimateContextComposition(
     state?: SessionState,
 ): ContextComposition {
     let toolTokens = 0
+    let codeTokens = 0
     let summaryTokens = 0
     let messageTokens = 0
     const perMessage: { ref: string; tokens: number }[] = []
+    const perTool: { ref: string; tokens: number }[] = []
+    const perCode: { ref: string; tokens: number }[] = []
+    const perText: { ref: string; tokens: number }[] = []
 
     for (const msg of messages) {
         const text = (msg.parts || [])
@@ -576,36 +598,58 @@ export function estimateContextComposition(
         const isSummary = msgId.startsWith("msg_dcp_summary") || text.includes("[Compressed conversation section]")
 
         let msgTotal = 0
+        let msgTool = 0
+        let msgCode = 0
+        let msgText = 0
+
         for (const part of msg.parts || []) {
             if (part.type === "text" && typeof (part as any).text === "string") {
-                const tokens = Math.round((part as any).text.length / 4)
+                const partText = (part as any).text as string
+                const tokens = Math.round(partText.length / 4)
                 msgTotal += tokens
                 if (isSummary) {
                     summaryTokens += tokens
                 } else {
                     messageTokens += tokens
+                    msgText += tokens
+                    const cTokens = estimateCodeTokens(partText)
+                    if (cTokens > 0) {
+                        codeTokens += cTokens
+                        msgCode += cTokens
+                    }
                 }
             } else if (part.type !== "text" && part.type !== "reasoning") {
                 const raw = JSON.stringify(part)
                 const tokens = Math.round(raw.length / 4)
                 msgTotal += tokens
                 toolTokens += tokens
+                msgTool += tokens
             }
         }
 
-        if (!isSummary && msgTotal > 500) {
+        if (!isSummary) {
             const ref = state?.messageIds?.byRawId?.get(msgId) || "?"
-            perMessage.push({ ref, tokens: msgTotal })
+            if (msgTotal > 500) perMessage.push({ ref, tokens: msgTotal })
+            if (msgTool > 500) perTool.push({ ref, tokens: msgTool })
+            if (msgCode > 300) perCode.push({ ref, tokens: msgCode })
+            if (msgText > 500 && msgCode === 0) perText.push({ ref, tokens: msgText })
         }
     }
 
     perMessage.sort((a, b) => b.tokens - a.tokens)
+    perTool.sort((a, b) => b.tokens - a.tokens)
+    perCode.sort((a, b) => b.tokens - a.tokens)
+    perText.sort((a, b) => b.tokens - a.tokens)
 
     return {
         toolTokens,
+        codeTokens,
         summaryTokens,
         messageTokens,
         total: toolTokens + summaryTokens + messageTokens,
         largestRanges: perMessage.slice(0, 10),
+        largestToolRanges: perTool.slice(0, 5),
+        largestCodeRanges: perCode.slice(0, 5),
+        largestMessageRanges: perText.slice(0, 5),
     }
 }

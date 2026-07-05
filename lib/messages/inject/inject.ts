@@ -230,7 +230,7 @@ export const injectCompressNudges = (
                 ? currentTokens - state.nudges.lastPerMessageNudgeTokens : 0
             const growthStr = growth > 0 ? ` (+${fmt(growth)} since last nudge)` : ""
 
-            let breakdown = `\nBreakdown: ${fmt(composition.toolTokens)} tool outputs (${pct(composition.toolTokens)}%) | ${fmt(composition.summaryTokens)} summaries (${pct(composition.summaryTokens)}%) | ${fmt(composition.messageTokens)} messages (${pct(composition.messageTokens)}%)${growthStr}`
+            let breakdown = `\nBreakdown: ${fmt(composition.toolTokens)} tool (${pct(composition.toolTokens)}%) | ${fmt(composition.codeTokens)} code (${pct(composition.codeTokens)}%) | ${fmt(composition.messageTokens)} messages (${pct(composition.messageTokens)}%)${growthStr}`
 
             const topBlocks = Array.from(state.prune.messages.blocksById.values())
                 .filter((b) => b.active)
@@ -239,25 +239,21 @@ export const injectCompressNudges = (
             if (topBlocks.length > 0) {
                 breakdown += `\nTop blocks: ${topBlocks.map((b) => `b${b.blockId} ${fmt(b.compressedTokens)}→${fmt(b.summaryTokens)}`).join(", ")}`
             }
-            if (pct(composition.toolTokens) > 50) {
-                breakdown += `\n⚠️ ${pct(composition.toolTokens)}% of context is tool outputs — compress consumed ranges now.`
-            } else {
-                breakdown += `\n💡 Context capacity is precious — compress consumed ranges to save context.`
+            breakdown += `\n💡 Compress incrementally — compress the largest consumed ranges first.`
+            if (composition.largestToolRanges.length > 0) {
+                breakdown += `\nLargest tool outputs: ${composition.largestToolRanges.map((r) => `${r.ref} (${fmt(r.tokens)})`).join(", ")}`
             }
-            if (composition.largestRanges.length > 0) {
-                const ranges = composition.largestRanges.map((r) => `${r.ref} (${fmt(r.tokens)})`).join(", ")
-                breakdown += `\nLargest messages: ${ranges}`
+            if (composition.largestCodeRanges.length > 0) {
+                breakdown += `\nLargest code messages: ${composition.largestCodeRanges.map((r) => `${r.ref} (${fmt(r.tokens)})`).join(", ")}`
+            }
+            if (composition.largestMessageRanges.length > 0) {
+                breakdown += `\nLargest text messages: ${composition.largestMessageRanges.map((r) => `${r.ref} (${fmt(r.tokens)})`).join(", ")}`
             }
             appendToLastTextPart(suffixMessage, breakdown)
         }
 
         if (decision.tipsVariant === "maxLimit") {
             tipsText = "\n\n⚠️ Context limit reached — compress now. Prioritize consumed tool outputs.\n\n{ \"topic\": \"...\", \"content\": [{ \"startId\": \"<ID>\", \"endId\": \"<ID>\", \"summary\": \"...\" }] }\n\nOnly use IDs from visible messages above. Compress older work first."
-        } else if (decision.tipsVariant === "minLimit") {
-            tipsText = "\n\n⚠️ Context is growing — compress consumed ranges now. Context capacity is precious. Save context by compressing consumed outputs, not by avoiding tools."
-        } else {
-            const topRanges = composition.largestRanges.slice(0, 5).map((r) => `${r.ref} (${r.tokens >= 1000 ? `${(r.tokens / 1000).toFixed(1)}K` : r.tokens})`).join(", ")
-            tipsText = `\n\n⚠️ Largest tool outputs consuming context: ${topRanges}. Context capacity is precious — compress these consumed ranges now. Cover the largest range you can in a single call.`
         }
         state.nudges.lastPerMessageNudgeTokens = currentTokens
         state.nudges.lastPerMessageNudgeTurn = state.currentTurn ?? 0
