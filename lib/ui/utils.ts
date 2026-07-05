@@ -142,6 +142,14 @@ export function formatStatsHeader(totalTokensSaved: number, pruneTokenCounter: n
     return [`▣ ACP | ${totalTokensSavedStr} saved total`].join("\n")
 }
 
+export function formatAge(createdAt: number): string {
+    const elapsed = Date.now() - createdAt
+    if (elapsed < 60_000) return "just now"
+    if (elapsed < 3_600_000) return `${Math.floor(elapsed / 60_000)}m ago`
+    if (elapsed < 86_400_000) return `${Math.floor(elapsed / 3_600_000)}h ago`
+    return `${Math.floor(elapsed / 86_400_000)}d ago`
+}
+
 export function formatTokenCount(tokens: number, compact?: boolean): string {
     const suffix = compact ? "" : " tokens"
     if (tokens >= 1000) {

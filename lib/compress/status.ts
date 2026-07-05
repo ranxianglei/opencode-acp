@@ -1,5 +1,6 @@
 import { tool } from "@opencode-ai/plugin"
 import type { ToolContext } from "./types"
+import { formatAge } from "../ui/utils"
 
 const ACP_STATUS_TOOL_DESCRIPTION = `Show detailed status of all active compressed context blocks. Returns a table of block IDs, summary sizes, ages, and topics — use this to decide which blocks to decompress or search. No arguments needed.
 
@@ -7,14 +8,6 @@ Use this tool when:
 - You need to know what content has been compressed away
 - You want to see block sizes before deciding to decompress
 - You need a quick overview of context compression state`
-
-function formatAge(createdAt: number): string {
-    const elapsed = Date.now() - createdAt
-    if (elapsed < 60_000) return "just now"
-    if (elapsed < 3_600_000) return `${Math.floor(elapsed / 60_000)}m ago`
-    if (elapsed < 86_400_000) return `${Math.floor(elapsed / 3_600_000)}h ago`
-    return `${Math.floor(elapsed / 86_400_000)}d ago`
-}
 
 function formatTokens(n: number): string {
     return n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n)
