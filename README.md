@@ -421,6 +421,18 @@ For the complete list with root cause analysis, see the [bug tracker](https://gi
 
 ## Changelog
 
+### v1.8.2 — Always Inject System Prompt
+
+**Bug fix**: System prompt gating (v1.8.1 commit `24bbb1f`) caused binge compression on large-context models. Since ACP injections are ephemeral (not persisted to conversation history), gating the system prompt made the model completely forget compression tools existed between nudges. When the nudge fired after 50K growth, the model panicked and made 95 consecutive compress calls.
+
+**Fix**: Removed `shouldInjectThisTurn` gate from system prompt hook (`hooks.ts:108-112`). System prompt now always injects every turn. Suffix remains gated at `nudgeGrowthTokens` frequency.
+
+**Current behavior**:
+- **System prompt** (compression philosophy, tool awareness): ✅ every turn
+- **Suffix** (context level, block list, Tips): gated at nudgeGrowthTokens frequency
+
+---
+
 ### v1.8.1 — Adaptive Nudge Frequency + System Prompt Gating
 
 **Problem**: Large-context models (1M+) over-compressed at 20-30% context because Tips fired every 6K tokens (0.6% of 1M). System prompt injected every turn added constant pressure.
