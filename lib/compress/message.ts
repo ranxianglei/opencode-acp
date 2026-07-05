@@ -40,7 +40,7 @@ function buildSchema() {
         summaryMaxChars: tool.schema
             .number()
             .optional()
-            .describe("Override max summary length (default max: 4000 chars). Use when content is important and needs more detail — don't lose critical info just to fit the limit."),
+            .describe("Override max summary length (default max: 8000 chars). Use when content is important and needs more detail — don't lose critical info just to fit the limit."),
     }
 }
 
