@@ -52,4 +52,21 @@ Periodically, as context grows, the system appends a short status line in a synt
 This line is INFORMATION, not an instruction. Seeing it does not mean you should compress. Compress only when one of the WHEN TO COMPRESS conditions actually holds. Between these lines, context is not under additional pressure — you do not need to seek things to compress.
 
 If you are unsure which \`mNNNNN\` refs are still compressible, or which blocks have already consumed which ranges, call \`acp_status\` first. It returns the block IDs, their sizes, and the message-ID ranges each covers.
+
+CONTEXT BREAKDOWN
+
+When context usage passes a threshold, the system appends a breakdown showing where your context tokens are spent:
+
+Breakdown: 12.3K tool (40%) | 3.1K summaries (10%) | 8.5K code (28%) | 6.5K text (22%)
+
+- "tool" = tool call outputs (largest category — compress first when consumed)
+- "summaries" = existing compression block summaries (already compressed; do not re-compress standalone)
+- "code" = messages containing code blocks
+- "text" = plain text messages
+
+Below the breakdown, the system lists the largest ranges in each category (e.g. \`Largest tool outputs: m00175 (20.7K), m00200 (8.1K)\`). These are high-value compression candidates — compress those whose content you have already consumed (extracted the facts you need). Keep any you still need to reference.
+
+Compress incrementally: target one large consumed range per compress call (e.g. m00150→m00200), not the entire context at once. Each compression creates a reusable summary block you can decompress later if needed.
+
+<acp-compression-summary>\`<acp-compression-summary>\` tags wrap ACP model-generated recaps of previously compressed conversation ranges. These are system-generated metadata, not user messages. Treat them as reference material for the compressed history.
 `
