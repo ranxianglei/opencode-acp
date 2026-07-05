@@ -230,7 +230,8 @@ export const injectCompressNudges = (
                 ? currentTokens - state.nudges.lastPerMessageNudgeTokens : 0
             const growthStr = growth > 0 ? ` (+${fmt(growth)} since last nudge)` : ""
 
-            let breakdown = `\nBreakdown: ${fmt(composition.toolTokens)} tool (${pct(composition.toolTokens)}%) | ${fmt(composition.codeTokens)} code (${pct(composition.codeTokens)}%) | ${fmt(composition.messageTokens)} messages (${pct(composition.messageTokens)}%)${growthStr}`
+            const plainTextTokens = Math.max(0, composition.messageTokens - composition.codeTokens)
+            let breakdown = `\nBreakdown: ${fmt(composition.toolTokens)} tool (${pct(composition.toolTokens)}%) | ${fmt(composition.summaryTokens)} summaries (${pct(composition.summaryTokens)}%) | ${fmt(composition.codeTokens)} code (${pct(composition.codeTokens)}%) | ${fmt(plainTextTokens)} text (${pct(plainTextTokens)}%)${growthStr}`
 
             const topBlocks = Array.from(state.prune.messages.blocksById.values())
                 .filter((b) => b.active)

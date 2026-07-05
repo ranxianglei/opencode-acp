@@ -183,6 +183,7 @@ export async function ensureSessionInitialized(
     )
     state.nudges.lastPerMessageNudgeTurn = persisted.nudges.lastPerMessageNudgeTurn ?? 0
     state.nudges.lastPerMessageNudgeTokens = persisted.nudges.lastPerMessageNudgeTokens
+    state.nudges.lastToolOutputNudgeTokens = persisted.nudges.lastToolOutputNudgeTokens
     state.stats = {
         pruneTokenCounter: persisted.stats?.pruneTokenCounter || 0,
         totalPruneTokens: persisted.stats?.totalPruneTokens || 0,
