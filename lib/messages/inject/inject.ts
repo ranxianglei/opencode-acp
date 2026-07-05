@@ -211,7 +211,7 @@ export const injectCompressNudges = (
             if (toolGrowth >= toolOutputThreshold) {
                 const fmt = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n))
                 const topRanges = composition.largestRanges.slice(0, 5).map((r) => `${r.ref} (${fmt(r.tokens)})`).join(", ")
-                toolOutputReminder = `\n\n💡 ${fmt(toolGrowth)} new tool outputs accumulated (${fmt(composition.toolTokens)} total). Largest: ${topRanges}. Use compress tool to compress consumed ranges. Maintain principles — ignore if outputs are still needed.`
+                toolOutputReminder = `\n\n⚠️ ${fmt(toolGrowth)} new tool outputs accumulated (${fmt(composition.toolTokens)} total). Largest: ${topRanges}. Use compress tool to compress these ranges now.`
                 state.nudges.lastToolOutputNudgeTokens = composition.toolTokens
                 anchorsChanged = true
             }
@@ -240,12 +240,13 @@ export const injectCompressNudges = (
                 breakdown += `\nTop blocks: ${topBlocks.map((b) => `b${b.blockId} ${fmt(b.compressedTokens)}→${fmt(b.summaryTokens)}`).join(", ")}`
             }
             if (pct(composition.toolTokens) > 50) {
-                breakdown += `\n💡 ${pct(composition.toolTokens)}% of context is uncompressed tool outputs — compress oldest consumed ones first.`
+                breakdown += `\n⚠️ ${pct(composition.toolTokens)}% of context is tool outputs — compress consumed ranges now.`
+            } else {
+                breakdown += `\n💡 Use compress tool on these ranges. Ignore if content is still needed.`
             }
             if (composition.largestRanges.length > 0) {
                 const ranges = composition.largestRanges.map((r) => `${r.ref} (${fmt(r.tokens)})`).join(", ")
                 breakdown += `\nLargest messages: ${ranges}`
-                breakdown += `\nUse compress tool on these ranges. Ignore if content is still needed.`
             }
             appendToLastTextPart(suffixMessage, breakdown)
         }
