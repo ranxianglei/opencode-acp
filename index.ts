@@ -1,6 +1,7 @@
 import type { Plugin } from "@opencode-ai/plugin"
 import { getConfig } from "./lib/config"
 import {
+    createAcpStatusTool,
     createCompressMessageTool,
     createCompressRangeTool,
     createDecompressTool,
@@ -91,6 +92,7 @@ const server: Plugin = (async (ctx) => {
                         : createCompressRangeTool(compressToolContext),
                 decompress: createDecompressTool(compressToolContext),
                 search_context: createSearchContextTool(compressToolContext),
+                acp_status: createAcpStatusTool(compressToolContext),
             }),
         },
         config: async (opencodeConfig) => {
@@ -111,7 +113,7 @@ const server: Plugin = (async (ctx) => {
 
             const toolsToAdd: string[] = []
             if (config.compress.permission !== "deny" && !config.experimental.allowSubAgents) {
-                toolsToAdd.push("compress", "decompress", "search_context")
+                toolsToAdd.push("compress", "decompress", "search_context", "acp_status")
             }
 
             if (toolsToAdd.length > 0) {
@@ -127,6 +129,7 @@ const server: Plugin = (async (ctx) => {
                 opencodeConfig.permission = {
                     ...permission,
                     compress: config.compress.permission,
+                    acp_status: "allow",
                 } as typeof permission
             }
 

@@ -24,12 +24,14 @@ import {
     addAnchor,
     applyAnchoredNudges,
     buildContextUsageGuidance,
+    computeShouldNudge,
     countMessagesAfterIndex,
     findLastNonIgnoredMessage,
     getIterationNudgeThreshold,
     getNudgeFrequency,
     getModelInfo,
     isContextOverLimits,
+    resolveAdaptiveNudgeGrowth,
 } from "./utils"
 import { buildCompressedBlockGuidance } from "../../prompts/extensions/nudge"
 
@@ -74,17 +76,7 @@ export const injectCompressNudges = (
     const lastMessage = findLastNonIgnoredMessage(messages)
     const lastAssistantMessage = messages.findLast((message) => message.info.role === "assistant")
 
-    if (lastAssistantMessage && messageHasCompress(lastAssistantMessage)) {
-        state.nudges.contextLimitAnchors.clear()
-        state.nudges.turnNudgeAnchors.clear()
-        state.nudges.iterationNudgeAnchors.clear()
-        state.nudges.lastPerMessageNudgeTokens = 0
-        void saveSessionState(state, logger)
-        return
-    }
-
     const { providerId, modelId } = getModelInfo(messages)
-    let anchorsChanged = false
 
     const { overMaxLimit, overMinLimit, currentTokens, modelContextLimit } = isContextOverLimits(
         config,
@@ -93,6 +85,17 @@ export const injectCompressNudges = (
         modelId,
         messages,
     )
+
+    if (lastAssistantMessage && messageHasCompress(lastAssistantMessage)) {
+        state.nudges.contextLimitAnchors.clear()
+        state.nudges.turnNudgeAnchors.clear()
+        state.nudges.iterationNudgeAnchors.clear()
+        state.nudges.lastPerMessageNudgeTokens = currentTokens
+        void saveSessionState(state, logger)
+        return
+    }
+
+    let anchorsChanged = false
 
     if (!overMinLimit) {
         const hadTurnAnchors = state.nudges.turnNudgeAnchors.size > 0
@@ -165,58 +168,57 @@ export const injectCompressNudges = (
 
     applyAnchoredNudges(state, config, messages, prompts, compressionPriorities, currentTokens, modelContextLimit, suffixMessage)
 
-    const contextPct = modelContextLimit && currentTokens ? (currentTokens / modelContextLimit) * 100 : 0
-    const minPercent = config.compress?.minNudgeContextPercent ?? 15
+    const decision = computeShouldNudge({
+        currentTokens,
+        modelContextLimit,
+        overMinLimit,
+        overMaxLimit,
+        lastNudgeTokens: state.nudges.lastPerMessageNudgeTokens,
+        minNudgeContextPercent: config.compress?.minNudgeContextPercent ?? 15,
+        nudgeGrowthTokens:
+            config.compress?.nudgeGrowthTokens ?? resolveAdaptiveNudgeGrowth(modelContextLimit),
+    })
 
-    injectContextUsage(suffixMessage, config, currentTokens, modelContextLimit)
+    state.nudges.shouldInjectThisTurn = decision.shouldNudge
 
-    // Determine tips tier: light (every turn) vs warning (key nodes only)
     let tipsText: string | null = null
 
-    if (overMaxLimit || overMinLimit) {
-        // Warning zone: show at key nodes only (first crossing or 10pp growth)
-        const lastWarnPct = state.nudges.lastPerMessageNudgeTokens && modelContextLimit
-            ? (state.nudges.lastPerMessageNudgeTokens / modelContextLimit) * 100
-            : 0
-        const growthSinceWarn = contextPct - lastWarnPct
-        if (lastWarnPct === 0 || growthSinceWarn >= 10) {
-            tipsText = overMaxLimit
-                ? "\n\n⚠️ Context limit reached — compress now. Prioritize consumed tool outputs.\n\n{ \"topic\": \"...\", \"content\": [{ \"startId\": \"<ID>\", \"endId\": \"<ID>\", \"summary\": \"...\" }] }\n\nOnly use IDs from visible messages above. Compress older work first."
-                : "\n\n⚠️ Context is growing — consider compressing older work. Tools: compress, decompress, search_context."
-            state.nudges.lastPerMessageNudgeTokens = currentTokens ?? 0
-            state.nudges.lastPerMessageNudgeTurn = state.currentTurn ?? 0
+    if (decision.shouldNudge) {
+        injectContextUsage(suffixMessage, config, currentTokens, modelContextLimit)
+        if (decision.tipsVariant === "maxLimit") {
+            tipsText = "\n\n⚠️ Context limit reached — compress now. Prioritize consumed tool outputs.\n\n{ \"topic\": \"...\", \"content\": [{ \"startId\": \"<ID>\", \"endId\": \"<ID>\", \"summary\": \"...\" }] }\n\nOnly use IDs from visible messages above. Compress older work first."
+        } else if (decision.tipsVariant === "minLimit") {
+            tipsText = "\n\n⚠️ Context is growing — consider compressing older work. Tools: compress, decompress, search_context."
+        } else {
+            tipsText = "\n\n💡 Tools: compress, decompress, search_context."
         }
-    } else if (contextPct >= minPercent) {
-        tipsText = "\n\n💡 Tools: compress, decompress, search_context."
-        // Reset warning tracking when context drops below warning zone
-        if (state.nudges.lastPerMessageNudgeTokens) {
-            state.nudges.lastPerMessageNudgeTokens = 0
+        state.nudges.lastPerMessageNudgeTokens = currentTokens
+        state.nudges.lastPerMessageNudgeTurn = state.currentTurn ?? 0
+
+        if (config.compress.mode !== "message") {
+            const visibleMessageIds = new Set<string>(
+                messages.map((message) => message.info.id),
+            )
+            const blockGuidance = buildCompressedBlockGuidance(state, config.gc, {
+                currentTokens,
+                modelContextLimit,
+                includeHint: tipsText !== null,
+                visibleMessageIds,
+            })
+            if (blockGuidance.trim() && suffixMessage) {
+                appendToLastTextPart(suffixMessage, "\n\n" + blockGuidance)
+            }
         }
-    }
 
-    if (config.compress.mode !== "message") {
-        const visibleMessageIds = new Set<string>(
-            messages.map((message) => message.info.id),
-        )
-        const blockGuidance = buildCompressedBlockGuidance(state, config.gc, {
-            currentTokens,
-            modelContextLimit,
-            includeHint: tipsText !== null,
-            visibleMessageIds,
-        })
-        if (blockGuidance.trim() && suffixMessage) {
-            appendToLastTextPart(suffixMessage, "\n\n" + blockGuidance)
+        if (tipsText && suffixMessage) {
+            appendToLastTextPart(suffixMessage, tipsText)
         }
-    }
 
-    if (tipsText && suffixMessage) {
-        appendToLastTextPart(suffixMessage, tipsText)
+        injectVisibleIdRange(state, messages, suffixMessage)
     }
-
-    injectVisibleIdRange(state, messages, suffixMessage)
 
     if (suffixMessage) {
-        appendToLastTextPart(suffixMessage, "\n</acp-context>")
+        appendToLastTextPart(suffixMessage, "\n")
     }
 
     if (anchorsChanged) {

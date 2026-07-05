@@ -96,8 +96,8 @@ export function getModelInfo(messages: WithParts[]): LastUserModelContext {
 
     const userInfo = lastUserMessage.info as UserMessage
     return {
-        providerId: userInfo.model.providerID,
-        modelId: userInfo.model.modelID,
+        providerId: userInfo.model?.providerID,
+        modelId: userInfo.model?.modelID,
     }
 }
 
@@ -196,6 +196,62 @@ export function isContextOverLimits(
         currentTokens,
         modelContextLimit: state.modelContextLimit,
     }
+}
+
+export type TipsVariant = "maxLimit" | "minLimit" | "normal"
+
+export interface NudgeDecision {
+    shouldNudge: boolean
+    tipsVariant: TipsVariant | null
+}
+
+/**
+ * Per-message Tips decision (pure — extracted for unit testing).
+ * Nudge when contextPct >= floor AND (first nudge | growth >= step | over max limit).
+ */
+export function computeShouldNudge(params: {
+    currentTokens: number | undefined
+    modelContextLimit: number | undefined
+    overMinLimit: boolean
+    overMaxLimit: boolean
+    lastNudgeTokens: number | undefined
+    minNudgeContextPercent: number
+    nudgeGrowthTokens: number
+}): NudgeDecision {
+    const { currentTokens, modelContextLimit, overMinLimit, overMaxLimit } = params
+    const contextPct =
+        modelContextLimit && currentTokens ? (currentTokens / modelContextLimit) * 100 : 0
+
+    const lastNudgeTokens = params.lastNudgeTokens
+    const growthSinceLastNudge = (currentTokens ?? 0) - (lastNudgeTokens ?? 0)
+    const frequencyTriggered =
+        lastNudgeTokens === undefined ||
+        growthSinceLastNudge >= params.nudgeGrowthTokens ||
+        overMaxLimit
+
+    const shouldNudge = contextPct >= params.minNudgeContextPercent && frequencyTriggered
+    if (!shouldNudge) {
+        return { shouldNudge: false, tipsVariant: null }
+    }
+
+    const tipsVariant: TipsVariant = overMaxLimit
+        ? "maxLimit"
+        : overMinLimit
+          ? "minLimit"
+          : "normal"
+    return { shouldNudge: true, tipsVariant }
+}
+
+const NUDGE_GROWTH_FLOOR = 6000
+const NUDGE_GROWTH_CAP = 50000
+const NUDGE_GROWTH_RATIO = 0.05
+
+export function resolveAdaptiveNudgeGrowth(modelContextLimit: number | undefined): number {
+    if (!modelContextLimit || modelContextLimit <= 0) return NUDGE_GROWTH_FLOOR
+    return Math.min(
+        NUDGE_GROWTH_CAP,
+        Math.max(NUDGE_GROWTH_FLOOR, Math.round(modelContextLimit * NUDGE_GROWTH_RATIO)),
+    )
 }
 
 export function addAnchor(
@@ -401,8 +457,6 @@ export function applyAnchoredNudges(
     modelContextLimit?: number,
     suffixMessage?: WithParts | null,
 ): void {
-    const contextUsageInfo = buildContextUsageGuidance(config, currentTokens, modelContextLimit)
-    const contextLimitNudgeWithUsage = prompts.contextLimitNudge + contextUsageInfo
     const turnNudgeAnchors = collectTurnNudgeAnchors(state, config, messages)
 
     if (suffixMessage) {
@@ -412,7 +466,7 @@ export function applyAnchoredNudges(
             if (state.nudges.contextLimitAnchors.size > 0) {
                 for (const { index } of collectAnchoredMessages(state.nudges.contextLimitAnchors, messages)) {
                     const guidance = buildMessagePriorityGuidance(messages, compressionPriorities, index, MESSAGE_MODE_NUDGE_PRIORITY)
-                    nudgeParts.push(appendGuidanceToDcpTag(contextLimitNudgeWithUsage, guidance))
+                    nudgeParts.push(appendGuidanceToDcpTag(prompts.contextLimitNudge, guidance))
                 }
             }
             if (turnNudgeAnchors.size > 0) {
@@ -429,7 +483,7 @@ export function applyAnchoredNudges(
             }
         } else {
             if (state.nudges.contextLimitAnchors.size > 0) {
-                nudgeParts.push(contextLimitNudgeWithUsage)
+                nudgeParts.push(prompts.contextLimitNudge)
             }
             if (turnNudgeAnchors.size > 0) {
                 nudgeParts.push(prompts.turnNudge)
@@ -450,7 +504,7 @@ export function applyAnchoredNudges(
         applyMessageModeAnchoredNudge(
             state.nudges.contextLimitAnchors,
             messages,
-            contextLimitNudgeWithUsage,
+            prompts.contextLimitNudge,
             compressionPriorities,
         )
         applyMessageModeAnchoredNudge(
@@ -471,7 +525,7 @@ export function applyAnchoredNudges(
     applyRangeModeAnchoredNudge(
         state.nudges.contextLimitAnchors,
         messages,
-        contextLimitNudgeWithUsage,
+        prompts.contextLimitNudge,
         "",
     )
     applyRangeModeAnchoredNudge(

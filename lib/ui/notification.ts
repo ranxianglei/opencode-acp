@@ -8,7 +8,6 @@ import {
 } from "./utils"
 import { ToolParameterEntry } from "../state"
 import { PluginConfig } from "../config"
-import { getActiveSummaryTokenUsage } from "../state/utils"
 
 export type PruneReason = "completion" | "noise" | "extraction"
 export const PRUNE_REASON_LABELS: Record<PruneReason, string> = {
@@ -113,6 +112,12 @@ function formatCompressionMetrics(removedTokens: number, summaryTokens: number):
     return metrics.join(", ")
 }
 
+function formatContextTransition(tokensBefore: number, tokensAfter: number): string {
+    const beforeStr = formatTokenCount(tokensBefore, true)
+    const afterStr = formatTokenCount(tokensAfter, true)
+    return `Context ${beforeStr}→${afterStr}`
+}
+
 export async function sendCompressNotification(
     client: any,
     logger: Logger,
@@ -123,6 +128,7 @@ export async function sendCompressNotification(
     batchTopic: string | undefined,
     sessionMessageIds: string[],
     params: any,
+    contextTokensBefore: number,
 ): Promise<boolean> {
     if (config.pruneNotification === "off") {
         return false
@@ -185,9 +191,14 @@ export async function sendCompressNotification(
               "(unknown topic)")
             : "(unknown topic)")
 
-    const totalActiveSummaryTkns = getActiveSummaryTokenUsage(state)
-    const totalGross = state.stats.totalPruneTokens + state.stats.pruneTokenCounter
-    const notificationHeader = `▣ ACP | ${formatCompressionMetrics(totalGross, totalActiveSummaryTkns)}`
+    const contextTokensAfter = Math.max(
+        0,
+        contextTokensBefore - compressedTokens + summaryTokens,
+    )
+    const notificationHeader = `▣ ACP | ${formatContextTransition(
+        contextTokensBefore,
+        contextTokensAfter,
+    )}`
 
     if (config.pruneNotification === "minimal") {
         message = `${notificationHeader} — ${compressionLabel}`

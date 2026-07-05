@@ -393,7 +393,43 @@ ACP 在首次启动时自动将配置从 `dcp.jsonc` 迁移到 `acp.jsonc`，将
 
 ## 更新日志
 
-### v1.7.0 — 原则驱动提示
+### v1.8.1 — 自适应提醒频率 + 系统提示门控
+
+**问题**：大上下文模型（1M+）在 20-30% 上下文时过度压缩，因为 Tips 每 6K tokens（1M 的 0.6%）就触发一次。系统提示每轮注入增加了持续压力。
+
+**自适应 nudgeGrowthTokens**：
+- 默认值现在自适应：`modelContextLimit` 的 5%，限制在 [6000, 50000]
+  - 128K → 6.4K，200K → 10K，500K → 25K，1M → 50K，2M+ → 50K（上限）
+- 用户仍可显式设置 `nudgeGrowthTokens` 覆盖
+- 移除了 schema 默认值中的硬编码 `6000`（之前覆盖了自适应逻辑）
+
+**系统提示门控**：
+- SYSTEM 提示 + `<dcp-system-reminder>` 标签现在按 `nudgeGrowthTokens` 频率脉冲
+- 两次提醒之间：系统提示**不注入任何内容** —— 零压缩噪音
+- 第一轮（`undefined` 哨兵值）：始终注入（建立基线）
+
+**新工具：`acp_status`**：
+- 按需查看所有压缩块（ID、token 数、年龄、主题）
+- 用一行摘要替代 suffix 中的冗长块列表：`Compressed blocks: N (XK summary, last Ym ago). Use acp_status for details.`
+
+**压缩通知改进**：
+- 头部显示上下文前后水平：`▣ ACP | Context 251.2K→249.3K`
+- 不显示百分比或上限（防止模型锚定天花板）
+
+**Bug 修复**：
+- `lastPerMessageNudgeTokens` 压缩后重置为 `0` 绕过了增长检查（反馈循环）
+- Schema 默认值 `6000` 覆盖了 `resolveAdaptiveNudgeGrowth()` —— 自适应从未生效
+- `applyAnchoredNudges` + `injectContextUsage` 重复注入上下文使用文本
+- `lastNudgeTokens === 0` 哨兵值替换为 `undefined`（明确的"从未触发"）
+
+**工具链**：
+- `scripts/dev-deploy.sh` —— 一键构建 + 部署（自动检测 node、类型检查、构建、部署）
+- 压缩后状态转换集成测试（新增 3 个）
+- `acp_status` 独立测试（新增 7 个）
+
+---
+
+### v1.8.0 — 原则驱动提示
 
 **理念**：用 4 条简洁原则替代冗长的上下文管理指导。模型现在看到的是*重要原则*而非*死板规则*。
 

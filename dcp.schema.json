@@ -275,6 +275,10 @@
                     "default": 4000,
                     "minimum": 1,
                     "description": "Hard limit for summary length in characters"
+                },
+                "nudgeGrowthTokens": {
+                    "type": "number",
+                    "description": "Token growth required between per-message nudges (absolute, not percentage). Shows Tips only after context grows by this many tokens. If unset, default is adaptive: 5% of modelContextLimit, clamped to [6000, 50000] — e.g. 128K→6.4K, 200K→10K, 1M→50K. Must be unset (not 6000) for adaptive default to work."
                 }
             },
             "default": {

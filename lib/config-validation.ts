@@ -35,6 +35,7 @@ export const VALID_CONFIG_KEYS = new Set([
     "compress.modelMinLimits",
     "compress.nudgeFrequency",
     "compress.minNudgeContextPercent",
+    "compress.nudgeGrowthTokens",
     "compress.iterationNudgeThreshold",
     "compress.nudgeForce",
     "compress.protectedTools",

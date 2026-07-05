@@ -412,7 +412,7 @@ test("message ID injection: IDs are appended to tool parts", async () => {
 
 // ─── Test: Visible ID range injection ───────────────────────────────────────
 
-test("visible ID range: range tag injected into suffix message", async () => {
+test("visible ID range: range tag injected into suffix message when shouldNudge fires", async () => {
     const { state, handler } = setupPipeline(SID_A, {}, {
         modelContextLimit: 200000,
     })
@@ -420,9 +420,9 @@ test("visible ID range: range tag injected into suffix message", async () => {
     const output = {
         messages: [
             makeUserMessage("u1", "First"),
-            makeAssistantMessage("a1", "Response 1"),
+            makeAssistantMessage("a1", "Response 1", [], SID_A, { input: 100000, output: 50000 }),
             makeUserMessage("u2", "Second"),
-            makeAssistantMessage("a2", "Response 2"),
+            makeAssistantMessage("a2", "Response 2", [], SID_A, { input: 100000, output: 50000 }),
             makeUserMessage("u3", "Third"),
         ],
     }

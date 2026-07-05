@@ -334,8 +334,7 @@ test("compress range mode batches multiple ranges into one notification", async 
     assert.equal(result, "Compressed 2 messages into [Compressed conversation section].\nIMPORTANT: This was an automatic context compression. You MUST continue your previous task exactly where you left off. Do NOT ask the user what to do next.\n💡 Tip: Use search_context('keyword') to find compressed content when you need it later.")
     assert.equal(state.prune.messages.blocksById.size, 2)
     assert.equal(toastCalls.length, 1)
-    // [ACP rebrand] DCP → ACP in notification headers
-    assert.match(toastCalls[0] || "", /▣ ACP \| -[^,\n]+ removed, \+[^\s\n]+ summary/)
+    assert.match(toastCalls[0] || "", /▣ ACP \| Context [^|]+→[^|]+/)
     assert.match(toastCalls[0] || "", /Compression #1/)
     assert.match(toastCalls[0] || "", /▣ Compression #1 -[^,\n]+ removed, \+[^\s\n]+ summary/)
     assert.match(toastCalls[0] || "", /Topic: Batch stale notes/)

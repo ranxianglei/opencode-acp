@@ -66,7 +66,7 @@ function makeState(blocks: Map<number, CompressionBlock>): SessionState {
             turnNudgeAnchors: new Set(),
             iterationNudgeAnchors: new Set(),
             lastPerMessageNudgeTurn: 0,
-            lastPerMessageNudgeTokens: 0,
+            lastPerMessageNudgeTokens: undefined,
         },
         stats: { pruneTokenCounter: 0, totalPruneTokens: 0 },
         compressionTiming: {} as any,

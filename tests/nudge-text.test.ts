@@ -71,29 +71,36 @@ test("CONTEXT_LIMIT_NUDGE frames compression as a step with decompress safety ne
     assert.doesNotMatch(CONTEXT_LIMIT_NUDGE, /\b(MUST|CRITICAL)\b/)
 })
 
-test("buildCompressedBlockGuidance lists every active block ID when there are 20 or fewer", () => {
+test("buildCompressedBlockGuidance shows compact summary with block count", () => {
     const state = createSessionState()
     for (const id of [1, 2, 3]) {
         state.prune.messages.activeBlockIds.add(id)
+        state.prune.messages.blocksById.set(id, {
+            summaryTokens: id * 100,
+            createdAt: Date.now(),
+            active: true,
+        } as never)
     }
 
     const guidance = buildCompressedBlockGuidance(state)
 
-    assert.match(guidance, /b1, b2, b3/)
-    assert.doesNotMatch(guidance, /older, use decompress to access by ID/)
+    assert.match(guidance, /Compressed blocks: 3/)
+    assert.match(guidance, /600 summary/)
+    assert.match(guidance, /acp_status/)
 })
 
-test("buildCompressedBlockGuidance summarizes older blocks when there are more than 20 active", () => {
+test("buildCompressedBlockGuidance shows last compression age", () => {
     const state = createSessionState()
-    // 25 blocks (ids 1..25): the 20 most recent are 6..25, leaving 5 older.
-    for (let id = 1; id <= 25; id++) {
-        state.prune.messages.activeBlockIds.add(id)
-    }
+    state.prune.messages.activeBlockIds.add(1)
+    state.prune.messages.blocksById.set(1, {
+        summaryTokens: 500,
+        createdAt: Date.now() - 5 * 60_000,
+        active: true,
+    } as never)
 
     const guidance = buildCompressedBlockGuidance(state)
 
-    assert.match(guidance, /\(\+5 older, use decompress to access by ID\)/)
-    assert.match(guidance, /b25/)
+    assert.match(guidance, /5m ago/)
 })
 
 test("buildContextUsageGuidance returns context number without compression guidance", () => {
@@ -111,28 +118,19 @@ test("buildContextUsageGuidance returns context number without compression guida
     assert.doesNotMatch(high, /aggressive|MUST/i)
 })
 
-test("buildCompressedBlockGuidance shows token counts for blocks with summaryTokens", () => {
+test("buildCompressedBlockGuidance aggregates summary tokens across blocks", () => {
     const state = createSessionState()
     for (const id of [1, 2, 3]) {
         state.prune.messages.activeBlockIds.add(id)
-        state.prune.messages.blocksById.set(id, { summaryTokens: id * 100 } as never)
+        state.prune.messages.blocksById.set(id, {
+            summaryTokens: id * 1000,
+            createdAt: Date.now(),
+            active: true,
+        } as never)
     }
 
     const guidance = buildCompressedBlockGuidance(state)
 
-    assert.match(guidance, /b1 \(100t\)/)
-    assert.match(guidance, /b2 \(200t\)/)
-    assert.match(guidance, /b3 \(300t\)/)
-})
-
-test("buildCompressedBlockGuidance omits token count when summaryTokens is 0 or missing", () => {
-    const state = createSessionState()
-    for (const id of [1, 2]) {
-        state.prune.messages.activeBlockIds.add(id)
-    }
-
-    const guidance = buildCompressedBlockGuidance(state)
-
-    assert.match(guidance, /b1/)
-    assert.doesNotMatch(guidance, /b1 \(0t\)/)
+    assert.match(guidance, /6\.0K summary/)
+    assert.match(guidance, /acp_status for details/)
 })

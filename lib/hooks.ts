@@ -105,6 +105,12 @@ export function createSystemPromptHandler(
             return
         }
 
+        // 1-turn lag: system hook runs before messages hook, so shouldInjectThisTurn
+        // reflects the previous request's nudge decision. undefined = first turn.
+        if (state.nudges.shouldInjectThisTurn === false && !state.manualMode) {
+            return
+        }
+
         prompts.reload()
         const runtimePrompts = prompts.getRuntimePrompts()
         const newPrompt = renderSystemPrompt(

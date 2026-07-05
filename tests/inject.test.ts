@@ -62,6 +62,30 @@ function toolPart(callID: string, output: string) {
     }
 }
 
+function compressToolPart(callID: string, output: string) {
+    return {
+        id: `${callID}-part`, messageID: "msg", sessionID: SID,
+        type: "tool" as const, tool: "compress", callID,
+        state: { status: "completed" as const, input: {}, output },
+    }
+}
+
+function assistantMsgWithTokens(
+    id: string,
+    text: string,
+    tokens: { input: number; output: number },
+    toolParts?: any[],
+): WithParts {
+    const parts = [...(toolParts ?? []), textPart(id, text)]
+    return {
+        info: {
+            id, role: "assistant", sessionID: SID, agent: "a", time: { created: 2 },
+            tokens,
+        } as WithParts["info"],
+        parts,
+    }
+}
+
 const logger = new Logger(false)
 
 test("injectMessageIds tags user messages with ref", () => {
@@ -186,4 +210,83 @@ test("createSyntheticUserMessage produces an all-synthetic user message that ens
         1,
         "after ACP injects its suffix message the conversation must still have exactly one real user message (ensureTitle precondition)",
     )
+})
+
+test("injectCompressNudges: after compress, lastPerMessageNudgeTokens = currentTokens (not 0)", () => {
+    const state = createSessionState()
+    state.modelContextLimit = 1_000_000
+    const config = buildConfig()
+    config.compress.maxContextLimit = 800_000
+    config.compress.minContextLimit = 550_000
+    const messages: WithParts[] = [
+        userMsg("u1", "hello"),
+        assistantMsgWithTokens("a1", "done", { input: 200_000, output: 50_000 }, [
+            compressToolPart("c1", "compressed"),
+        ]),
+    ]
+    injectCompressNudges(state, config, logger, messages, {} as any)
+
+    assert.equal(
+        state.nudges.lastPerMessageNudgeTokens,
+        250_000,
+        "lastPerMessageNudgeTokens must equal currentTokens (250K) after compress — NOT 0",
+    )
+})
+
+test("injectCompressNudges: post-compress small growth does NOT re-nudge", () => {
+    const state = createSessionState()
+    state.modelContextLimit = 1_000_000
+    const config = buildConfig()
+    config.compress.maxContextLimit = 800_000
+    config.compress.minContextLimit = 550_000
+
+    const turn1: WithParts[] = [
+        userMsg("u1", "hello"),
+        assistantMsgWithTokens("a1", "done", { input: 200_000, output: 50_000 }, [
+            compressToolPart("c1", "compressed"),
+        ]),
+    ]
+    injectCompressNudges(state, config, logger, turn1, {} as any)
+    assert.equal(state.nudges.lastPerMessageNudgeTokens, 250_000)
+
+    const turn2: WithParts[] = [
+        userMsg("u2", "next"),
+        assistantMsgWithTokens("a2", "response", { input: 247_000, output: 6_000 }),
+    ]
+    injectCompressNudges(state, config, logger, turn2, {} as any)
+
+    assert.equal(
+        state.nudges.shouldInjectThisTurn,
+        false,
+        "only 3K growth after compress (< 50K adaptive threshold) — should NOT nudge",
+    )
+})
+
+test("injectCompressNudges: post-compress large growth DOES nudge", () => {
+    const state = createSessionState()
+    state.modelContextLimit = 1_000_000
+    const config = buildConfig()
+    config.compress.maxContextLimit = 800_000
+    config.compress.minContextLimit = 550_000
+
+    const turn1: WithParts[] = [
+        userMsg("u1", "hello"),
+        assistantMsgWithTokens("a1", "done", { input: 200_000, output: 50_000 }, [
+            compressToolPart("c1", "compressed"),
+        ]),
+    ]
+    injectCompressNudges(state, config, logger, turn1, {} as any)
+
+    const turn2: WithParts[] = [
+        userMsg("u2", "next"),
+        assistantMsgWithTokens("a2", "response", { input: 250_000, output: 55_000 }),
+    ]
+    injectCompressNudges(state, config, logger, turn2, {} as any)
+
+    assert.equal(
+        state.nudges.shouldInjectThisTurn,
+        true,
+        "55K growth after compress (> 50K adaptive threshold) — should nudge",
+    )
+    assert.equal(state.nudges.lastPerMessageNudgeTokens, 305_000)
 })

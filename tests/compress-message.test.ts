@@ -702,8 +702,7 @@ test("compress message mode sends one aggregated notification for batched messag
     )
 
     assert.equal(toastCalls.length, 1)
-    // [ACP rebrand] DCP → ACP in notification headers
-    assert.match(toastCalls[0] || "", /▣ ACP \| -[^,\n]+ removed, \+[^\s\n]+ summary/)
+    assert.match(toastCalls[0] || "", /▣ ACP \| Context [^|]+→[^|]+/)
     assert.match(toastCalls[0] || "", /Compression #1/)
     assert.match(toastCalls[0] || "", /▣ Compression #1 -[^,\n]+ removed, \+[^\s\n]+ summary/)
     assert.match(toastCalls[0] || "", /Topic: Batch stale notes/)
