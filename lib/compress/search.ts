@@ -78,20 +78,21 @@ export function resolveBoundaryIds(
 
     if (!startReference) {
         issues.push(
-            `startId ${parsedStartId.ref} is not available in the current conversation context. Choose an injected ID visible in context.`,
+            `startId ${parsedStartId.ref} is not available — likely consumed by an existing block.`,
         )
     }
 
     if (!endReference) {
         issues.push(
-            `endId ${parsedEndId.ref} is not available in the current conversation context. Choose an injected ID visible in context.`,
+            `endId ${parsedEndId.ref} is not available — likely consumed by an existing block.`,
         )
     }
 
     if (issues.length > 0) {
-        throw new Error(
-            issues.length === 1 ? issues[0] : issues.map((issue) => `- ${issue}`).join("\n"),
-        )
+        const hint = buildBoundaryRecoveryHint(context, state)
+        const body =
+            issues.length === 1 ? issues[0] : issues.map((issue) => `- ${issue}`).join("\n")
+        throw new Error(hint ? `${body}\n${hint}` : body)
     }
 
     if (!startReference || !endReference) {
@@ -108,6 +109,34 @@ export function resolveBoundaryIds(
     }
 
     return { startReference, endReference }
+}
+
+function buildBoundaryRecoveryHint(context: SearchContext, state: SessionState): string {
+    const visibleRefs: string[] = []
+    for (const [messageRef, messageId] of state.messageIds.byRef) {
+        if (context.rawMessagesById.has(messageId)) {
+            visibleRefs.push(messageRef)
+        }
+    }
+
+    const parts: string[] = []
+    if (visibleRefs.length > 0) {
+        visibleRefs.sort()
+        const first = visibleRefs[0]
+        const last = visibleRefs[visibleRefs.length - 1]
+        parts.push(`Current visible: ${first}–${last} (${visibleRefs.length} msgs).`)
+    }
+
+    const blockCount = context.summaryByBlockId.size
+    if (blockCount > 0) {
+        parts.push(`${blockCount} active compressed block${blockCount === 1 ? "" : "s"}.`)
+    }
+
+    if (parts.length === 0) {
+        return ""
+    }
+
+    return `${parts.join(" ")} Call acp_status() to see which blocks consumed which IDs, then retry with valid IDs.`
 }
 
 export function resolveSelection(

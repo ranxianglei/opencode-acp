@@ -275,6 +275,45 @@ test("resolveBoundaryIds throws on unknown message ref", () => {
     )
 })
 
+test("resolveBoundaryIds failure error includes visible range and acp_status pointer", () => {
+    const msg1 = makeAssistantMessage("raw-a", "first")
+    const msg2 = makeAssistantMessage("raw-b", "second")
+    const ctx = makeContext([msg1, msg2])
+
+    const state = makeState()
+    state.messageIds.byRef.set("m00001", "raw-a")
+    state.messageIds.byRef.set("m00002", "raw-b")
+    state.messageIds.byRawId.set("raw-a", "m00001")
+    state.messageIds.byRawId.set("raw-b", "m00002")
+
+    assert.throws(
+        () => resolveBoundaryIds(ctx, state, "m00099", "m00100"),
+        (err: Error) => {
+            assert.match(err.message, /not available/)
+            assert.match(err.message, /Current visible: m00001–m00002 \(2 msgs\)/)
+            assert.match(err.message, /acp_status\(\)/)
+            return true
+        },
+    )
+})
+
+test("resolveBoundaryIds failure with active blocks mentions block count", () => {
+    const msg1 = makeAssistantMessage("raw-a", "first")
+    const block = makeBlock({ blockId: 5, anchorMessageId: "raw-a", active: true })
+    const blocks = new Map([[5, block]])
+    const ctx = makeContext([msg1], blocks)
+
+    const state = makeState()
+    state.messageIds.byRef.set("m00001", "raw-a")
+    state.messageIds.byRawId.set("raw-a", "m00001")
+    state.prune.messages.blocksById.set(5, block)
+
+    assert.throws(
+        () => resolveBoundaryIds(ctx, state, "m00099", "m00100"),
+        /1 active compressed block/,
+    )
+})
+
 test("resolveBoundaryIds auto-swaps reversed boundaries (Bug 34)", () => {
     const msg1 = makeAssistantMessage("raw-a", "first")
     const msg2 = makeAssistantMessage("raw-b", "second")
