@@ -242,7 +242,7 @@ export const injectCompressNudges = (
             if (pct(composition.toolTokens) > 50) {
                 breakdown += `\n⚠️ ${pct(composition.toolTokens)}% of context is tool outputs — compress consumed ranges now.`
             } else {
-                breakdown += `\n💡 Use compress tool on these ranges. Ignore if content is still needed.`
+                breakdown += `\n💡 Context capacity is precious — compress consumed ranges to save context.`
             }
             if (composition.largestRanges.length > 0) {
                 const ranges = composition.largestRanges.map((r) => `${r.ref} (${fmt(r.tokens)})`).join(", ")
@@ -254,10 +254,10 @@ export const injectCompressNudges = (
         if (decision.tipsVariant === "maxLimit") {
             tipsText = "\n\n⚠️ Context limit reached — compress now. Prioritize consumed tool outputs.\n\n{ \"topic\": \"...\", \"content\": [{ \"startId\": \"<ID>\", \"endId\": \"<ID>\", \"summary\": \"...\" }] }\n\nOnly use IDs from visible messages above. Compress older work first."
         } else if (decision.tipsVariant === "minLimit") {
-            tipsText = "\n\n⚠️ Context is growing — compress consumed ranges. Use compress tool on the largest messages listed above. Ignore if content is still needed."
+            tipsText = "\n\n⚠️ Context is growing — compress consumed ranges now. Context capacity is precious. Save context by compressing consumed outputs, not by avoiding tools."
         } else {
             const topRanges = composition.largestRanges.slice(0, 3).map((r) => `${r.ref} (${r.tokens >= 1000 ? `${(r.tokens / 1000).toFixed(1)}K` : r.tokens})`).join(", ")
-            tipsText = `\n\n💡 Use compress tool on largest ranges: ${topRanges}. Tools: compress, decompress, search_context, acp_status. Ignore if content is still needed.`
+            tipsText = `\n\n⚠️ Context capacity is precious — compress consumed ranges to save context. Largest: ${topRanges}. Compress by need, not by percentage.`
         }
         state.nudges.lastPerMessageNudgeTokens = currentTokens
         state.nudges.lastPerMessageNudgeTurn = state.currentTurn ?? 0
