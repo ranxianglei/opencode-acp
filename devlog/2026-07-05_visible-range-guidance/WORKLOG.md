@@ -28,11 +28,13 @@
 
 | Commit | Description |
 |--------|-------------|
-| _(pending)_ | Block A: rewrite system prompt — 4 tools, scenes, drop "promptly" |
-| _(pending)_ | Block C: drop 15% nudge floor, first-turn baseline |
-| _(pending)_ | Block D: acp_status mode/sort/limit + sizes + ID ranges |
-| _(pending)_ | Block E: enrich compress boundary failure error |
-| _(pending)_ | Tests: cover all four blocks |
+| `4cdbbb3` | feat(prompt): rewrite system prompt — list all 4 tools, add compress/don't-compress scenes, drop 'promptly' |
+| `8ae0f2d` | feat(nudge): drop 15% context floor, switch to growth-only cadence with first-turn baseline |
+| `8e338e3` | feat(acp_status): add mode/sort/limit args + show compressed size and mNNNNN ranges per block |
+| `7e183f9` | feat(compress): enrich boundary failure error with visible range and acp_status pointer |
+| `abeb74b` | docs(devlog): add REQ/DESIGN/WORKLOG for visible-range-guidance iteration |
+
+**PR**: https://github.com/ranxianglei/opencode-acp/pull/55
 
 ### Key Files
 
