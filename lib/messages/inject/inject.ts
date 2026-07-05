@@ -168,6 +168,17 @@ export const injectCompressNudges = (
 
     applyAnchoredNudges(state, config, messages, prompts, compressionPriorities, currentTokens, modelContextLimit, suffixMessage)
 
+    const nudgeGrowthTokens =
+        config.compress?.nudgeGrowthTokens ?? resolveAdaptiveNudgeGrowth(modelContextLimit)
+
+    if (
+        currentTokens !== undefined &&
+        state.nudges.lastPerMessageNudgeTokens !== undefined &&
+        currentTokens < state.nudges.lastPerMessageNudgeTokens - nudgeGrowthTokens
+    ) {
+        state.nudges.lastPerMessageNudgeTokens = currentTokens
+    }
+
     const decision = computeShouldNudge({
         currentTokens,
         modelContextLimit,
@@ -175,8 +186,7 @@ export const injectCompressNudges = (
         overMaxLimit,
         lastNudgeTokens: state.nudges.lastPerMessageNudgeTokens,
         minNudgeContextPercent: config.compress?.minNudgeContextPercent ?? 15,
-        nudgeGrowthTokens:
-            config.compress?.nudgeGrowthTokens ?? resolveAdaptiveNudgeGrowth(modelContextLimit),
+        nudgeGrowthTokens,
     })
 
     state.nudges.shouldInjectThisTurn = decision.shouldNudge
