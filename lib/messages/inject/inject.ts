@@ -253,9 +253,10 @@ export const injectCompressNudges = (
         if (decision.tipsVariant === "maxLimit") {
             tipsText = "\n\n⚠️ Context limit reached — compress now. Prioritize consumed tool outputs.\n\n{ \"topic\": \"...\", \"content\": [{ \"startId\": \"<ID>\", \"endId\": \"<ID>\", \"summary\": \"...\" }] }\n\nOnly use IDs from visible messages above. Compress older work first."
         } else if (decision.tipsVariant === "minLimit") {
-            tipsText = "\n\n⚠️ Context is growing — consider compressing older work. Tools: compress, decompress, search_context."
+            tipsText = "\n\n⚠️ Context is growing — compress consumed ranges. Use compress tool on the largest messages listed above. Ignore if content is still needed."
         } else {
-            tipsText = "\n\n💡 Tools: compress, decompress, search_context."
+            const topRanges = composition.largestRanges.slice(0, 3).map((r) => `${r.ref} (${r.tokens >= 1000 ? `${(r.tokens / 1000).toFixed(1)}K` : r.tokens})`).join(", ")
+            tipsText = `\n\n💡 Use compress tool on largest ranges: ${topRanges}. Tools: compress, decompress, search_context, acp_status. Ignore if content is still needed.`
         }
         state.nudges.lastPerMessageNudgeTokens = currentTokens
         state.nudges.lastPerMessageNudgeTurn = state.currentTurn ?? 0
@@ -285,6 +286,19 @@ export const injectCompressNudges = (
     if (toolOutputReminder && suffixMessage) {
         if (!decision.shouldNudge) {
             injectContextUsage(suffixMessage, config, currentTokens, modelContextLimit)
+            if (composition.total > 0) {
+                const fmt2 = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n))
+                const pct2 = (n: number) => Math.round((n / composition.total) * 100)
+                const topBlocks = Array.from(state.prune.messages.blocksById.values())
+                    .filter((b) => b.active)
+                    .sort((a, b) => b.compressedTokens - a.compressedTokens)
+                    .slice(0, 3)
+                let mini = `\nBreakdown: ${fmt2(composition.toolTokens)} tool outputs (${pct2(composition.toolTokens)}%) | ${fmt2(composition.summaryTokens)} summaries (${pct2(composition.summaryTokens)}%) | ${fmt2(composition.messageTokens)} messages (${pct2(composition.messageTokens)}%)`
+                if (topBlocks.length > 0) {
+                    mini += `\nTop blocks: ${topBlocks.map((b) => `b${b.blockId} ${fmt2(b.compressedTokens)}→${fmt2(b.summaryTokens)}`).join(", ")}`
+                }
+                appendToLastTextPart(suffixMessage, mini)
+            }
         }
         appendToLastTextPart(suffixMessage, toolOutputReminder)
     }
