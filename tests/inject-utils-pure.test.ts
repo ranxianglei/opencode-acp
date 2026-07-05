@@ -93,7 +93,7 @@ test("overMaxLimit nudges regardless of contextPct (legacy floor removed)", () =
         ...baseParams,
         currentTokens: 10_000,
         modelContextLimit: 100_000,
-        lastNudgeTokens: 0,
+        lastNudgeTokens: 10_000,
         overMaxLimit: true,
     })
     assert.equal(d.shouldNudge, true)

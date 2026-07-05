@@ -181,14 +181,11 @@ export const injectCompressNudges = (
 
     state.nudges.shouldInjectThisTurn = decision.shouldNudge
 
-    // Establish growth baseline on the first observed turn so that subsequent
-    // turns measure growth from session start. Must persist across restarts.
     if (
         state.nudges.lastPerMessageNudgeTokens === undefined &&
         currentTokens !== undefined
     ) {
         state.nudges.lastPerMessageNudgeTokens = currentTokens
-        anchorsChanged = true
     }
 
     let tipsText: string | null = null
