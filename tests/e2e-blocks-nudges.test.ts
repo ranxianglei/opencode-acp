@@ -196,6 +196,8 @@ test("nudge injection: context usage tag injected when modelContextLimit is set"
     const { state, handler } = setupPipeline(SID_A, {}, {
         modelContextLimit: 200000,
     })
+    // Simulate post-baseline state so growth-gating can fire (not first turn).
+    state.nudges.lastPerMessageNudgeTokens = 0
 
     const output = {
         messages: [
@@ -416,6 +418,8 @@ test("visible ID range: range tag injected into suffix message when shouldNudge 
     const { state, handler } = setupPipeline(SID_A, {}, {
         modelContextLimit: 200000,
     })
+    // Simulate post-baseline state so growth-gating can fire (not first turn).
+    state.nudges.lastPerMessageNudgeTokens = 0
 
     const output = {
         messages: [

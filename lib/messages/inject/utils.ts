@@ -207,7 +207,12 @@ export interface NudgeDecision {
 
 /**
  * Per-message Tips decision (pure — extracted for unit testing).
- * Nudge when contextPct >= floor AND (first nudge | growth >= step | over max limit).
+ *
+ * Cadence is growth-only: first observed turn establishes a baseline (caller
+ * records `currentTokens` into `lastPerMessageNudgeTokens` and we return
+ * false); subsequent turns nudge when growth >= nudgeGrowthTokens or when
+ * overMaxLimit forces it. The legacy 15% floor (minNudgeContextPercent) is
+ * intentionally ignored — see devlog 2026-07-05_visible-range-guidance.
  */
 export function computeShouldNudge(params: {
     currentTokens: number | undefined
@@ -215,21 +220,24 @@ export function computeShouldNudge(params: {
     overMinLimit: boolean
     overMaxLimit: boolean
     lastNudgeTokens: number | undefined
+    /** @deprecated Kept for backward compat; ignored. Cadence is growth-only now. */
     minNudgeContextPercent: number
     nudgeGrowthTokens: number
 }): NudgeDecision {
-    const { currentTokens, modelContextLimit, overMinLimit, overMaxLimit } = params
-    const contextPct =
-        modelContextLimit && currentTokens ? (currentTokens / modelContextLimit) * 100 : 0
+    const { currentTokens, overMinLimit, overMaxLimit } = params
 
-    const lastNudgeTokens = params.lastNudgeTokens
-    const growthSinceLastNudge = (currentTokens ?? 0) - (lastNudgeTokens ?? 0)
-    const frequencyTriggered =
-        lastNudgeTokens === undefined ||
-        growthSinceLastNudge >= params.nudgeGrowthTokens ||
-        overMaxLimit
+    if (currentTokens === undefined) {
+        return { shouldNudge: false, tipsVariant: null }
+    }
 
-    const shouldNudge = contextPct >= params.minNudgeContextPercent && frequencyTriggered
+    // First observed turn: caller records currentTokens as the growth baseline.
+    if (params.lastNudgeTokens === undefined) {
+        return { shouldNudge: false, tipsVariant: null }
+    }
+
+    const growthSinceLastNudge = currentTokens - params.lastNudgeTokens
+    const shouldNudge = growthSinceLastNudge >= params.nudgeGrowthTokens || overMaxLimit
+
     if (!shouldNudge) {
         return { shouldNudge: false, tipsVariant: null }
     }
