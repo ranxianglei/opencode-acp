@@ -199,7 +199,7 @@ export const injectCompressNudges = (
         state.nudges.lastPerMessageNudgeTokens = currentTokens
     }
 
-    const composition = estimateContextComposition(messages)
+    const composition = estimateContextComposition(messages, state)
     const toolOutputThreshold = config.compress?.toolOutputNudgeThreshold ?? 5000
     let toolOutputReminder: string | null = null
 
@@ -240,6 +240,10 @@ export const injectCompressNudges = (
             }
             if (pct(composition.toolTokens) > 50) {
                 breakdown += `\n💡 ${pct(composition.toolTokens)}% of context is uncompressed tool outputs — compress oldest consumed ones first.`
+            }
+            if (composition.largestRanges.length > 0) {
+                const ranges = composition.largestRanges.map((r) => `${r.ref} (${fmt(r.tokens)})`).join(", ")
+                breakdown += `\nLargest messages: ${ranges} — compress these ranges first.`
             }
             appendToLastTextPart(suffixMessage, breakdown)
         }

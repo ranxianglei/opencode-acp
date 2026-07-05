@@ -452,7 +452,7 @@ export function buildContextUsageGuidance(
 
     const formatK = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n))
 
-    return `\n\nContext: ${formatK(currentTokens)} tokens.\nAll compression serves the primary task, but be frugal. Context capacity is precious — compress waste promptly. Save context by compressing consumed outputs, not by avoiding tools. Compress by need, not by percentage.`
+    return `\n\nContext: ${formatK(currentTokens)} tokens.\nAll compression serves the primary task, but be frugal. Context capacity is precious. Save context by compressing consumed outputs, not by avoiding tools. Compress by need, not by percentage.`
 }
 
 export function applyAnchoredNudges(
@@ -555,18 +555,31 @@ export interface ContextComposition {
     summaryTokens: number
     messageTokens: number
     total: number
+    largestRanges: { ref: string; tokens: number }[]
 }
 
-export function estimateContextComposition(messages: WithParts[]): ContextComposition {
+export function estimateContextComposition(
+    messages: WithParts[],
+    state?: SessionState,
+): ContextComposition {
     let toolTokens = 0
     let summaryTokens = 0
     let messageTokens = 0
+    const perMessage: { ref: string; tokens: number }[] = []
 
     for (const msg of messages) {
-        const isSummary = (msg.info as any)?.summary === true
+        const text = (msg.parts || [])
+            .filter((p) => p.type === "text")
+            .map((p: any) => p.text || "")
+            .join("")
+        const msgId = (msg.info as any)?.id || ""
+        const isSummary = msgId.startsWith("msg_dcp_summary") || text.includes("[Compressed conversation section]")
+
+        let msgTotal = 0
         for (const part of msg.parts || []) {
             if (part.type === "text" && typeof (part as any).text === "string") {
                 const tokens = Math.round((part as any).text.length / 4)
+                msgTotal += tokens
                 if (isSummary) {
                     summaryTokens += tokens
                 } else {
@@ -574,10 +587,25 @@ export function estimateContextComposition(messages: WithParts[]): ContextCompos
                 }
             } else if (part.type !== "text" && part.type !== "reasoning") {
                 const raw = JSON.stringify(part)
-                toolTokens += Math.round(raw.length / 4)
+                const tokens = Math.round(raw.length / 4)
+                msgTotal += tokens
+                toolTokens += tokens
             }
+        }
+
+        if (!isSummary && msgTotal > 500) {
+            const ref = state?.messageIds?.byRawId?.get(msgId) || "?"
+            perMessage.push({ ref, tokens: msgTotal })
         }
     }
 
-    return { toolTokens, summaryTokens, messageTokens, total: toolTokens + summaryTokens + messageTokens }
+    perMessage.sort((a, b) => b.tokens - a.tokens)
+
+    return {
+        toolTokens,
+        summaryTokens,
+        messageTokens,
+        total: toolTokens + summaryTokens + messageTokens,
+        largestRanges: perMessage.slice(0, 5),
+    }
 }
