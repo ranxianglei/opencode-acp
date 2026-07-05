@@ -7,7 +7,7 @@ const baseParams = {
     modelContextLimit: 100_000,
     overMinLimit: false,
     overMaxLimit: false,
-    lastNudgeTokens: 0,
+    lastNudgeTokens: undefined as number | undefined,
     minNudgeContextPercent: 15,
     nudgeGrowthTokens: 6000,
 }
@@ -17,7 +17,7 @@ test("no nudge when contextPct below floor (even on first nudge)", () => {
         ...baseParams,
         currentTokens: 5000,
         modelContextLimit: 100_000,
-        lastNudgeTokens: 0,
+        lastNudgeTokens: undefined,
     })
     assert.equal(d.shouldNudge, false)
     assert.equal(d.tipsVariant, null)

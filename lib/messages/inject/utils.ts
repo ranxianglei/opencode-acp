@@ -214,7 +214,7 @@ export function computeShouldNudge(params: {
     modelContextLimit: number | undefined
     overMinLimit: boolean
     overMaxLimit: boolean
-    lastNudgeTokens: number
+    lastNudgeTokens: number | undefined
     minNudgeContextPercent: number
     nudgeGrowthTokens: number
 }): NudgeDecision {
@@ -222,10 +222,10 @@ export function computeShouldNudge(params: {
     const contextPct =
         modelContextLimit && currentTokens ? (currentTokens / modelContextLimit) * 100 : 0
 
-    const lastNudgeTokens = params.lastNudgeTokens ?? 0
-    const growthSinceLastNudge = (currentTokens ?? 0) - lastNudgeTokens
+    const lastNudgeTokens = params.lastNudgeTokens
+    const growthSinceLastNudge = (currentTokens ?? 0) - (lastNudgeTokens ?? 0)
     const frequencyTriggered =
-        lastNudgeTokens === 0 ||
+        lastNudgeTokens === undefined ||
         growthSinceLastNudge >= params.nudgeGrowthTokens ||
         overMaxLimit
 

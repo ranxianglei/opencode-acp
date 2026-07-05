@@ -39,7 +39,7 @@ export function createAcpStatusTool(ctx: ToolContext): ReturnType<typeof tool> {
                 "",
             ]
 
-            const idWidth = String(Math.max(...activeIds)).length
+            const idWidth = String(Math.max(...blocks.map((b) => b.blockId))).length
             for (const b of blocks) {
                 const idStr = `b${b.blockId}`.padEnd(idWidth + 1)
                 const tokStr = `${formatTokens(b.summaryTokens)}t`.padStart(7)

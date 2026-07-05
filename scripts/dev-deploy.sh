@@ -20,6 +20,7 @@
 set -euo pipefail
 
 # ── Ensure node/npm are in PATH (detect common install locations) ──────────
+shopt -s nullglob
 if ! command -v npm &>/dev/null; then
     for candidate in \
         "$HOME/.local/share/fnm/aliases/default/bin" \
@@ -33,6 +34,7 @@ if ! command -v npm &>/dev/null; then
         fi
     done
 fi
+shopt -u nullglob
 
 # ── Paths (all relative, no hardcoded user dirs) ───────────────────────────
 

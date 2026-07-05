@@ -90,7 +90,7 @@ export const injectCompressNudges = (
         state.nudges.contextLimitAnchors.clear()
         state.nudges.turnNudgeAnchors.clear()
         state.nudges.iterationNudgeAnchors.clear()
-        state.nudges.lastPerMessageNudgeTokens = currentTokens ?? 0
+        state.nudges.lastPerMessageNudgeTokens = currentTokens
         void saveSessionState(state, logger)
         return
     }
@@ -173,7 +173,7 @@ export const injectCompressNudges = (
         modelContextLimit,
         overMinLimit,
         overMaxLimit,
-        lastNudgeTokens: state.nudges.lastPerMessageNudgeTokens ?? 0,
+        lastNudgeTokens: state.nudges.lastPerMessageNudgeTokens,
         minNudgeContextPercent: config.compress?.minNudgeContextPercent ?? 15,
         nudgeGrowthTokens:
             config.compress?.nudgeGrowthTokens ?? resolveAdaptiveNudgeGrowth(modelContextLimit),
@@ -192,7 +192,7 @@ export const injectCompressNudges = (
         } else {
             tipsText = "\n\n💡 Tools: compress, decompress, search_context."
         }
-        state.nudges.lastPerMessageNudgeTokens = currentTokens ?? 0
+        state.nudges.lastPerMessageNudgeTokens = currentTokens
         state.nudges.lastPerMessageNudgeTurn = state.currentTurn ?? 0
 
         if (config.compress.mode !== "message") {
