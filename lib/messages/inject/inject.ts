@@ -256,8 +256,8 @@ export const injectCompressNudges = (
         } else if (decision.tipsVariant === "minLimit") {
             tipsText = "\n\n⚠️ Context is growing — compress consumed ranges now. Context capacity is precious. Save context by compressing consumed outputs, not by avoiding tools."
         } else {
-            const topRanges = composition.largestRanges.slice(0, 3).map((r) => `${r.ref} (${r.tokens >= 1000 ? `${(r.tokens / 1000).toFixed(1)}K` : r.tokens})`).join(", ")
-            tipsText = `\n\n⚠️ Context capacity is precious — compress consumed ranges to save context. Largest: ${topRanges}. Compress by need, not by percentage.`
+            const topRanges = composition.largestRanges.slice(0, 5).map((r) => `${r.ref} (${r.tokens >= 1000 ? `${(r.tokens / 1000).toFixed(1)}K` : r.tokens})`).join(", ")
+            tipsText = `\n\n⚠️ Largest tool outputs consuming context: ${topRanges}. Context capacity is precious — compress these consumed ranges now. Cover the largest range you can in a single call.`
         }
         state.nudges.lastPerMessageNudgeTokens = currentTokens
         state.nudges.lastPerMessageNudgeTurn = state.currentTurn ?? 0
