@@ -26,6 +26,7 @@ import {
     buildContextUsageGuidance,
     computeShouldNudge,
     countMessagesAfterIndex,
+    estimateContextComposition,
     findLastNonIgnoredMessage,
     getIterationNudgeThreshold,
     getNudgeFrequency,
@@ -91,7 +92,7 @@ export const injectCompressNudges = (
         state.nudges.turnNudgeAnchors.clear()
         state.nudges.iterationNudgeAnchors.clear()
         state.nudges.lastPerMessageNudgeTokens = currentTokens
-        void saveSessionState(state, logger)
+        saveSessionState(state, logger).catch(() => {})
         return
     }
 
@@ -168,6 +169,17 @@ export const injectCompressNudges = (
 
     applyAnchoredNudges(state, config, messages, prompts, compressionPriorities, currentTokens, modelContextLimit, suffixMessage)
 
+    const nudgeGrowthTokens =
+        config.compress?.nudgeGrowthTokens ?? resolveAdaptiveNudgeGrowth(modelContextLimit)
+
+    if (
+        currentTokens !== undefined &&
+        state.nudges.lastPerMessageNudgeTokens !== undefined &&
+        currentTokens < state.nudges.lastPerMessageNudgeTokens - nudgeGrowthTokens
+    ) {
+        state.nudges.lastPerMessageNudgeTokens = currentTokens
+    }
+
     const decision = computeShouldNudge({
         currentTokens,
         modelContextLimit,
@@ -175,22 +187,74 @@ export const injectCompressNudges = (
         overMaxLimit,
         lastNudgeTokens: state.nudges.lastPerMessageNudgeTokens,
         minNudgeContextPercent: config.compress?.minNudgeContextPercent ?? 15,
-        nudgeGrowthTokens:
-            config.compress?.nudgeGrowthTokens ?? resolveAdaptiveNudgeGrowth(modelContextLimit),
+        nudgeGrowthTokens,
     })
 
     state.nudges.shouldInjectThisTurn = decision.shouldNudge
+
+    if (
+        state.nudges.lastPerMessageNudgeTokens === undefined &&
+        currentTokens !== undefined
+    ) {
+        state.nudges.lastPerMessageNudgeTokens = currentTokens
+    }
+
+    const composition = estimateContextComposition(messages, state)
+    const toolOutputThreshold = config.compress?.toolOutputNudgeThreshold ?? 5000
+    let toolOutputReminder: string | null = null
+
+    if (composition.toolTokens > 0) {
+        if (state.nudges.lastToolOutputNudgeTokens === undefined) {
+            state.nudges.lastToolOutputNudgeTokens = composition.toolTokens
+        } else {
+            const toolGrowth = composition.toolTokens - state.nudges.lastToolOutputNudgeTokens
+            if (toolGrowth >= toolOutputThreshold) {
+                const fmt = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n))
+                const topRanges = composition.largestRanges.slice(0, 5).map((r) => `${r.ref} (${fmt(r.tokens)})`).join(", ")
+                toolOutputReminder = `\n\n⚠️ ${fmt(toolGrowth)} new tool outputs accumulated (${fmt(composition.toolTokens)} total). Largest: ${topRanges}. Use compress tool to compress these ranges now.`
+                state.nudges.lastToolOutputNudgeTokens = composition.toolTokens
+                anchorsChanged = true
+            }
+        }
+    }
 
     let tipsText: string | null = null
 
     if (decision.shouldNudge) {
         injectContextUsage(suffixMessage, config, currentTokens, modelContextLimit)
+
+        if (suffixMessage && composition.total > 0) {
+            const fmt = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n))
+            const pct = (n: number) => Math.round((n / composition.total) * 100)
+            const growth = currentTokens !== undefined && state.nudges.lastPerMessageNudgeTokens !== undefined
+                ? currentTokens - state.nudges.lastPerMessageNudgeTokens : 0
+            const growthStr = growth > 0 ? ` (+${fmt(growth)} since last nudge)` : ""
+
+            const plainTextTokens = composition.textTokens
+            let breakdown = `\nBreakdown: ${fmt(composition.toolTokens)} tool (${pct(composition.toolTokens)}%) | ${fmt(composition.summaryTokens)} summaries (${pct(composition.summaryTokens)}%) | ${fmt(composition.codeTokens)} code (${pct(composition.codeTokens)}%) | ${fmt(plainTextTokens)} text (${pct(plainTextTokens)}%)${growthStr}`
+
+            const topBlocks = Array.from(state.prune.messages.blocksById.values())
+                .filter((b) => b.active)
+                .sort((a, b) => b.compressedTokens - a.compressedTokens)
+                .slice(0, 3)
+            if (topBlocks.length > 0) {
+                breakdown += `\nTop blocks: ${topBlocks.map((b) => `b${b.blockId} ${fmt(b.compressedTokens)}→${fmt(b.summaryTokens)}`).join(", ")}`
+            }
+            breakdown += `\n💡 Compress incrementally — compress the largest consumed ranges first.`
+            if (composition.largestToolRanges.length > 0) {
+                breakdown += `\nLargest tool outputs: ${composition.largestToolRanges.map((r) => `${r.ref} (${fmt(r.tokens)})`).join(", ")}`
+            }
+            if (composition.largestCodeRanges.length > 0) {
+                breakdown += `\nLargest code messages: ${composition.largestCodeRanges.map((r) => `${r.ref} (${fmt(r.tokens)})`).join(", ")}`
+            }
+            if (composition.largestMessageRanges.length > 0) {
+                breakdown += `\nLargest text messages: ${composition.largestMessageRanges.map((r) => `${r.ref} (${fmt(r.tokens)})`).join(", ")}`
+            }
+            appendToLastTextPart(suffixMessage, breakdown)
+        }
+
         if (decision.tipsVariant === "maxLimit") {
             tipsText = "\n\n⚠️ Context limit reached — compress now. Prioritize consumed tool outputs.\n\n{ \"topic\": \"...\", \"content\": [{ \"startId\": \"<ID>\", \"endId\": \"<ID>\", \"summary\": \"...\" }] }\n\nOnly use IDs from visible messages above. Compress older work first."
-        } else if (decision.tipsVariant === "minLimit") {
-            tipsText = "\n\n⚠️ Context is growing — consider compressing older work. Tools: compress, decompress, search_context."
-        } else {
-            tipsText = "\n\n💡 Tools: compress, decompress, search_context."
         }
         state.nudges.lastPerMessageNudgeTokens = currentTokens
         state.nudges.lastPerMessageNudgeTurn = state.currentTurn ?? 0
@@ -217,12 +281,32 @@ export const injectCompressNudges = (
         injectVisibleIdRange(state, messages, suffixMessage)
     }
 
+    if (toolOutputReminder && suffixMessage) {
+        if (!decision.shouldNudge) {
+            injectContextUsage(suffixMessage, config, currentTokens, modelContextLimit)
+            if (composition.total > 0) {
+                const fmt2 = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n))
+                const pct2 = (n: number) => Math.round((n / composition.total) * 100)
+                const topBlocks = Array.from(state.prune.messages.blocksById.values())
+                    .filter((b) => b.active)
+                    .sort((a, b) => b.compressedTokens - a.compressedTokens)
+                    .slice(0, 3)
+                let mini = `\nBreakdown: ${fmt2(composition.toolTokens)} tool outputs (${pct2(composition.toolTokens)}%) | ${fmt2(composition.summaryTokens)} summaries (${pct2(composition.summaryTokens)}%) | ${fmt2(composition.messageTokens)} messages (${pct2(composition.messageTokens)}%)`
+                if (topBlocks.length > 0) {
+                    mini += `\nTop blocks: ${topBlocks.map((b) => `b${b.blockId} ${fmt2(b.compressedTokens)}→${fmt2(b.summaryTokens)}`).join(", ")}`
+                }
+                appendToLastTextPart(suffixMessage, mini)
+            }
+        }
+        appendToLastTextPart(suffixMessage, toolOutputReminder)
+    }
+
     if (suffixMessage) {
         appendToLastTextPart(suffixMessage, "\n")
     }
 
     if (anchorsChanged) {
-        void saveSessionState(state, logger)
+        saveSessionState(state, logger).catch(() => {})
     }
 }
 

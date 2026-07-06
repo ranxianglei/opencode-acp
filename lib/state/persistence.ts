@@ -13,13 +13,15 @@ import type { CompressionBlock, PrunedMessageEntry, SessionState, SessionStats }
 import type { Logger } from "../logger"
 import { serializePruneMessagesState } from "./utils"
 
-const LEGACY_STORAGE_DIR = join(
-    process.env.XDG_DATA_HOME || join(homedir(), ".local", "share"),
-    "opencode",
-    "storage",
-    "plugin",
-    "dcp",
-)
+function getLegacyStorageDir(): string {
+    return join(
+        process.env.XDG_DATA_HOME || join(homedir(), ".local", "share"),
+        "opencode",
+        "storage",
+        "plugin",
+        "dcp",
+    )
+}
 
 /** Prune state as stored on disk */
 export interface PersistedPruneMessagesState {
@@ -43,6 +45,7 @@ export interface PersistedNudges {
     iterationNudgeAnchors?: string[]
     lastPerMessageNudgeTurn?: number
     lastPerMessageNudgeTokens?: number
+    lastToolOutputNudgeTokens?: number
 }
 
 export interface PersistedMessageIds {
@@ -61,35 +64,40 @@ export interface PersistedSessionState {
     lastCompaction?: number
 }
 
-const STORAGE_DIR = join(
-    process.env.XDG_DATA_HOME || join(homedir(), ".local", "share"),
-    "opencode",
-    "storage",
-    "plugin",
-    "acp",
-)
+function getStorageDir(): string {
+    return join(
+        process.env.XDG_DATA_HOME || join(homedir(), ".local", "share"),
+        "opencode",
+        "storage",
+        "plugin",
+        "acp",
+    )
+}
 
 /** One-time migration: copy plugin/dcp/ → plugin/acp/ if ACP dir doesn't exist yet */
 function migrateFromLegacyIfNeeded(logger: Logger): void {
-    if (existsSyncSync(STORAGE_DIR)) return
-    if (!existsSyncSync(LEGACY_STORAGE_DIR)) return
+    const storageDir = getStorageDir()
+    const legacyDir = getLegacyStorageDir()
+    if (existsSyncSync(storageDir)) return
+    if (!existsSyncSync(legacyDir)) return
     try {
-        cpSync(LEGACY_STORAGE_DIR, STORAGE_DIR, { recursive: true })
-        logger.info(`[ACP] Migrated storage from ${LEGACY_STORAGE_DIR} → ${STORAGE_DIR}`)
+        cpSync(legacyDir, storageDir, { recursive: true })
+        logger.info(`[ACP] Migrated storage from ${legacyDir} → ${storageDir}`)
     } catch (e: any) {
         logger.warn(`[ACP] Storage migration failed: ${e.message}`)
     }
 }
 
 async function ensureStorageDir(logger: Logger): Promise<void> {
-    if (!existsSync(STORAGE_DIR)) {
+    const storageDir = getStorageDir()
+    if (!existsSync(storageDir)) {
         migrateFromLegacyIfNeeded(logger)
-        await fs.mkdir(STORAGE_DIR, { recursive: true })
+        await fs.mkdir(storageDir, { recursive: true })
     }
 }
 
 function getSessionFilePath(sessionId: string): string {
-    return join(STORAGE_DIR, `${sessionId}.json`)
+    return join(getStorageDir(), `${sessionId}.json`)
 }
 
 async function writePersistedSessionState(
@@ -131,6 +139,7 @@ export async function saveSessionState(
             iterationNudgeAnchors: Array.from(sessionState.nudges.iterationNudgeAnchors),
             lastPerMessageNudgeTurn: sessionState.nudges.lastPerMessageNudgeTurn ?? 0,
             lastPerMessageNudgeTokens: sessionState.nudges.lastPerMessageNudgeTokens,
+            lastToolOutputNudgeTokens: sessionState.nudges.lastToolOutputNudgeTokens,
         },
         stats: sessionState.stats,
         lastUpdated: new Date().toISOString(),
@@ -263,16 +272,17 @@ export async function loadAllSessionStats(logger: Logger): Promise<AggregatedSta
     }
 
     try {
-        if (!existsSync(STORAGE_DIR)) {
+        const storageDir = getStorageDir()
+        if (!existsSync(storageDir)) {
             return result
         }
 
-        const files = await fs.readdir(STORAGE_DIR)
+        const files = await fs.readdir(storageDir)
         const jsonFiles = files.filter((f) => f.endsWith(".json"))
 
         for (const file of jsonFiles) {
             try {
-                const filePath = join(STORAGE_DIR, file)
+                const filePath = join(storageDir, file)
                 const content = await fs.readFile(filePath, "utf-8")
                 const state = JSON.parse(content) as PersistedSessionState
 

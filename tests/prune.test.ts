@@ -242,9 +242,9 @@ test("prune creates standalone summary when anchor is assistant and no user foll
     prune(state, logger, buildConfig(), messages)
 
     const summaryMsg = messages.find(
-        (m) => m.info.role === "user" && m.parts.some((p: any) => p.text?.includes("Standalone summary")),
+        (m) => m.info.role === "assistant" && m.parts.some((p: any) => p.text?.includes("Standalone summary")),
     )
-    assert.ok(summaryMsg, "standalone summary should be created when anchor is assistant")
+    assert.ok(summaryMsg, "standalone summary should be created as assistant role when anchor is assistant")
 })
 
 test("prune skips inactive compression blocks", () => {

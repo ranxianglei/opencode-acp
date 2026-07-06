@@ -393,6 +393,37 @@ ACP 在首次启动时自动将配置从 `dcp.jsonc` 迁移到 `acp.jsonc`，将
 
 ## 更新日志
 
+### v1.9.0 — 可见范围引导 & 压缩失败恢复
+
+**问题**：在大上下文模型（1M+）上，模型反复调用 `compress(startId=m00930, endId=m00943)`，而这些 ID 已被之前的块消费。模型对哪些 `mNNNNN` 引用仍可压缩没有稳定视图，失败错误不提供恢复信息，`acp_status` 工具已注册但从未在提示中提及，suffix nudge 只报告一个裸百分比，完全不说明 token 实际花在了哪里。
+
+**系统提示重写**：
+- 四个上下文工具（`compress`、`decompress`、`search_context`、`acp_status`）现在每个都带一行"何时使用"提示。
+- 显式的"压缩 / 不压缩"场景替代了命令式的"promptly 压缩明显垃圾"措辞。
+- 新增 **CONTEXT BREAKDOWN** 章节，解释 4 类后缀格式（`tool | summaries | code | text`）、最大范围候选项，以及"每次调用针对一个已消费的大范围"的增量策略。
+- 批量压缩引导：每次 `compress` 调用尽量覆盖 20+ 条消息，而不是产生许多小摘要。
+- 新增 **task-phase-end** 触发器：当一次 bug 排查 / 探索 / 研究冲刺结束时，主动压缩该阶段的冗余翻腾，同时保留关键发现、文件路径、决策依据。
+
+**Nudge 频率**：
+- 彻底移除 `contextPct >= 15%` 下限。频率现在纯粹是 5%-of-limit 增长，首轮建立基线（不再在第 1 轮强制触发）。
+- 基线在压缩后 token 显著下降时自动重置，使下一次 nudge 在压缩后的水平触发，而不是等满一个完整增长周期。
+- suffix nudge 新增 **3 类组成分解**（`tool | summaries | code | text`，不再对含 code 的消息双重计数），加上 tool 和 code 类别的**最大范围**列表 —— 具体的压缩目标，而不是裸百分比。
+
+**`acp_status` 升级**：接受 `mode`（`summary` | `detailed`）、`sort`（`recent` | `size` | `age`）、`limit`。每个块行显示 `compressedTokens→summaryTokens` 以及它消费的 `mNNNNN` 范围。
+
+**压缩失败恢复**：`resolveBoundaryIds` 失败现在返回当前可见范围（首/尾引用）、活跃块数，以及指向 `acp_status` 的指引。超出范围的 `endId` 猜测（未注册但解析值高于最后一条可见消息的引用）会被**钳制**到最后一条可见消息，而不是失败；已注册但已被消费的引用仍然失败并附恢复提示（钳制它们会静默重新压缩已摘要的内容）。
+
+**加固**：
+- `maxSummaryLengthHard` 默认值提升 `4000 → 8000 → 10000`；compress 工具 schema 现在从 config 取显示值，配置变更能传播。
+- 移除陈旧的 `MODEL_CONTEXT_LIMITS` 38 项回退表 —— `modelContextLimit` 现在仅来自 host SDK 的 `input.model.limit.context`。省略该字段的 provider 会立即暴露 `undefined`，而不是从陈旧猜测中得到扭曲的百分比。
+- 所有 fire-and-forget `saveSessionState` 调用添加 `.catch()`；移除了触发并发保存竞态的 baseline `anchorsChanged` 路径。
+- `STORAGE_DIR` 改为动态（在调用时重新求值 `XDG_DATA_HOME`），使重定位的数据目录和测试 harness 能正常工作。
+- 压缩摘要现在以 assistant 角色 + system-metadata 标签注入。
+
+**兼容性**：无持久化 state schema 变更。`minNudgeContextPercent` 配置字段作为 no-op 保留以兼容旧配置。
+
+---
+
 ### v1.8.2 — 始终注入系统提示词
 
 **Bug 修复**：系统提示词门控（v1.8.1 commit `24bbb1f`）导致大上下文模型 binge 压缩。由于 ACP 注入是临时的（不持久化到对话历史），gate 掉系统提示词会让模型在两次 nudge 之间完全忘记压缩工具的存在。当 50K 增长后 nudge 触发时，模型恐慌性连续调用 95 次压缩。

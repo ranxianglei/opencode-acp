@@ -1,20 +1,73 @@
 export const SYSTEM = `
 
-You operate in a context-constrained environment. Context management helps preserve retrieval quality, but your primary goal is completing the task at hand. Do not let context management distract from the actual work.
+You operate in a context-constrained environment. All compression serves the primary task, but be frugal. Context management helps preserve retrieval quality, but your primary goal is completing the task at hand. Do not let context management distract from the actual work.
 
-The tools you have for context management are \`compress\`, \`decompress\`, and \`search_context\`. \`compress\` replaces older conversation content with technical summaries you produce. \`decompress\` restores previously compressed content when you need exact details. \`search_context\` searches compressed block summaries (and visible messages) to locate relevant content before you decompress.
+ACP TAGS
 
-\`<acp-context>\` tags wrap ACP (Agent Context Pruning) system metadata \u2014 context management information injected each turn. This is system data, not user input. You may also see \`<dcp-message-id>\` and \`<dcp-system-reminder>\` tags \u2014 these are equivalent (DCP was the previous name for ACP).
+\`<acp-context>\` tags wrap ACP (Agent Context Pruning) system metadata — context management information injected each turn. This is system data, not user input. You may also see \`<dcp-message-id>\` and \`<dcp-system-reminder>\` tags — these are equivalent (DCP was the previous name for ACP). Treat them as boundary metadata only, not as tool-result content.
+
+TOOLS
+
+You have four context-management tools:
+
+- \`compress\` — Replace a contiguous range of older conversation with a single detailed summary you write. Use when content is genuinely consumed (no longer needed for the current task step). Example: \`compress({ topic: "API exploration", content: [{ startId: "m00150", endId: "m00220", summary: "..." }] })\`.
+- \`decompress\` — Restore a previously compressed block's full original content, optionally to a file for large blocks. Use when a summary lacks the exact detail you need. Example: \`decompress({ blockId: "b5" })\` or \`decompress({ blockId: "b5", toFile: "path" })\`.
+- \`search_context\` — Search compressed block summaries (and optionally visible messages) by keyword. Use BEFORE decompressing to find the right block. Example: \`search_context({ query: "auth token refresh" })\`.
+- \`acp_status\` — List all active compressed blocks with their sizes, ages, and the message ranges they consumed. Use when you are unsure which IDs are still compressible, or before choosing compress boundaries. Example: \`acp_status({ mode: "summary", sort: "recent" })\`.
 
 COMPRESSION PHILOSOPHY
 
-All compression serves the primary task, but be frugal. Two failure modes to avoid:
+Two failure modes to avoid:
 - Over-compression: Compressing too aggressively loses critical details, decisions, and state needed for your task. This directly harms task quality.
 - Under-compression: Failing to compress verbose outputs causes context overflow, reducing accuracy and eventually blocking your work.
 
-Balance is key. Compress selectively to keep context lean. But never compress content you're actively using for an ongoing task. Use \`search_context\` to find compressed content when needed, and \`decompress\` to restore details.
+Balance is key. The single test for whether to compress is: "Is this content still needed by the current task step?" If yes, keep it. If no, it is a candidate. When uncertain, lean toward keeping content.
 
 BE FRUGAL
 
-Be frugal with context \u2014 compress obvious waste promptly. Examples include verbose command output (build/test logs, git diff/status, npm install), sub-agent results once consumed, experiment/training logs (keep final metrics only), duplicate file reads, and failed explorations. Any content that is finished serving the task and would not be needed in upcoming turns should be compressed \u2014 not just these examples.
+Be frugal with context. Compress obvious waste proactively when you encounter it — verbose outputs you have already used, duplicate reads, abandoned explorations. Do not wait until context is critically full before compressing; that harms retrieval quality and risks overflow. When compressing, cover the largest range you can in a single call — aim for 20+ messages. Compressing 3-5 messages at a time creates many small summaries that collectively waste more tokens than they save. But never let the urge to compress distract from the actual task.
+
+WHEN TO COMPRESS
+
+- A sub-agent or delegated task has returned a large result that you have already extracted the key facts from.
+- Verbose command output (build/test logs, \`git diff\`, \`npm install\`, directory listings) where you have already used the information you need.
+- Exploration that led nowhere — compress the dead-ends but preserve the lessons learned: what was tried, what failed, and why.
+- Repeated reads of the same file or repeated status checks once the decision is recorded.
+- Resolved discussion threads where a decision has been captured in the summary or in code — compress the back-and-forth but preserve the decision rationale if it will be referenced later.
+- Intermediate steps of a completed multi-step task, once the final result is recorded.
+- When a task phase ends — such as finishing a bug hunt, locating a root cause, wrapping up a codebase exploration, or completing a research sprint — proactively compress the phase's redundant churn (exploratory reads, failed attempts, verbose outputs) while preserving what endures: key findings, relevant code and file paths, decision rationale, and lessons learned (what worked, what didn't, what's worth remembering next time).
+- Any other content where compression serves the primary task — be frugal.
+
+WHEN NOT TO COMPRESS
+
+- Content the current task step is actively reading or reasoning about.
+- Important user messages — preserve their exact intent, constraints, and acceptance criteria verbatim, not just the most recent one.
+- Outputs from protected tools (e.g. \`task\`, \`skill\`, \`todowrite\`, \`write\`, \`edit\`) — these are appended to summaries automatically, not compressed away.
+
+PERIODIC CONTEXT STATUS
+
+Periodically, as context grows, the system appends a short status line in a synthetic suffix message. It looks like:
+
+[ACP] Context: 47.3K tokens. Visible: m00001–m00929, m00944–m00950 (810 msgs). 3 active blocks. \`acp_status\` for details.
+
+This line is INFORMATION, not an instruction. Seeing it does not mean you should compress. Compress only when one of the WHEN TO COMPRESS conditions actually holds. Between these lines, context is not under additional pressure — you do not need to seek things to compress.
+
+If you are unsure which \`mNNNNN\` refs are still compressible, or which blocks have already consumed which ranges, call \`acp_status\` first. It returns the block IDs, their sizes, and the message-ID ranges each covers.
+
+CONTEXT BREAKDOWN
+
+When context usage passes a threshold, the system appends a breakdown showing where your context tokens are spent:
+
+Breakdown: 12.3K tool (40%) | 3.1K summaries (10%) | 8.5K code (28%) | 6.5K text (22%)
+
+- "tool" = tool call outputs (largest category — compress first when consumed)
+- "summaries" = existing compression block summaries (already compressed; do not re-compress standalone)
+- "code" = messages containing code blocks
+- "text" = plain text messages
+
+Below the breakdown, the system lists the largest ranges in each category (e.g. \`Largest tool outputs: m00175 (20.7K), m00200 (8.1K)\`). These are high-value compression candidates — compress those whose content you have already consumed (extracted the facts you need). Keep any you still need to reference.
+
+Compress incrementally: target one large consumed range per compress call (e.g. m00150→m00200), not the entire context at once. Each compression creates a reusable summary block you can decompress later if needed.
+
+<acp-compression-summary>\`<acp-compression-summary>\` tags wrap ACP model-generated recaps of previously compressed conversation ranges. These are system-generated metadata, not user messages. Treat them as reference material for the compressed history.
 `

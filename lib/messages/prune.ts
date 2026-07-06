@@ -2,14 +2,16 @@ import type { SessionState, WithParts } from "../state"
 import type { Logger } from "../logger"
 import type { PluginConfig } from "../config"
 import { isMessageCompacted } from "../state/utils"
-import { createSyntheticUserMessage, prependCompressionSummary, replaceBlockIdsWithBlocked, stripStaleMessageRefs } from "./utils"
+import { createSyntheticMessage, prependCompressionSummary, replaceBlockIdsWithBlocked, stripStaleMessageRefs } from "./utils"
 import { getLastUserMessage } from "./query"
-import type { UserMessage } from "@opencode-ai/sdk/v2"
 
 const PRUNED_TOOL_OUTPUT_REPLACEMENT =
     "[Output removed to save context - information superseded or no longer needed]"
 const PRUNED_TOOL_ERROR_INPUT_REPLACEMENT = "[input removed due to failed tool call]"
 const PRUNED_QUESTION_INPUT_REPLACEMENT = "[questions removed - see output for user's answers]"
+const STANDALONE_SUMMARY_HEADER = (blockId: number | string) =>
+    `<acp-compression-summary>\n[ACP model-generated recap (block ${blockId}) — NOT a user message]\n`
+const STANDALONE_SUMMARY_FOOTER = `\n</acp-compression-summary>`
 
 export const prune = (
     state: SessionState,
@@ -259,46 +261,25 @@ const filterCompressedRanges = (
                         summaryLength: summaryContent.length,
                     })
                 } else {
-                    // [FIX Bug 1] fallback when no suitable user message to merge into:
-                    // emit a standalone synthetic user message (prior behavior).
-                    const userMessage = getLastUserMessage(messages, i)
+                    // [FIX Bug 37] Emit standalone summary as role: "assistant" with
+                    // system-metadata tags so the model cannot misattribute its own
+                    // prior compression recap as a user instruction.
+                    const taggedContent =
+                        STANDALONE_SUMMARY_HEADER(summary.blockId) +
+                        summaryContent +
+                        STANDALONE_SUMMARY_FOOTER
                     const summarySeed = `${summary.blockId}:${summary.anchorMessageId}`
-                    if (userMessage) {
-                        result.push(
-                            createSyntheticUserMessage(userMessage, summaryContent, summarySeed),
-                        )
+                    const userMessage = getLastUserMessage(messages, i)
+                    const baseForSummary = userMessage ?? msg
+                    result.push(
+                        createSyntheticMessage(baseForSummary, taggedContent, summarySeed, "assistant"),
+                    )
 
-                        logger.info("Injected compress summary", {
-                            anchorMessageId: msgId,
-                            summaryLength: summaryContent.length,
-                        })
-                    } else {
-                        const anchorInfo = msg.info as any
-                        const fallbackBase: WithParts = {
-                            info: {
-                                id: anchorInfo.id || msgId,
-                                sessionID: anchorInfo.sessionID || "",
-                                role: "user" as const,
-                                agent: anchorInfo.agent || "code",
-                                model:
-                                    anchorInfo.model || {
-                                        providerID: "",
-                                        modelID: "",
-                                        variant: undefined,
-                                    },
-                                time: { created: anchorInfo.time?.created || Date.now() },
-                            },
-                            parts: [],
-                        }
-                        result.push(
-                            createSyntheticUserMessage(fallbackBase, summaryContent, summarySeed),
-                        )
-
-                        logger.info("Injected compress summary (fallback, no preceding user message)", {
-                            anchorMessageId: msgId,
-                            summaryLength: summaryContent.length,
-                        })
-                    }
+                    logger.info("Injected compress summary as assistant role", {
+                        anchorMessageId: msgId,
+                        summaryLength: taggedContent.length,
+                        hadUserBase: userMessage !== null,
+                    })
                 }
             }
         }

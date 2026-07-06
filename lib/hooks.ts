@@ -158,7 +158,7 @@ function runMajorGC(
             agedOutTokens,
             maxBlockAge,
         })
-        void saveSessionState(state, logger)
+        saveSessionState(state, logger).catch(() => {})
     }
 
     if (!state.modelContextLimit) return
@@ -202,7 +202,7 @@ function runMajorGC(
             currentTokens,
             threshold: config.gc.majorGcThresholdPercent,
         })
-        void saveSessionState(state, logger)
+        saveSessionState(state, logger).catch(() => {})
     }
 }
 
@@ -246,14 +246,14 @@ export function createChatMessageTransformHandler(
         const activeBlockCountBefore = state.prune.messages.activeBlockIds.size // [FIX Bug 4]
         syncCompressionBlocks(state, logger, output.messages)
         if (state.prune.messages.activeBlockIds.size !== activeBlockCountBefore) { // [FIX Bug 4]
-            void saveSessionState(state, logger) // [FIX Bug 4] persist deactivations
+            saveSessionState(state, logger).catch(() => {}) // [FIX Bug 4] persist deactivations
         }
         syncToolCache(state, config, logger, output.messages)
         buildToolIdList(state, output.messages)
         runMajorGC(state, config, logger, output.messages)
         const batchResult = runBatchCleanup(state, config, logger, output.messages)
         if (batchResult.mergedCount > 0) {
-            void saveSessionState(state, logger)
+            saveSessionState(state, logger).catch(() => {})
         }
         prune(state, logger, config, output.messages)
         // [FIX Bug 2] assign refs to newly created synthetic messages from prune/filterCompressedRanges

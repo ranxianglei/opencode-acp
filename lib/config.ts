@@ -26,6 +26,7 @@ export interface CompressConfig {
     nudgeFrequency: number
     minNudgeContextPercent: number
     nudgeGrowthTokens?: number
+    toolOutputNudgeThreshold?: number
     iterationNudgeThreshold: number
     nudgeForce: "strong" | "soft"
     protectedTools: string[]
@@ -197,7 +198,7 @@ const defaultConfig: PluginConfig = {
         protectedTools: [...COMPRESS_DEFAULT_PROTECTED_TOOLS],
         protectTags: false,
         protectUserMessages: false,
-        maxSummaryLengthHard: 4000,
+        maxSummaryLengthHard: 10000,
         minCompressRange: 2000,
     },
     strategies: {

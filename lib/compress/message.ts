@@ -13,7 +13,7 @@ import {
 } from "./state"
 import type { CompressMessageToolArgs } from "./types"
 
-function buildSchema() {
+function buildSchema(maxSummaryLengthHard: number) {
     return {
         topic: tool.schema
             .string()
@@ -40,7 +40,7 @@ function buildSchema() {
         summaryMaxChars: tool.schema
             .number()
             .optional()
-            .describe("Override max summary length (default max: 4000 chars). Use when content is important and needs more detail — don't lose critical info just to fit the limit."),
+            .describe(`Override max summary length (default max: ${maxSummaryLengthHard} chars). Use when content is important and needs more detail — don't lose critical info just to fit the limit.`),
     }
 }
 
@@ -50,7 +50,7 @@ export function createCompressMessageTool(ctx: ToolContext): ReturnType<typeof t
 
     return tool({
         description: runtimePrompts.compressMessage + MESSAGE_FORMAT_EXTENSION,
-        args: buildSchema(),
+        args: buildSchema(ctx.config.compress.maxSummaryLengthHard),
         async execute(args, toolCtx) {
             const input = args as CompressMessageToolArgs
             validateArgs(input)
