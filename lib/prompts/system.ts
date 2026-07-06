@@ -35,6 +35,7 @@ WHEN TO COMPRESS
 - Repeated reads of the same file or repeated status checks once the decision is recorded.
 - Resolved discussion threads where a decision has been captured in the summary or in code — compress the back-and-forth but preserve the decision rationale if it will be referenced later.
 - Intermediate steps of a completed multi-step task, once the final result is recorded.
+- When a task phase ends — such as finishing a bug hunt, locating a root cause, wrapping up a codebase exploration, or completing a research sprint — proactively compress the phase's redundant churn (exploratory reads, failed attempts, verbose outputs) while preserving what endures: key findings, relevant code and file paths, decision rationale, and lessons learned (what worked, what didn't, what's worth remembering next time).
 - Any other content where compression serves the primary task — be frugal.
 
 WHEN NOT TO COMPRESS
