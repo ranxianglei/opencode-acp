@@ -393,6 +393,25 @@ ACP 在首次启动时自动将配置从 `dcp.jsonc` 迁移到 `acp.jsonc`，将
 
 ## 更新日志
 
+### v1.9.2 — 重启后正确持久化提醒基线（bug #60）
+
+**问题**：当每条消息的提醒纯粹因为 token 增长而触发（周围没有 compress/decompress 操作）时，更新后的 `lastPerMessageNudgeTokens` 基线只写进了内存、**没有落盘** —— `saveSessionState()` 仅在 `anchorsChanged` 为 true 时执行，而增长提醒并不总是改变 anchor（turn/iteration anchor 集合一经播种就会饱和，或最后一轮是 assistant、没有可锚定的 user 轮）。OpenCode 重启后读到的还是陈旧基线，于是 `growth = currentTokens − 陈旧基线` 又超过阈值 → 提醒在**之后每一轮**都会重新触发，直到会话结束。
+
+**修复**（PR #61）：`lib/messages/inject/inject.ts` 的保存守卫现在在「提醒确实触发」时就落盘，而不只是 anchor 变动时：
+
+```
+- if (anchorsChanged) {
++ if (anchorsChanged || decision.shouldNudge) {
+      saveSessionState(state, logger).catch(() => {})
+  }
+```
+
+修复后，`lastPerMessageNudgeTokens` 在每次提醒时都会被正确写入 `~/.local/share/opencode/storage/plugin/acp/{sessionId}.json`，重启后基于真实的提醒后基线计算增长，只有当*实际新增长*超过 `nudgeGrowthTokens` 时才会再次触发提醒。回归测试已加入 `tests/inject.test.ts`（先向磁盘写入陈旧基线，在 `anchorsChanged=false` 下触发增长提醒，重载后断言持久化基线已推进）。
+
+**兼容性**：无 schema 变更，现有持久化 state 正常加载。遇到 #60 的用户升级后，重启后第一轮提醒即会落盘，每轮重复触发的循环随之停止。
+
+---
+
 ### v1.9.1 — 不相交可见范围段 & 提醒措辞修正（issue #9 根因）
 
 **问题**：即便有了 v1.9.0，模型仍反复对已被先前块消费的 ID 调用 `compress`。根因是 suffix 一直广播一条"从首条可见到最后一条可见"的**跨越压缩空洞的连续 span** —— 模型对 `endId` 的第一反应往往是落在已经被摘要的范围里。此外，suffix 的 `(+X tokens since last nudge)` 增长行被误读为**溢出警告**，触发对"大但仍然需要"范围的恐慌性压缩。

@@ -421,6 +421,25 @@ For the complete list with root cause analysis, see the [bug tracker](https://gi
 
 ## Changelog
 
+### v1.9.2 — Persist Nudge Baseline Across Restart (bug #60)
+
+**Problem**: After a per-message nudge fired purely on token growth (no compress/decompress around it), the updated `lastPerMessageNudgeTokens` baseline was written to in-memory state but **not persisted to disk** — `saveSessionState()` only ran when `anchorsChanged` was true, and a growth nudge does not always change anchors (turn/iteration anchor sets saturate once seeded, or the last message is an assistant turn with no user turn to anchor). After an OpenCode restart, the stale baseline was reloaded, so `growth = currentTokens − staleBaseline` exceeded the threshold again → the nudge refired on **every single turn** for the rest of the session.
+
+**Fix** (PR #61): The save guard in `lib/messages/inject/inject.ts` now persists whenever a nudge has actually fired, not just when anchors moved:
+
+```
+- if (anchorsChanged) {
++ if (anchorsChanged || decision.shouldNudge) {
+      saveSessionState(state, logger).catch(() => {})
+  }
+```
+
+After this, `lastPerMessageNudgeTokens` is correctly flushed to `~/.local/share/opencode/storage/plugin/acp/{sessionId}.json` on every nudge, so a restart computes growth against the real post-nudge baseline and the nudge only refires when *actual* new growth exceeds `nudgeGrowthTokens`. Regression test added in `tests/inject.test.ts` (seeds a stale baseline to disk, fires a growth nudge with `anchorsChanged=false`, reloads, asserts the persisted baseline advanced).
+
+**Compatibility**: No schema changes. Existing persisted state loads unchanged. Users hitting #60 should upgrade and the every-turn nudge loop stops on the first nudge after restart.
+
+---
+
 ### v1.9.1 — Disjoint Visible-Range Segments & Nudge Wording (issue #9 root cause)
 
 **Problem**: Even after v1.9.0, the model kept calling `compress` against IDs that a prior block had consumed. The root cause was that the suffix advertised a single contiguous span "first visible → last visible" that **straddled compression holes** — so the model's first guess for an `endId` landed inside an already-summarized range. Separately, the suffix's `(+X tokens since last nudge)` growth line was being misread as an *overflow* warning, triggering panic compressions of large-but-still-needed ranges.
