@@ -278,7 +278,7 @@ export const injectCompressNudges = (
             appendToLastTextPart(suffixMessage, tipsText)
         }
 
-        injectVisibleIdRange(state, messages, suffixMessage)
+        injectVisibleIdRange(state, config, messages, suffixMessage)
     }
 
     if (toolOutputReminder && suffixMessage) {
@@ -330,22 +330,110 @@ function injectContextUsage(
     target.parts.push(createSyntheticTextPart(target, usageTag))
 }
 
-function injectVisibleIdRange(state: SessionState, messages: WithParts[], target: WithParts | null): void {
-    if (!target) return
-    const visibleRefs: string[] = []
-    for (const message of messages) {
-        const ref = state.messageIds.byRawId.get(message.info.id)
-        if (ref) {
-            visibleRefs.push(ref)
+export interface VisibleSegment {
+    startRef: string
+    endRef: string
+    count: number
+    tokens: number
+    hasTool: boolean
+}
+
+function refNumber(ref: string): number {
+    const n = parseInt(ref.slice(1), 10)
+    return Number.isNaN(n) ? -1 : n
+}
+
+/**
+ * Build disjoint visible-id segments from the surviving messages.
+ *
+ * Each segment is a maximal run of contiguous refs (e.g. m00003–m00007).
+ * Holes between segments correspond to messages already consumed by a
+ * compression block — those refs are NOT safe to target. Surfacing the
+ * segments (instead of a single `first–last` span) stops the model from
+ * picking a ref that lives inside a compressed hole.
+ */
+export function buildVisibleSegments(state: SessionState, messages: WithParts[]): VisibleSegment[] {
+    const refInfo = new Map<string, { tokens: number; hasTool: boolean }>()
+    for (const msg of messages) {
+        const ref = state.messageIds.byRawId.get(msg.info.id)
+        if (!ref) continue
+        let tokens = 0
+        let hasTool = false
+        for (const part of msg.parts || []) {
+            if (part.type === "text" && typeof (part as any).text === "string") {
+                tokens += Math.round(((part as any).text as string).length / 4)
+            } else if (part.type !== "text" && part.type !== "reasoning") {
+                tokens += Math.round(JSON.stringify(part).length / 4)
+                hasTool = true
+            }
         }
+        refInfo.set(ref, { tokens, hasTool })
     }
+    if (refInfo.size === 0) return []
 
-    if (visibleRefs.length === 0) return
+    const refs = Array.from(refInfo.keys()).sort((a, b) => refNumber(a) - refNumber(b))
+    const segments: VisibleSegment[] = []
+    let cur: VisibleSegment | null = null
+    let prevNum = -2
+    for (const ref of refs) {
+        const num = refNumber(ref)
+        const info = refInfo.get(ref)!
+        if (cur && num === prevNum + 1) {
+            cur.endRef = ref
+            cur.count++
+            cur.tokens += info.tokens
+            if (info.hasTool) cur.hasTool = true
+        } else {
+            if (cur) segments.push(cur)
+            cur = { startRef: ref, endRef: ref, count: 1, tokens: info.tokens, hasTool: info.hasTool }
+        }
+        prevNum = num
+    }
+    if (cur) segments.push(cur)
+    return segments
+}
 
-    visibleRefs.sort()
-    const first = visibleRefs[0]
-    const last = visibleRefs[visibleRefs.length - 1]
-    const rangeTag = `\n\n[Visible messages: ${first} to ${last} (${visibleRefs.length} messages)]`
+function formatSegment(seg: VisibleSegment): string {
+    return seg.startRef === seg.endRef ? seg.startRef : `${seg.startRef}–${seg.endRef}`
+}
+
+export function formatVisibleGuidance(segments: VisibleSegment[], maxSegs: number): string {
+    if (segments.length === 0) return ""
+    const totalMsgs = segments.reduce((s, seg) => s + seg.count, 0)
+    const totalSegs = segments.length
+    const fmt = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n))
+
+    if (totalSegs <= maxSegs) {
+        return `[Visible: ${segments.map(formatSegment).join(", ")} (${totalMsgs} msg${totalMsgs === 1 ? "" : "s"}, ${totalSegs} segment${totalSegs === 1 ? "" : "s"})]`
+    }
+    // Keep the largest tool-bearing/high-token segments, drop the smallest,
+    // but preserve ascending ref order for what gets shown.
+    const keepSet = new Set(
+        [...segments]
+            .sort((a, b) => {
+                if (a.hasTool !== b.hasTool) return a.hasTool ? -1 : 1
+                return b.tokens - a.tokens
+            })
+            .slice(0, maxSegs),
+    )
+    const shown = segments.filter((s) => keepSet.has(s))
+    const omitted = segments.filter((s) => !keepSet.has(s))
+    const omittedTokens = omitted.reduce((sum, s) => sum + s.tokens, 0)
+    const omittedMsgs = omitted.reduce((sum, s) => sum + s.count, 0)
+    return `[Visible (top ${shown.length} of ${totalSegs} segments, ${totalMsgs} msgs): ${shown.map(formatSegment).join(", ")} | +${omitted.length} smaller segment${omitted.length === 1 ? "" : "s"} (~${fmt(omittedTokens)} tokens, ${omittedMsgs} msgs) omitted]`
+}
+
+function injectVisibleIdRange(
+    state: SessionState,
+    config: PluginConfig,
+    messages: WithParts[],
+    target: WithParts | null,
+): void {
+    if (!target) return
+    const segments = buildVisibleSegments(state, messages)
+    if (segments.length === 0) return
+    const maxSegs = config.compress?.maxVisibleSegments ?? 50
+    const rangeTag = "\n\n" + formatVisibleGuidance(segments, maxSegs)
 
     for (const part of target.parts) {
         if (part.type === "text") {

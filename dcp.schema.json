@@ -276,6 +276,12 @@
                     "minimum": 1,
                     "description": "Hard limit for summary length in characters"
                 },
+                "maxVisibleSegments": {
+                    "type": "number",
+                    "default": 50,
+                    "minimum": 1,
+                    "description": "Maximum number of disjoint visible-id segments to show the model. When visible messages span more segments (due to compression holes), only the largest tool-bearing/high-token segments are shown, with a '+N omitted' note. Prevents the model from picking compressed-away refs."
+                },
                 "nudgeGrowthTokens": {
                     "type": "number",
                     "description": "Token growth required between per-message nudges (absolute, not percentage). Shows Tips only after context grows by this many tokens. If unset, default is adaptive: 5% of modelContextLimit, clamped to [6000, 50000] — e.g. 128K→6.4K, 200K→10K, 1M→50K. Must be unset (not 6000) for adaptive default to work."
@@ -295,7 +301,8 @@
                 "protectTags": false,
                 "protectUserMessages": false,
                 "minNudgeContextPercent": 15,
-                "maxSummaryLengthHard": 3000
+                "maxSummaryLengthHard": 3000,
+                "maxVisibleSegments": 50
             }
         },
         "gc": {

@@ -438,12 +438,12 @@ test("visible ID range: range tag injected into suffix message when shouldNudge 
     const textParts = suffixMessage!.parts.filter((p: any) => p.type === "text")
     const combinedText = textParts.map((p: any) => p.text).join("")
     assert.ok(
-        combinedText.includes("[Visible messages:"),
-        "should inject visible messages tag",
+        combinedText.includes("[Visible:"),
+        "should inject visible segments tag",
     )
     assert.ok(
-        combinedText.includes("messages"),
-        "range tag should mention message count",
+        /msgs?, \d+ segments?/.test(combinedText),
+        "range tag should mention message and segment counts",
     )
 })
 

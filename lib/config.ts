@@ -34,6 +34,7 @@ export interface CompressConfig {
     protectUserMessages: boolean
     maxSummaryLengthHard: number
     minCompressRange: number
+    maxVisibleSegments: number
 }
 
 export interface Commands {
@@ -200,6 +201,7 @@ const defaultConfig: PluginConfig = {
         protectUserMessages: false,
         maxSummaryLengthHard: 10000,
         minCompressRange: 2000,
+        maxVisibleSegments: 50,
     },
     strategies: {
         deduplication: {
@@ -410,6 +412,7 @@ function mergeCompress(
         protectUserMessages: override.protectUserMessages ?? base.protectUserMessages,
         maxSummaryLengthHard: override.maxSummaryLengthHard ?? base.maxSummaryLengthHard,
         minCompressRange: override.minCompressRange ?? base.minCompressRange,
+        maxVisibleSegments: override.maxVisibleSegments ?? base.maxVisibleSegments,
     }
 }
 
