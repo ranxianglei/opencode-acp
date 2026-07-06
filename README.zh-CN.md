@@ -393,6 +393,18 @@ ACP 在首次启动时自动将配置从 `dcp.jsonc` 迁移到 `acp.jsonc`，将
 
 ## 更新日志
 
+### v1.9.1 — 不相交可见范围段 & 提醒措辞修正（issue #9 根因）
+
+**问题**：即便有了 v1.9.0，模型仍反复对已被先前块消费的 ID 调用 `compress`。根因是 suffix 一直广播一条"从首条可见到最后一条可见"的**跨越压缩空洞的连续 span** —— 模型对 `endId` 的第一反应往往是落在已经被摘要的范围里。此外，suffix 的 `(+X tokens since last nudge)` 增长行被误读为**溢出警告**，触发对"大但仍然需要"范围的恐慌性压缩。
+
+**修复 1 — 不连续可见 ID 段**（PR #57）：`injectVisibleIdRange` 不再输出一条"首到尾"span。改为按引用升序构建真正存活的不相交段，并在段数溢出时截断到最大的含工具 / 高 token 段（`compress.maxVisibleSegments`，默认 `50`，已通过 config defaults + merge + validation + schema 全链路接入）。suffix 现在形如 `[Visible (top 2 of 3 segments, 803 msgs): m00001–m00929, m00944–m00950 | +1 smaller segment (~1.2K tokens, 6 msgs) omitted]`，模型能精确看到哪些范围可压缩、绝不会被引导去打空洞。格式化逻辑抽取为纯函数并导出、可单测（`buildVisibleSegments`、`formatVisibleGuidance`）。
+
+**修复 2 — 提醒措辞**（PR #58）：增量压缩指引行（`💡 Compress incrementally: target the ranges above...`）移到 largest-ranges 列表**之后**，并改写以强调**仅凭大小不是压缩理由** —— 仍然需要完整保留的大范围必须保留。软性效率提醒（`growth` / `minLimit` 变体）现在前置一条明确说明 *"This is an efficiency nudge to compress early and keep context lean — not an overflow warning. A separate, stronger alert will appear if the context is actually full."*，使增长量不被误读为溢出警报。`maxLimit` 路径保留更强的告警，并有意排除在效率措辞之外。
+
+**兼容性**：无持久化 state schema 变更。新增可选配置字段 `compress.maxVisibleSegments`（数字，默认 `50`）；旧配置继续工作。
+
+---
+
 ### v1.9.0 — 可见范围引导 & 压缩失败恢复
 
 **问题**：在大上下文模型（1M+）上，模型反复调用 `compress(startId=m00930, endId=m00943)`，而这些 ID 已被之前的块消费。模型对哪些 `mNNNNN` 引用仍可压缩没有稳定视图，失败错误不提供恢复信息，`acp_status` 工具已注册但从未在提示中提及，suffix nudge 只报告一个裸百分比，完全不说明 token 实际花在了哪里。
