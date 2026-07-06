@@ -239,3 +239,13 @@ test("formatVisibleGuidance: omitted tokens format with K suffix for large total
     // 5 omitted * 1000 = 5000 tokens -> "5.0K"
     assert.ok(out.includes("~5.0K tokens, 5 msgs) omitted]"))
 })
+
+test("formatVisibleGuidance: omitted note singularizes msg when exactly 1 message omitted", () => {
+    // 2 segments: big tool-bearing (kept) + tiny single-msg text (omitted at maxSegs=1).
+    const segs = [
+        { startRef: "m00001", endRef: "m00001", count: 1, tokens: 1000, hasTool: true },
+        { startRef: "m00003", endRef: "m00003", count: 1, tokens: 2, hasTool: false },
+    ]
+    const out = formatVisibleGuidance(segs, 1)
+    assert.ok(out.includes("+1 smaller segment (~2 tokens, 1 msg) omitted]"), "1 omitted msg should be singular")
+})

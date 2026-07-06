@@ -420,7 +420,7 @@ export function formatVisibleGuidance(segments: VisibleSegment[], maxSegs: numbe
     const omitted = segments.filter((s) => !keepSet.has(s))
     const omittedTokens = omitted.reduce((sum, s) => sum + s.tokens, 0)
     const omittedMsgs = omitted.reduce((sum, s) => sum + s.count, 0)
-    return `[Visible (top ${shown.length} of ${totalSegs} segments, ${totalMsgs} msgs): ${shown.map(formatSegment).join(", ")} | +${omitted.length} smaller segment${omitted.length === 1 ? "" : "s"} (~${fmt(omittedTokens)} tokens, ${omittedMsgs} msgs) omitted]`
+    return `[Visible (top ${shown.length} of ${totalSegs} segments, ${totalMsgs} msgs): ${shown.map(formatSegment).join(", ")} | +${omitted.length} smaller segment${omitted.length === 1 ? "" : "s"} (~${fmt(omittedTokens)} tokens, ${omittedMsgs} msg${omittedMsgs === 1 ? "" : "s"}) omitted]`
 }
 
 function injectVisibleIdRange(
