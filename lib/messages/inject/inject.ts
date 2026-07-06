@@ -231,7 +231,12 @@ export const injectCompressNudges = (
             const growthStr = growth > 0 ? ` (+${fmt(growth)} since last nudge)` : ""
 
             const plainTextTokens = composition.textTokens
-            let breakdown = `\nBreakdown: ${fmt(composition.toolTokens)} tool (${pct(composition.toolTokens)}%) | ${fmt(composition.summaryTokens)} summaries (${pct(composition.summaryTokens)}%) | ${fmt(composition.codeTokens)} code (${pct(composition.codeTokens)}%) | ${fmt(plainTextTokens)} text (${pct(plainTextTokens)}%)${growthStr}`
+            // Soft nudges (growth/min-limit) are efficiency prompts, not overflow
+            // warnings — a separate, stronger alert fires at maxLimit (below).
+            const efficiencyNote = decision.tipsVariant !== "maxLimit"
+                ? `\nThis is an efficiency nudge to compress early and keep context lean — not an overflow warning. A separate, stronger alert will appear if the context is actually full.`
+                : ""
+            let breakdown = `${efficiencyNote}\nBreakdown: ${fmt(composition.toolTokens)} tool (${pct(composition.toolTokens)}%) | ${fmt(composition.summaryTokens)} summaries (${pct(composition.summaryTokens)}%) | ${fmt(composition.codeTokens)} code (${pct(composition.codeTokens)}%) | ${fmt(plainTextTokens)} text (${pct(plainTextTokens)}%)${growthStr}`
 
             const topBlocks = Array.from(state.prune.messages.blocksById.values())
                 .filter((b) => b.active)
@@ -240,7 +245,6 @@ export const injectCompressNudges = (
             if (topBlocks.length > 0) {
                 breakdown += `\nTop blocks: ${topBlocks.map((b) => `b${b.blockId} ${fmt(b.compressedTokens)}→${fmt(b.summaryTokens)}`).join(", ")}`
             }
-            breakdown += `\n💡 Compress incrementally — compress the largest consumed ranges first.`
             if (composition.largestToolRanges.length > 0) {
                 breakdown += `\nLargest tool outputs: ${composition.largestToolRanges.map((r) => `${r.ref} (${fmt(r.tokens)})`).join(", ")}`
             }
@@ -250,6 +254,7 @@ export const injectCompressNudges = (
             if (composition.largestMessageRanges.length > 0) {
                 breakdown += `\nLargest text messages: ${composition.largestMessageRanges.map((r) => `${r.ref} (${fmt(r.tokens)})`).join(", ")}`
             }
+            breakdown += `\n💡 Compress incrementally: target the ranges above whose content you have already extracted for this step. Size alone is not a reason to compress — if a large range is still needed in full, keep it.`
             appendToLastTextPart(suffixMessage, breakdown)
         }
 
