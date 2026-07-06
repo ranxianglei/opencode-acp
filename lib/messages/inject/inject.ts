@@ -310,7 +310,11 @@ export const injectCompressNudges = (
         appendToLastTextPart(suffixMessage, "\n")
     }
 
-    if (anchorsChanged) {
+    // [FIX #60] Save on nudge too: a growth-triggered nudge updates the in-memory
+    // baseline (above) but anchorsChanged stays false when anchor sets are
+    // saturated, so the on-disk baseline went stale and the nudge refired every
+    // turn after restart.
+    if (anchorsChanged || decision.shouldNudge) {
         saveSessionState(state, logger).catch(() => {})
     }
 }

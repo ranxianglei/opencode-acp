@@ -1,10 +1,15 @@
 import assert from "node:assert/strict"
 import test from "node:test"
+import * as fs from "fs/promises"
+import { existsSync } from "fs"
+import { join } from "path"
+import { homedir } from "os"
 import type { PluginConfig } from "../lib/config"
 import { Logger } from "../lib/logger"
 import { injectMessageIds, injectCompressNudges } from "../lib/messages/inject/inject"
 import { createSyntheticUserMessage } from "../lib/messages/utils"
 import { createSessionState, type WithParts } from "../lib/state"
+import { saveSessionState, loadSessionState } from "../lib/state/persistence"
 import { formatMessageIdTag } from "../lib/message-ids"
 
 function buildConfig(mode: "message" | "range" = "range"): PluginConfig {
@@ -34,6 +39,22 @@ function buildConfig(mode: "message" | "range" = "range"): PluginConfig {
 }
 
 const SID = "ses-inject-test"
+
+const STORAGE_DIR = join(
+    process.env.XDG_DATA_HOME || join(homedir(), ".local", "share"),
+    "opencode",
+    "storage",
+    "plugin",
+    "acp",
+)
+const PERSIST_SESSION = "test-inject-nudge-persist"
+
+async function cleanupPersistSession(): Promise<void> {
+    const filePath = join(STORAGE_DIR, `${PERSIST_SESSION}.json`)
+    if (existsSync(filePath)) {
+        await fs.unlink(filePath)
+    }
+}
 
 function textPart(msgId: string, text: string) {
     return { id: `${msgId}-p`, messageID: msgId, sessionID: SID, type: "text" as const, text }
@@ -289,4 +310,51 @@ test("injectCompressNudges: post-compress large growth DOES nudge", () => {
         "55K growth after compress (> 50K adaptive threshold) — should nudge",
     )
     assert.equal(state.nudges.lastPerMessageNudgeTokens, 305_000)
+})
+
+test("injectCompressNudges persists new nudge baseline to disk when a growth nudge fires without anchor changes (#60)", async () => {
+    await cleanupPersistSession()
+
+    // Seed disk with a stale baseline, as left by a prior session before restart.
+    const seed = createSessionState()
+    seed.sessionId = PERSIST_SESSION
+    seed.nudges.lastPerMessageNudgeTokens = 200_000
+    await saveSessionState(seed, logger)
+
+    // Simulate the post-restart in-memory state: stale baseline loaded back.
+    const state = createSessionState()
+    state.sessionId = PERSIST_SESSION
+    state.modelContextLimit = 1_000_000
+    const loaded = await loadSessionState(PERSIST_SESSION, logger)
+    state.nudges.lastPerMessageNudgeTokens = loaded!.nudges.lastPerMessageNudgeTokens
+
+    const config = buildConfig()
+    config.compress.maxContextLimit = 800_000
+    config.compress.minContextLimit = 200_000
+
+    // Last message is an assistant turn → turnNudgeAnchors block skipped (isLastMessageUser=false);
+    // only one message after the user → iterationNudgeAnchors skipped (< iterationNudgeThreshold);
+    // no tool parts → toolOutput reminder skipped. So anchorsChanged stays false.
+    // Growth = 255K - 200K = 55K >= 50K adaptive threshold → shouldNudge=true.
+    const messages: WithParts[] = [
+        userMsg("u1", "hello"),
+        assistantMsgWithTokens("a1", "response", { input: 200_000, output: 55_000 }),
+    ]
+
+    injectCompressNudges(state, config, logger, messages, {} as any)
+
+    assert.equal(state.nudges.shouldInjectThisTurn, true, "growth nudge should fire (55K >= 50K adaptive)")
+    assert.equal(state.nudges.lastPerMessageNudgeTokens, 255_000, "in-memory baseline updated to currentTokens")
+
+    // saveSessionState is fire-and-forget inside injectCompressNudges (.catch(()=>{})); flush before reload.
+    await new Promise((resolve) => setTimeout(resolve, 50))
+
+    const reloaded = await loadSessionState(PERSIST_SESSION, logger)
+    assert.ok(reloaded, "state must be persisted when a nudge fires")
+    assert.equal(
+        reloaded!.nudges.lastPerMessageNudgeTokens,
+        255_000,
+        "[#60] new baseline must reach disk — otherwise restart reloads the stale 200K and the nudge refires every turn",
+    )
+    await cleanupPersistSession()
 })
