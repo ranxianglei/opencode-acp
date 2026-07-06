@@ -285,9 +285,12 @@ test("resolveBoundaryIds failure error includes visible range and acp_status poi
     state.messageIds.byRef.set("m00002", "raw-b")
     state.messageIds.byRawId.set("raw-a", "m00001")
     state.messageIds.byRawId.set("raw-b", "m00002")
+    // m00003 is registered but its message is no longer in context (consumed by a block)
+    state.messageIds.byRef.set("m00003", "raw-c")
+    state.messageIds.byRawId.set("raw-c", "m00003")
 
     assert.throws(
-        () => resolveBoundaryIds(ctx, state, "m00099", "m00100"),
+        () => resolveBoundaryIds(ctx, state, "m00003", "m00003"),
         (err: Error) => {
             assert.match(err.message, /not available/)
             assert.match(err.message, /Current visible: m00001–m00002 \(2 msgs\)/)
@@ -306,12 +309,49 @@ test("resolveBoundaryIds failure with active blocks mentions block count", () =>
     const state = makeState()
     state.messageIds.byRef.set("m00001", "raw-a")
     state.messageIds.byRawId.set("raw-a", "m00001")
+    // m00002 is registered but consumed (not in context)
+    state.messageIds.byRef.set("m00002", "raw-b")
+    state.messageIds.byRawId.set("raw-b", "m00002")
     state.prune.messages.blocksById.set(5, block)
 
     assert.throws(
-        () => resolveBoundaryIds(ctx, state, "m00099", "m00100"),
+        () => resolveBoundaryIds(ctx, state, "m00002", "m00002"),
         /1 active compressed block/,
     )
+})
+
+test("resolveBoundaryIds clamps out-of-range endId to last visible message", () => {
+    const msg1 = makeAssistantMessage("raw-a", "first")
+    const msg2 = makeAssistantMessage("raw-b", "second")
+    const ctx = makeContext([msg1, msg2])
+
+    const state = makeState()
+    state.messageIds.byRef.set("m00001", "raw-a")
+    state.messageIds.byRef.set("m00002", "raw-b")
+    state.messageIds.byRawId.set("raw-a", "m00001")
+    state.messageIds.byRawId.set("raw-b", "m00002")
+
+    // Model guessed m00019 but only m00002 exists — should clamp, not fail
+    const { startReference, endReference } = resolveBoundaryIds(ctx, state, "m00001", "m00019")
+    assert.equal(startReference.messageId, "raw-a")
+    assert.equal(endReference.messageId, "raw-b")
+})
+
+test("resolveBoundaryIds clamps out-of-range startId to last visible message", () => {
+    const msg1 = makeAssistantMessage("raw-a", "first")
+    const msg2 = makeAssistantMessage("raw-b", "second")
+    const ctx = makeContext([msg1, msg2])
+
+    const state = makeState()
+    state.messageIds.byRef.set("m00001", "raw-a")
+    state.messageIds.byRef.set("m00002", "raw-b")
+    state.messageIds.byRawId.set("raw-a", "m00001")
+    state.messageIds.byRawId.set("raw-b", "m00002")
+
+    // Both out of range — both clamp to m00002
+    const { startReference, endReference } = resolveBoundaryIds(ctx, state, "m00019", "m00020")
+    assert.equal(startReference.messageId, "raw-b")
+    assert.equal(endReference.messageId, "raw-b")
 })
 
 test("resolveBoundaryIds auto-swaps reversed boundaries (Bug 34)", () => {

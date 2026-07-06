@@ -26,7 +26,7 @@ import {
 } from "./state"
 import type { CompressRangeToolArgs } from "./types"
 
-function buildSchema() {
+function buildSchema(maxSummaryLengthHard: number) {
     return {
         topic: tool.schema
             .string()
@@ -55,7 +55,7 @@ function buildSchema() {
         summaryMaxChars: tool.schema
             .number()
             .optional()
-            .describe("Override max summary length (default max: 8000 chars). Use when content is important and needs more detail — don't lose critical info just to fit the limit."),
+            .describe(`Override max summary length (default max: ${maxSummaryLengthHard} chars). Use when content is important and needs more detail — don't lose critical info just to fit the limit.`),
     }
 }
 
@@ -65,7 +65,7 @@ export function createCompressRangeTool(ctx: ToolContext): ReturnType<typeof too
 
     return tool({
         description: runtimePrompts.compressRange + RANGE_FORMAT_EXTENSION,
-        args: buildSchema(),
+        args: buildSchema(ctx.config.compress.maxSummaryLengthHard),
         async execute(args, toolCtx) {
             const input = args as CompressRangeToolArgs
             validateArgs(input)

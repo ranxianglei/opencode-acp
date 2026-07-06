@@ -555,6 +555,7 @@ export interface ContextComposition {
     codeTokens: number
     summaryTokens: number
     messageTokens: number
+    textTokens: number
     total: number
     largestRanges: { ref: string; tokens: number }[]
     largestToolRanges: { ref: string; tokens: number }[]
@@ -646,6 +647,7 @@ export function estimateContextComposition(
         codeTokens,
         summaryTokens,
         messageTokens,
+        textTokens: Math.max(0, messageTokens - codeTokens),
         total: toolTokens + summaryTokens + messageTokens,
         largestRanges: perMessage.slice(0, 10),
         largestToolRanges: perTool.slice(0, 5),

@@ -1,6 +1,6 @@
 import { tool } from "@opencode-ai/plugin"
 import type { SessionState, WithParts } from "../state"
-import { formatBlockRef, parseBoundaryId } from "../message-ids"
+import { formatBlockRef, formatMessageRef, parseBoundaryId, parseMessageRef } from "../message-ids"
 import { isIgnoredUserMessage } from "../messages/query"
 import { filterMessages } from "../messages/shape"
 import { countAllMessageTokens } from "../token-utils"
@@ -76,6 +76,29 @@ export function resolveBoundaryIds(
     let startReference = lookup.get(parsedStartId.ref)
     let endReference = lookup.get(parsedEndId.ref)
 
+    // [FIX] Fault tolerance: if an ID is beyond the last available message
+    // (model guessed m00019 but only m00018 exists), clamp to the last visible
+    // message instead of failing hard. Only applies to numeric message refs (mN),
+    // not block refs (bN) — block refs must match exactly.
+    if (!startReference && parsedStartId.kind === "message") {
+        const clamped = clampMessageRef(parsedStartId, context, state)
+        if (clamped) {
+            startReference = lookup.get(clamped.ref)
+            if (startReference) {
+                parsedStartId.ref = clamped.ref
+            }
+        }
+    }
+    if (!endReference && parsedEndId.kind === "message") {
+        const clamped = clampMessageRef(parsedEndId, context, state)
+        if (clamped) {
+            endReference = lookup.get(clamped.ref)
+            if (endReference) {
+                parsedEndId.ref = clamped.ref
+            }
+        }
+    }
+
     if (!startReference) {
         issues.push(
             `startId ${parsedStartId.ref} is not available — likely consumed by an existing block.`,
@@ -137,6 +160,22 @@ function buildBoundaryRecoveryHint(context: SearchContext, state: SessionState):
     }
 
     return `${parts.join(" ")} Call acp_status() to see which blocks consumed which IDs, then retry with valid IDs.`
+}
+
+function clampMessageRef(
+    requested: { ref: string; index: number },
+    context: SearchContext,
+    state: SessionState,
+): { ref: string } | null {
+    if (state.messageIds.byRef.has(requested.ref)) return null
+    let maxIndex = -1
+    for (const [messageRef, messageId] of state.messageIds.byRef) {
+        if (!context.rawMessagesById.has(messageId)) continue
+        const idx = parseMessageRef(messageRef)
+        if (idx !== null && idx > maxIndex) maxIndex = idx
+    }
+    if (maxIndex < 0 || requested.index <= maxIndex) return null
+    return { ref: formatMessageRef(maxIndex) }
 }
 
 export function resolveSelection(
