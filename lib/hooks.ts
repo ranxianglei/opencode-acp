@@ -42,7 +42,6 @@ import { checkSession, ensureSessionInitialized, saveSessionState, syncToolCache
 import { cacheSystemPromptTokens } from "./ui/utils"
 import { runTruncateGC, shouldRunMajorGC, getGCParams } from "./gc/truncate"
 import { runBatchCleanup } from "./gc/merge"
-import { inferModelContextLimit } from "./model-limits"
 import { getCurrentTokenUsage } from "./token-utils"
 
 const INTERNAL_AGENT_SIGNATURES = [
@@ -234,16 +233,6 @@ export function createChatMessageTransformHandler(
         }
 
         await checkSession(client, state, logger, output.messages, config.manualMode.enabled)
-
-        if (!state.modelContextLimit) {
-            const lastUser = output.messages.findLast((m: any) => m.info?.role === "user")
-            const modelId = (lastUser?.info as any)?.model?.modelID
-            const inferred = inferModelContextLimit(modelId)
-            if (inferred) {
-                state.modelContextLimit = inferred
-                logger.info("Inferred modelContextLimit from model ID", { modelId, limit: inferred })
-            }
-        }
 
         syncCompressPermissionState(state, config, hostPermissions, output.messages)
 
