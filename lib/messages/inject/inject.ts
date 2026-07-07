@@ -19,7 +19,6 @@ import {
     createSyntheticTextPart,
     createSyntheticUserMessage,
     hasContent,
-    dropEmptyUserMessages,
 } from "../utils"
 import {
     addAnchor,

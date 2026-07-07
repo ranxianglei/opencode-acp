@@ -5,7 +5,7 @@ import { assignMessageRefs } from "./message-ids"
 import {
     buildPriorityMap,
     buildToolIdList,
-    dropEmptyUserMessages,
+    dropEmptyMessages,
     injectCompressNudges,
     injectExtendedSubAgentResults,
     injectMessageIds,
@@ -279,7 +279,7 @@ export function createChatMessageTransformHandler(
         injectMessageIds(state, config, output.messages, compressionPriorities)
         applyPendingManualTrigger(state, output.messages, logger)
         stripStaleMetadata(output.messages)
-        dropEmptyUserMessages(output.messages)
+        dropEmptyMessages(output.messages)
 
         if (state.sessionId) {
             await logger.saveContext(state.sessionId, output.messages)
