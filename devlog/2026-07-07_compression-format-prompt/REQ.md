@@ -47,8 +47,11 @@ space-constrained. The user judged it insufficient ("写的超级烂").
    EXHAUSTIVE/LEAN guidance replaced with a pointer to the HOW TO COMPRESS
    rules, keeping only tool-specific mechanics (boundary IDs, batching,
    placeholders).
-3. The empty `` render-placeholder pairs in `system.ts` (L7, L72) are
-   preserved verbatim — they are filled at runtime by `prompts/index.ts`.
+3. The escaped backtick pairs around tag names in `system.ts` (e.g.
+   `` `dcp-message-id` ``) are preserved verbatim — these are literal text
+   in the template, not runtime placeholders. `renderSystemPrompt()` in
+   `prompts/index.ts` does no substitution on `SYSTEM`; it only appends
+   extensions.
 4. No logic changes — prompt text only. No new dependencies.
 5. `npm run build`, `npm run typecheck`, and `npm run test` all pass.
 6. Existing tests are not regressed.

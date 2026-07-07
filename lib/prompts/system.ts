@@ -61,8 +61,9 @@ KEEP VERBATIM — never paraphrase or abbreviate these:
 DROP — extract the signal, discard the vessel:
 - Verbose logs (build/test/\`npm\` output) once you have captured the error line or the result.
 - Duplicate file reads once the needed content is recorded.
+- Consumed exploration — search hits, agent return values, successful tool outputs — once you have extracted the facts you need (same rule as dead-ends, but nothing went wrong; the content is simply spent).
 - Dead-end exploration — but PRESERVE the lesson in one line: "tried X, failed because Y".
-- Back-and-forth discussion once the decision is captured.
+- Back-and-forth discussion and self-corrections once the final position is captured (keep the outcome, drop the journey to it).
 - Repeated status checks (\`git status\`, \`ls\`) once state is known.
 
 For each significant item you DROP (scripts, reports, large analyses, long tool outputs), add a one-line CONTENT description of what it covers — not where it lives. Bad: "probe script at /path/probe_kvnet.py". Good: "probe_kvnet.py: tests n-gram baseline, generation quality, long-range dependency, position sensitivity, op pipeline, QUERY attention." This lets a later decompress target the right block by relevance, not by guessing locations.

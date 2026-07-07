@@ -22,23 +22,28 @@ with a concise pointer to the new system-prompt rules.
 
 3. **Added `HOW TO COMPRESS` section** with three prescriptive lists:
 
-   - **KEEP VERBATIM** (7 concrete items): file paths+line numbers,
-     function/class/type signatures, error messages+stack traces,
-     decisions+rationale ("chose X over Y because Z"), constraints discovered,
-     exact values, user intent (short messages quoted verbatim).
-   - **DROP** (5 concrete items): verbose logs after error extraction,
-     duplicate file reads, dead-end exploration (PRESERVE one-line lesson:
-     "tried X, failed because Y"), back-and-forth after decision captured,
-     repeated status checks.
+   - **KEEP VERBATIM** (10 concrete items): file paths+line numbers,
+     function/class/type signatures AND critical code lines, error messages+
+     stack traces, report details (numbers+mechanism), decisions+rationale
+     ("chose X over Y because Z"), constraints discovered, exact values,
+     user intent (short messages quoted verbatim), open questions/unresolved
+     TODOs, message refs of key anchors.
+   - **DROP** (6 concrete items): verbose logs after error extraction,
+     duplicate file reads, consumed exploration (search hits, agent results
+     once facts extracted), dead-end exploration (PRESERVE one-line lesson:
+     "tried X, failed because Y"), back-and-forth/self-corrections after
+     final position captured, repeated status checks.
    - **PRIORITY** (5-level ordering for space-constrained summaries):
-     (1) user intent/acceptance criteria, (2) decisions+rationale,
-     (3) exact technical artifacts, (4) conclusions/findings,
+     (1) user intent/acceptance criteria/hard constraints, (2) decisions+
+     rationale, (3) exact technical artifacts, (4) conclusions/findings,
      (5) lessons learned.
 
    Closing line: "Write dense, scannable bullets — not narrative prose."
 
-4. **Preserved `` render-placeholders** at L7 and L99 verbatim — these are
-   filled at runtime by `prompts/index.ts` with actual tag names.
+4. **Preserved escaped backtick pairs** around tag names (e.g.
+   `` `dcp-message-id` ``) at L7 and L103 verbatim — these are literal text
+   in the template. `renderSystemPrompt()` in `prompts/index.ts` performs no
+   substitution on `SYSTEM`; it only appends extensions.
 
 ### `lib/prompts/compress-range.ts` (−4 net lines)
 
@@ -68,9 +73,10 @@ actually follow, and propagates the same rules to the tool-level prompts.
 
 - `npm run typecheck` — PASS
 - `npm run build` — PASS (dist/index.js, dist/index.d.ts emitted)
-- `bun test tests/` — 575 pass, 1 fail (pre-existing, unrelated:
-  `tests/prompts.test.ts:53` uses `test()` inside `test()` which Bun doesn't
-  support; not caused by this change)
+- `node --import tsx --test tests/prompts.test.ts` — PASS (7/7). The env's
+  `node` is a Bun wrapper; under Bun, `tests/prompts.test.ts:53` uses nested
+  `test()` which Bun doesn't support, but this is an environment quirk, not
+  a regression (the project's runner is Node per AGENTS.md §3.3).
 
 ## Test Plan
 
