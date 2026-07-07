@@ -216,8 +216,8 @@ test("basic pipeline: assigns message IDs and preserves all messages", async () 
 
     await handler({}, output)
 
-    // All 5 messages + 1 suffix message should survive the pipeline
-    assert.equal(output.messages.length, 6)
+    // All 5 real messages survive; empty suffix message is dropped (issue #12)
+    assert.equal(output.messages.length, 5)
 
     // Message IDs should be assigned (suffix message excluded from ref assignment)
     assert.equal(state.messageIds.byRawId.get("u1"), "m00001")
@@ -284,8 +284,8 @@ test("filterMessagesInPlace: removes messages without valid info", async () => {
 
     await handler({}, output)
 
-    // Only 2 valid messages + 1 suffix message survive
-    assert.equal(output.messages.length, 3)
+    // Only 2 valid messages survive; empty suffix message is dropped (issue #12)
+    assert.equal(output.messages.length, 2)
     const realMessages = output.messages.filter((m: WithParts) => !isSyntheticMessage(m))
     assert.equal(realMessages[0].info.id, "u1")
     assert.equal(realMessages[1].info.id, "a1")

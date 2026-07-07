@@ -591,7 +591,7 @@ test("mixed messages: only valid messages survive, IDs assigned to survivors", a
 
     await handler({}, output)
 
-    assert.equal(output.messages.length, 4, "3 valid messages + 1 suffix message")
+    assert.equal(output.messages.length, 3, "3 valid messages (empty suffix dropped, issue #12)")
     const ids = output.messages.filter((m: WithParts) => !isSyntheticMessage(m)).map((m: WithParts) => m.info.id)
     assert.deepEqual(ids, ["u1", "a1", "u2"])
 

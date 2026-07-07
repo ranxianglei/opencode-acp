@@ -273,3 +273,27 @@ export const stripHallucinations = (messages: WithParts[]): void => {
         }
     }
 }
+
+// [FIX #12] Backstop: sweep empty messages of ANY role (in-place, backwards).
+// A message is considered empty only when every part is a whitespace-only text
+// part (or there are no parts at all). Any non-text part — a tool call regardless
+// of status, reasoning, etc. — counts as meaningful content and prevents removal.
+// This is deliberately more conservative than hasContent(): hasContent treats a
+// non-completed/errored tool as "no content" (appropriate for suffix-fill logic),
+// but here we must not drop a message that carries an errored or in-flight tool call.
+export const dropEmptyMessages = (messages: WithParts[]): number => {
+    let removed = 0
+    for (let i = messages.length - 1; i >= 0; i--) {
+        const parts = Array.isArray(messages[i].parts) ? messages[i].parts : []
+        const isEmpty = parts.every(
+            (part) =>
+                part.type === "text" &&
+                (typeof part.text !== "string" || part.text.trim().length === 0),
+        )
+        if (isEmpty) {
+            messages.splice(i, 1)
+            removed++
+        }
+    }
+    return removed
+}
