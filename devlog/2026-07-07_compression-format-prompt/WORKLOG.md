@@ -110,3 +110,25 @@ Two gaps surfaced vs. the new rules:
    **Tweak**: add message refs of key anchors to KEEP VERBATIM.
 
 Both tweaks applied to `lib/prompts/system.ts`. Typecheck + build pass.
+
+### Iteration 4: Restore USER INTENT FIDELITY prohibitive instruction
+
+@dog flagged that the original `compress-range.ts` had a "USER INTENT
+FIDELITY" section: "Do not change scope, constraints, priorities,
+acceptance criteria, or requested outcomes." The rewrite consolidated
+this into the system.ts KEEP-VERBATIM user-intent rule, but the
+consolidation lost two things:
+
+1. **The prohibitive instruction**: original said "do not change X" —
+   constraining the model even when paraphrasing (not quoting). The
+   rewrite only said "quote short messages verbatim."
+2. **Two missing items**: original had `priorities` and
+   `requested outcomes`; the rewrite only kept `scope, constraints,
+   acceptance criteria`.
+
+**Fix**: updated system.ts L66 to restore the prohibitive instruction:
+"quote short user messages verbatim. When too long to quote, preserve
+intent with extra care: do not change scope, constraints, priorities,
+acceptance criteria, or requested outcomes." Preserves the
+past-quote marking and "losing these changes the task" emphasis from
+the rewrite.

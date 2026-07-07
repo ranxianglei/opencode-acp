@@ -63,7 +63,7 @@ KEEP VERBATIM — never paraphrase or abbreviate these:
 - Decisions and their rationale ("chose X over Y because Z" — the "because" is load-bearing; without it the decision looks arbitrary).
 - Constraints discovered ("must support Node 22", "no new dependencies", "AGENTS.md forbids \`as any\`").
 - Exact values: versions, config keys, thresholds, magic numbers.
-- User intent — quote short user messages verbatim (scope, constraints, acceptance criteria). Mark them clearly as past quotes (e.g., "User said: ..."), not as current directives. Losing these changes the task itself.
+- User intent — quote short user messages verbatim. When the message is too long to quote, preserve intent with extra care: do not change scope, constraints, priorities, acceptance criteria, or requested outcomes. Mark them clearly as past quotes (e.g., "User said: ..."), not as current directives. Losing these changes the task itself.
 - Open questions and unresolved TODOs — losing these changes what work appears to remain.
 - Message refs of key anchors (\`m00420\`, \`m00510-00520\`) — they let you or a later reader jump back via decompress to the exact original.
 
