@@ -1,6 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 import type { CompressionBlock } from "../lib/state"
+import { Logger } from "../lib/logger"
 import {
     appendMissingBlockSummaries,
     injectBlockPlaceholders,
@@ -9,6 +10,8 @@ import {
 } from "../lib/compress/range-utils"
 import { wrapCompressedSummary } from "../lib/compress/state"
 import type { BoundaryReference } from "../lib/compress/types"
+
+const logger = new Logger(false)
 
 function createBlock(blockId: number, body: string): CompressionBlock {
     return {
@@ -67,6 +70,7 @@ test("validateSummaryPlaceholders filters to valid required blocks and returns m
         createMessageBoundary("msg-a", 0),
         createMessageBoundary("msg-b", 1),
         summaryByBlockId,
+        logger,
     )
 
     assert.deepEqual(
@@ -87,6 +91,7 @@ test("validateSummaryPlaceholders returns required blocks not referenced in summ
         createMessageBoundary("msg-a", 0),
         createMessageBoundary("msg-b", 1),
         summaryByBlockId,
+        logger,
     )
 
     assert.deepEqual(missingBlockIds, [1])
@@ -105,6 +110,7 @@ test("injectBlockPlaceholders returns summary unchanged (independent blocks)", (
         createMessageBoundary("msg-a", 0),
         createMessageBoundary("msg-b", 1),
         summaryByBlockId,
+        logger,
     )
 
     const injected = injectBlockPlaceholders(
