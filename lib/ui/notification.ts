@@ -115,7 +115,7 @@ function formatCompressionMetrics(removedTokens: number, summaryTokens: number):
 function formatContextTransition(tokensBefore: number, tokensAfter: number): string {
     const beforeStr = formatTokenCount(tokensBefore, true)
     const afterStr = formatTokenCount(tokensAfter, true)
-    return `Context ${beforeStr}→${afterStr}`
+    return `Context ${beforeStr} → ${afterStr}`
 }
 
 export async function sendCompressNotification(
