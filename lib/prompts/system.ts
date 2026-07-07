@@ -64,6 +64,7 @@ KEEP VERBATIM — never paraphrase or abbreviate these:
 - Constraints discovered ("must support Node 22", "no new dependencies", "AGENTS.md forbids \`as any\`").
 - Exact values: versions, config keys, thresholds, magic numbers.
 - User intent — quote short user messages verbatim. When the message is too long to quote, preserve intent with extra care: do not change scope, constraints, priorities, acceptance criteria, or requested outcomes. Mark them clearly as past quotes (e.g., "User said: ..."), not as current directives. Losing these changes the task itself.
+- The user's overall goal and any changes to it — the big-picture objective plus how it evolved during the compressed range. Each summary must reflect the goal as it stood at the end of the range, including pivots (e.g., "initially: fix bug X → pivoted to: refactor module Y after discovering root cause"). Losing the goal or its evolution makes all subsequent work appear unmotivated.
 - Open questions and unresolved TODOs — losing these changes what work appears to remain.
 - Message refs of key anchors (\`m00420\`, \`m00510-00520\`) — they let you or a later reader jump back via decompress to the exact original.
 
@@ -78,7 +79,7 @@ DROP — extract the signal, discard the vessel:
 For each significant item you DROP (scripts, reports, large analyses, long tool outputs), add a one-line CONTENT description of what it covers — not where it lives. Bad: "probe script at /path/probe_kvnet.py". Good: "probe_kvnet.py: tests n-gram baseline, generation quality, long-range dependency, position sensitivity, op pipeline, QUERY attention." This lets a later decompress target the right block by relevance, not by guessing locations.
 
 PRIORITY — when the summary must be compact, preserve in this order:
-1. User intent, acceptance criteria, and hard constraints (losing these changes the task).
+1. User's overall goal, goal evolution, intent, and hard constraints (losing these changes the task).
 2. Decisions and rationale.
 3. Exact technical artifacts: paths, signatures, errors, values.
 4. Conclusions and key findings.

@@ -10,7 +10,7 @@
  * This closes the gap between "when to compress" (nudge) and "how to compress" (rules).
  */
 export const COMPRESSION_RULES = `COMPRESSION FORMAT — your summary becomes the only record. Make it self-contained.
-KEEP VERBATIM: file paths+lines, function signatures + critical code lines, error messages (exact text), decisions + rationale ("chose X because Y" — the "because" is load-bearing), constraints, exact values, user intent (quote short messages), open TODOs, message refs of key anchors.
+KEEP VERBATIM: file paths+lines, function signatures + critical code lines, error messages (exact text), decisions + rationale ("chose X because Y" — the "because" is load-bearing), constraints, exact values, user's overall goal + any changes to it + user intent (quote short messages), open TODOs, message refs of key anchors.
 DROP: verbose logs (keep error/result line only), duplicate reads, consumed tool outputs, dead-ends (but preserve lesson: "tried X, failed because Y"), back-and-forth (keep outcome only).
-PRIORITY when tight: 1) user intent + constraints 2) decisions + rationale 3) exact artifacts 4) conclusions 5) lessons.
+PRIORITY when tight: 1) user goals + goal evolution + intent + constraints 2) decisions + rationale 3) exact artifacts 4) conclusions 5) lessons.
 Write dense, scannable bullets — not prose.`
