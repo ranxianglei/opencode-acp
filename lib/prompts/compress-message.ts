@@ -11,11 +11,12 @@ Yet be LEAN. Strip away the noise: failed attempts that led nowhere, verbose too
 If a message contains no significant technical decisions, code changes, or user requirements, produce a minimal one-line summary rather than a detailed one.
 
 SUMMARY STRUCTURE
-For messages worth a detailed summary, organize what remains around three points. Omit any point that has no content for this message — do not invent material to fill the template.
+For messages worth a detailed summary, organize what remains around the points below. Omit any point that has no content for this message — do not invent material to fill the template.
 
 - What this message contains: describe the message's purpose in semantic terms (e.g. "the build failure report from the test run"), not raw message IDs.
 - Critical content, transcribed: when the message carries important code, error text, report output, commands, or exact values, copy the content itself into the summary — not a pointer to where it lives. If it is critical, transcribe it verbatim.
 - What is recoverable, and when: name the kind of detail you trimmed and the situations in which a later step might want it back. Do not invent a block ID — you do not know this block's eventual ID. The reader locates it via acp_status or search_context when needed.
+- Why detail was omitted: when the message contains a file, report, code, user instruction, or discussion result that you do not transcribe (or reduce to a single line), state why — it was redundant, a dead end, recoverable elsewhere, or otherwise low-signal. The reader should never wonder why something that looked important was dropped.
 
 MESSAGE IDS
 You specify individual raw messages by ID using the injected IDs visible in the conversation:

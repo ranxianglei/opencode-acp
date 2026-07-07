@@ -41,6 +41,11 @@ The three points map to the failure modes observed in issue #9:
    want it back. The model must not invent a block ID (it does not know the
    eventual `bN`); the reader locates blocks via `acp_status` / `search_context`
    when needed.
+4. **Why detail was omitted** (added per user follow-up) — when a file, report,
+   code, user instruction, or discussion result is not transcribed (or is
+   reduced to one line), state why (redundant / dead end / recoverable /
+   low-signal). Closes the accountability gap: the reader should never wonder
+   why something that looked important was dropped.
 
 **D3 deferral**: the original draft included "do not push the reader to
 decompress" to implement decision D3 (don't force decompress). User said to

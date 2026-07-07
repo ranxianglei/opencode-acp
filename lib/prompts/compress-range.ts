@@ -10,11 +10,12 @@ Directly quote user messages when they are short enough to include safely. Direc
 Yet be LEAN. Strip away the noise: failed attempts that led nowhere, verbose tool outputs, back-and-forth exploration. What remains should be pure signal - golden nuggets of detail that preserve full understanding with zero ambiguity.
 
 SUMMARY STRUCTURE
-Organize what remains around three points. Omit any point that has no content for this range — do not invent material to fill the template. Match depth to what is actually there: a range with no critical content yields a lean summary; a range carrying a key decision or result yields a verbatim record.
+Organize what remains around the points below. Omit any point that has no content for this range — do not invent material to fill the template. Match depth to what is actually there: a range with no critical content yields a lean summary; a range carrying a key decision or result yields a verbatim record.
 
 - What this range covers: describe the phase, task, or exploration in semantic terms (e.g. "the debugging phase that located the off-by-one in search.ts"), not raw message IDs.
 - Critical content, transcribed: when the range contains important code, error text, report output, commands, or exact values, copy the content itself into the summary — not a pointer to where it lives. If it is critical, transcribe it verbatim.
 - What is recoverable, and when: name the kind of detail you trimmed (full diffs, long logs, complete reads) and the situations in which a later step might want it back. Do not invent a block ID — you do not know this block's eventual ID. The reader locates it via acp_status or search_context when needed.
+- Why detail was omitted: when a file, report, code, user instruction, or discussion result in the range is not transcribed (or is reduced to a single line), state why — it was redundant, a dead end, recoverable elsewhere, or otherwise low-signal. The reader should never wonder why something that looked important was dropped.
 
 COMPRESSED BLOCK PLACEHOLDERS
 The system auto-detects any previously compressed blocks whose anchor messages fall inside your selected range. You do NOT need to manually list \`(bN)\` placeholders in your summary — every consumed block is tracked automatically.

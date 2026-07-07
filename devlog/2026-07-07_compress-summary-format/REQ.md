@@ -34,8 +34,9 @@ point with no content. Do NOT fabricate to fill the template
 ## Acceptance criteria
 
 - [x] Both compress prompts (range + message) gain a `SUMMARY STRUCTURE` section
-- [x] Three points: (1) what this range/message covers, (2) critical content
-      transcribed verbatim, (3) what is recoverable + when
+- [x] Four points: (1) what this range/message covers, (2) critical content
+      transcribed verbatim, (3) what is recoverable + when, (4) why detail was
+      omitted (justification for anything not transcribed in detail)
 - [x] Wording states the structure is not mandatory and empty points are omitted
 - [x] No `do not push the reader to decompress` sentence (D3 deferred)
 - [x] No tool/schema change (D2 = wording only)
