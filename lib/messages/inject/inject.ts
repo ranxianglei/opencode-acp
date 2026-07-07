@@ -35,6 +35,7 @@ import {
     resolveAdaptiveNudgeGrowth,
 } from "./utils"
 import { buildCompressedBlockGuidance } from "../../prompts/extensions/nudge"
+import { COMPRESSION_RULES } from "../../prompts/compression-rules"
 
 /**
  * Stable seed for the ACP dynamic guidance suffix message.
@@ -255,6 +256,9 @@ export const injectCompressNudges = (
                 breakdown += `\nLargest text messages: ${composition.largestMessageRanges.map((r) => `${r.ref} (${fmt(r.tokens)})`).join(", ")}`
             }
             breakdown += `\n💡 Compress incrementally: target the ranges above whose content you have already extracted for this step. Size alone is not a reason to compress — if a large range is still needed in full, keep it.`
+            if (decision.tipsVariant !== "maxLimit") {
+                breakdown += `\n\n${COMPRESSION_RULES}`
+            }
             appendToLastTextPart(suffixMessage, breakdown)
         }
 
