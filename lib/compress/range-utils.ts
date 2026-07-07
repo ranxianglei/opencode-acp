@@ -1,3 +1,4 @@
+import type { Logger } from "../logger"
 import type { CompressionBlock, SessionState } from "../state"
 import { resolveAnchorMessageId, resolveBoundaryIds, resolveSelection } from "./search"
 import type {
@@ -130,6 +131,7 @@ export function validateSummaryPlaceholders(
     startReference: BoundaryReference,
     endReference: BoundaryReference,
     summaryByBlockId: Map<number, CompressionBlock>,
+    logger: Logger,
 ): number[] {
     const boundaryOptionalIds = new Set<number>()
     if (startReference.kind === "compressed-block") {
@@ -169,8 +171,8 @@ export function validateSummaryPlaceholders(
     // auto-detects every consumed block in range, so the model no longer
     // needs to manually list (bN) placeholders in its summary.
     if (missingIds.length > 0) {
-        console.warn(
-            `[ACP] compress summary omitted placeholders for required blocks: ${missingIds
+        logger.warn(
+            `compress summary omitted placeholders for required blocks: ${missingIds
                 .map((id) => `b${id}`)
                 .join(", ")}. They will be auto-attached as consumed blocks.`,
         )

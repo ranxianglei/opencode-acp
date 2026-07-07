@@ -134,6 +134,7 @@ export function createCompressRangeTool(ctx: ToolContext): ReturnType<typeof too
                     plan.selection.startReference,
                     plan.selection.endReference,
                     searchContext.summaryByBlockId,
+                    ctx.logger,
                 )
 
                 const injected = injectBlockPlaceholders(
