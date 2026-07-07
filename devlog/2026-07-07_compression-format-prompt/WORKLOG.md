@@ -80,3 +80,27 @@ actually follow, and propagates the same rules to the tool-level prompts.
 - [ ] Manual deploy + verify the new prompt appears in the system prompt
 - [ ] Manual compress in a real session, verify the summary follows
       KEEP/DROP/PRIORITY rules
+
+## Empirical Validation + Follow-up Tweaks
+
+Reviewed a real compression produced under the OLD prompt:
+**Compression #46** in session `ses_0cf8549c4ffeuOqKzr66BvRBmH`
+(m01659→m01676, 14.2K removed → 929-token summary).
+
+**Verdict**: the compression was high-quality — it already followed the
+spirit of the new KEEP/DROP/PRIORITY rules (paths+line numbers verbatim,
+exact values, decisions+rationale, verbose reasoning stripped to findings).
+
+Two gaps surfaced vs. the new rules:
+
+1. **Thematic grouping**: the summary grouped bullets under `###` headers
+   (request → findings → root cause → decision), which scans better than
+   flat bullets for a multi-concern range. The original closing line
+   mandated "not narrative prose" — too restrictive. **Tweak**: allow
+   thematic headers when the range spans distinct concerns.
+
+2. **Message refs**: the summary preserved `m01659`, `m01667-m01669`, etc.
+   as anchors for decompress navigation — useful but not in the KEEP list.
+   **Tweak**: add message refs of key anchors to KEEP VERBATIM.
+
+Both tweaks applied to `lib/prompts/system.ts`. Typecheck + build pass.

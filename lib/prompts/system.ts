@@ -54,6 +54,7 @@ KEEP VERBATIM — never paraphrase or abbreviate these:
 - Constraints discovered ("must support Node 22", "no new dependencies", "AGENTS.md forbids \`as any\`").
 - Exact values: versions, config keys, thresholds, magic numbers.
 - User intent — quote short user messages verbatim (scope, constraints, acceptance criteria). Losing these changes the task itself.
+- Message refs of key anchors (\`m00420\`, \`m00510-00520\`) — they let you or a later reader jump back via decompress to the exact original.
 
 DROP — extract the signal, discard the vessel:
 - Verbose logs (build/test/\`npm\` output) once you have captured the error line or the result.
@@ -69,7 +70,7 @@ PRIORITY — when the summary must be compact, preserve in this order:
 4. Conclusions and key findings.
 5. Lessons learned: what failed and why.
 
-Write dense, scannable bullets — not narrative prose. Every line must earn its place. Do not mimic the style of existing summaries in context; follow these rules.
+Write dense, scannable bullets — not narrative prose. If the range spans distinct concerns (request → findings → decision), group bullets under short thematic headers so a reader can scan to the part they need. Every line must earn its place. Do not mimic the style of existing summaries in context; follow these rules.
 
 PERIODIC CONTEXT STATUS
 
