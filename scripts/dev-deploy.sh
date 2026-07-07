@@ -45,6 +45,12 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 # opencode plugin cache (uses $HOME, works for any user)
 DEPLOY_TARGET="$HOME/.cache/opencode/packages/opencode-acp@latest/node_modules/opencode-acp"
 
+# Legacy resolution path. Older opencode versions resolve "opencode-acp@latest" to
+# ~/.cache/opencode/node_modules/opencode-acp/ instead of the packages/@latest path.
+# If this directory exists, keep it in sync so deploys take effect regardless of
+# which resolution path the running opencode uses. (See AGENTS.md §3.4.)
+LEGACY_TARGET="$HOME/.cache/opencode/node_modules/opencode-acp"
+
 # ── Helpers ────────────────────────────────────────────────────────────────
 
 RED='\033[0;31m'
@@ -132,6 +138,18 @@ cp "$PROJECT_ROOT/package.json" "$DEPLOY_TARGET/package.json"
 DEPLOYED_VER=$(node -p "require('$DEPLOY_TARGET/package.json').version" 2>/dev/null || echo "?")
 [[ "$DEPLOYED_VER" == "$NEW_VER" ]] \
     || error "Version mismatch after deploy (expected $NEW_VER, got $DEPLOYED_VER)"
+
+# Sync the legacy resolution path if it exists (see comment on LEGACY_TARGET).
+if [[ -d "$LEGACY_TARGET/dist" ]]; then
+    cp -r "$PROJECT_ROOT/dist/"* "$LEGACY_TARGET/dist/"
+    cp "$PROJECT_ROOT/package.json" "$LEGACY_TARGET/package.json"
+    LEGACY_VER=$(node -p "require('$LEGACY_TARGET/package.json').version" 2>/dev/null || echo "?")
+    [[ "$LEGACY_VER" == "$NEW_VER" ]] \
+        || warn "Legacy path synced but version mismatch (expected $NEW_VER, got $LEGACY_VER)"
+    info "Legacy path also synced: $LEGACY_TARGET"
+else
+    info "No legacy install at $LEGACY_TARGET — skipping sync"
+fi
 
 # ── Done ──────────────────────────────────────────────────────────────────
 
