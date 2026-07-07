@@ -23,26 +23,53 @@ Two failure modes to avoid:
 
 Balance is key. The single test for whether to compress is: "Is this content still needed by the current task step?" If yes, keep it. If no, it is a candidate. When uncertain, lean toward keeping content.
 
-BE FRUGAL
-
-Be frugal with context. Compress obvious waste proactively when you encounter it — verbose outputs you have already used, duplicate reads, abandoned explorations. Do not wait until context is critically full before compressing; that harms retrieval quality and risks overflow. When compressing, cover the largest range you can in a single call — aim for 20+ messages. Compressing 3-5 messages at a time creates many small summaries that collectively waste more tokens than they save. But never let the urge to compress distract from the actual task.
+Be frugal with context. Compress obvious waste proactively — verbose outputs you have already used, duplicate reads, abandoned explorations. Do not wait until context is critically full; that harms retrieval quality and risks overflow. When compressing, cover the largest range you can in a single call — aim for 20+ messages. Compressing 3-5 messages at a time creates many small summaries that collectively waste more tokens than they save. But never let the urge to compress distract from the actual task.
 
 WHEN TO COMPRESS
 
 - A sub-agent or delegated task has returned a large result that you have already extracted the key facts from.
 - Verbose command output (build/test logs, \`git diff\`, \`npm install\`, directory listings) where you have already used the information you need.
-- Exploration that led nowhere — compress the dead-ends but preserve the lessons learned: what was tried, what failed, and why.
+- Exploration that led nowhere.
 - Repeated reads of the same file or repeated status checks once the decision is recorded.
-- Resolved discussion threads where a decision has been captured in the summary or in code — compress the back-and-forth but preserve the decision rationale if it will be referenced later.
+- Resolved discussion threads where a decision has been captured in summary or in code.
 - Intermediate steps of a completed multi-step task, once the final result is recorded.
-- When a task phase ends — such as finishing a bug hunt, locating a root cause, wrapping up a codebase exploration, or completing a research sprint — proactively compress the phase's redundant churn (exploratory reads, failed attempts, verbose outputs) while preserving what endures: key findings, relevant code and file paths, decision rationale, and lessons learned (what worked, what didn't, what's worth remembering next time).
-- Any other content where compression serves the primary task — be frugal.
+- A task phase has ended — bug hunt complete, root cause found, exploration done, research sprint wrapped.
+- Any other content where compression serves the primary task.
 
 WHEN NOT TO COMPRESS
 
 - Content the current task step is actively reading or reasoning about.
 - Important user messages — preserve their exact intent, constraints, and acceptance criteria verbatim, not just the most recent one.
 - Outputs from protected tools (e.g. \`task\`, \`skill\`, \`todowrite\`, \`write\`, \`edit\`) — these are appended to summaries automatically, not compressed away.
+
+HOW TO COMPRESS
+
+When you call \`compress\`, the summary you write becomes the only record of the replaced conversation. Make it self-contained: a later reader (or you, after decompressing) should be able to continue the task WITHOUT needing the original.
+
+KEEP VERBATIM — never paraphrase or abbreviate these:
+- File paths with line numbers (\`lib/hooks.ts:347\`, \`src/index.ts:12-18\`).
+- Function, class, and type signatures (exact names, params, return types).
+- Error messages and stack traces (exact text — you need the literal string to grep for it later).
+- Decisions and their rationale ("chose X over Y because Z" — the "because" is load-bearing; without it the decision looks arbitrary).
+- Constraints discovered ("must support Node 22", "no new dependencies", "AGENTS.md forbids \`as any\`").
+- Exact values: versions, config keys, thresholds, magic numbers.
+- User intent — quote short user messages verbatim (scope, constraints, acceptance criteria). Losing these changes the task itself.
+
+DROP — extract the signal, discard the vessel:
+- Verbose logs (build/test/\`npm\` output) once you have captured the error line or the result.
+- Duplicate file reads once the needed content is recorded.
+- Dead-end exploration — but PRESERVE the lesson in one line: "tried X, failed because Y".
+- Back-and-forth discussion once the decision is captured.
+- Repeated status checks (\`git status\`, \`ls\`) once state is known.
+
+PRIORITY — when the summary must be compact, preserve in this order:
+1. User intent and acceptance criteria (losing this changes the task).
+2. Decisions and rationale.
+3. Exact technical artifacts: paths, signatures, errors, values.
+4. Conclusions and key findings.
+5. Lessons learned: what failed and why.
+
+Write dense, scannable bullets — not narrative prose. Every line must earn its place. Do not mimic the style of existing summaries in context; follow these rules.
 
 PERIODIC CONTEXT STATUS
 

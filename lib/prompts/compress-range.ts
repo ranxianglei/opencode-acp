@@ -1,13 +1,9 @@
 export const COMPRESS_RANGE = `Collapse a range in the conversation into a detailed summary.
 
 THE SUMMARY
-Your summary must be EXHAUSTIVE. Capture file paths, function signatures, decisions made, constraints discovered, key findings... EVERYTHING that maintains context integrity. This is not a brief note - it is an authoritative record so faithful that the original conversation adds no value.
+Follow the HOW TO COMPRESS rules from the system prompt: KEEP-VERBATIM the listed items (paths, signatures, errors, decisions+rationale, constraints, exact values, user intent), DROP the listed noise (verbose logs, duplicate reads, dead-ends with lesson preserved, back-and-forth, status checks), and order by PRIORITY when space is tight.
 
-USER INTENT FIDELITY
-When the compressed range includes user messages, preserve the user's intent with extra care. Do not change scope, constraints, priorities, acceptance criteria, or requested outcomes.
-Directly quote user messages when they are short enough to include safely. Direct quotes are preferred when they best preserve exact meaning.
-
-Yet be LEAN. Strip away the noise: failed attempts that led nowhere, verbose tool outputs, back-and-forth exploration. What remains should be pure signal - golden nuggets of detail that preserve full understanding with zero ambiguity.
+The summary must be self-contained — the original conversation adds no value after compression. Write dense, scannable bullets. Every line must earn its place.
 
 COMPRESSED BLOCK PLACEHOLDERS
 The system auto-detects any previously compressed blocks whose anchor messages fall inside your selected range. You do NOT need to manually list \`(bN)\` placeholders in your summary — every consumed block is tracked automatically.
