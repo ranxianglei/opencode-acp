@@ -53,7 +53,7 @@ WHEN NOT TO COMPRESS
 
 HOW TO COMPRESS
 
-When you call \`compress\`, the summary you write becomes the only record of the replaced conversation. Make it self-contained: a later reader (or you, after decompressing) should be able to continue the task WITHOUT needing the original.
+When you call \`compress\`, the summary you write becomes the only record of the replaced conversation. Make it self-contained and complete: every user request, experiment purpose, and work task in the range must be accurately captured. A later reader (or you, after decompressing) should be able to continue the task WITHOUT needing the original.
 
 KEEP VERBATIM — never paraphrase or abbreviate these:
 - File paths with line numbers (\`lib/hooks.ts:347\`, \`src/index.ts:12-18\`).
@@ -65,6 +65,7 @@ KEEP VERBATIM — never paraphrase or abbreviate these:
 - Exact values: versions, config keys, thresholds, magic numbers.
 - User intent — quote short user messages verbatim. When the message is too long to quote, preserve intent with extra care: do not change scope, constraints, priorities, acceptance criteria, or requested outcomes. Mark them clearly as past quotes (e.g., "User said: ..."), not as current directives. Losing these changes the task itself.
 - The user's overall goal and any changes to it — the big-picture objective plus how it evolved during the compressed range. Each summary must reflect the goal as it stood at the end of the range, including pivots (e.g., "initially: fix bug X → pivoted to: refactor module Y after discovering root cause"). Losing the goal or its evolution makes all subsequent work appear unmotivated.
+- Purpose behind each significant action — preserve not just what was done but why: the hypothesis behind each experiment, the question behind each exploration, the task goal behind each work action. Without purpose, the summary reads as disconnected technical steps with no through-line.
 - Open questions and unresolved TODOs — losing these changes what work appears to remain.
 - Message refs of key anchors (\`m00420\`, \`m00510-00520\`) — they let you or a later reader jump back via decompress to the exact original.
 
