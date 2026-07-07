@@ -97,11 +97,12 @@ function buildCompressionSummary(
 
 function getCompressionLabel(entries: CompressionNotificationEntry[]): string {
     const runId = entries[0]?.runId
+    const blockIds = entries.map((e) => `b${e.blockId}`)
     if (runId === undefined) {
         return "Compression"
     }
 
-    return `Compression #${runId}`
+    return `Compression #${runId} → ${blockIds.join(", ")}`
 }
 
 function formatCompressionMetrics(removedTokens: number, summaryTokens: number): string {
@@ -231,7 +232,7 @@ export async function sendCompressNotification(
                 summary.length > NOTIFICATION_SUMMARY_MAX_CHARS
                     ? truncateToastSummary(summary, NOTIFICATION_SUMMARY_MAX_CHARS)
                     : summary
-            message += `\n→ Compression (~${summaryTokensStr}): ${displaySummary}`
+            message += `\n→ [system recap] (~${summaryTokensStr}): ${displaySummary}`
         }
     }
 
@@ -241,8 +242,8 @@ export async function sendCompressNotification(
             const truncatedSummary = truncateToastSummary(summary)
             if (truncatedSummary !== summary) {
                 toastMessage = toastMessage.replace(
-                    `\n→ Compression (~${summaryTokensStr}): ${truncateToastSummary(summary, NOTIFICATION_SUMMARY_MAX_CHARS)}`,
-                    `\n→ Compression (~${summaryTokensStr}): ${truncatedSummary}`,
+                    `\n→ [system recap] (~${summaryTokensStr}): ${truncateToastSummary(summary, NOTIFICATION_SUMMARY_MAX_CHARS)}`,
+                    `\n→ [system recap] (~${summaryTokensStr}): ${truncatedSummary}`,
                 )
             }
         }
