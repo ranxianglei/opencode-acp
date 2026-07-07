@@ -19,6 +19,7 @@ import {
     createSyntheticTextPart,
     createSyntheticUserMessage,
     hasContent,
+    dropEmptyUserMessages,
 } from "../utils"
 import {
     addAnchor,
@@ -307,7 +308,16 @@ export const injectCompressNudges = (
     }
 
     if (suffixMessage) {
-        appendToLastTextPart(suffixMessage, "\n")
+        // [FIX #12] Nothing injected this turn → drop the empty synthetic user
+        // message. (appendToLastTextPart would no-op on "\n" anyway.)
+        if (hasContent(suffixMessage)) {
+            appendToLastTextPart(suffixMessage, "\n")
+        } else {
+            const idx = messages.lastIndexOf(suffixMessage)
+            if (idx !== -1) {
+                messages.splice(idx, 1)
+            }
+        }
     }
 
     // [FIX #60] Save on nudge too: a growth-triggered nudge updates the in-memory

@@ -273,3 +273,15 @@ export const stripHallucinations = (messages: WithParts[]): void => {
         }
     }
 }
+
+// [FIX #12] Backstop: sweep empty user-role messages (in-place, backwards).
+export const dropEmptyUserMessages = (messages: WithParts[]): number => {
+    let removed = 0
+    for (let i = messages.length - 1; i >= 0; i--) {
+        if (messages[i].info.role === "user" && !hasContent(messages[i])) {
+            messages.splice(i, 1)
+            removed++
+        }
+    }
+    return removed
+}
