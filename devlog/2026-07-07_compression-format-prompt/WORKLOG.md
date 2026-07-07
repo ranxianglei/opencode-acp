@@ -132,3 +132,25 @@ intent with extra care: do not change scope, constraints, priorities,
 acceptance criteria, or requested outcomes." Preserves the
 past-quote marking and "losing these changes the task" emphasis from
 the rewrite.
+
+### Iteration 5: Just-in-time compression rules in nudges
+
+@dog observed Compression #58 (33.5K → 572 tokens) violated 3 rules
+despite them being in the system prompt. Root cause: the HOW TO COMPRESS
+rules are in the system prompt (turn 1), but compression happens dozens
+of turns later — the rules fade from attention.
+
+**Fix**: created `lib/prompts/compression-rules.ts` exporting a condensed
+`COMPRESSION_RULES` constant (~120 tokens) covering KEEP/DROP/PRIORITY.
+Imported and interpolated into all 3 nudge templates
+(`context-limit-nudge.ts`, `turn-nudge.ts`, `iteration-nudge.ts`) via
+template literal `${COMPRESSION_RULES}`.
+
+This ensures the model sees the rules at the exact moment it's told to
+compress — closing the gap between "when to compress" (nudge) and "how
+to compress" (rules). The system.ts full version remains as the
+authoritative reference; the nudge version is the just-in-time reminder.
+
+**Files changed**: `compression-rules.ts` (new), `context-limit-nudge.ts`,
+`turn-nudge.ts`, `iteration-nudge.ts`. Typecheck PASS, build PASS, 575/576
+tests pass (1 pre-existing Bun env quirk).
