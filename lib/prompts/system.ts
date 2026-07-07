@@ -48,8 +48,9 @@ When you call \`compress\`, the summary you write becomes the only record of the
 
 KEEP VERBATIM — never paraphrase or abbreviate these:
 - File paths with line numbers (\`lib/hooks.ts:347\`, \`src/index.ts:12-18\`).
-- Function, class, and type signatures (exact names, params, return types).
+- Function, class, and type signatures (exact names, params, return types) AND critical code lines that encode logic — the line that IS the finding, not just the function name (e.g. \`kv_keys += define_gate * a_key[i](emb)\` is more useful than "see model_kvnet.py").
 - Error messages and stack traces (exact text — you need the literal string to grep for it later).
+- Key details from reports and analyses — not just the conclusion. Keep the comparison numbers and the mechanism, not "X is worse" alone (write "1.76× PPL gap because KV store is static", not "KVNet underperforms").
 - Decisions and their rationale ("chose X over Y because Z" — the "because" is load-bearing; without it the decision looks arbitrary).
 - Constraints discovered ("must support Node 22", "no new dependencies", "AGENTS.md forbids \`as any\`").
 - Exact values: versions, config keys, thresholds, magic numbers.
@@ -62,6 +63,8 @@ DROP — extract the signal, discard the vessel:
 - Dead-end exploration — but PRESERVE the lesson in one line: "tried X, failed because Y".
 - Back-and-forth discussion once the decision is captured.
 - Repeated status checks (\`git status\`, \`ls\`) once state is known.
+
+For each significant item you DROP (scripts, reports, large analyses, long tool outputs), add a one-line CONTENT description of what it covers — not where it lives. Bad: "probe script at /path/probe_kvnet.py". Good: "probe_kvnet.py: tests n-gram baseline, generation quality, long-range dependency, position sensitivity, op pipeline, QUERY attention." This lets a later decompress target the right block by relevance, not by guessing locations.
 
 PRIORITY — when the summary must be compact, preserve in this order:
 1. User intent and acceptance criteria (losing this changes the task).
