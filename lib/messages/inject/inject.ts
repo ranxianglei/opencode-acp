@@ -255,6 +255,7 @@ export const injectCompressNudges = (
                 breakdown += `\nLargest text messages: ${composition.largestMessageRanges.map((r) => `${r.ref} (${fmt(r.tokens)})`).join(", ")}`
             }
             breakdown += `\n💡 Compress incrementally: target the ranges above whose content you have already extracted for this step. Size alone is not a reason to compress — if a large range is still needed in full, keep it.`
+            breakdown += `\n📝 New summaries must follow the SUMMARY STRUCTURE from the compress tool — (1) what the range covers, (2) critical content transcribed verbatim (not pointers), (3) what's recoverable, (4) why detail was omitted. Do not mimic the style of older summaries already in context.`
             appendToLastTextPart(suffixMessage, breakdown)
         }
 

@@ -15,6 +15,16 @@ You have four context-management tools:
 - \`search_context\` — Search compressed block summaries (and optionally visible messages) by keyword. Use BEFORE decompressing to find the right block. Example: \`search_context({ query: "auth token refresh" })\`.
 - \`acp_status\` — List all active compressed blocks with their sizes, ages, and the message ranges they consumed. Use when you are unsure which IDs are still compressible, or before choosing compress boundaries. Example: \`acp_status({ mode: "summary", sort: "recent" })\`.
 
+SUMMARY STRUCTURE
+
+When you write a compress summary, follow this structure (full detail in the \`compress\` tool description):
+1. **What the range covers** — a one-line semantic label (topic, scope, time span).
+2. **Critical content, transcribed verbatim** — file paths, signatures, decisions, constraints, exact values, error text. Never replace these with pointers ("see §4.2"); the reader needs the actual content.
+3. **What is recoverable, and when** — which details were trimmed because they can be retrieved via \`acp_status\` + \`decompress\`; name the blocks if relevant.
+4. **Why detail was omitted** — a phrase justifying any non-transcription (e.g. "verbose build log, no errors").
+
+Omit a point only if it genuinely does not apply; never fabricate. Important: do **not** mimic the style of existing summaries already in context — many were written under an older format. Follow the current structure above.
+
 COMPRESSION PHILOSOPHY
 
 Two failure modes to avoid:
