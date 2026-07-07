@@ -17,6 +17,31 @@ export function parseBlockIdArg(arg: string): number | null {
     return Number.isInteger(parsed) && parsed > 0 ? parsed : null
 }
 
+export function findActiveBlocksOverlappingMessages(
+    messagesState: PruneMessagesState,
+    messageIds: Set<string>,
+): CompressionBlock[] {
+    if (messageIds.size === 0) {
+        return []
+    }
+
+    const matched = new Map<number, CompressionBlock>()
+    for (const [blockId, block] of messagesState.blocksById) {
+        if (!block.active) {
+            continue
+        }
+        const effectiveIds = block.effectiveMessageIds ?? []
+        for (const msgId of effectiveIds) {
+            if (messageIds.has(msgId)) {
+                matched.set(blockId, block)
+                break
+            }
+        }
+    }
+
+    return Array.from(matched.values()).sort((a, b) => a.blockId - b.blockId)
+}
+
 export function findActiveParentBlockId(
     messagesState: PruneMessagesState,
     block: CompressionBlock,

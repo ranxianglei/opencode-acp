@@ -4,6 +4,7 @@ import {
     parseBlockIdArg,
     findActiveParentBlockId,
     findActiveAncestorBlockId,
+    findActiveBlocksOverlappingMessages,
     snapshotActiveMessages,
     deactivateCompressionTarget,
     computeRestoredMessages,
@@ -411,4 +412,114 @@ test("buildRestoredContentPreview handles messages with no parts", () => {
     ]
     const result = buildRestoredContentPreview(messages, before, ms)
     assert.ok(result.includes("[user]"))
+})
+
+// --- findActiveBlocksOverlappingMessages ---
+
+test("findActiveBlocksOverlappingMessages returns empty array for empty message set", () => {
+    const block = makeBlock({ blockId: 1, effectiveMessageIds: ["msg-a"] })
+    const ms = makeMessagesState({ blocksById: new Map([[1, block]]) })
+    assert.deepEqual(findActiveBlocksOverlappingMessages(ms, new Set()), [])
+})
+
+test("findActiveBlocksOverlappingMessages returns empty array when no blocks exist", () => {
+    const ms = makeMessagesState({ blocksById: new Map() })
+    assert.deepEqual(findActiveBlocksOverlappingMessages(ms, new Set(["msg-a"])), [])
+})
+
+test("findActiveBlocksOverlappingMessages matches active block with overlapping effective message", () => {
+    const block = makeBlock({ blockId: 1, effectiveMessageIds: ["msg-a", "msg-b"] })
+    const ms = makeMessagesState({ blocksById: new Map([[1, block]]) })
+    const result = findActiveBlocksOverlappingMessages(ms, new Set(["msg-b"]))
+    assert.equal(result.length, 1)
+    assert.equal(result[0].blockId, 1)
+})
+
+test("findActiveBlocksOverlappingMessages skips inactive blocks", () => {
+    const block = makeBlock({ blockId: 1, active: false, effectiveMessageIds: ["msg-a"] })
+    const ms = makeMessagesState({ blocksById: new Map([[1, block]]) })
+    assert.deepEqual(findActiveBlocksOverlappingMessages(ms, new Set(["msg-a"])), [])
+})
+
+test("findActiveBlocksOverlappingMessages handles partial overlap (matches whole block)", () => {
+    const block = makeBlock({ blockId: 1, effectiveMessageIds: ["msg-a", "msg-b", "msg-c"] })
+    const ms = makeMessagesState({ blocksById: new Map([[1, block]]) })
+    const result = findActiveBlocksOverlappingMessages(ms, new Set(["msg-b"]))
+    assert.equal(result.length, 1)
+    assert.equal(result[0].blockId, 1)
+})
+
+test("findActiveBlocksOverlappingMessages returns multiple matched blocks sorted by blockId", () => {
+    const block3 = makeBlock({ blockId: 3, effectiveMessageIds: ["msg-c"] })
+    const block1 = makeBlock({ blockId: 1, effectiveMessageIds: ["msg-a"] })
+    const block2 = makeBlock({ blockId: 2, effectiveMessageIds: ["msg-b"] })
+    const ms = makeMessagesState({
+        blocksById: new Map([
+            [3, block3],
+            [1, block1],
+            [2, block2],
+        ]),
+    })
+    const result = findActiveBlocksOverlappingMessages(ms, new Set(["msg-a", "msg-b", "msg-c"]))
+    assert.deepEqual(result.map((b) => b.blockId), [1, 2, 3])
+})
+
+test("findActiveBlocksOverlappingMessages dedupes when block matches multiple messages in set", () => {
+    const block = makeBlock({ blockId: 1, effectiveMessageIds: ["msg-a", "msg-b", "msg-c"] })
+    const ms = makeMessagesState({ blocksById: new Map([[1, block]]) })
+    const result = findActiveBlocksOverlappingMessages(ms, new Set(["msg-a", "msg-b", "msg-c"]))
+    assert.equal(result.length, 1)
+})
+
+test("findActiveBlocksOverlappingMessages returns no match when message IDs disjoint", () => {
+    const block = makeBlock({ blockId: 1, effectiveMessageIds: ["msg-a", "msg-b"] })
+    const ms = makeMessagesState({ blocksById: new Map([[1, block]]) })
+    const result = findActiveBlocksOverlappingMessages(ms, new Set(["msg-x", "msg-y"]))
+    assert.deepEqual(result, [])
+})
+
+test("findActiveBlocksOverlappingMessages treats undefined effectiveMessageIds as empty", () => {
+    const block = makeBlock({ blockId: 1, effectiveMessageIds: undefined as unknown as string[] })
+    const ms = makeMessagesState({ blocksById: new Map([[1, block]]) })
+    assert.deepEqual(findActiveBlocksOverlappingMessages(ms, new Set(["msg-a"])), [])
+})
+
+test("findActiveBlocksOverlappingMessages handles nested blocks (child effective ⊇ ancestor)", () => {
+    const ancestor = makeBlock({
+        blockId: 1,
+        effectiveMessageIds: ["msg-a", "msg-b"],
+    })
+    const child = makeBlock({
+        blockId: 2,
+        effectiveMessageIds: ["msg-a", "msg-b", "msg-c"],
+        parentBlockIds: [1],
+    })
+    const ms = makeMessagesState({
+        blocksById: new Map([
+            [1, ancestor],
+            [2, child],
+        ]),
+    })
+    const result = findActiveBlocksOverlappingMessages(ms, new Set(["msg-c"]))
+    assert.deepEqual(result.map((b) => b.blockId), [2])
+})
+
+test("findActiveBlocksOverlappingMessages returns both ancestor and child when range covers ancestor messages", () => {
+    const ancestor = makeBlock({
+        blockId: 1,
+        effectiveMessageIds: ["msg-a"],
+    })
+    const child = makeBlock({
+        blockId: 2,
+        effectiveMessageIds: ["msg-a", "msg-c"],
+        parentBlockIds: [1],
+    })
+    const ms = makeMessagesState({
+        blocksById: new Map([
+            [1, ancestor],
+            [2, child],
+        ]),
+    })
+    const result = findActiveBlocksOverlappingMessages(ms, new Set(["msg-a"]))
+    assert.deepEqual(result.map((b) => b.blockId), [1, 2])
 })
