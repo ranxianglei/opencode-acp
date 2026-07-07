@@ -1,7 +1,7 @@
 export const COMPRESS_RANGE = `Collapse a range in the conversation into a detailed summary.
 
 THE SUMMARY
-Follow the HOW TO COMPRESS rules from the system prompt: KEEP-VERBATIM the listed items (paths, signatures, errors, decisions+rationale, constraints, exact values, user intent), DROP the listed noise (verbose logs, duplicate reads, dead-ends with lesson preserved, back-and-forth, status checks), and order by PRIORITY when space is tight.
+Follow the HOW TO COMPRESS rules from the system prompt — keep every listed VERBATIM item, drop every listed noise category, and order by PRIORITY when space is tight. Do not restate the lists here; the system prompt is the single source of truth.
 
 The summary must be self-contained — the original conversation adds no value after compression. Write dense, scannable bullets. Every line must earn its place.
 

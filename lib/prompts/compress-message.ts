@@ -1,7 +1,7 @@
 export const COMPRESS_MESSAGE = `Collapse selected individual messages in the conversation into detailed summaries.
 
 THE SUMMARY
-Follow the HOW TO COMPRESS rules from the system prompt: KEEP-VERBATIM the listed items (paths, signatures, errors, decisions+rationale, constraints, exact values, user intent), DROP the listed noise (verbose logs, duplicate reads, dead-ends with lesson preserved, back-and-forth, status checks), and order by PRIORITY when space is tight.
+Follow the HOW TO COMPRESS rules from the system prompt — keep every listed VERBATIM item, drop every listed noise category, and order by PRIORITY when space is tight. Do not restate the lists here; the system prompt is the single source of truth.
 
 The summary must be self-contained — the original content can be restored via decompress if needed later. Write dense, scannable bullets. Every line must earn its place.
 If a message contains no significant technical decisions, code changes, or user requirements, produce a minimal one-line summary rather than a detailed one.
