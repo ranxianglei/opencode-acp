@@ -56,7 +56,7 @@ HOW TO COMPRESS
 When you call \`compress\`, the summary you write becomes the only record of the replaced conversation. Make it self-contained and complete: every user request, experiment purpose, and work task in the range must be accurately captured. A later reader (or you, after decompressing) should be able to continue the task WITHOUT needing the original.
 
 KEEP VERBATIM — never paraphrase or abbreviate these:
-- File paths with line numbers (\`lib/hooks.ts:347\`, \`src/index.ts:12-18\`).
+- Full file paths with line numbers, directory prefix on every mention (\`lib/hooks.ts:347\`, \`src/index.ts:12-18\`, \`gatenet_v3/model.py:45\`). Never abbreviate to a bare filename (\`hooks.ts\`, \`model.py\`) — they are ambiguous and cannot be grepped or decompressed-to later.
 - Function, class, and type signatures (exact names, params, return types) AND critical code lines that encode logic — the line that IS the finding, not just the function name (e.g. \`kv_keys += define_gate * a_key[i](emb)\` is more useful than "see model_kvnet.py").
 - Error messages and stack traces (exact text — you need the literal string to grep for it later).
 - Key details from reports and analyses — not just the conclusion. Keep the comparison numbers and the mechanism, not "X is worse" alone (write "1.76× PPL gap because KV store is static", not "KVNet underperforms").
