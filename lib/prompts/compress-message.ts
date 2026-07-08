@@ -1,8 +1,6 @@
-import { HOW_TO_COMPRESS_RULES } from "./compression-rules"
-
 export const COMPRESS_MESSAGE = `Collapse selected individual messages in the conversation into detailed summaries.
 
-${HOW_TO_COMPRESS_RULES}
+Follow the HOW TO COMPRESS rules from the system prompt: keep verbatim (paths, signatures, errors, decisions, user goal/evolution, purpose), drop noise, respect priority order.
 
 If a message contains no significant technical decisions, code changes, or user requirements, produce a minimal one-line summary rather than a detailed one.
 

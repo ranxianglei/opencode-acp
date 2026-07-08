@@ -1,8 +1,6 @@
-import { HOW_TO_COMPRESS_RULES } from "./compression-rules"
-
 export const COMPRESS_RANGE = `Collapse a range in the conversation into a detailed summary.
 
-${HOW_TO_COMPRESS_RULES}
+Follow the HOW TO COMPRESS rules from the system prompt: keep verbatim (paths, signatures, errors, decisions, user goal/evolution, purpose), drop noise, respect priority order.
 
 COMPRESSED BLOCK PLACEHOLDERS
 The system auto-detects any previously compressed blocks whose anchor messages fall inside your selected range. You do NOT need to manually list \`(bN)\` placeholders in your summary — every consumed block is tracked automatically.
