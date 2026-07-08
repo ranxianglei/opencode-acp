@@ -1,3 +1,5 @@
+import { HOW_TO_COMPRESS_RULES } from "./compression-rules"
+
 export const CONTEXT_LIMIT_NUDGE = `
 <system-reminder>
 ⚠️ Context limit reached — time to compress the largest ranges you no longer need. Prioritize completed tool outputs and resolved work. You can decompress specific blocks later if you need details. Keeping context lean helps you stay accurate.
@@ -22,9 +24,9 @@ HOW TO CALL COMPRESS:
 - Do NOT use IDs from compressed block summaries — they are stale.
 - startId must appear BEFORE endId in the conversation.
 
-SUMMARY RULES:
-- Capture ALL essential details: file paths, decisions, constraints, key findings.
-- Preserve user intent exactly. Direct-quote short user messages.
+${HOW_TO_COMPRESS_RULES}
+
+RANGE STRATEGY:
 - Prefer one large range over multiple small ones.
 - Compress OLDER resolved history first. Keep recent active work.
 </system-reminder>

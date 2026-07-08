@@ -97,11 +97,12 @@ function buildCompressionSummary(
 
 function getCompressionLabel(entries: CompressionNotificationEntry[]): string {
     const runId = entries[0]?.runId
+    const blockIds = entries.map((e) => `b${e.blockId}`)
     if (runId === undefined) {
         return "Compression"
     }
 
-    return `Compression #${runId}`
+    return `Compression #${runId} → ${blockIds.join(", ")}`
 }
 
 function formatCompressionMetrics(removedTokens: number, summaryTokens: number): string {
@@ -281,6 +282,9 @@ export async function sendIgnoredMessage(
               }
             : undefined
 
+    // Wrap with system message markers so the model does not confuse this with user input
+    const wrappedText = `[ACP system message — not a user comment]\n\n${text}\n\n[ACP system message — not a user comment]`
+
     try {
         await client.session.prompt({
             path: {
@@ -294,7 +298,7 @@ export async function sendIgnoredMessage(
                 parts: [
                     {
                         type: "text",
-                        text: text,
+                        text: wrappedText,
                         ignored: true,
                     },
                 ],

@@ -704,7 +704,7 @@ test("compress message mode sends one aggregated notification for batched messag
     assert.equal(toastCalls.length, 1)
     assert.match(toastCalls[0] || "", /▣ ACP \| Context [^|]+→[^|]+/)
     assert.match(toastCalls[0] || "", /Compression #1/)
-    assert.match(toastCalls[0] || "", /▣ Compression #1 -[^,\n]+ removed, \+[^\s\n]+ summary/)
+    assert.match(toastCalls[0] || "", /▣ Compression #1 → b\d.*removed, \+.*summary/)
     assert.match(toastCalls[0] || "", /Topic: Batch stale notes/)
     assert.match(toastCalls[0] || "", /Items: 2 messages/)
 })

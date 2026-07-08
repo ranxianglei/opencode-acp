@@ -1,3 +1,5 @@
+import { HOW_TO_COMPRESS_RULES } from "./compression-rules"
+
 export const ITERATION_NUDGE = `
 <system-reminder>
 You've been iterating for a while. If any earlier work is closed and unlikely to be referenced, compress it now.
@@ -8,5 +10,7 @@ You've been iterating for a while. If any earlier work is closed and unlikely to
 }
 
 ⚠️ ONLY use IDs from <dcp-message-id> tags visible above. Do NOT invent or copy example IDs.
+
+${HOW_TO_COMPRESS_RULES}
 </system-reminder>
 `
