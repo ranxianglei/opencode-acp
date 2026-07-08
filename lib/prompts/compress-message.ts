@@ -1,13 +1,5 @@
 export const COMPRESS_MESSAGE = `Collapse selected individual messages in the conversation into detailed summaries.
 
-THE SUMMARY
-Your summary must be EXHAUSTIVE. Capture file paths, function signatures, decisions made, constraints discovered, key findings, tool outcomes, and user intent details that matter... EVERYTHING that preserves the value of the selected message after it is summarized. The original content can be restored via decompress if needed later.
-
-USER INTENT FIDELITY
-When a selected message contains user intent, preserve that intent with extra care. Do not change scope, constraints, priorities, acceptance criteria, or requested outcomes.
-Directly quote short user instructions when that best preserves exact meaning.
-
-Yet be LEAN. Strip away the noise: failed attempts that led nowhere, verbose tool output, and repetition. What remains should be pure signal - golden nuggets of detail that preserve full understanding with zero ambiguity.
 If a message contains no significant technical decisions, code changes, or user requirements, produce a minimal one-line summary rather than a detailed one.
 
 MESSAGE IDS
