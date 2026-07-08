@@ -1,15 +1,14 @@
 /**
  * Full compression rules — the single source of truth for HOW TO COMPRESS.
  *
- * Imported and interpolated into:
- * - system.ts (system prompt)
- * - compress-range.ts (range-mode compress tool description)
- * - compress-message.ts (message-mode compress tool description)
+ * Used in:
+ * - system.ts (system prompt) — prefix-cached, always present
+ * - inject.ts (efficiency nudge) — appended to context breakdown
+ * - context-limit-nudge.ts / turn-nudge.ts / iteration-nudge.ts — full rules
+ *   at the exact moment the model is prompted to compress
  *
- * This ensures all three injection points show identical rules without
- * duplication. Users who override these prompts via custom files replace
- * the entire string, losing the interpolation — that's intentional (full
- * control for advanced users).
+ * Tool descriptions (compress-range.ts, compress-message.ts) use a short
+ * pointer to these rules instead of interpolating the full text.
  */
 export const HOW_TO_COMPRESS_RULES = `HOW TO COMPRESS
 
@@ -47,15 +46,3 @@ PRIORITY — when the summary must be compact, preserve in this order:
 5. Lessons learned: what failed and why.
 
 Write dense, scannable bullets — not narrative prose. If the range spans distinct concerns (request → findings → decision), group bullets under short thematic headers so a reader can scan to the part they need. Every line must earn its place. Do not mimic the style of existing summaries in context; follow these rules.`
-
-/**
- * Condensed compression rules — the "just-in-time" nudge version.
- *
- * Used in compress nudges (context-limit, turn, iteration) where space is
- * tighter. This is a compressed paraphrase of HOW_TO_COMPRESS_RULES above.
- */
-export const COMPRESSION_RULES = `COMPRESSION FORMAT — your summary becomes the only record. Make it self-contained and complete: every user request, experiment purpose, and work task must be accurately captured.
-KEEP VERBATIM: full file paths with line numbers on every mention (\`dir/file.py:45\`, never bare \`file.py\`), function signatures + critical code lines, error messages (exact text), decisions + rationale ("chose X because Y" — the "because" is load-bearing), constraints, exact values, user's overall goal + any changes to it + user intent (quote short messages) + purpose behind each action (experiment hypotheses, task goals), open TODOs, message refs of key anchors.
-DROP: verbose logs (keep error/result line only), duplicate reads, consumed tool outputs, dead-ends (but preserve lesson: "tried X, failed because Y"), back-and-forth (keep outcome only).
-PRIORITY when tight: 1) user goals + goal evolution + intent + purpose + constraints 2) decisions + rationale 3) exact artifacts 4) conclusions 5) lessons.
-Write dense, scannable bullets — not prose.`

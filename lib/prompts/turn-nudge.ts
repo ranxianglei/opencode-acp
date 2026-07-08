@@ -1,4 +1,4 @@
-import { COMPRESSION_RULES } from "./compression-rules"
+import { HOW_TO_COMPRESS_RULES } from "./compression-rules"
 
 export const TURN_NUDGE = `
 <system-reminder>
@@ -11,6 +11,6 @@ Context is getting full. If you've finished reading tool outputs or exploration 
 
 ⚠️ ONLY use IDs from  tags visible above. Do NOT invent or copy example IDs.
 
-${COMPRESSION_RULES}
+${HOW_TO_COMPRESS_RULES}
 </system-reminder>
 `

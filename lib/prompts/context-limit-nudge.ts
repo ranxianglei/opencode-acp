@@ -1,4 +1,4 @@
-import { COMPRESSION_RULES } from "./compression-rules"
+import { HOW_TO_COMPRESS_RULES } from "./compression-rules"
 
 export const CONTEXT_LIMIT_NUDGE = `
 <system-reminder>
@@ -24,7 +24,7 @@ HOW TO CALL COMPRESS:
 - Do NOT use IDs from compressed block summaries — they are stale.
 - startId must appear BEFORE endId in the conversation.
 
-${COMPRESSION_RULES}
+${HOW_TO_COMPRESS_RULES}
 
 RANGE STRATEGY:
 - Prefer one large range over multiple small ones.
