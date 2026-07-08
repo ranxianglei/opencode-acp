@@ -2,7 +2,7 @@ import type { SessionState, WithParts } from "../state"
 import type { Logger } from "../logger"
 import type { PluginConfig } from "../config"
 import { isMessageCompacted } from "../state/utils"
-import { createSyntheticMessage, prependCompressionSummary, replaceBlockIdsWithBlocked, stripStaleMessageRefs } from "./utils"
+import { createSyntheticMessage, replaceBlockIdsWithBlocked, stripStaleMessageRefs } from "./utils"
 import { getLastUserMessage } from "./query"
 
 const PRUNED_TOOL_OUTPUT_REPLACEMENT =
@@ -247,48 +247,30 @@ const filterCompressedRanges = (
                         ? replaceBlockIdsWithBlocked(_cleaned)
                         : _cleaned
 
-                // [FIX Bug 36] When the next surviving message is a user turn, merge the
-                // summary into it instead of emitting a standalone user-role summary
-                // message. The old behavior placed a synthetic user message immediately
-                // before the user's real turn ([summary(user), user(user)]), which the
-                // model often read as two user turns — misattributing the assistant's
-                // prior output to the user and triggering "self-Q&A" loops. Merging
-                // yields a single user turn ([user: recap ‖ real reply]) so no fake
-                // conversational turn is perceived.
-                const nextSurviving = findNextSurvivingMessage(messages, i, state)
+                // [FIX Bug 39] Always emit compression summaries as standalone
+                // role: "assistant" messages. Previously, when the next surviving
+                // message was a user turn, the summary was merged INTO that user
+                // message (role: "user"), causing the model to treat its own prior
+                // compression recap as user content. Bug 37 already established that
+                // createSyntheticMessage("assistant") safely fabricates the required
+                // AssistantMessage fields, removing the original Bug 36 constraint.
                 const blockRange = computeBlockRange(summary.startId, summary.endId)
-                const merged =
-                    nextSurviving !== null &&
-                    nextSurviving.info.role === "user" &&
-                    prependCompressionSummary(nextSurviving, summaryContent, summary.blockId, blockRange)
+                const taggedContent =
+                    STANDALONE_SUMMARY_HEADER(summary.blockId, blockRange) +
+                    summaryContent +
+                    STANDALONE_SUMMARY_FOOTER
+                const summarySeed = `${summary.blockId}:${summary.anchorMessageId}`
+                const userMessage = getLastUserMessage(messages, i)
+                const baseForSummary = userMessage ?? msg
+                result.push(
+                    createSyntheticMessage(baseForSummary, taggedContent, summarySeed, "assistant"),
+                )
 
-                if (merged) {
-                    logger.info("Merged compress summary into following user message", {
-                        anchorMessageId: msgId,
-                        targetMessageId: nextSurviving!.info.id,
-                        summaryLength: summaryContent.length,
-                    })
-                } else {
-                    // [FIX Bug 37] Emit standalone summary as role: "assistant" with
-                    // system-metadata tags so the model cannot misattribute its own
-                    // prior compression recap as a user instruction.
-                    const taggedContent =
-                        STANDALONE_SUMMARY_HEADER(summary.blockId, blockRange) +
-                        summaryContent +
-                        STANDALONE_SUMMARY_FOOTER
-                    const summarySeed = `${summary.blockId}:${summary.anchorMessageId}`
-                    const userMessage = getLastUserMessage(messages, i)
-                    const baseForSummary = userMessage ?? msg
-                    result.push(
-                        createSyntheticMessage(baseForSummary, taggedContent, summarySeed, "assistant"),
-                    )
-
-                    logger.info("Injected compress summary as assistant role", {
-                        anchorMessageId: msgId,
-                        summaryLength: taggedContent.length,
-                        hadUserBase: userMessage !== null,
-                    })
-                }
+                logger.info("Injected compress summary as assistant role", {
+                    anchorMessageId: msgId,
+                    summaryLength: taggedContent.length,
+                    hadUserBase: userMessage !== null,
+                })
             }
         }
 
@@ -307,23 +289,4 @@ const filterCompressedRanges = (
     messages.push(...result)
 }
 
-// [FIX Bug 36] First surviving (non-pruned) message at or after startIndex.
-// Starts the scan at startIndex inclusive to handle both anchor layouts: when
-// the anchor is itself part of the pruned range (message-start ranges) it is
-// skipped, and when the anchor survives (block-anchor ranges) it is returned —
-// in either case this yields the next real turn the model sees after the recap.
-const findNextSurvivingMessage = (
-    messages: WithParts[],
-    startIndex: number,
-    state: SessionState,
-): WithParts | null => {
-    for (let j = startIndex; j < messages.length; j++) {
-        const candidate = messages[j]!
-        const entry = state.prune.messages.byMessageId.get(candidate.info.id)
-        if (entry && entry.activeBlockIds.length > 0) {
-            continue
-        }
-        return candidate
-    }
-    return null
-}
+

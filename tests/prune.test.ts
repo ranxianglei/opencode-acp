@@ -160,11 +160,11 @@ test("prune removes messages in active compression ranges", () => {
     assert.ok(!ids.includes("m3"), "m3 should be pruned")
     assert.ok(ids.includes("m1"), "anchor m1 should survive")
     assert.ok(ids.includes("m4"), "m4 should survive")
-    const summaryMsg = messages.find((m) => m.info.role === "user" && m.parts.some((p: any) => p.type === "text" && p.text?.includes("Summary of m2-m3")))
+    const summaryMsg = messages.find((m) => m.info.role === "assistant" && m.parts.some((p: any) => p.type === "text" && p.text?.includes("Summary of m2-m3")))
     assert.ok(summaryMsg, "summary should be injected")
 })
 
-test("prune merges summary into surviving user message at anchor (Bug 36 fix)", () => {
+test("prune always emits standalone assistant summary (Bug 39 fix)", () => {
     const state = createSessionState()
     state.prune.messages.byMessageId.set("m2", { tokenCount: 100, allBlockIds: [1], activeBlockIds: [1] })
     state.prune.messages.activeByAnchorMessageId.set("m1", 1)
@@ -183,8 +183,8 @@ test("prune merges summary into surviving user message at anchor (Bug 36 fix)", 
         directToolIds: [],
         effectiveToolIds: [],
         anchorMessageId: "m1",
-        topic: "merged topic",
-        summary: "Merged summary text",
+        topic: "test topic",
+        summary: "Standalone summary text",
     } as CompressionBlock)
 
     const messages: WithParts[] = [
@@ -201,12 +201,13 @@ test("prune merges summary into surviving user message at anchor (Bug 36 fix)", 
     const m1 = messages.find((m) => m.info.id === "m1")
     assert.ok(m1, "m1 (anchor) should survive")
     const m1Text = m1!.parts.map((p: any) => p.text ?? "").join("")
-    assert.ok(m1Text.includes("Merged summary text"), "summary should be merged into anchor m1")
+    assert.ok(!m1Text.includes("Standalone summary text"), "summary should NOT be merged into m1")
     assert.ok(m1Text.includes("first question"), "original m1 text should be preserved")
-    const syntheticCount = messages.filter(
-        (m) => m.info.role === "user" && m.parts.some((p: any) => p.type === "text" && p.text?.includes("Merged summary text") && m.info.id !== "m1"),
-    ).length
-    assert.equal(syntheticCount, 0, "should not create standalone summary when merged into anchor")
+
+    const summaryMsg = messages.find(
+        (m) => m.info.role === "assistant" && m.parts.some((p: any) => p.type === "text" && p.text?.includes("Standalone summary text")),
+    )
+    assert.ok(summaryMsg, "should create standalone assistant summary message")
 })
 
 test("prune creates standalone summary when anchor is assistant and no user follows", () => {
@@ -319,10 +320,13 @@ test("prune strips stale mNNNN refs from summary content (Bug 28 fix)", () => {
 
     prune(state, logger, buildConfig(), messages)
 
-    const m1 = messages.find((m) => m.info.id === "m1")
-    const m1Text = m1!.parts.map((p: any) => p.text ?? "").join("")
-    assert.ok(!m1Text.includes("<dcp-message-id>"), "stale dcp-message-id tag should be stripped")
-    assert.ok(m1Text.includes("Summary with"), "summary content should remain after stripping")
+    const summaryMsg = messages.find(
+        (m) => m.info.role === "assistant" && m.parts.some((p: any) => p.type === "text" && p.text?.includes("Summary with")),
+    )
+    assert.ok(summaryMsg, "standalone assistant summary should exist")
+    const summaryText = summaryMsg!.parts.map((p: any) => p.text ?? "").join("")
+    assert.ok(!summaryText.includes("dcp-message-id"), "stale dcp-message-id tag should be stripped from summary")
+    assert.ok(summaryText.includes("Summary with"), "summary content should remain after stripping")
 })
 
 // =====================================================================

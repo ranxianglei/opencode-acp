@@ -384,15 +384,13 @@ test("compression blocks: compressed messages are replaced with summaries", asyn
     assert.ok(remainingIds.includes("u2"), "u2 should survive")
     assert.ok(remainingIds.includes("a2"), "a2 should survive")
 
-    // [FIX Bug 36] The summary is now merged into the following user message (u2)
-    // instead of a standalone synthetic message, so the model no longer sees two
-    // consecutive user turns ([summary(user), u2(user)]) which caused role
-    // confusion / self-Q&A loops.
-    // The recap content is checked (not the msg_dcp_summary_ id prefix) because
-    // the unrelated suffix-guidance nudge message reuses that same id prefix.
+    // [FIX Bug 39] The summary is now ALWAYS a standalone role: "assistant"
+    // synthetic message, regardless of what follows. Previously (Bug 36) it
+    // was merged into the following user message (u2), causing role confusion.
     const standaloneWithRecap = output.messages.find(
         (m: any) =>
             m.info.id?.startsWith("msg_dcp_summary_") &&
+            m.info.role === "assistant" &&
             m.parts.some(
                 (p: any) =>
                     p.type === "text" &&
@@ -401,12 +399,11 @@ test("compression blocks: compressed messages are replaced with summaries", asyn
             ),
     )
     assert.ok(
-        !standaloneWithRecap,
-        "recap should be merged into the following user message, not emitted as a standalone synthetic message",
+        standaloneWithRecap,
+        "recap should be a standalone assistant synthetic message (Bug 39)",
     )
 
-    // The summary content should be prepended into u2 (the following user message),
-    // and u2's original text must still be present after the recap.
+    // The summary content should NOT be in u2 — u2 keeps only its own text.
     const u2Msg = output.messages.find((m: any) => m.info.id === "u2")
     assert.ok(u2Msg, "u2 should survive")
     const u2Text = u2Msg!.parts
@@ -414,12 +411,12 @@ test("compression blocks: compressed messages are replaced with summaries", asyn
         .map((p: any) => p.text)
         .join("")
     assert.ok(
-        u2Text.includes("Previous conversation about greetings"),
-        "compressed summary should be merged into u2",
+        !u2Text.includes("Previous conversation about greetings"),
+        "u2 should NOT contain the compressed summary (Bug 39)",
     )
     assert.ok(
         u2Text.includes("How are you?"),
-        "u2's original text should be preserved after the summary is prepended",
+        "u2's original text should be preserved",
     )
 })
 
@@ -504,15 +501,25 @@ test("compression summary: never produces two consecutive user turns (Bug 36)", 
         )
     }
 
-    // The surviving user turn must carry both the recap and its own original text.
+    // The surviving user turn must NOT carry the recap (Bug 39: always standalone).
     const u2 = historical.find((m: WithParts) => m.info.id === "u2")
     assert.ok(u2, "u2 should survive")
     const u2Text = u2!.parts
         .filter((p) => p.type === "text")
         .map((p) => (p as any).text)
         .join("")
-    assert.ok(u2Text.includes("The assistant explained the plan"), "recap merged into u2")
+    assert.ok(!u2Text.includes("The assistant explained the plan"), "recap should NOT be merged into u2 (Bug 39)")
     assert.ok(u2Text.includes("Sounds good, continue."), "u2 original text preserved")
+
+    // The recap must exist as a standalone assistant message.
+    const recapMsg = historical.find(
+        (m: WithParts) =>
+            m.info.role === "assistant" &&
+            m.parts.some(
+                (p) => p.type === "text" && typeof (p as any).text === "string" && (p as any).text.includes("The assistant explained the plan"),
+            ),
+    )
+    assert.ok(recapMsg, "recap should be a standalone assistant message (Bug 39)")
 })
 
 // ─── Test: Fallback — standalone summary when no following user turn (Bug 36) ──
@@ -577,11 +584,12 @@ test("compression summary: emits standalone summary when range is last (no user 
     assert.ok(!remainingIds.includes("u2"), "u2 (covered by block) should be pruned")
     assert.ok(!remainingIds.includes("a2"), "a2 (covered by block) should be pruned")
 
-    // No following user turn exists to merge into, so the recap must be emitted
-    // as a standalone synthetic user message carrying the summary content.
+    // [Bug 39] All summaries are standalone assistant messages. This test
+    // verifies the standalone path when the pruned range is at the end.
     const standalone = output.messages.find(
         (m: any) =>
             m.info.id?.startsWith("msg_dcp_summary_") &&
+            m.info.role === "assistant" &&
             m.parts.some(
                 (p: any) =>
                     p.type === "text" &&
@@ -591,7 +599,7 @@ test("compression summary: emits standalone summary when range is last (no user 
     )
     assert.ok(standalone, "fallback path must emit a standalone synthetic summary")
 
-    // The standalone summary (user) follows a1 (assistant), so alternation holds.
+    // The standalone summary (assistant) follows a1 (assistant), so no role confusion.
     const lastIdx = output.messages.length - 1
     const checkMessages = output.messages.filter(
         (m: any, idx: number) => !(idx === lastIdx && isSyntheticMessage(m)),
