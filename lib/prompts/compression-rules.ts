@@ -26,7 +26,7 @@ KEEP VERBATIM — never paraphrase or abbreviate these:
 - The user's overall goal and any changes to it — the big-picture objective plus how it evolved during the compressed range. Each summary must reflect the goal as it stood at the end of the range, including pivots (e.g., "initially: fix bug X → pivoted to: refactor module Y after discovering root cause"). Losing the goal or its evolution makes all subsequent work appear unmotivated.
 - Purpose behind each significant action — preserve not just what was done but why: the hypothesis behind each experiment, the question behind each exploration, the task goal behind each work action. Without purpose, the summary reads as disconnected technical steps with no through-line.
 - Open questions and unresolved TODOs — losing these changes what work appears to remain.
-- Message refs of key anchors (\`m00420\`, \`m00510-00520\`) — they let you or a later reader jump back via decompress to the exact original.
+- Message refs of key anchors (\`m00420\`, \`m00510\u2013m00520\`) — they let you or a later reader jump back via decompress to the exact original.
 
 DROP — extract the signal, discard the vessel:
 - Verbose logs (build/test/\`npm\` output) once you have captured the error line or the result.

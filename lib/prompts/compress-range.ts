@@ -9,7 +9,7 @@ Compressed block sections in context are clearly marked with a header:
 
 Rules:
 
-- Write a short prose summary. The system handles block consumption automatically.
+- Write your summary normally. The system handles block consumption automatically.
 - Do not invent placeholders for blocks outside the selected range.
 - Treat \`(bN)\` as a RESERVED TOKEN. Do not emit \`(bN)\` text anywhere in the summary.
 - If you need to mention a block in prose, use plain text like \`compressed bN\` (never as a placeholder).

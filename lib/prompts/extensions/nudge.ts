@@ -86,7 +86,7 @@ export function buildCompressedBlockGuidance(
             if (targets.length > 0) {
                 lines.push(`- 🔀 ${blocksWithRef.length} old blocks using ~${totalK}K tokens. Consolidate into ${targets.length}:`)
                 lines.push(...targets)
-                lines.push(`  System auto-detects blocks in range — no need to manually list (bN) placeholders. Just write a short prose summary.`)
+                lines.push(`  System auto-detects blocks in range — no need to manually list (bN) placeholders. Just write your summary normally.`)
             }
         }
     }
