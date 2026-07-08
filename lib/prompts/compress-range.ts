@@ -1,11 +1,8 @@
+import { HOW_TO_COMPRESS_RULES } from "./compression-rules"
+
 export const COMPRESS_RANGE = `Collapse a range in the conversation into a detailed summary.
 
-THE SUMMARY
-Follow the HOW TO COMPRESS rules from the system prompt — keep every listed VERBATIM item, drop every listed noise category, and order by PRIORITY when space is tight. Do not restate the lists here; the system prompt is the single source of truth.
-
-The summary must be self-contained — the original conversation adds no value after compression. Write dense, scannable bullets. Every line must earn its place.
-
-Non-negotiable: preserve verbatim — file paths with line numbers, function/class/type signatures, error messages and stack traces, decisions and their rationale (\"chose X over Y because Z\"), constraints discovered, exact values (versions, config keys, thresholds), user's overall goal + any changes/evolution to it + user intent (quote short messages) + purpose behind each action (experiment hypotheses, task goals). Drop — verbose logs after extracting the error, duplicate file reads, dead-end exploration (keep the lesson in one line), back-and-forth once the decision is captured. When space is tight, priority order: (1) user goals + goal evolution + intent + purpose + constraints, (2) decisions+rationale, (3) exact artifacts, (4) conclusions, (5) lessons learned.
+${HOW_TO_COMPRESS_RULES}
 
 COMPRESSED BLOCK PLACEHOLDERS
 The system auto-detects any previously compressed blocks whose anchor messages fall inside your selected range. You do NOT need to manually list \`(bN)\` placeholders in your summary — every consumed block is tracked automatically.
