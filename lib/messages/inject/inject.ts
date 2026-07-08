@@ -211,7 +211,7 @@ export const injectCompressNudges = (
             const toolGrowth = composition.toolTokens - state.nudges.lastToolOutputNudgeTokens
             if (toolGrowth >= toolOutputThreshold) {
                 const fmt = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n))
-                const topRanges = composition.largestRanges.slice(0, 5).map((r) => `${r.ref} (${fmt(r.tokens)})`).join(", ")
+                const topRanges = composition.largestRanges.slice(0, 15).map((r) => `${r.ref} (${fmt(r.tokens)})`).join(", ")
                 toolOutputReminder = `\n\n⚠️ ${fmt(toolGrowth)} new tool outputs accumulated (${fmt(composition.toolTokens)} total). Largest: ${topRanges}. Use compress tool to compress these ranges now.`
                 state.nudges.lastToolOutputNudgeTokens = composition.toolTokens
                 anchorsChanged = true
