@@ -58,6 +58,7 @@ function buildConfig(overrides: Partial<PluginConfig> = {}): PluginConfig {
             protectedTools: ["task", "skill", "todowrite", "todoread"],
             protectTags: false,
             protectUserMessages: false,
+            protectImportantUserMessages: false,
         },
         strategies: {
             deduplication: {

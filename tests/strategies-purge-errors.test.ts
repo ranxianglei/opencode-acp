@@ -69,6 +69,7 @@ function makeConfig(overrides: Partial<PluginConfig> = {}): PluginConfig {
             protectedTools: [],
             protectTags: false,
             protectUserMessages: false,
+            protectImportantUserMessages: false,
         },
         gc: {
             algorithm: "truncate",

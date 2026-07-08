@@ -19,6 +19,7 @@ function buildConfig(): PluginConfig {
             maxContextLimit: 150000, minContextLimit: 50000, nudgeFrequency: 5,
             iterationNudgeThreshold: 15, nudgeForce: "soft", protectedTools: [],
             protectTags: false, protectUserMessages: false,
+            protectImportantUserMessages: false,
         },
         strategies: {
             deduplication: { enabled: true, protectedTools: [] },

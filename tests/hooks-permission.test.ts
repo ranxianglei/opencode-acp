@@ -50,6 +50,7 @@ function buildConfig(permission: "allow" | "ask" | "deny" = "allow"): PluginConf
             protectedTools: ["task"],
             protectTags: false,
             protectUserMessages: false,
+            protectImportantUserMessages: false,
         },
         strategies: {
             deduplication: {

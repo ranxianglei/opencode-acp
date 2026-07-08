@@ -41,6 +41,7 @@ export const VALID_CONFIG_KEYS = new Set([
     "compress.protectedTools",
     "compress.protectTags",
     "compress.protectUserMessages",
+    "compress.protectImportantUserMessages",
     "compress.maxSummaryLengthHard",
     "compress.minCompressRange",
     "compress.maxVisibleSegments",
@@ -368,6 +369,17 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
                     key: "compress.protectUserMessages",
                     expected: "boolean",
                     actual: typeof compress.protectUserMessages,
+                })
+            }
+
+            if (
+                compress.protectImportantUserMessages !== undefined &&
+                typeof compress.protectImportantUserMessages !== "boolean"
+            ) {
+                errors.push({
+                    key: "compress.protectImportantUserMessages",
+                    expected: "boolean",
+                    actual: typeof compress.protectImportantUserMessages,
                 })
             }
 

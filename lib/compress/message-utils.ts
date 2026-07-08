@@ -3,7 +3,10 @@ import type { SessionState } from "../state"
 import { parseBoundaryId } from "../message-ids"
 import { isIgnoredUserMessage, isProtectedUserMessage } from "../messages/query"
 import { resolveAnchorMessageId, resolveBoundaryIds, resolveSelection } from "./search"
-import { messageContainsProtectedTool } from "./protected-content"
+import {
+    messageContainsImportantUserContent,
+    messageContainsProtectedTool,
+} from "./protected-content"
 import { COMPRESSED_BLOCK_HEADER } from "./state"
 import type {
     CompressMessageEntry,
@@ -66,7 +69,8 @@ export function formatResult(
             ? `Compressed ${processedCount} ${messageNoun} into ${COMPRESSED_BLOCK_HEADER}.`
             : "Compressed 0 messages."
     // [FIX Bug 30] Prevent model from treating compress result as conversation end
-    const instruction = "\nIMPORTANT: This was an automatic context compression. You MUST continue your previous task exactly where you left off. Do NOT ask the user what to do next."
+    const instruction =
+        "\nIMPORTANT: This was an automatic context compression. You MUST continue your previous task exactly where you left off. Do NOT ask the user what to do next."
 
     if (skippedCount === 0) {
         return processedText + instruction
@@ -248,6 +252,13 @@ function resolveMessage(
         )
     ) {
         throw new SoftIssue("protected-tool", parsed.ref, "protected tool output")
+    }
+
+    if (
+        config.compress.protectImportantUserMessages &&
+        messageContainsImportantUserContent(rawMessage)
+    ) {
+        throw new SoftIssue("protected-important", parsed.ref, "important user message")
     }
 
     const pruneEntry = state.prune.messages.byMessageId.get(messageId)

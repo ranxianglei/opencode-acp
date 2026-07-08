@@ -3,8 +3,12 @@ import { join, dirname } from "path"
 import { homedir } from "os"
 import { parse } from "jsonc-parser/lib/esm/main.js"
 import type { PluginInput } from "@opencode-ai/plugin"
-import { VALID_CONFIG_KEYS, getInvalidConfigKeys, validateConfigTypes, type ValidationError } from "./config-validation"
-
+import {
+    VALID_CONFIG_KEYS,
+    getInvalidConfigKeys,
+    validateConfigTypes,
+    type ValidationError,
+} from "./config-validation"
 
 type Permission = "ask" | "allow" | "deny"
 type CompressMode = "range" | "message"
@@ -32,6 +36,7 @@ export interface CompressConfig {
     protectedTools: string[]
     protectTags: boolean
     protectUserMessages: boolean
+    protectImportantUserMessages: boolean
     maxSummaryLengthHard: number
     minCompressRange: number
     maxVisibleSegments: number
@@ -115,7 +120,12 @@ const DEFAULT_PROTECTED_TOOLS = [
 
 const COMPRESS_DEFAULT_PROTECTED_TOOLS = ["task", "skill", "todowrite", "todoread", "decompress"]
 
-export { VALID_CONFIG_KEYS, getInvalidConfigKeys, validateConfigTypes, type ValidationError } from "./config-validation"
+export {
+    VALID_CONFIG_KEYS,
+    getInvalidConfigKeys,
+    validateConfigTypes,
+    type ValidationError,
+} from "./config-validation"
 
 function showConfigWarnings(
     ctx: PluginInput,
@@ -199,6 +209,7 @@ const defaultConfig: PluginConfig = {
         protectedTools: [...COMPRESS_DEFAULT_PROTECTED_TOOLS],
         protectTags: false,
         protectUserMessages: false,
+        protectImportantUserMessages: true,
         maxSummaryLengthHard: 10000,
         minCompressRange: 2000,
         maxVisibleSegments: 50,
@@ -410,6 +421,8 @@ function mergeCompress(
         protectedTools: [...new Set([...base.protectedTools, ...(override.protectedTools ?? [])])],
         protectTags: override.protectTags ?? base.protectTags,
         protectUserMessages: override.protectUserMessages ?? base.protectUserMessages,
+        protectImportantUserMessages:
+            override.protectImportantUserMessages ?? base.protectImportantUserMessages,
         maxSummaryLengthHard: override.maxSummaryLengthHard ?? base.maxSummaryLengthHard,
         minCompressRange: override.minCompressRange ?? base.minCompressRange,
         maxVisibleSegments: override.maxVisibleSegments ?? base.maxVisibleSegments,
@@ -547,7 +560,11 @@ export function getConfig(ctx: PluginInput): PluginConfig {
 
     // Migration: dcp.jsonc → acp.jsonc (must run before createDefaultConfig check)
     if (!existsSync(GLOBAL_CONFIG_PATH_JSONC) && !existsSync(GLOBAL_CONFIG_PATH_JSON)) {
-        if (existsSync(GLOBAL_CONFIG_DIR) || existsSync(LEGACY_GLOBAL_CONFIG_PATH_JSONC) || existsSync(LEGACY_GLOBAL_CONFIG_PATH_JSON)) {
+        if (
+            existsSync(GLOBAL_CONFIG_DIR) ||
+            existsSync(LEGACY_GLOBAL_CONFIG_PATH_JSONC) ||
+            existsSync(LEGACY_GLOBAL_CONFIG_PATH_JSON)
+        ) {
             if (!existsSync(GLOBAL_CONFIG_DIR)) {
                 mkdirSync(GLOBAL_CONFIG_DIR, { recursive: true })
             }

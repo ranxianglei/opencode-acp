@@ -32,6 +32,7 @@ function buildConfig(mode: "message" | "range" = "range"): PluginConfig {
             protectedTools: [],
             protectTags: false,
             protectUserMessages: false,
+            protectImportantUserMessages: false,
         },
         strategies: {
             deduplication: { enabled: true, protectedTools: [] },

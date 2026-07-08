@@ -1,5 +1,6 @@
 import type { SessionState, WithParts } from "../state"
 import { isIgnoredUserMessage } from "../messages/query"
+import { isImportantUserMessage } from "../messages/importance-detector"
 import {
     getFilePathsFromParameters,
     isFilePathProtected,
@@ -258,9 +259,7 @@ export function filterProtectedToolMessages(
         return selection
     }
 
-    const filteredMessageIds = selection.messageIds.filter(
-        (id) => !removedMessageIds.has(id),
-    )
+    const filteredMessageIds = selection.messageIds.filter((id) => !removedMessageIds.has(id))
     const filteredMessageTokenById = new Map<string, number>()
     for (const id of filteredMessageIds) {
         const tokens = selection.messageTokenById.get(id)
@@ -275,5 +274,58 @@ export function filterProtectedToolMessages(
         messageIds: filteredMessageIds,
         messageTokenById: filteredMessageTokenById,
         toolIds: filteredToolIds,
+    }
+}
+
+export function messageContainsImportantUserContent(message: WithParts): boolean {
+    if (message.info.role !== "user") return false
+    if (isIgnoredUserMessage(message)) return false
+
+    const parts = Array.isArray(message.parts) ? message.parts : []
+    for (const part of parts) {
+        if (part.type === "text" && typeof part.text === "string" && part.text.trim()) {
+            if (isImportantUserMessage(part.text)) {
+                return true
+            }
+        }
+    }
+    return false
+}
+
+export function filterImportantUserMessages(
+    selection: SelectionResolution,
+    searchContext: SearchContext,
+    enabled: boolean,
+): SelectionResolution {
+    if (!enabled) return selection
+
+    const removedMessageIds = new Set<string>()
+
+    for (const messageId of selection.messageIds) {
+        const message = searchContext.rawMessagesById.get(messageId)
+        if (!message) continue
+
+        if (messageContainsImportantUserContent(message)) {
+            removedMessageIds.add(messageId)
+        }
+    }
+
+    if (removedMessageIds.size === 0) {
+        return selection
+    }
+
+    const filteredMessageIds = selection.messageIds.filter((id) => !removedMessageIds.has(id))
+    const filteredMessageTokenById = new Map<string, number>()
+    for (const id of filteredMessageIds) {
+        const tokens = selection.messageTokenById.get(id)
+        if (tokens !== undefined) {
+            filteredMessageTokenById.set(id, tokens)
+        }
+    }
+
+    return {
+        ...selection,
+        messageIds: filteredMessageIds,
+        messageTokenById: filteredMessageTokenById,
     }
 }

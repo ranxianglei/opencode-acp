@@ -7,6 +7,7 @@ import {
     appendProtectedPromptInfo,
     appendProtectedTools,
     appendProtectedUserMessages,
+    filterImportantUserMessages,
     filterProtectedToolMessages,
 } from "./protected-content"
 import {
@@ -56,7 +57,9 @@ function buildSchema(maxSummaryLengthHard: number) {
         summaryMaxChars: tool.schema
             .number()
             .optional()
-            .describe(`Override max summary length (default max: ${maxSummaryLengthHard} chars). Use when content is important and needs more detail — don't lose critical info just to fit the limit.`),
+            .describe(
+                `Override max summary length (default max: ${maxSummaryLengthHard} chars). Use when content is important and needs more detail — don't lose critical info just to fit the limit.`,
+            ),
     }
 }
 
@@ -71,7 +74,9 @@ export function createCompressRangeTool(ctx: ToolContext): ReturnType<typeof too
             const input = args as CompressRangeToolArgs
             validateArgs(input)
 
-            const maxLen = (args as { summaryMaxChars?: number }).summaryMaxChars ?? ctx.config.compress.maxSummaryLengthHard
+            const maxLen =
+                (args as { summaryMaxChars?: number }).summaryMaxChars ??
+                ctx.config.compress.maxSummaryLengthHard
             for (const entry of input.content) {
                 if (entry.summary.length > maxLen) {
                     throw new Error(
@@ -103,11 +108,19 @@ export function createCompressRangeTool(ctx: ToolContext): ReturnType<typeof too
                         ctx.config.protectedFilePatterns,
                     ),
                 }))
+                .map((plan) => ({
+                    ...plan,
+                    selection: filterImportantUserMessages(
+                        plan.selection,
+                        searchContext,
+                        ctx.config.compress.protectImportantUserMessages,
+                    ),
+                }))
                 .filter((plan) => plan.selection.messageIds.length > 0)
 
             if (filteredPlans.length === 0) {
                 throw new Error(
-                    "All selected messages contain protected tool outputs and cannot be compressed. Protected tools (task, skill, todowrite, etc.) must remain in visible context.",
+                    "All selected messages are protected (tool outputs or important user messages) and cannot be compressed.",
                 )
             }
 
@@ -284,7 +297,11 @@ function extractBoundaryConsumedBlocks(
     const consumed: number[] = []
     const seen = new Set<number>()
     for (const ref of [startReference, endReference]) {
-        if (ref.kind === "compressed-block" && ref.blockId !== undefined && !seen.has(ref.blockId)) {
+        if (
+            ref.kind === "compressed-block" &&
+            ref.blockId !== undefined &&
+            !seen.has(ref.blockId)
+        ) {
             seen.add(ref.blockId)
             consumed.push(ref.blockId)
         }
