@@ -10,32 +10,32 @@
 
 **Active Context Pruning (ACP)** is an [OpenCode](https://opencode.ai) plugin that implements model-driven context management. Instead of passively truncating context at a hard limit, ACP exposes a `compress` tool to the AI model, letting it decide **when** and **what** to compress into high-fidelity summaries.
 
-ACP is a hardened fork of [DCP](https://github.com/Tarquinen/opencode-dynamic-context-pruning) with **35 bug fixes**, including state persistence, token reporting, GC deactivation, 268x logger speedup, and auto-recovery for reversed boundaries.
+ACP is a hardened fork of [DCP](https://github.com/Tarquinen/opencode-dynamic-context-pruning) with **39 bug fixes**, including state persistence, token reporting, GC deactivation, 268x logger speedup, auto-recovery for reversed boundaries, and hard-exclusion of protected tools from compression ranges.
 
 ### 1.2 Tech Stack
 
-| Category | Technology |
-|----------|-----------|
-| Language | TypeScript (strict, ESM) |
-| Runtime | Node.js |
-| Build | `tsup` (bundling) + `tsc --emitDeclarationOnly` (types) |
-| Test Runner | Node.js built-in: `node --import tsx --test tests/*.test.ts` |
-| Package Manager | npm |
-| Linting/Formatting | Prettier |
-| Plugin SDK | `@opencode-ai/plugin` >=1.4.3, `@opencode-ai/sdk` >=1.4.3 |
-| Tokenizer | `@anthropic-ai/tokenizer` |
-| Config Parsing | `jsonc-parser` |
-| Validation | `zod` |
+| Category           | Technology                                                   |
+| ------------------ | ------------------------------------------------------------ |
+| Language           | TypeScript (strict, ESM)                                     |
+| Runtime            | Node.js                                                      |
+| Build              | `tsup` (bundling) + `tsc --emitDeclarationOnly` (types)      |
+| Test Runner        | Node.js built-in: `node --import tsx --test tests/*.test.ts` |
+| Package Manager    | npm                                                          |
+| Linting/Formatting | Prettier                                                     |
+| Plugin SDK         | `@opencode-ai/plugin` >=1.4.3, `@opencode-ai/sdk` >=1.4.3    |
+| Tokenizer          | `@anthropic-ai/tokenizer`                                    |
+| Config Parsing     | `jsonc-parser`                                               |
+| Validation         | `zod`                                                        |
 
 ### 1.3 Repository Info
 
-| Field | Value |
-|-------|-------|
-| npm package | `opencode-acp` |
-| Current version | 1.1.0 |
-| GitHub | https://github.com/ranxianglei/opencode-acp |
-| License | AGPL-3.0-or-later |
-| Author | ranxianglei |
+| Field           | Value                                       |
+| --------------- | ------------------------------------------- |
+| npm package     | `opencode-acp`                              |
+| Current version | 1.10.0                                      |
+| GitHub          | https://github.com/ranxianglei/opencode-acp |
+| License         | AGPL-3.0-or-later                           |
+| Author          | ranxianglei                                 |
 
 ---
 
@@ -144,7 +144,7 @@ opencode-acp/
 │   ├── README.md                     # Scripts documentation
 │   └── ...                           # CLI tools for session inspection
 │
-├── tests/                            # Test files — 407 tests across 31 files
+├── tests/                            # Test files — 591 tests across 45 files
 ├── lib/config-validation.ts          # Pure validation logic (extracted from config.ts for testability)
 ├── dcp.schema.json                   # JSON schema for config validation
 ├── tsconfig.json                     # TypeScript config
@@ -225,6 +225,7 @@ When the model calls `compress`, one or more `CompressionBlock` objects are crea
 #### Message IDs
 
 ACP maintains a bidirectional mapping:
+
 - **Raw IDs**: OpenCode's internal message IDs (UUIDs)
 - **Refs**: Short human-readable IDs (`m00001`, `m00002`, ...) shown to the model (5-digit zero-padded, max 99999)
 - The model uses refs in `compress` tool calls (`startId: "m00005"`, `endId: "m00012"`)
@@ -235,6 +236,7 @@ ACP maintains a bidirectional mapping:
 #### Session State
 
 `SessionState` holds per-session runtime data:
+
 - `prune` — compression state (blocks, message pruning map, active blocks)
 - `nudges` — anchor tracking for context-limit, turn, and iteration nudges
 - `stats` — token accounting
@@ -301,12 +303,12 @@ Auto-migration: if `acp.jsonc` doesn't exist but `dcp.jsonc` does, automatically
 
 ### 2.5 Storage Paths
 
-| What | ACP Path | Legacy DCP Path | Migration |
-|------|----------|----------------|-----------|
-| State persistence | `plugin/acp/{sessionId}.json` | `plugin/dcp/` | Auto-copy on first access |
-| Config | `~/.config/opencode/acp.jsonc` | `dcp.jsonc` | Auto-copy on first access |
-| Prompt overrides | `~/.config/opencode/acp-prompts/` | `dcp-prompts/` | Auto-copy on first access |
-| Debug logs | `logs/acp/` | `logs/dcp/` | Path change only |
+| What              | ACP Path                          | Legacy DCP Path | Migration                 |
+| ----------------- | --------------------------------- | --------------- | ------------------------- |
+| State persistence | `plugin/acp/{sessionId}.json`     | `plugin/dcp/`   | Auto-copy on first access |
+| Config            | `~/.config/opencode/acp.jsonc`    | `dcp.jsonc`     | Auto-copy on first access |
+| Prompt overrides  | `~/.config/opencode/acp-prompts/` | `dcp-prompts/`  | Auto-copy on first access |
+| Debug logs        | `logs/acp/`                       | `logs/dcp/`     | Path change only          |
 
 Base storage: `~/.local/share/opencode/storage/`
 
@@ -314,10 +316,10 @@ Base storage: `~/.local/share/opencode/storage/`
 
 ACP maintains **backward compatibility** with DCP in internal code:
 
-| Scope | Naming Convention |
-|-------|------------------|
-| **User-visible** (commands, UI, notifications, docs, config files, storage paths) | `ACP`, `acp` |
-| **Internal code** (XML tags, regex variables, schema URLs) | `dcp` — kept for backward compat |
+| Scope                                                                                                                 | Naming Convention                |
+| --------------------------------------------------------------------------------------------------------------------- | -------------------------------- |
+| **User-visible** (commands, UI, notifications, docs, config files, storage paths)                                     | `ACP`, `acp`                     |
+| **Internal code** (XML tags, regex variables, schema URLs)                                                            | `dcp` — kept for backward compat |
 | **Examples**: `dcp-message-id` tag, `dcp-system-reminder` tag, `DCP_BLOCK_ID_TAG_REGEX`, `dcp.schema.json` schema URL |
 
 **Rule**: Never change internal `dcp` naming without a migration plan. These tags appear in persisted state and LLM interactions.
@@ -350,7 +352,7 @@ npm run check:package  # Build + verify
 **Test runner**: `node --import tsx --test tests/*.test.ts`
 
 **Test directory**: Flat `tests/` structure — all test files in `tests/*.test.ts`. No subdirectories.
-The project has ~20 source files and 15-25 test files; flat structure is sufficient.
+The project has ~70 source files under `lib/` and 45 test files; flat structure is sufficient.
 
 CI is configured via GitHub Actions (PR #2): typecheck + test + build on Node 22/24 matrix.
 
@@ -358,19 +360,20 @@ CI is configured via GitHub Actions (PR #2): typecheck + test + build on Node 22
 
 **Test categories** (by naming convention, all in `tests/`):
 
-| Category | Files | Tests | Description |
-|----------|-------|-------|-------------|
-| **Baseline** | `hooks-permission.test.ts`, `compress-message.test.ts`, `compress-range.test.ts`, `message-priority.test.ts`, `token-counting.test.ts`, `context-limits.test.ts`, `update.test.ts` | 95 | Original DCP tests, adapted for ACP |
-| **Tier 1 (pure)** | `config-validation.test.ts`, `priority-classify.test.ts`, `shape.test.ts`, `query-pure.test.ts`, `gc-truncate-pure.test.ts`, `state-utils-pure.test.ts` | 83 | Pure function tests, no side effects |
-| **Tier 2 (mock)** | `query-mock.test.ts`, `gc-truncate-mock.test.ts`, `strategies-dedup.test.ts`, `strategies-purge-errors.test.ts` | 68 | Mock-data unit tests |
-| **Functional** | `compress-search.test.ts`, `compress-state.test.ts`, `message-ids.test.ts` | 77 | Compress pipeline with mock data |
-| **E2E** | `e2e-message-transform.test.ts`, `e2e-blocks-nudges.test.ts` | 21 | Full message-transform pipeline |
+| Category          | Files                                                                                                                                                                              | Tests | Description                          |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- | ------------------------------------ |
+| **Baseline**      | `hooks-permission.test.ts`, `compress-message.test.ts`, `compress-range.test.ts`, `message-priority.test.ts`, `token-counting.test.ts`, `context-limits.test.ts`, `update.test.ts` | 95    | Original DCP tests, adapted for ACP  |
+| **Tier 1 (pure)** | `config-validation.test.ts`, `priority-classify.test.ts`, `shape.test.ts`, `query-pure.test.ts`, `gc-truncate-pure.test.ts`, `state-utils-pure.test.ts`                            | 83    | Pure function tests, no side effects |
+| **Tier 2 (mock)** | `query-mock.test.ts`, `gc-truncate-mock.test.ts`, `strategies-dedup.test.ts`, `strategies-purge-errors.test.ts`                                                                    | 68    | Mock-data unit tests                 |
+| **Functional**    | `compress-search.test.ts`, `compress-state.test.ts`, `message-ids.test.ts`                                                                                                         | 77    | Compress pipeline with mock data     |
+| **E2E**           | `e2e-message-transform.test.ts`, `e2e-blocks-nudges.test.ts`                                                                                                                       | 21    | Full message-transform pipeline      |
 
-**Total: 407 tests, 0 failures** (as of commit `f0315a6`)
+**Total: 591 tests, 0 failures** (as of v1.10.0)
 
 **Test review requirement**: All new and modified test files MUST undergo independent review by at least 2 separate agents before commit. See Section 5.4.
 
 **Coverage gaps** (modules still without dedicated tests):
+
 - `state/persistence.ts` — state persistence, DCP migration
 - `messages/prune.ts` — prune replacement logic
 - `messages/sync.ts` — block synchronization
@@ -389,6 +392,7 @@ CI is configured via GitHub Actions (PR #2): typecheck + test + build on Node 22
 ```
 
 opencode resolves `opencode-acp@latest` to:
+
 ```
 ~/.cache/opencode/packages/opencode-acp@latest/node_modules/opencode-acp/
 ```
@@ -396,6 +400,7 @@ opencode resolves `opencode-acp@latest` to:
 **⚠️ Restart opencode after deploying** — the running process caches the module in memory. To pick up changes, kill the opencode process and restart.
 
 **Verify the deployed bundle has your changes:**
+
 ```bash
 grep -c 'your-feature-name' ~/.cache/opencode/packages/opencode-acp@latest/node_modules/opencode-acp/dist/index.js
 ```
@@ -403,6 +408,7 @@ grep -c 'your-feature-name' ~/.cache/opencode/packages/opencode-acp@latest/node_
 **Common mistake**: Deploying to `~/.cache/opencode/node_modules/opencode-acp/` (wrong path — that's the old resolution path, not where `@latest` resolves).
 
 **ACP debug logs** (for verifying injection behavior):
+
 ```
 ~/.config/opencode/logs/acp/context/<session_id>/<timestamp>.json   # per-request message snapshots
 ~/.config/opencode/logs/acp/daily/<date>.log                        # session load/save events
@@ -442,6 +448,7 @@ compress/message.ts ← compress/search, compress/state, compress/pipeline
 ```
 
 **Rules**:
+
 - `config.ts` has no internal dependencies (leaf node)
 - `state/` depends only on `config` and SDK types
 - `hooks.ts` is the orchestrator — depends on most other modules
@@ -449,14 +456,14 @@ compress/message.ts ← compress/search, compress/state, compress/pipeline
 
 ### 4.2 Key File Sizes (Complexity Indicators)
 
-| File | Lines | Notes |
-|------|-------|-------|
-| `lib/config.ts` | ~1125 | Largest file — validation, merging, migration, defaults |
-| `lib/hooks.ts` | ~700 | Core pipeline orchestration |
-| `lib/compress/range.ts` | ~600 | Range-mode compression logic |
-| `lib/messages/inject/inject.ts` | ~500 | Nudge system brain |
-| `lib/prompts/store.ts` | ~478 | Prompt management |
-| `lib/compress/search.ts` | ~450 | Boundary resolution |
+| File                            | Lines | Notes                                                   |
+| ------------------------------- | ----- | ------------------------------------------------------- |
+| `lib/config.ts`                 | ~1125 | Largest file — validation, merging, migration, defaults |
+| `lib/hooks.ts`                  | ~700  | Core pipeline orchestration                             |
+| `lib/compress/range.ts`         | ~600  | Range-mode compression logic                            |
+| `lib/messages/inject/inject.ts` | ~500  | Nudge system brain                                      |
+| `lib/prompts/store.ts`          | ~478  | Prompt management                                       |
+| `lib/compress/search.ts`        | ~450  | Boundary resolution                                     |
 
 ### 4.3 Common Patterns
 
@@ -472,16 +479,17 @@ compress/message.ts ← compress/search, compress/state, compress/pipeline
 
 For reference when modifying code — these bugs were real and the fixes are load-bearing:
 
-| Bug | Fix Location | What It Fixed |
-|-----|-------------|---------------|
-| Bug 35 | `nudge.ts` | Aging warning only shows when context usage > 50% (was showing at 20-30%) |
-| Bug 34 | `search.ts` | Auto-swap reversed compress boundaries (model gave endId < startId) |
-| State persistence | `persistence.ts` | State survives restart (was lost before) |
-| Token reporting | `token-utils.ts` | Returns actual token counts (was returning 0) |
-| GC deactivation | `gc/truncate.ts` | Age-based block deactivation (blocks were never deactivated) |
-| Logger speedup | `logger.ts` | 268x faster tokenization (was using sync API) |
-| Summary resolution | `compress/range.ts` | Block placeholder injection for nested compressions |
-| Config migration | `config.ts` | Auto-migrate dcp.jsonc → acp.jsonc at getConfig() entry point |
+| Bug                | Fix Location                               | What It Fixed                                                                                                                                                                                      |
+| ------------------ | ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Bug 39             | `compress/range.ts`, `compress/message.ts` | Hard-exclude protected tool messages (skill/task/todowrite) from compression ranges — they survive intact in visible context instead of being soft-appended to summaries (which GC could truncate) |
+| Bug 35             | `nudge.ts`                                 | Aging warning only shows when context usage > 50% (was showing at 20-30%)                                                                                                                          |
+| Bug 34             | `search.ts`                                | Auto-swap reversed compress boundaries (model gave endId < startId)                                                                                                                                |
+| State persistence  | `persistence.ts`                           | State survives restart (was lost before)                                                                                                                                                           |
+| Token reporting    | `token-utils.ts`                           | Returns actual token counts (was returning 0)                                                                                                                                                      |
+| GC deactivation    | `gc/truncate.ts`                           | Age-based block deactivation (blocks were never deactivated)                                                                                                                                       |
+| Logger speedup     | `logger.ts`                                | 268x faster tokenization (was using sync API)                                                                                                                                                      |
+| Summary resolution | `compress/range.ts`                        | Block placeholder injection for nested compressions                                                                                                                                                |
+| Config migration   | `config.ts`                                | Auto-migrate dcp.jsonc → acp.jsonc at getConfig() entry point                                                                                                                                      |
 
 ---
 
@@ -510,18 +518,19 @@ All changes MUST follow this workflow:
 
 ### 5.1.1.1 Git Safety Rules (MANDATORY)
 
-| Rule | Enforcement |
-|------|-------------|
-| **NEVER force-push to `master`** | Under no circumstances. Not for reverts, not for fixes, not for "quick corrections". If master needs changing, create a PR. |
-| **NEVER merge PRs without explicit human authorization** | "merge" or "approve merge" must come from a human comment. Agent reviews passing ≠ authorization to merge. |
-| **NEVER remove and re-apply GitHub branch protection to force changes** | This is a circumvention of the merge policy. If protection blocks a push, the correct response is to create a PR. |
-| **NEVER delete branches or tags without human confirmation** | Preserve work for review. |
+| Rule                                                                    | Enforcement                                                                                                                 |
+| ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| **NEVER force-push to `master`**                                        | Under no circumstances. Not for reverts, not for fixes, not for "quick corrections". If master needs changing, create a PR. |
+| **NEVER merge PRs without explicit human authorization**                | "merge" or "approve merge" must come from a human comment. Agent reviews passing ≠ authorization to merge.                  |
+| **NEVER remove and re-apply GitHub branch protection to force changes** | This is a circumvention of the merge policy. If protection blocks a push, the correct response is to create a PR.           |
+| **NEVER delete branches or tags without human confirmation**            | Preserve work for review.                                                                                                   |
 
 ### 5.1.2 Devlog Requirement (MANDATORY)
 
 Every PR MUST have a corresponding devlog entry in `devlog/{YYYY-MM-DD_short-title}/`.
 
 **Rules:**
+
 - The folder name MUST match the branch name
 - `REQ.md` and `WORKLOG.md` are the required minimum
 - `DESIGN.md` is required for any change affecting architecture, data flow, or module boundaries
@@ -549,13 +558,13 @@ All source code changes (files under `lib/`) MUST undergo independent review by 
 
 **Review checklist:**
 
-| Category | What to Check |
-|----------|---------------|
-| **Correctness** | Logic matches intent, no off-by-one errors, edge cases handled |
+| Category                   | What to Check                                                                                |
+| -------------------------- | -------------------------------------------------------------------------------------------- |
+| **Correctness**            | Logic matches intent, no off-by-one errors, edge cases handled                               |
 | **Backward compatibility** | No breaking changes to persisted state format, exported APIs, or internal tags (Section 2.6) |
-| **Performance** | No unnecessary CPU/memory overhead, no O(n²) where O(n) suffices |
-| **Type safety** | No `as any`, no `@ts-ignore`, no type assertion hacks |
-| **State integrity** | State mutations are safe, no lost data on save/load cycle |
+| **Performance**            | No unnecessary CPU/memory overhead, no O(n²) where O(n) suffices                             |
+| **Type safety**            | No `as any`, no `@ts-ignore`, no type assertion hacks                                        |
+| **State integrity**        | State mutations are safe, no lost data on save/load cycle                                    |
 
 ### 5.4 Pre-Publish Checklist (MANDATORY)
 
@@ -579,11 +588,11 @@ git fetch origin && git status
 # If ahead: git push first
 ```
 
-| Check | Expected | Fix if failed |
-|-------|----------|---------------|
-| Clean working tree | `git status --porcelain` outputs nothing | Commit or stash changes |
-| On master | `git branch --show-current` = `master` | `git checkout master` |
-| Local = remote | `git status` shows up-to-date | `git pull` or `git push` as needed |
+| Check              | Expected                                 | Fix if failed                      |
+| ------------------ | ---------------------------------------- | ---------------------------------- |
+| Clean working tree | `git status --porcelain` outputs nothing | Commit or stash changes            |
+| On master          | `git branch --show-current` = `master`   | `git checkout master`              |
+| Local = remote     | `git status` shows up-to-date            | `git pull` or `git push` as needed |
 
 **If ANY git check fails: STOP. Do NOT proceed to Step 1.**
 
@@ -594,6 +603,7 @@ npm run check:package    # build + verify-package.mjs
 ```
 
 This runs `verify-package.mjs` which checks:
+
 - Required files exist (`dist/index.js`, `dist/index.d.ts`, `README.md`, `LICENSE`)
 - `package.json` shape is correct (`main`, `exports`, `files`)
 - Runtime import graph has no CommonJS dependencies
@@ -610,18 +620,19 @@ npm pack && tar -tf opencode-acp-*.tgz | grep -iE '\.env|secret|credential|token
 rm opencode-acp-*.tgz
 ```
 
-| Check | What to verify |
-|-------|----------------|
-| **`files` field** | Only contains `dist/`, `README.md`, `LICENSE` — no source, tests, configs, or dev files |
-| **No secrets in tarball** | No API keys, tokens, passwords, or credentials in any packed file |
-| **`.git/config` not packed** | Verify `.git/` is excluded (contains OAuth token in remote URL) |
-| **No hardcoded secrets in `dist/`** | Grep `dist/` for patterns like `sk-`, `gho_`, `api_key`, `apiKey`, `password` |
-| **`.npmignore` is current** | Explicitly excludes `AGENTS.md`, `devlog/`, `tests/`, `scripts/`, `.github/`, `.git/` |
-| **Version bumped** | `package.json` version matches the intended release version |
+| Check                               | What to verify                                                                          |
+| ----------------------------------- | --------------------------------------------------------------------------------------- |
+| **`files` field**                   | Only contains `dist/`, `README.md`, `LICENSE` — no source, tests, configs, or dev files |
+| **No secrets in tarball**           | No API keys, tokens, passwords, or credentials in any packed file                       |
+| **`.git/config` not packed**        | Verify `.git/` is excluded (contains OAuth token in remote URL)                         |
+| **No hardcoded secrets in `dist/`** | Grep `dist/` for patterns like `sk-`, `gho_`, `api_key`, `apiKey`, `password`           |
+| **`.npmignore` is current**         | Explicitly excludes `AGENTS.md`, `devlog/`, `tests/`, `scripts/`, `.github/`, `.git/`   |
+| **Version bumped**                  | `package.json` version matches the intended release version                             |
 
 **Step 3: Content review**
 
 After `npm pack --dry-run`, visually verify:
+
 1. Only `dist/*.js`, `dist/*.d.ts`, `dist/*.map`, `README.md`, `LICENSE`, `package.json` appear
 2. No `lib/`, `tests/`, `scripts/`, `devlog/`, `AGENTS.md`, `.github/`, `tsconfig.json`, etc.
 3. `dist/` bundle does not contain hardcoded API keys or internal URLs
@@ -647,6 +658,7 @@ npm view opencode-acp version
 ### 5.5 Commit Convention
 
 Use descriptive commit messages. Historical examples:
+
 - `fix: aging warning only shows when context usage > 50%`
 - `feat: /dcp → /acp command rename with backward compat`
 - `chore: bump version to 1.0.1`
@@ -662,15 +674,16 @@ All new and modified test files MUST undergo independent review by **at least 2 
 
 **Review checklist:**
 
-| Category | What to Check |
-|----------|---------------|
-| **Import correctness** | Tests import from actual source files, not local reimplementations. If a source module has untestable runtime dependencies, extract pure logic into a separate importable module. |
-| **Test name fidelity** | Test name accurately describes what the test asserts. A test named "returns true" must assert `true`, not `false`. |
-| **Config completeness** | `buildConfig()` factory includes ALL required config fields (including `gc`), matching the `PluginConfig` type. |
-| **Input validity** | Test inputs actually exercise the code path described in the test name. A "dcp tag stripping" test must contain actual dcp tags. |
-| **No tautological tests** | Tests must assert meaningful behavior, not trivially true conditions (e.g., `assert.equal(x, x)`). |
+| Category                  | What to Check                                                                                                                                                                     |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Import correctness**    | Tests import from actual source files, not local reimplementations. If a source module has untestable runtime dependencies, extract pure logic into a separate importable module. |
+| **Test name fidelity**    | Test name accurately describes what the test asserts. A test named "returns true" must assert `true`, not `false`.                                                                |
+| **Config completeness**   | `buildConfig()` factory includes ALL required config fields (including `gc`), matching the `PluginConfig` type.                                                                   |
+| **Input validity**        | Test inputs actually exercise the code path described in the test name. A "dcp tag stripping" test must contain actual dcp tags.                                                  |
+| **No tautological tests** | Tests must assert meaningful behavior, not trivially true conditions (e.g., `assert.equal(x, x)`).                                                                                |
 
 **Anti-patterns to flag:**
+
 - Tests that reimplement source logic locally instead of importing from source
 - `buildConfig()` missing fields that other test files include
 - Test names that contradict their assertions

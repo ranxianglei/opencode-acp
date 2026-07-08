@@ -44,17 +44,17 @@ an average prompt-cache hit ratio above 85%.** (That average — not per-session
 is explained in [Impact on Prompt Caching](#impact-on-prompt-caching), where it
 turns out to save far more tokens than traditional compression.)
 
-| | Session 1 | Session 2 |
-|---|---|---|
-| **Messages** | 3,024 | 2,028 |
-| **Total tokens processed** | 582 M | 463 M |
-| **Prompt-cache hit ratio** | 86.2% | 89.0% |
-| **Context p50 (median)** | 1.2 K (<1%) | 1.8 K (<1%) |
-| **Context p75** | 2.8 K | 3.5 K |
-| **Context p90** | 108 K (11%) | 58 K (6%) |
-| **Context p95** | 251 K (25%) | 335 K (34%) |
-| **Context p99** | 425 K (43%) | 442 K (44%) |
-| **Peak** | 488 K (49%) | 769 K (77%) |
+|                            | Session 1   | Session 2   |
+| -------------------------- | ----------- | ----------- |
+| **Messages**               | 3,024       | 2,028       |
+| **Total tokens processed** | 582 M       | 463 M       |
+| **Prompt-cache hit ratio** | 86.2%       | 89.0%       |
+| **Context p50 (median)**   | 1.2 K (<1%) | 1.8 K (<1%) |
+| **Context p75**            | 2.8 K       | 3.5 K       |
+| **Context p90**            | 108 K (11%) | 58 K (6%)   |
+| **Context p95**            | 251 K (25%) | 335 K (34%) |
+| **Context p99**            | 425 K (43%) | 442 K (44%) |
+| **Peak**                   | 488 K (49%) | 769 K (77%) |
 
 (Context percentages are of the 1M window.)
 
@@ -70,9 +70,9 @@ Or add to your opencode config:
 
 ```json
 {
-  "plugin": {
-    "opencode-acp": "latest"
-  }
+    "plugin": {
+        "opencode-acp": "latest"
+    }
 }
 ```
 
@@ -153,16 +153,16 @@ ensures key context information is not lost.
 
 ACP provides an `/acp` slash command (also accepts `/dcp` for backward compatibility):
 
-| Command | Description |
-|---------|-------------|
-| `/acp` | Shows available ACP commands |
-| `/acp context` | Token usage breakdown by category (system, user, assistant, tools, etc.) and how much has been saved through pruning |
-| `/acp stats` | Cumulative pruning statistics across all sessions |
-| `/acp sweep [n]` | Prunes all tools since the last user message. Optional count: `/acp sweep 10` prunes the last 10 tools. Respects `commands.protectedTools` |
-| `/acp manual [on\|off]` | Toggle manual mode. When on, the AI will not autonomously use context management tools |
-| `/acp compress [focus]` | Trigger a single compress tool execution. Optional focus text directs what content to compress, following the active `compress.mode` |
-| `/acp decompress <n>` | Restore a specific active compression by ID. Running without an argument shows available compression IDs, token sizes, and topics |
-| `/acp recompress <n>` | Re-apply a user-decompressed compression by ID. Running without an argument shows recompressible IDs, token sizes, and topics |
+| Command                 | Description                                                                                                                                |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `/acp`                  | Shows available ACP commands                                                                                                               |
+| `/acp context`          | Token usage breakdown by category (system, user, assistant, tools, etc.) and how much has been saved through pruning                       |
+| `/acp stats`            | Cumulative pruning statistics across all sessions                                                                                          |
+| `/acp sweep [n]`        | Prunes all tools since the last user message. Optional count: `/acp sweep 10` prunes the last 10 tools. Respects `commands.protectedTools` |
+| `/acp manual [on\|off]` | Toggle manual mode. When on, the AI will not autonomously use context management tools                                                     |
+| `/acp compress [focus]` | Trigger a single compress tool execution. Optional focus text directs what content to compress, following the active `compress.mode`       |
+| `/acp decompress <n>`   | Restore a specific active compression by ID. Running without an argument shows available compression IDs, token sizes, and topics          |
+| `/acp recompress <n>`   | Re-apply a user-decompressed compression by ID. Running without an argument shows recompressible IDs, token sizes, and topics              |
 
 ---
 
@@ -183,9 +183,9 @@ Each level overrides the previous, so project settings take priority over global
 >
 > ```jsonc
 > {
->   "compaction": {
->     "auto": false
->   }
+>     "compaction": {
+>         "auto": false,
+>     },
 > }
 > ```
 >
@@ -383,36 +383,36 @@ ACP auto-migrates config from `dcp.jsonc` to `acp.jsonc` and prompts from `dcp-p
 <details>
 <summary><strong>Bug Fixes (39 total)</strong> -- applied on top of DCP v3.1.11</summary>
 
-| # | Severity | Summary |
-|---|----------|---------|
-| 1 | CRITICAL | State not persisted across restarts -- messageIds, block deactivation, save errors silently lost |
-| 2 | CRITICAL | resetOnCompaction() clears all compression blocks -- undoes all pruning work |
-| 3 | CRITICAL | prune silently drops summary -- DATA LOSS when no user message precedes anchor |
-| 4 | CRITICAL | getCurrentTokenUsage returns 0 -- prevents nudge from ever triggering |
-| 5 | HIGH | loadPruneMessagesState duplicates activeBlockIds + reasoning-strip undefined guard |
-| 6 | HIGH | Synthetic summary messages get mNNNN refs but are invisible to boundary lookup |
-| 7 | HIGH | State not persisted across restarts -- messageIds, block deactivation, and save errors silently lost |
-| 8 | HIGH | isMessageCompacted() inconsistent with compaction summary message handling |
-| 9 | HIGH | Compressed block summaries retain stale mNNNN message ID tags -- model copies stale IDs |
-| 10 | HIGH | Model uses stale mNNNN IDs from nudges/summaries -- compress fails with "startId not available" |
-| 11 | HIGH | Major GC skips legacy blocks without generation field -- oversized blocks never collected |
-| 12 | HIGH | Percentage-based thresholds calculated against effective input context instead of full model context window |
-| 13 | HIGH | Context window leaks -- compressed messages reappear after /compact |
-| 14 | HIGH | Compression notifications write full block summaries to DB -- can reach 150KB+ per notification |
-| 15 | HIGH | npm auto-install overwrites fork with upstream package |
-| 16 | HIGH | Summary mNNNN refs in compress output -- model copies stale message IDs |
-| 17 | HIGH | Synthetic messages not in messageIdToBlockId -- compress fails to find them |
-| 18 | HIGH | Compress stops model from responding after compression completes |
-| 19 | HIGH | Dynamic block guidance breaks API prefix cache |
-| 20 | HIGH | GC never deactivates old blocks -- dead-weight accumulates indefinitely |
-| 21 | HIGH | Logger + tokenizer 20-50s per-turn latency (268x slowdown) |
-| 22 | HIGH | compress throws hard error on reversed block boundaries -- model gives up |
-| 23--34 | MEDIUM | Various fixes for dedup, purge errors, schema validation, hook timing, etc. |
-| 35 | HIGH | Aging warnings shown at low context usage (<50%) -- triggers unnecessary compress, wastes tokens |
-| 36 | HIGH | Compression summary emitted as a standalone user message before the user's real turn -- model reads its own prior assistant output as user input, causing dialog role confusion / self-Q&A loops |
-| 37 | HIGH | Message-transform pipeline runs on OpenCode's hidden title/summary/compaction agent requests -- corrupts the request and shared session state, breaking session title generation |
-| 38 | CRITICAL | pruneToolOutputs/pruneToolInputs/pruneToolErrors mutate existing messages in-place -- invalidates LLM prefix cache, causing 89% of fresh input tokens to be wasted on cache-invalidating re-sends |
-| 39 | HIGH | Protected tool outputs (skill/task/todowrite) only soft-protected during compression -- appended to summary then pruned from context, losing semantic authority and susceptible to GC truncation. Fixed with hard-exclusion in v1.10.0 |
+| #      | Severity | Summary                                                                                                                                                                                                                                |
+| ------ | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1      | CRITICAL | State not persisted across restarts -- messageIds, block deactivation, save errors silently lost                                                                                                                                       |
+| 2      | CRITICAL | resetOnCompaction() clears all compression blocks -- undoes all pruning work                                                                                                                                                           |
+| 3      | CRITICAL | prune silently drops summary -- DATA LOSS when no user message precedes anchor                                                                                                                                                         |
+| 4      | CRITICAL | getCurrentTokenUsage returns 0 -- prevents nudge from ever triggering                                                                                                                                                                  |
+| 5      | HIGH     | loadPruneMessagesState duplicates activeBlockIds + reasoning-strip undefined guard                                                                                                                                                     |
+| 6      | HIGH     | Synthetic summary messages get mNNNN refs but are invisible to boundary lookup                                                                                                                                                         |
+| 7      | HIGH     | State not persisted across restarts -- messageIds, block deactivation, and save errors silently lost                                                                                                                                   |
+| 8      | HIGH     | isMessageCompacted() inconsistent with compaction summary message handling                                                                                                                                                             |
+| 9      | HIGH     | Compressed block summaries retain stale mNNNN message ID tags -- model copies stale IDs                                                                                                                                                |
+| 10     | HIGH     | Model uses stale mNNNN IDs from nudges/summaries -- compress fails with "startId not available"                                                                                                                                        |
+| 11     | HIGH     | Major GC skips legacy blocks without generation field -- oversized blocks never collected                                                                                                                                              |
+| 12     | HIGH     | Percentage-based thresholds calculated against effective input context instead of full model context window                                                                                                                            |
+| 13     | HIGH     | Context window leaks -- compressed messages reappear after /compact                                                                                                                                                                    |
+| 14     | HIGH     | Compression notifications write full block summaries to DB -- can reach 150KB+ per notification                                                                                                                                        |
+| 15     | HIGH     | npm auto-install overwrites fork with upstream package                                                                                                                                                                                 |
+| 16     | HIGH     | Summary mNNNN refs in compress output -- model copies stale message IDs                                                                                                                                                                |
+| 17     | HIGH     | Synthetic messages not in messageIdToBlockId -- compress fails to find them                                                                                                                                                            |
+| 18     | HIGH     | Compress stops model from responding after compression completes                                                                                                                                                                       |
+| 19     | HIGH     | Dynamic block guidance breaks API prefix cache                                                                                                                                                                                         |
+| 20     | HIGH     | GC never deactivates old blocks -- dead-weight accumulates indefinitely                                                                                                                                                                |
+| 21     | HIGH     | Logger + tokenizer 20-50s per-turn latency (268x slowdown)                                                                                                                                                                             |
+| 22     | HIGH     | compress throws hard error on reversed block boundaries -- model gives up                                                                                                                                                              |
+| 23--34 | MEDIUM   | Various fixes for dedup, purge errors, schema validation, hook timing, etc.                                                                                                                                                            |
+| 35     | HIGH     | Aging warnings shown at low context usage (<50%) -- triggers unnecessary compress, wastes tokens                                                                                                                                       |
+| 36     | HIGH     | Compression summary emitted as a standalone user message before the user's real turn -- model reads its own prior assistant output as user input, causing dialog role confusion / self-Q&A loops                                       |
+| 37     | HIGH     | Message-transform pipeline runs on OpenCode's hidden title/summary/compaction agent requests -- corrupts the request and shared session state, breaking session title generation                                                       |
+| 38     | CRITICAL | pruneToolOutputs/pruneToolInputs/pruneToolErrors mutate existing messages in-place -- invalidates LLM prefix cache, causing 89% of fresh input tokens to be wasted on cache-invalidating re-sends                                      |
+| 39     | HIGH     | Protected tool outputs (skill/task/todowrite) only soft-protected during compression -- appended to summary then pruned from context, losing semantic authority and susceptible to GC truncation. Fixed with hard-exclusion in v1.10.0 |
 
 For the complete list with root cause analysis, see the [bug tracker](https://github.com/ranxianglei/opencode-acp/issues).
 
@@ -422,20 +422,44 @@ For the complete list with root cause analysis, see the [bug tracker](https://gi
 
 ## Changelog
 
-### v1.10.0 — Hard-Exclusion of Protected Tools from Compression (issue #16)
+### v1.10.0 — Hard-Exclusion, Compression Prompt Rewrite, Suffix & Deploy Fixes
 
-**Problem**: Protected tool messages (`skill`, `task`, `todowrite`, etc.) were only *soft-protected* during compression. When the model called `compress` on a range that included a skill output, the original message was pruned from visible context and its content was appended to the summary block. This caused two problems:
+This release bundles 7 merged PRs. The headline change is **hard-exclusion of protected tool messages** from compression ranges; the rest are fixes and a prompt rewrite that shipped in the same release window.
+
+#### Bug 39 — Hard-Exclusion of Protected Tools from Compression (issue #16, PR #75)
+
+**Problem**: Protected tool messages (`skill`, `task`, `todowrite`, etc.) were only _soft-protected_ during compression. When the model called `compress` on a range that included a skill output, the original message was pruned from visible context and its content was appended to the summary block. This caused two problems:
 
 1. **Semantic loss**: The skill content became historical recap metadata (`[ACP SYSTEM METADATA — recap...]`), not a live instruction. The model read it as a past artifact, not as active guidance.
 2. **Data loss via GC**: When the block was promoted to old-gen and the summary exceeded `maxOldGenSummaryLength` (3000 chars), `runTruncateGC` truncated the entire summary — including the appended skill content. Skill outputs (often 2–10 KB) were silently destroyed.
 
-**Fix** (PR #75): Protected tool messages are now **hard-excluded** from compression ranges. When the model calls `compress(startId, endId)` on a range that contains protected tool outputs, those messages are filtered out of the selection *before* `applyCompressionState` runs. The protected messages survive intact in visible context; only the surrounding non-protected messages are compressed.
+**Fix**: Protected tool messages are now **hard-excluded** from compression ranges. When the model calls `compress(startId, endId)` on a range that contains protected tool outputs, those messages are filtered out of the selection _before_ `applyCompressionState` runs. The protected messages survive intact in visible context; only the surrounding non-protected messages are compressed.
 
 The filter runs in both range mode (`lib/compress/range.ts`) and message mode (`lib/compress/message.ts`). It uses the existing `compress.protectedTools` config (default: `task`, `skill`, `todowrite`, `todoread`, `decompress`) and the same `isToolNameProtected` matcher used elsewhere.
 
 **Verification**: Live-tested by loading the `git-master` skill, then compressing a range spanning the skill output. The skill message (m00170) survived compression; only 15 of 22 messages in the range were compressed (7 protected messages correctly excluded). Tests: 29 dedicated tests in `tests/compress-protected-exclusion.test.ts`.
 
 **Compatibility**: No config changes, no persisted-state schema changes. The existing `appendProtectedTools` soft-protection logic is retained as a fallback for any edge case the filter misses.
+
+#### Compression Format Prompt Rewrite (issue #13, PR #72)
+
+The `compress` tool's summary-format guidance said "EXHAUSTIVE" in the header but then asked for "LEAN" summaries lower down — contradictory directions that left the model unsure how much detail to keep. Replaced with a clear **KEEP / DROP / PRIORITY** taxonomy that maps each rule to a concrete action, eliminating the ambiguity.
+
+#### Drop Empty Synthetic User Message from Suffix (issue #12, PR #71)
+
+`injectCompressNudges` sometimes forwarded an empty synthetic suffix user message (the carrier for context-status metadata) to the LLM after it had been merged into the preceding block summary. The model then saw an empty user turn with no content. Now spliced out before the forward, plus a backstop `dropEmptyUserMessages` guard.
+
+#### Context Transition Notification Arrow Spacing (issue #68, PR #70)
+
+`formatContextTransition` in `lib/ui/notification.ts` rendered `141.9K→111K` with no spaces around the `→`. Added explicit spacing for readability: `141.9K → 111K`.
+
+#### Route Placeholder Diagnostic to Logger (issue #67, PR #69)
+
+`validateSummaryPlaceholders` in `lib/compress/range-utils.ts` used `console.warn` to surface placeholder mismatches, which leaked to stderr and was rendered inline in the chat dialog. Routed the diagnostic through the plugin logger instead so it lands in the ACP debug log without polluting chat.
+
+#### Dev-Deploy Legacy Path Sync (issue #9, PR #64)
+
+The stale install at the legacy resolution path `~/.cache/opencode/node_modules/opencode-acp/` shadowed the `@latest` deploy at `~/.cache/opencode/packages/opencode-acp@latest/`. `scripts/dev-deploy.sh` now syncs both paths so a stale legacy copy can't override the freshly built bundle.
 
 ---
 
@@ -452,7 +476,7 @@ The filter runs in both range mode (`lib/compress/range.ts`) and message mode (`
   }
 ```
 
-After this, `lastPerMessageNudgeTokens` is correctly flushed to `~/.local/share/opencode/storage/plugin/acp/{sessionId}.json` on every nudge, so a restart computes growth against the real post-nudge baseline and the nudge only refires when *actual* new growth exceeds `nudgeGrowthTokens`. Regression test added in `tests/inject.test.ts` (seeds a stale baseline to disk, fires a growth nudge with `anchorsChanged=false`, reloads, asserts the persisted baseline advanced).
+After this, `lastPerMessageNudgeTokens` is correctly flushed to `~/.local/share/opencode/storage/plugin/acp/{sessionId}.json` on every nudge, so a restart computes growth against the real post-nudge baseline and the nudge only refires when _actual_ new growth exceeds `nudgeGrowthTokens`. Regression test added in `tests/inject.test.ts` (seeds a stale baseline to disk, fires a growth nudge with `anchorsChanged=false`, reloads, asserts the persisted baseline advanced).
 
 **Compatibility**: No schema changes. Existing persisted state loads unchanged. Users hitting #60 should upgrade and the every-turn nudge loop stops on the first nudge after restart.
 
@@ -460,11 +484,11 @@ After this, `lastPerMessageNudgeTokens` is correctly flushed to `~/.local/share/
 
 ### v1.9.1 — Disjoint Visible-Range Segments & Nudge Wording (issue #9 root cause)
 
-**Problem**: Even after v1.9.0, the model kept calling `compress` against IDs that a prior block had consumed. The root cause was that the suffix advertised a single contiguous span "first visible → last visible" that **straddled compression holes** — so the model's first guess for an `endId` landed inside an already-summarized range. Separately, the suffix's `(+X tokens since last nudge)` growth line was being misread as an *overflow* warning, triggering panic compressions of large-but-still-needed ranges.
+**Problem**: Even after v1.9.0, the model kept calling `compress` against IDs that a prior block had consumed. The root cause was that the suffix advertised a single contiguous span "first visible → last visible" that **straddled compression holes** — so the model's first guess for an `endId` landed inside an already-summarized range. Separately, the suffix's `(+X tokens since last nudge)` growth line was being misread as an _overflow_ warning, triggering panic compressions of large-but-still-needed ranges.
 
 **Fix 1 — disjoint visible-id segments** (PR #57): `injectVisibleIdRange` no longer emits one "first-to-last" span. It builds the actual surviving segments in ascending ref order and truncates to the largest tool-bearing / high-token segments when the count overflows (`compress.maxVisibleSegments`, default `50`, now plumbed through config defaults + merge + validation + schema). The suffix now reads e.g. `[Visible (top 2 of 3 segments, 803 msgs): m00001–m00929, m00944–m00950 | +1 smaller segment (~1.2K tokens, 6 msgs) omitted]`, so the model sees exactly which ranges are compressible and never targets a hole. The formatting logic is extracted into pure, exported, unit-tested functions (`buildVisibleSegments`, `formatVisibleGuidance`).
 
-**Fix 2 — nudge wording** (PR #58): The incremental-compression guidance line (`💡 Compress incrementally: target the ranges above...`) moved to *after* the largest-ranges list and is reworded to stress that **size alone is not a reason to compress** — a large range that is still needed in full must be kept. Soft efficiency nudges (`growth` / `minLimit` variants) are now prefixed with an explicit *"This is an efficiency nudge to compress early and keep context lean — not an overflow warning. A separate, stronger alert will appear if the context is actually full."* so the growth delta isn't mistaken for an overflow alarm. The `maxLimit` path keeps its stronger alert and is intentionally excluded from the efficiency framing.
+**Fix 2 — nudge wording** (PR #58): The incremental-compression guidance line (`💡 Compress incrementally: target the ranges above...`) moved to _after_ the largest-ranges list and is reworded to stress that **size alone is not a reason to compress** — a large range that is still needed in full must be kept. Soft efficiency nudges (`growth` / `minLimit` variants) are now prefixed with an explicit _"This is an efficiency nudge to compress early and keep context lean — not an overflow warning. A separate, stronger alert will appear if the context is actually full."_ so the growth delta isn't mistaken for an overflow alarm. The `maxLimit` path keeps its stronger alert and is intentionally excluded from the efficiency framing.
 
 **Compatibility**: No persisted-state schema changes. New optional config field `compress.maxVisibleSegments` (number, default `50`); old configs keep working.
 
@@ -472,9 +496,10 @@ After this, `lastPerMessageNudgeTokens` is correctly flushed to `~/.local/share/
 
 ### v1.9.0 — Visible-Range Guidance & Compression Failure Recovery
 
-**Problem**: On large-context models (1M+) the model repeatedly called `compress(startId=m00930, endId=m00943)` against IDs that a prior block had already consumed. It had no stable view of which `mNNNNN` refs were still compressible, the failure error gave no recovery info, `acp_status` was registered but never mentioned in the prompt, and the suffix nudge reported a bare percentage with no indication of *where* the tokens were actually spent.
+**Problem**: On large-context models (1M+) the model repeatedly called `compress(startId=m00930, endId=m00943)` against IDs that a prior block had already consumed. It had no stable view of which `mNNNNN` refs were still compressible, the failure error gave no recovery info, `acp_status` was registered but never mentioned in the prompt, and the suffix nudge reported a bare percentage with no indication of _where_ the tokens were actually spent.
 
 **System prompt rewrite**:
+
 - All four context tools (`compress`, `decompress`, `search_context`, `acp_status`) now listed with a one-line "when to use" hint each.
 - Explicit compress / do-not-compress scenes replace the imperative "compress obvious waste promptly" wording.
 - New **CONTEXT BREAKDOWN** section explains the 4-category suffix format (`tool | summaries | code | text`), the largest-range candidates, and the incremental "one large consumed range per call" strategy.
@@ -482,6 +507,7 @@ After this, `lastPerMessageNudgeTokens` is correctly flushed to `~/.local/share/
 - New **task-phase-end** trigger: when a bug hunt / exploration / research sprint ends, compress the phase's redundant churn while preserving findings, file paths, and decision rationale.
 
 **Nudge cadence**:
+
 - Dropped the `contextPct >= 15%` floor entirely. Cadence is now pure 5%-of-limit growth with a first-turn baseline (no more forced nudge on turn 1).
 - Baseline auto-resets after a significant post-compression token drop, so the next nudge fires on the post-compression level instead of waiting a full growth cycle.
 - Suffix nudge gains a **3-category composition breakdown** (`tool | summaries | code | text`, no double-counting of code-bearing messages) plus the **largest ranges** in the tool and code categories — concrete compression targets, not a bare percentage.
@@ -491,6 +517,7 @@ After this, `lastPerMessageNudgeTokens` is correctly flushed to `~/.local/share/
 **Compress failure recovery**: `resolveBoundaryIds` failures now return the current visible range (first/last ref), the active block count, and a pointer to `acp_status`. Out-of-range `endId` guesses (unregistered refs that parse higher than the last visible message) are **clamped** to the last visible message instead of failing; refs that are registered but already consumed still fail with the recovery hint (clamping them would silently recompress summarized content).
 
 **Hardening**:
+
 - `maxSummaryLengthHard` default raised `4000 → 8000 → 10000`; the compress-tool schema now sources its display value from config so changes propagate.
 - Removed the stale `MODEL_CONTEXT_LIMITS` 38-entry fallback table — `modelContextLimit` is now sourced solely from the host SDK's `input.model.limit.context`. Providers that omit the field surface `undefined` immediately rather than getting a distorted percentage from a stale guess.
 - `.catch()` added to every fire-and-forget `saveSessionState` call; removed an `anchorsChanged`-on-baseline path that triggered a concurrent-save race.
@@ -508,6 +535,7 @@ After this, `lastPerMessageNudgeTokens` is correctly flushed to `~/.local/share/
 **Fix**: Removed `shouldInjectThisTurn` gate from system prompt hook (`hooks.ts:108-112`). System prompt now always injects every turn. Suffix remains gated at `nudgeGrowthTokens` frequency.
 
 **Current behavior**:
+
 - **System prompt** (compression philosophy, tool awareness): ✅ every turn
 - **Suffix** (context level, block list, Tips): gated at nudgeGrowthTokens frequency
 
@@ -518,31 +546,37 @@ After this, `lastPerMessageNudgeTokens` is correctly flushed to `~/.local/share/
 **Problem**: Large-context models (1M+) over-compressed at 20-30% context because Tips fired every 6K tokens (0.6% of 1M). System prompt injected every turn added constant pressure.
 
 **Adaptive nudgeGrowthTokens**:
+
 - Default is now adaptive: 5% of `modelContextLimit`, clamped to [6000, 50000]
-  - 128K → 6.4K, 200K → 10K, 500K → 25K, 1M → 50K, 2M+ → 50K (cap)
+    - 128K → 6.4K, 200K → 10K, 500K → 25K, 1M → 50K, 2M+ → 50K (cap)
 - Users can still set explicit `nudgeGrowthTokens` to override
 - Removed hardcoded `6000` from schema defaults (was shadowing adaptive logic)
 
 **System prompt gating**:
+
 - SYSTEM prompt + `<dcp-system-reminder>` tags now pulse at `nudgeGrowthTokens` frequency
 - Between nudges: system prompt injects **nothing** — zero compression noise
 - First turn (`undefined` sentinel): always injects (establishes baseline)
 
 **New tool: `acp_status`**:
+
 - On-demand inspection of all compressed blocks (ID, tokens, age, topic)
 - Replaces verbose block list in suffix with one-liner: `Compressed blocks: N (XK summary, last Ym ago). Use acp_status for details.`
 
 **Compress notification improvement**:
+
 - Header shows context before→after: `▣ ACP | Context 251.2K→249.3K`
 - No percentage or limit shown (prevents model from anchoring on ceiling)
 
 **Bug fixes**:
+
 - `lastPerMessageNudgeTokens` reset to `0` after compress bypassed growth gate (feedback loop)
 - Schema default `6000` shadowed `resolveAdaptiveNudgeGrowth()` — adaptive never activated
 - `applyAnchoredNudges` + `injectContextUsage` duplicated context usage text
 - `lastNudgeTokens === 0` sentinel replaced with `undefined` (explicit "never nudged")
 
 **Tooling**:
+
 - `scripts/dev-deploy.sh` — one-command build + deploy (auto-detects node, typecheck, build, deploy)
 - Post-compress state transition integration tests (3 new)
 - `acp_status` dedicated tests (7 new)
@@ -551,24 +585,28 @@ After this, `lastPerMessageNudgeTokens` is correctly flushed to `~/.local/share/
 
 ### v1.8.0 — Principle-Driven Prompts
 
-**Philosophy**: Replaced verbose context-management guidance with 4 concise principles injected every turn. The model now sees *what matters* (principles) instead of *what to do* (rigid rules).
+**Philosophy**: Replaced verbose context-management guidance with 4 concise principles injected every turn. The model now sees _what matters_ (principles) instead of _what to do_ (rigid rules).
 
 **Prompt changes**:
+
 - 4 principles replace CONTEXT PRESSURE LEVELS, 7-item priority list, DO NOT RE-COMPRESS rules
 - Context display simplified: absolute token count only, no percentage
 - `<acp-context>` tag wrapping (backward compatible with `<dcp-context>`)
 
 **Hybrid Tips frequency**:
+
 - 💡 Light Tips (15-45%): Every turn — non-disruptive reminder
 - ⚠️ Warning Tips (45%+): Key nodes only — first crossing or 10pp growth, prevents over-compression
 
 **Config simplification**:
+
 - Removed `hardNudgeContextPercent` — merged into `minContextLimit`/`maxContextLimit`
 - Removed `perMessageNudgeGrowthPercent` — light Tips show every turn
 - `maxSummaryLength` default: 200 → 2000
 - `maxSummaryLengthHard` default: 3000 → 4000
 
 **Bug fixes**:
+
 - Windows path validation: `os.tmpdir()` + `path.relative()` (was hardcoded `/tmp/`)
 - Compress after-detection: reset warning tracking
 - Dead code cleanup: `shouldInjectPerMessageNudge`, no-op template
