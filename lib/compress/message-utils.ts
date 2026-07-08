@@ -3,6 +3,7 @@ import type { SessionState } from "../state"
 import { parseBoundaryId } from "../message-ids"
 import { isIgnoredUserMessage, isProtectedUserMessage } from "../messages/query"
 import { resolveAnchorMessageId, resolveBoundaryIds, resolveSelection } from "./search"
+import { messageContainsProtectedTool } from "./protected-content"
 import { COMPRESSED_BLOCK_HEADER } from "./state"
 import type {
     CompressMessageEntry,
@@ -102,6 +103,10 @@ const ISSUE_TEMPLATES: Record<string, [singular: string, plural: string]> = {
     protected: [
         "refers to a protected message and cannot be compressed.",
         "refer to protected messages and cannot be compressed.",
+    ],
+    "protected-tool": [
+        "contains a protected tool output and cannot be compressed.",
+        "contain protected tool outputs and cannot be compressed.",
     ],
     "already-compressed": [
         "is already part of an active compression.",
@@ -233,6 +238,16 @@ function resolveMessage(
 
     if (isProtectedUserMessage(config, rawMessage)) {
         throw new SoftIssue("protected", parsed.ref, "protected message")
+    }
+
+    if (
+        messageContainsProtectedTool(
+            rawMessage,
+            config.compress.protectedTools,
+            config.protectedFilePatterns,
+        )
+    ) {
+        throw new SoftIssue("protected-tool", parsed.ref, "protected tool output")
     }
 
     const pruneEntry = state.prune.messages.byMessageId.get(messageId)

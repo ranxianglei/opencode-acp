@@ -7,6 +7,7 @@ import {
     appendProtectedPromptInfo,
     appendProtectedTools,
     appendProtectedUserMessages,
+    filterProtectedToolMessages,
 } from "./protected-content"
 import {
     appendMissingBlockSummaries,
@@ -92,11 +93,29 @@ export function createCompressRangeTool(ctx: ToolContext): ReturnType<typeof too
             const resolvedPlans = resolveRanges(input, searchContext, ctx.state)
             validateNonOverlapping(resolvedPlans)
 
+            const filteredPlans = resolvedPlans
+                .map((plan) => ({
+                    ...plan,
+                    selection: filterProtectedToolMessages(
+                        plan.selection,
+                        searchContext,
+                        ctx.config.compress.protectedTools,
+                        ctx.config.protectedFilePatterns,
+                    ),
+                }))
+                .filter((plan) => plan.selection.messageIds.length > 0)
+
+            if (filteredPlans.length === 0) {
+                throw new Error(
+                    "All selected messages contain protected tool outputs and cannot be compressed. Protected tools (task, skill, todowrite, etc.) must remain in visible context.",
+                )
+            }
+
             const minCompressRange = ctx.config.compress.minCompressRange
             if (minCompressRange > 0) {
                 let totalChars = 0
                 const counted = new Set<string>()
-                for (const plan of resolvedPlans) {
+                for (const plan of filteredPlans) {
                     for (const messageId of plan.selection.messageIds) {
                         if (counted.has(messageId)) continue
                         counted.add(messageId)
@@ -118,15 +137,15 @@ export function createCompressRangeTool(ctx: ToolContext): ReturnType<typeof too
 
             const notifications: NotificationEntry[] = []
             const preparedPlans: Array<{
-                entry: (typeof resolvedPlans)[number]["entry"]
-                selection: (typeof resolvedPlans)[number]["selection"]
+                entry: (typeof filteredPlans)[number]["entry"]
+                selection: (typeof filteredPlans)[number]["selection"]
                 anchorMessageId: string
                 finalSummary: string
                 consumedBlockIds: number[]
             }> = []
             let totalCompressedMessages = 0
 
-            for (const plan of resolvedPlans) {
+            for (const plan of filteredPlans) {
                 const parsedPlaceholders = parseBlockPlaceholders(plan.entry.summary)
                 validateSummaryPlaceholders(
                     parsedPlaceholders,

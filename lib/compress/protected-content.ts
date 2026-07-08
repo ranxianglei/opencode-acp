@@ -1,4 +1,4 @@
-import type { SessionState } from "../state"
+import type { SessionState, WithParts } from "../state"
 import { isIgnoredUserMessage } from "../messages/query"
 import {
     getFilePathsFromParameters,
@@ -205,4 +205,75 @@ export async function appendProtectedTools(
 
     const heading = "\n\nThe following protected tools were used in this conversation as well:"
     return summary + heading + protectedOutputs.join("")
+}
+
+export function messageContainsProtectedTool(
+    message: WithParts,
+    protectedTools: string[],
+    protectedFilePatterns: string[] = [],
+): boolean {
+    const parts = Array.isArray(message.parts) ? message.parts : []
+    for (const part of parts) {
+        if (part.type !== "tool" || !part.callID) continue
+
+        if (isToolNameProtected(part.tool, protectedTools)) {
+            return true
+        }
+
+        if (protectedFilePatterns.length > 0) {
+            const filePaths = getFilePathsFromParameters(part.tool, part.state?.input)
+            if (isFilePathProtected(filePaths, protectedFilePatterns)) {
+                return true
+            }
+        }
+    }
+    return false
+}
+
+export function filterProtectedToolMessages(
+    selection: SelectionResolution,
+    searchContext: SearchContext,
+    protectedTools: string[],
+    protectedFilePatterns: string[] = [],
+): SelectionResolution {
+    const removedMessageIds = new Set<string>()
+    const removedToolIds = new Set<string>()
+
+    for (const messageId of selection.messageIds) {
+        const message = searchContext.rawMessagesById.get(messageId)
+        if (!message) continue
+
+        if (messageContainsProtectedTool(message, protectedTools, protectedFilePatterns)) {
+            removedMessageIds.add(messageId)
+            const parts = Array.isArray(message.parts) ? message.parts : []
+            for (const part of parts) {
+                if (part.type === "tool" && part.callID) {
+                    removedToolIds.add(part.callID)
+                }
+            }
+        }
+    }
+
+    if (removedMessageIds.size === 0) {
+        return selection
+    }
+
+    const filteredMessageIds = selection.messageIds.filter(
+        (id) => !removedMessageIds.has(id),
+    )
+    const filteredMessageTokenById = new Map<string, number>()
+    for (const id of filteredMessageIds) {
+        const tokens = selection.messageTokenById.get(id)
+        if (tokens !== undefined) {
+            filteredMessageTokenById.set(id, tokens)
+        }
+    }
+    const filteredToolIds = selection.toolIds.filter((id) => !removedToolIds.has(id))
+
+    return {
+        ...selection,
+        messageIds: filteredMessageIds,
+        messageTokenById: filteredMessageTokenById,
+        toolIds: filteredToolIds,
+    }
 }

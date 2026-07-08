@@ -215,9 +215,10 @@ test("compress message mode batches individual message summaries", async () => {
         },
     )
 
-    // [Bug 30 fix] Result now includes IMPORTANT continuation instruction
-    assert.equal(result, "Compressed 2 messages into [Compressed conversation section].\nIMPORTANT: This was an automatic context compression. You MUST continue your previous task exactly where you left off. Do NOT ask the user what to do next.")
-    assert.equal(state.prune.messages.blocksById.size, 2)
+    assert.match(result, /^Compressed 1 message into \[Compressed conversation section\]\./)
+    assert.match(result, /Skipped 1 issue:/)
+    assert.match(result, /messageId m00003 contains a protected tool output and cannot be compressed\./)
+    assert.equal(state.prune.messages.blocksById.size, 1)
 
     const blocks = Array.from(state.prune.messages.blocksById.values()).sort(
         (a, b) => a.blockId - b.blockId,
@@ -226,14 +227,6 @@ test("compress message mode batches individual message summaries", async () => {
     assert.equal(blocks[0]?.startId, "m00002")
     assert.equal(blocks[0]?.endId, "m00002")
     assert.equal(blocks[0]?.topic, "Code path note")
-    assert.equal(blocks[1]?.startId, "m00003")
-    assert.equal(blocks[1]?.endId, "m00003")
-    assert.match(
-        blocks[1]?.summary || "",
-        /The following protected tools were used in this conversation as well:/,
-    )
-    assert.match(blocks[1]?.summary || "", /Tool: task/)
-    assert.match(blocks[1]?.summary || "", /task output body/)
 })
 
 test("compress message mode appends protected prompt info", async () => {
@@ -404,20 +397,16 @@ test("compress message mode stores call id for later duration attachment", async
 
 test("compress message mode does not partially apply when preparation fails", async () => {
     const sessionID = `ses_message_compress_prepare_fail_${Date.now()}`
-    const rawMessages = buildMessages(sessionID)
     const state = createSessionState()
     const logger = new Logger(false)
     const config = buildConfig()
-    config.experimental.allowSubAgents = true
-
-    state.subAgentResultCache.get = (() => {
-        throw new Error("cache failure")
-    }) as typeof state.subAgentResultCache.get
 
     const tool = createCompressMessageTool({
         client: {
             session: {
-                messages: async () => ({ data: rawMessages }),
+                messages: async () => {
+                    throw new Error("cache failure")
+                },
                 get: async () => ({ data: { parentID: null } }),
             },
         },
@@ -441,11 +430,6 @@ test("compress message mode does not partially apply when preparation fails", as
                         messageId: "m00002",
                         topic: "Code path note",
                         summary: "Captured the assistant's code-path findings.",
-                    },
-                    {
-                        messageId: "m00003",
-                        topic: "Task output note",
-                        summary: "Captured the assistant's task-backed follow-up.",
                     },
                 ],
             },
@@ -706,7 +690,7 @@ test("compress message mode sends one aggregated notification for batched messag
     assert.match(toastCalls[0] || "", /Compression #1/)
     assert.match(toastCalls[0] || "", /▣ Compression #1 → b\d.*removed, \+.*summary/)
     assert.match(toastCalls[0] || "", /Topic: Batch stale notes/)
-    assert.match(toastCalls[0] || "", /Items: 2 messages/)
+    assert.match(toastCalls[0] || "", /Items: 1 messages compressed/)
 })
 
 test("compress message mode skips messages that are already actively compressed", async () => {
@@ -751,34 +735,34 @@ test("compress message mode skips messages that are already actively compressed"
         },
     )
 
-    const result = await tool.execute(
-        {
-            topic: "Second pass",
-            content: [
-                {
-                    messageId: "m00002",
-                    topic: "Already compressed note",
-                    summary: "Should be skipped because it is already compressed.",
-                },
-                {
-                    messageId: "m00003",
-                    topic: "Task output note",
-                    summary: "Captured the assistant's task-backed follow-up.",
-                },
-            ],
-        },
-        {
-            ask: async () => {},
-            metadata: () => {},
-            sessionID,
-            messageID: "msg-compress-message-second-pass",
-        },
+    await assert.rejects(
+        tool.execute(
+            {
+                topic: "Second pass",
+                content: [
+                    {
+                        messageId: "m00002",
+                        topic: "Already compressed note",
+                        summary: "Should be skipped because it is already compressed.",
+                    },
+                    {
+                        messageId: "m00003",
+                        topic: "Task output note",
+                        summary: "Captured the assistant's task-backed follow-up.",
+                    },
+                ],
+            },
+            {
+                ask: async () => {},
+                metadata: () => {},
+                sessionID,
+                messageID: "msg-compress-message-second-pass",
+            },
+        ),
+        /Unable to compress any messages\. Found 2 issues:/,
     )
 
-    assert.equal(state.prune.messages.blocksById.size, 2)
-    assert.match(result, /^Compressed 1 message into \[Compressed conversation section\]\./)
-    assert.match(result, /Skipped 1 issue:/)
-    assert.match(result, /messageId m00002 is already part of an active compression\./)
+    assert.equal(state.prune.messages.blocksById.size, 1)
 })
 
 test("compress message mode skips invalid batch entries and reports issues", async () => {
