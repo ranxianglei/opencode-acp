@@ -5,6 +5,8 @@ Follow the HOW TO COMPRESS rules from the system prompt — keep every listed VE
 
 The summary must be self-contained — the original conversation adds no value after compression. Write dense, scannable bullets. Every line must earn its place.
 
+Non-negotiable: preserve verbatim — file paths with line numbers, function/class/type signatures, error messages and stack traces, decisions and their rationale (\"chose X over Y because Z\"), constraints discovered, exact values (versions, config keys, thresholds), user intent and acceptance criteria. Drop — verbose logs after extracting the error, duplicate file reads, dead-end exploration (keep the lesson in one line), back-and-forth once the decision is captured. When space is tight, priority order: (1) user intent/constraints, (2) decisions+rationale, (3) exact artifacts, (4) conclusions, (5) lessons learned.
+
 COMPRESSED BLOCK PLACEHOLDERS
 The system auto-detects any previously compressed blocks whose anchor messages fall inside your selected range. You do NOT need to manually list \`(bN)\` placeholders in your summary — every consumed block is tracked automatically.
 

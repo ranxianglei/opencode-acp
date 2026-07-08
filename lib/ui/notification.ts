@@ -232,7 +232,7 @@ export async function sendCompressNotification(
                 summary.length > NOTIFICATION_SUMMARY_MAX_CHARS
                     ? truncateToastSummary(summary, NOTIFICATION_SUMMARY_MAX_CHARS)
                     : summary
-            message += `\n→ [system recap] (~${summaryTokensStr}): ${displaySummary}`
+            message += `\n→ Compression (~${summaryTokensStr}): ${displaySummary}`
         }
     }
 
@@ -242,8 +242,8 @@ export async function sendCompressNotification(
             const truncatedSummary = truncateToastSummary(summary)
             if (truncatedSummary !== summary) {
                 toastMessage = toastMessage.replace(
-                    `\n→ [system recap] (~${summaryTokensStr}): ${truncateToastSummary(summary, NOTIFICATION_SUMMARY_MAX_CHARS)}`,
-                    `\n→ [system recap] (~${summaryTokensStr}): ${truncatedSummary}`,
+                    `\n→ Compression (~${summaryTokensStr}): ${truncateToastSummary(summary, NOTIFICATION_SUMMARY_MAX_CHARS)}`,
+                    `\n→ Compression (~${summaryTokensStr}): ${truncatedSummary}`,
                 )
             }
         }
@@ -282,6 +282,9 @@ export async function sendIgnoredMessage(
               }
             : undefined
 
+    // Wrap with system message markers so the model does not confuse this with user input
+    const wrappedText = `[ACP system message — not a user comment]\n\n${text}\n\n[ACP system message — not a user comment]`
+
     try {
         await client.session.prompt({
             path: {
@@ -295,7 +298,7 @@ export async function sendIgnoredMessage(
                 parts: [
                     {
                         type: "text",
-                        text: text,
+                        text: wrappedText,
                         ignored: true,
                     },
                 ],

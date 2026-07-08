@@ -9,7 +9,7 @@ You've been iterating for a while. If any earlier work is closed and unlikely to
   "content": [{ "startId": "<visible message ID>", "endId": "<visible message ID>", "summary": "..." }]
 }
 
-⚠️ ONLY use IDs from  tags visible above. Do NOT invent or copy example IDs.
+⚠️ ONLY use IDs from <dcp-message-id> tags visible above. Do NOT invent or copy example IDs.
 
 ${COMPRESSION_RULES}
 </system-reminder>
