@@ -500,7 +500,7 @@ test("range mode throws when ALL messages in range contain protected tools", asy
             },
             mockToolCtx(sessionID),
         ),
-        /All selected messages contain protected tool outputs/,
+        /All selected messages are protected \(tool outputs or important user messages\)/,
     )
 
     assert.equal(
