@@ -52,7 +52,7 @@ function buildConfig(mode: "message" | "range"): PluginConfig {
             nudgeFrequency: 5,
             iterationNudgeThreshold: 15,
             nudgeForce: "soft",
-            protectedTools: ["task"],
+            protectedTools: [],
             protectTags: false,
             protectUserMessages: false,
         },
