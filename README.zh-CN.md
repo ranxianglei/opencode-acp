@@ -323,7 +323,7 @@ ACP 暴露六个可编辑的 prompt：
 
 `commands` 和 `strategies` 中的 `protectedTools` 数组会添加到此默认列表。
 
-对于 `compress` 工具，`compress.protectedTools` 确保特定工具的输出会被附加到压缩摘要中。默认包含 `task`、`skill`、`todowrite`、`todoread` 和 `decompress`。
+对于 `compress` 工具，`compress.protectedTools` 确保特定工具的输出被**硬排除**在压缩范围之外（v1.10.0+）。当模型压缩包含受保护工具消息的范围时，该消息完整保留在可见上下文中 — 只有周围的非受保护消息被压缩。默认包含 `task`、`skill`、`todowrite`、`todoread` 和 `decompress`。
 
 ---
 
@@ -354,7 +354,7 @@ ACP 在首次启动时自动将配置从 `dcp.jsonc` 迁移到 `acp.jsonc`，将
 ---
 
 <details>
-<summary><strong>错误修复（共 37 项）</strong> — 基于 DCP v3.1.11</summary>
+<summary><strong>错误修复（共 39 项）</strong> — 基于 DCP v3.1.11</summary>
 
 | # | 严重程度 | 摘要 |
 |---|----------|------|
@@ -384,6 +384,8 @@ ACP 在首次启动时自动将配置从 `dcp.jsonc` 迁移到 `acp.jsonc`，将
 | 35 | 高 | 在低上下文使用率（<50%）时显示老化警告 — 触发不必要的 compress，浪费 token |
 | 36 | 高 | 压缩摘要作为独立的 user 消息插入在用户真实发言之前 — 模型把自己先前的 assistant 输出误读为用户输入，导致对话角色混乱 / 自问自答循环 |
 | 37 | 高 | 消息转换管线对 OpenCode 隐藏的 title/summary/compaction agent 请求也运行 — 污染请求并破坏共享会话状态，导致会话标题生成失效 |
+| 38 | 严重 | pruneToolOutputs/pruneToolInputs/pruneToolErrors 原地修改现有消息 — 破坏 LLM 前缀缓存，导致 89% 的新鲜输入 token 浪费在缓存失效的重发上 |
+| 39 | 高 | 受保护工具输出（skill/task/todowrite）在压缩时仅软保护 — 追加到摘要后从上下文中剪枝，丧失语义权威且易被 GC 截断。v1.10.0 用硬排除修复 |
 
 完整列表及根因分析，请参见 [Bug Tracker](https://github.com/ranxianglei/opencode-acp/issues)。
 
@@ -392,6 +394,23 @@ ACP 在首次启动时自动将配置从 `dcp.jsonc` 迁移到 `acp.jsonc`，将
 ---
 
 ## 更新日志
+
+### v1.10.0 — 受保护工具硬排除（issue #16）
+
+**问题**：受保护工具消息（`skill`、`task`、`todowrite` 等）在压缩时只有*软保护*。当模型对包含 skill 输出的范围调用 `compress` 时，原始消息从可见上下文中被剪枝，其内容被追加到摘要块中。这导致两个问题：
+
+1. **语义丢失**：skill 内容变成历史回顾元数据（`[ACP SYSTEM METADATA — recap...]`），不再是活跃指令。模型将其视为过去的产物，而非当前的指导。
+2. **GC 数据丢失**：当块晋升为 old-gen 且摘要超过 `maxOldGenSummaryLength`（3000 字符）时，`runTruncateGC` 截断整个摘要 — 包括追加的 skill 内容。skill 输出（通常 2–10 KB）被静默销毁。
+
+**修复**（PR #75）：受保护工具消息现在被**硬排除**在压缩范围之外。当模型对包含受保护工具输出的范围调用 `compress(startId, endId)` 时，这些消息在 `applyCompressionState` 运行*之前*就从选择中被过滤掉。受保护消息完整保留在可见上下文中；只有周围的非受保护消息被压缩。
+
+过滤器在 range 模式（`lib/compress/range.ts`）和 message 模式（`lib/compress/message.ts`）中均生效。使用现有的 `compress.protectedTools` 配置（默认：`task`、`skill`、`todowrite`、`todoread`、`decompress`）和通用的 `isToolNameProtected` 匹配器。
+
+**验证**：实时测试 — 加载 `git-master` skill，然后压缩覆盖 skill 输出的范围。skill 消息（m00170）在压缩后存活；范围内 22 条消息中只有 15 条被压缩（7 条受保护消息正确排除）。测试：`tests/compress-protected-exclusion.test.ts` 中 29 个专用测试。
+
+**兼容性**：无配置变更，无持久化 state schema 变更。现有的 `appendProtectedTools` 软保护逻辑作为兜底保留。
+
+---
 
 ### v1.9.2 — 重启后正确持久化提醒基线（bug #60）
 

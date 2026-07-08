@@ -350,7 +350,7 @@ By default, these tools are always protected from pruning:
 
 The `protectedTools` arrays in `commands` and `strategies` add to this default list.
 
-For the `compress` tool, `compress.protectedTools` ensures specific tool outputs are appended to the compressed summary. By default it includes `task`, `skill`, `todowrite`, `todoread`, and `decompress`.
+For the `compress` tool, `compress.protectedTools` ensures specific tool outputs are **hard-excluded** from compression ranges (v1.10.0+). When the model compresses a range that includes a protected tool message, that message survives intact in visible context — only the surrounding non-protected messages are compressed. By default `compress.protectedTools` includes `task`, `skill`, `todowrite`, `todoread`, and `decompress`.
 
 ---
 
@@ -381,7 +381,7 @@ ACP auto-migrates config from `dcp.jsonc` to `acp.jsonc` and prompts from `dcp-p
 ---
 
 <details>
-<summary><strong>Bug Fixes (38 total)</strong> -- applied on top of DCP v3.1.11</summary>
+<summary><strong>Bug Fixes (39 total)</strong> -- applied on top of DCP v3.1.11</summary>
 
 | # | Severity | Summary |
 |---|----------|---------|
@@ -412,6 +412,7 @@ ACP auto-migrates config from `dcp.jsonc` to `acp.jsonc` and prompts from `dcp-p
 | 36 | HIGH | Compression summary emitted as a standalone user message before the user's real turn -- model reads its own prior assistant output as user input, causing dialog role confusion / self-Q&A loops |
 | 37 | HIGH | Message-transform pipeline runs on OpenCode's hidden title/summary/compaction agent requests -- corrupts the request and shared session state, breaking session title generation |
 | 38 | CRITICAL | pruneToolOutputs/pruneToolInputs/pruneToolErrors mutate existing messages in-place -- invalidates LLM prefix cache, causing 89% of fresh input tokens to be wasted on cache-invalidating re-sends |
+| 39 | HIGH | Protected tool outputs (skill/task/todowrite) only soft-protected during compression -- appended to summary then pruned from context, losing semantic authority and susceptible to GC truncation. Fixed with hard-exclusion in v1.10.0 |
 
 For the complete list with root cause analysis, see the [bug tracker](https://github.com/ranxianglei/opencode-acp/issues).
 
@@ -420,6 +421,23 @@ For the complete list with root cause analysis, see the [bug tracker](https://gi
 ---
 
 ## Changelog
+
+### v1.10.0 — Hard-Exclusion of Protected Tools from Compression (issue #16)
+
+**Problem**: Protected tool messages (`skill`, `task`, `todowrite`, etc.) were only *soft-protected* during compression. When the model called `compress` on a range that included a skill output, the original message was pruned from visible context and its content was appended to the summary block. This caused two problems:
+
+1. **Semantic loss**: The skill content became historical recap metadata (`[ACP SYSTEM METADATA — recap...]`), not a live instruction. The model read it as a past artifact, not as active guidance.
+2. **Data loss via GC**: When the block was promoted to old-gen and the summary exceeded `maxOldGenSummaryLength` (3000 chars), `runTruncateGC` truncated the entire summary — including the appended skill content. Skill outputs (often 2–10 KB) were silently destroyed.
+
+**Fix** (PR #75): Protected tool messages are now **hard-excluded** from compression ranges. When the model calls `compress(startId, endId)` on a range that contains protected tool outputs, those messages are filtered out of the selection *before* `applyCompressionState` runs. The protected messages survive intact in visible context; only the surrounding non-protected messages are compressed.
+
+The filter runs in both range mode (`lib/compress/range.ts`) and message mode (`lib/compress/message.ts`). It uses the existing `compress.protectedTools` config (default: `task`, `skill`, `todowrite`, `todoread`, `decompress`) and the same `isToolNameProtected` matcher used elsewhere.
+
+**Verification**: Live-tested by loading the `git-master` skill, then compressing a range spanning the skill output. The skill message (m00170) survived compression; only 15 of 22 messages in the range were compressed (7 protected messages correctly excluded). Tests: 29 dedicated tests in `tests/compress-protected-exclusion.test.ts`.
+
+**Compatibility**: No config changes, no persisted-state schema changes. The existing `appendProtectedTools` soft-protection logic is retained as a fallback for any edge case the filter misses.
+
+---
 
 ### v1.9.2 — Persist Nudge Baseline Across Restart (bug #60)
 
