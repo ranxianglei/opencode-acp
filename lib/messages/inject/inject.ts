@@ -246,13 +246,6 @@ export const injectCompressNudges = (
                 breakdown += `\nTop tools: ${topToolTypes.map((t) => `${t.tool} (${pct(t.tokens)}%)`).join(", ")}`
             }
 
-            const topBlocks = Array.from(state.prune.messages.blocksById.values())
-                .filter((b) => b.active)
-                .sort((a, b) => b.compressedTokens - a.compressedTokens)
-                .slice(0, 3)
-            if (topBlocks.length > 0) {
-                breakdown += `\nTop blocks: ${topBlocks.map((b) => `b${b.blockId} ${fmt(b.compressedTokens)}→${fmt(b.summaryTokens)}`).join(", ")}`
-            }
             if (composition.largestToolRanges.length > 0) {
                 breakdown += `\nLargest tool outputs: ${composition.largestToolRanges.map((r) => `${r.ref} (${fmt(r.tokens)})`).join(", ")}`
             }
@@ -298,26 +291,6 @@ export const injectCompressNudges = (
     }
 
     if (toolOutputReminder && suffixMessage) {
-        if (!decision.shouldNudge) {
-            injectContextUsage(suffixMessage, config, currentTokens, modelContextLimit)
-            if (composition.total > 0) {
-                const fmt2 = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n))
-                const pct2 = (n: number) => n > 0 ? Math.max(1, Math.round((n / composition.total) * 100)) : 0
-                const topBlocks = Array.from(state.prune.messages.blocksById.values())
-                    .filter((b) => b.active)
-                    .sort((a, b) => b.compressedTokens - a.compressedTokens)
-                    .slice(0, 3)
-                let mini = `\nBreakdown: ${fmt2(composition.toolTokens)} tool outputs (${pct2(composition.toolTokens)}%) | ${fmt2(composition.summaryTokens)} summaries (${pct2(composition.summaryTokens)}%) | ${fmt2(composition.messageTokens)} messages (${pct2(composition.messageTokens)}%)`
-                const miniTopTypes = composition.toolTypeBreakdown.slice(0, 3)
-                if (miniTopTypes.length > 0) {
-                    mini += `\nTop tools: ${miniTopTypes.map((t) => `${t.tool} (${pct2(t.tokens)}%)`).join(", ")}`
-                }
-                if (topBlocks.length > 0) {
-                    mini += `\nTop blocks: ${topBlocks.map((b) => `b${b.blockId} ${fmt2(b.compressedTokens)}→${fmt2(b.summaryTokens)}`).join(", ")}`
-                }
-                appendToLastTextPart(suffixMessage, mini)
-            }
-        }
         appendToLastTextPart(suffixMessage, toolOutputReminder)
     }
 
