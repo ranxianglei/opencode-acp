@@ -50,9 +50,20 @@ function buildSchema(maxSummaryLengthHard: number) {
                         ),
                 }),
             )
+            .optional()
             .describe(
-                "One or more ranges to compress, each with start/end boundaries and a summary",
+                "Range mode: one or more contiguous ranges to compress, each with start/end boundaries and a summary",
             ),
+        toolType: tool.schema
+            .string()
+            .optional()
+            .describe(
+                'Prune mode: remove all old messages of this tool type (e.g. "todowrite", "edit"). Keeps only recent ones. Use for disposable tool outputs.',
+            ),
+        keepLatest: tool.schema
+            .number()
+            .optional()
+            .describe("Prune mode: how many recent messages to keep (default 3)"),
         summaryMaxChars: tool.schema
             .number()
             .optional()
@@ -68,6 +79,15 @@ export function createCompressRangeTool(ctx: ToolContext): ReturnType<typeof too
         description: runtimePrompts.compressRange + RANGE_FORMAT_EXTENSION,
         args: buildSchema(ctx.config.compress.maxSummaryLengthHard),
         async execute(args, toolCtx) {
+            const callId =
+                typeof (toolCtx as unknown as { callID?: unknown }).callID === "string"
+                    ? (toolCtx as unknown as { callID: string }).callID
+                    : undefined
+
+            if (typeof args.toolType === "string") {
+                return executePruneMode(ctx, toolCtx, { topic: args.topic, toolType: args.toolType, keepLatest: args.keepLatest }, callId)
+            }
+
             const input = args as CompressRangeToolArgs
             validateArgs(input)
 
@@ -79,11 +99,6 @@ export function createCompressRangeTool(ctx: ToolContext): ReturnType<typeof too
                     )
                 }
             }
-
-            const callId =
-                typeof (toolCtx as unknown as { callID?: unknown }).callID === "string"
-                    ? (toolCtx as unknown as { callID: string }).callID
-                    : undefined
 
             const { rawMessages, searchContext } = await prepareSession(
                 ctx,
@@ -290,4 +305,109 @@ function extractBoundaryConsumedBlocks(
         }
     }
     return consumed
+}
+
+async function executePruneMode(
+    ctx: ToolContext,
+    toolCtx: any,
+    args: { topic: string; toolType: string; keepLatest?: number },
+    callId: string | undefined,
+): Promise<string> {
+    const keepLatest = args.keepLatest ?? 3
+    const { rawMessages, searchContext } = await prepareSession(
+        ctx,
+        toolCtx,
+        `Prune: ${args.topic}`,
+    )
+
+    const matchingMessages: Array<{ messageId: string; index: number; tokens: number }> = []
+    for (let i = 0; i < rawMessages.length; i++) {
+        const msg = rawMessages[i]
+        if (!msg) continue
+        const msgId = (msg.info as any)?.id || ""
+        if (!msgId) continue
+
+        const pruneEntry = ctx.state.prune.messages.byMessageId.get(msgId)
+        if (pruneEntry && pruneEntry.activeBlockIds.length > 0) continue
+
+        let hasTool = false
+        let tokenCount = 0
+        for (const part of msg.parts || []) {
+            if (part.type === "tool") {
+                const partTool = (part as any)?.tool || ""
+                if (partTool === args.toolType) {
+                    hasTool = true
+                }
+            }
+            if (part.type === "text") {
+                tokenCount += Math.round(((part as any).text || "").length / 4)
+            } else if (part.type === "tool") {
+                tokenCount += Math.round(JSON.stringify(part).length / 4)
+            }
+        }
+
+        if (hasTool) {
+            matchingMessages.push({ messageId: msgId, index: i, tokens: tokenCount })
+        }
+    }
+
+    if (matchingMessages.length <= keepLatest) {
+        return `Nothing to prune — only ${matchingMessages.length} ${args.toolType} messages visible (keepLatest=${keepLatest}).`
+    }
+
+    matchingMessages.sort((a, b) => a.index - b.index)
+    const toPrune = matchingMessages.slice(0, matchingMessages.length - keepLatest)
+
+    const firstRef = ctx.state.messageIds.byRawId.get(toPrune[0]!.messageId) || "?"
+    const lastRef = ctx.state.messageIds.byRawId.get(toPrune[toPrune.length - 1]!.messageId) || "?"
+
+    const messageTokenById = new Map<string, number>()
+    for (const m of toPrune) {
+        messageTokenById.set(m.messageId, m.tokens)
+    }
+
+    const blockId = allocateBlockId(ctx.state)
+    const runId = allocateRunId(ctx.state)
+
+    const summary = `Pruned ${toPrune.length} ${args.toolType} messages (old outputs removed, latest ${keepLatest} kept). Range: ${firstRef}–${lastRef}.`
+    const storedSummary = wrapCompressedSummary(blockId, summary)
+    const summaryTokens = countTokens(storedSummary)
+
+    applyCompressionState(
+        ctx.state,
+        {
+            topic: args.topic,
+            batchTopic: args.topic,
+            startId: firstRef,
+            endId: lastRef,
+            mode: "range",
+            runId,
+            compressMessageId: toolCtx.messageID,
+            compressCallId: callId,
+            summaryTokens,
+        },
+        {
+            startReference: { kind: "message", rawIndex: toPrune[0]!.index },
+            endReference: { kind: "message", rawIndex: toPrune[toPrune.length - 1]!.index },
+            messageIds: toPrune.map((m) => m.messageId),
+            messageTokenById,
+            toolIds: [],
+            requiredBlockIds: [],
+        },
+        toPrune[0]!.messageId,
+        blockId,
+        storedSummary,
+        [],
+        ctx.config.gc,
+    )
+
+    await finalizeSession(
+        ctx,
+        toolCtx,
+        rawMessages,
+        [{ blockId, runId, summary, summaryTokens }],
+        args.topic,
+    )
+
+    return `Pruned ${toPrune.length} ${args.toolType} messages (kept latest ${keepLatest}). Range: ${firstRef}–${lastRef}.\nIMPORTANT: This was an automatic context pruning. You MUST continue your previous task exactly where you left off. Do NOT ask the user what to do next.`
 }
