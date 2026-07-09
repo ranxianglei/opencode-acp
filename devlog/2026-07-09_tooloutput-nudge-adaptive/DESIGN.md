@@ -22,8 +22,9 @@
 - **Goals**:
   - Align the toolOutput reminder threshold with the adaptive growth threshold.
   - Make the `toolOutputNudgeThreshold` config override actually work.
+  - Persist `modelContextLimit` so adaptive thresholds survive restart (folded in
+    per user request — without this, fix #1 only works until the session reloads).
 - **Non-Goals**:
-  - Persisting `modelContextLimit` (separate issue).
   - Re-architecting the dual-nudge system.
 
 ## 3. Current Architecture
@@ -66,22 +67,26 @@ injectCompressNudges (inject.ts)
 | Threshold default | (a) keep 5000, (b) `?? nudgeGrowthTokens`, (c) fraction of nudgeGrowthTokens | (b) | Reuses the already-computed adaptive value; minimal change; same 5% semantics as the growth nudge. (c) adds an unneeded second ratio. |
 | Reminder independence | (a) gate behind `shouldNudge`, (b) keep independent | (b) keep independent | The reminder serves a distinct signal (tool-output accumulation). Keeping it independent but context-scaled preserves its purpose without subverting the 5% protection. |
 | Override wiring | (a) leave dead, (b) wire through merge/validation/schema | (b) | A declared config field that silently does nothing is a footgun; wiring it is purely additive. |
+| modelContextLimit persistence | (a) persist in state JSON, (b) derive from messages, (c) leave undefined | (a) | Simplest; the system-prompt hook already sets the live value every turn, so persistence only needs to bridge the first message-transform after restart. Old files lack the field → optional guard handles it. |
 
 ## 6. Impact Analysis
 
-- **Backward compatibility**: Additive. No persisted-state change. Internal
-  `dcp` naming preserved.
-- **Performance**: Negligible (one `??` evaluation; config field already typed).
+- **Backward compatibility**: Additive. `modelContextLimit` is an optional field
+  in `PersistedSessionState` — old state files without it load fine (the restore
+  guard checks `typeof === "number"`). Internal `dcp` naming preserved.
+- **Performance**: Negligible.
 - **Security**: N/A.
 - **Dependencies**: None.
 
 ## 7. Migration Plan
 
-- **Steps**: None — the change is purely behavioral (reminder fires less often)
-  and additive (override becomes live).
+- **Steps**: None — both changes are additive/behavioral. The persistence field is
+  optional; the system-prompt hook still refreshes `modelContextLimit` with the live
+  model value every turn, so a stale persisted value (e.g. after switching models)
+  self-corrects within one turn.
 - **Feature flags / gradual rollout**: Not needed.
 
 ## 8. Open Questions
 
-- [ ] (Follow-up) Persist `modelContextLimit` so the adaptive floor doesn't bite
-      on restart — tracked in WORKLOG §7.
+(None — the `modelContextLimit` persistence follow-up from the initial draft is
+now implemented in this PR.)

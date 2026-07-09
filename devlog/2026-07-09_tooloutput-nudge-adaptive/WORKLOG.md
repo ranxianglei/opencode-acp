@@ -3,20 +3,26 @@
 - Task ID: `2026-07-09_tooloutput-nudge-adaptive`
 - Home Repo: `opencode-acp`
 - Status: Done
-- Updated: 2026-07-09 10:55
+- Updated: 2026-07-09 11:05
 
 ## 1. Summary
 
-- **What was done**: Made the toolOutput accumulation reminder reuse the adaptive
+- **What was done**: 
+  1. Made the toolOutput accumulation reminder reuse the adaptive
   `nudgeGrowthTokens` threshold (5% of context, clamped [6K, 50K]) instead of a
   hardcoded 5000. Also wired the previously-dead `compress.toolOutputNudgeThreshold`
   config option through config merge, validation, and the JSON schema.
+  2. Persisted `state.modelContextLimit` so adaptive thresholds (nudgeGrowthTokens,
+  toolOutputThreshold) don't fall to the 6000 floor on the first turn after restart.
 - **Why**: The hardcoded 5000 fired ~10× too often on large-context models,
   bypassing the 5% growth protection and driving severe over-compression (68
   compressions / 499 calls in the reported session, never above 22.6% context).
+  The persistence fix completes (1): without it, `nudgeGrowthTokens` is undefined
+  post-restart → 6K floor → the reminder still fires too often on turn 1 after reload.
 - **Behavior / compatibility changes**: Yes — the toolOutput reminder now fires
   far less often on large-context models (intended). The `toolOutputNudgeThreshold`
-  override is now actually honored (previously silently dropped).
+  override is now actually honored (previously silently dropped). `modelContextLimit`
+  is now persisted in state JSON (additive optional field, backward-compatible).
 - **Risk level**: Low
 
 ## 2. Change Log
@@ -40,8 +46,14 @@
 - `dcp.schema.json` — declared `toolOutputNudgeThreshold` (number) next to
   `nudgeGrowthTokens`.
 - `tests/inject.test.ts` — 3 new tests (no-fire on small growth / fire on large
-  growth / override respected).
+  growth / override respected) + 2 new persistence tests (round-trip /
+  ensureSessionInitialized restore).
 - `tests/config-validation.test.ts` — 1 new test (key is valid).
+- `lib/state/persistence.ts` — added `modelContextLimit?: number` to
+  `PersistedSessionState`; save it in `saveSessionState`.
+- `lib/state/state.ts` — restore `modelContextLimit` from persisted state in
+  `ensureSessionInitialized` (after load, before the live system-prompt hook
+  refreshes it).
 
 ## 3. Design & Implementation Notes
 
@@ -70,19 +82,21 @@ bun test tests/        # full suite (this env has no real Node, only Bun)
 
 ### Test Coverage
 
-- New/modified test files: `tests/inject.test.ts` (+3), `tests/config-validation.test.ts` (+1).
-- Test count: 591 baseline + 4 new = 595 expected on real Node.
+- New/modified test files: `tests/inject.test.ts` (+5), `tests/config-validation.test.ts` (+1).
+- Test count: 591 baseline + 6 new = 597 expected on real Node.
 - Key scenarios verified:
   - 1M model, ~9K tool growth → reminder does NOT fire (regression).
   - 1M model, ~64K tool growth → reminder DOES fire.
   - `toolOutputNudgeThreshold: 8000` override → fires at ~9K growth.
+  - `modelContextLimit` survives save/load round-trip.
+  - `ensureSessionInitialized` restores persisted `modelContextLimit` after restart.
 
 ### Results
 
 - **typecheck**: PASS (clean).
-- **bun test tests/inject.test.ts**: 17 pass / 0 fail (14 original + 3 new).
+- **bun test tests/inject.test.ts**: 19 pass / 0 fail (14 original + 5 new).
 - **bun test tests/config-validation.test.ts**: 21 pass / 0 fail (20 + 1 new).
-- **bun test tests/**: 591 pass / 1 fail. The single failure is a **pre-existing
+- **bun test tests/**: 593 pass / 1 fail. The single failure is a **pre-existing
   Bun-only limitation** (`prompts.test.ts:53` uses `test()` inside `test()`,
   which Bun's `node:test` compat does not support). It is unrelated to these
   changes and passes on real Node (CI). Confirmed: this change does not touch
@@ -110,5 +124,6 @@ bun test tests/        # full suite (this env has no real Node, only Bun)
 
 ## 7. Follow-ups (optional)
 
-- [ ] Persist `state.modelContextLimit` so the adaptive floor (6000) doesn't
-      bite on first turn / after restart (secondary aggravator, separate issue).
+- [x] Persist `state.modelContextLimit` so the adaptive floor (6000) doesn't
+      bite on first turn / after restart — **done in this PR** (originally
+      listed as separate issue, folded in per user request on issue #18).

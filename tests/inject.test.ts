@@ -8,7 +8,7 @@ import type { PluginConfig } from "../lib/config"
 import { Logger } from "../lib/logger"
 import { injectMessageIds, injectCompressNudges } from "../lib/messages/inject/inject"
 import { createSyntheticUserMessage } from "../lib/messages/utils"
-import { createSessionState, type WithParts } from "../lib/state"
+import { createSessionState, ensureSessionInitialized, type WithParts } from "../lib/state"
 import { saveSessionState, loadSessionState } from "../lib/state/persistence"
 import { formatMessageIdTag } from "../lib/message-ids"
 
@@ -474,4 +474,50 @@ test("explicit toolOutputNudgeThreshold override is respected", () => {
         baseline,
         "9K growth >= 8K override — reminder must fire (override wins over adaptive default)",
     )
+})
+
+// --- modelContextLimit persistence (issue #18) ---
+// modelContextLimit must survive restart so adaptive thresholds (nudgeGrowthTokens,
+// toolOutputThreshold) don't fall to the 6000 floor on the first turn after reload.
+
+const PERSIST_MODEL_LIMIT = "test-modelcontextlimit-persist"
+
+async function cleanupModelLimitSession(): Promise<void> {
+    const filePath = join(STORAGE_DIR, `${PERSIST_MODEL_LIMIT}.json`)
+    if (existsSync(filePath)) {
+        await fs.unlink(filePath)
+    }
+}
+
+test("modelContextLimit persists across save/load round-trip (#18)", async () => {
+    const state = createSessionState()
+    state.sessionId = PERSIST_MODEL_LIMIT
+    state.modelContextLimit = 1_000_000
+    await cleanupModelLimitSession()
+
+    await saveSessionState(state, logger)
+
+    const loaded = await loadSessionState(PERSIST_MODEL_LIMIT, logger)
+    assert.ok(loaded, "state file must exist after save")
+    assert.equal(loaded!.modelContextLimit, 1_000_000, "modelContextLimit must survive round-trip")
+    await cleanupModelLimitSession()
+})
+
+test("ensureSessionInitialized restores persisted modelContextLimit after restart (#18)", async () => {
+    const seed = createSessionState()
+    seed.sessionId = PERSIST_MODEL_LIMIT
+    seed.modelContextLimit = 1_000_000
+    await cleanupModelLimitSession()
+    await saveSessionState(seed, logger)
+
+    const fresh = createSessionState()
+    assert.equal(fresh.modelContextLimit, undefined, "fresh state starts without modelContextLimit")
+    await ensureSessionInitialized(null, fresh, PERSIST_MODEL_LIMIT, logger, [], false)
+
+    assert.equal(
+        fresh.modelContextLimit,
+        1_000_000,
+        "persisted modelContextLimit must be restored so adaptive thresholds use the real limit, not the 6K floor",
+    )
+    await cleanupModelLimitSession()
 })
