@@ -179,7 +179,7 @@ function renderOverview(
     }
 
     lines.push("")
-    lines.push('Drill down: acp_status({scope:"uncompressed"}) or {scope:"compressed"})')
+    lines.push('Tip: acp_status({scope:"uncompressed", tool:"todowrite", sort:"size"}) — mix any params freely')
 
     return lines
 }
