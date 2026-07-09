@@ -521,3 +521,39 @@ test("ensureSessionInitialized restores persisted modelContextLimit after restar
     )
     await cleanupModelLimitSession()
 })
+
+test("nudge thresholds scale with modelContextLimit — fixed thresholds must not bypass 5% protection (#18 systemic guard)", () => {
+    const seedChars = 16_000
+    const growthChars = 76_000
+
+    function reminderFiresAt(limit: number): boolean {
+        const state = createSessionState()
+        state.modelContextLimit = limit
+        const config = buildConfig()
+        config.compress.maxContextLimit = limit * 2
+        config.compress.minContextLimit = limit * 2
+
+        injectCompressNudges(state, config, logger, [
+            userMsg("u1", "hi"),
+            assistantMsgWithTokens("a1", "ok", { input: 1_000, output: 1_000 }, [
+                toolPart("c1", "x".repeat(seedChars)),
+            ]),
+        ], {} as any)
+        const baseline = state.nudges.lastToolOutputNudgeTokens
+
+        injectCompressNudges(state, config, logger, [
+            userMsg("u2", "more"),
+            assistantMsgWithTokens("a2", "ok", { input: 1_000, output: 1_000 }, [
+                toolPart("c2", "x".repeat(growthChars)),
+            ]),
+        ], {} as any)
+
+        return state.nudges.lastToolOutputNudgeTokens !== baseline
+    }
+
+    assert.ok(reminderFiresAt(200_000), "15K growth > 10K threshold (200K × 5%) → must fire")
+    assert.ok(
+        !reminderFiresAt(400_000),
+        "15K growth < 20K threshold (400K × 5%) → must NOT fire (a fixed threshold like the old 5000 would fire here → regression)",
+    )
+})

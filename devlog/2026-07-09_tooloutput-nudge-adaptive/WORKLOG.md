@@ -127,3 +127,19 @@ bun test tests/        # full suite (this env has no real Node, only Bun)
 - [x] Persist `state.modelContextLimit` so the adaptive floor (6000) doesn't
       bite on first turn / after restart — **done in this PR** (originally
       listed as separate issue, folded in per user request on issue #18).
+
+## 8. Systemic Regression Guard (added per user request on issue #18)
+
+User asked for a test that catches the *class* of bug — any future change that
+reverts a nudge mechanism to a fixed threshold. Added `inject.test.ts` test
+"nudge thresholds scale with modelContextLimit — fixed thresholds must not
+bypass 5% protection (#18 systemic guard)".
+
+**Invariant tested**: the SAME tool growth (≈15K tokens) must fire the reminder
+at a 200K context limit (15K > 10K threshold = 200K × 5%) but NOT at a 400K
+limit (15K < 20K threshold). A fixed threshold (old `?? 5000`) fires at both →
+test fails.
+
+**Verified**: temporarily reverted `?? nudgeGrowthTokens` → `?? 5000` — the
+guard correctly fails (alongside the existing instance tests). Restored → 20/20
+pass.
