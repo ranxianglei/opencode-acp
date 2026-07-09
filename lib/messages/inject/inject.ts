@@ -201,7 +201,9 @@ export const injectCompressNudges = (
     }
 
     const composition = estimateContextComposition(messages, state)
-    const toolOutputThreshold = config.compress?.toolOutputNudgeThreshold ?? 5000
+    // Adaptive: follows nudgeGrowthTokens (5% of context, clamped [6K, 50K]). Do NOT
+    // revert to a constant — a fixed 5000 fired ~10x too often on 1M models (issue #18).
+    const toolOutputThreshold = config.compress?.toolOutputNudgeThreshold ?? nudgeGrowthTokens
     let toolOutputReminder: string | null = null
 
     if (composition.toolTokens > 0) {

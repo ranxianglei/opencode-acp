@@ -405,6 +405,7 @@ function mergeCompress(
         nudgeFrequency: override.nudgeFrequency ?? base.nudgeFrequency,
         minNudgeContextPercent: override.minNudgeContextPercent ?? base.minNudgeContextPercent,
         nudgeGrowthTokens: override.nudgeGrowthTokens,
+        toolOutputNudgeThreshold: override.toolOutputNudgeThreshold,
         iterationNudgeThreshold: override.iterationNudgeThreshold ?? base.iterationNudgeThreshold,
         nudgeForce: override.nudgeForce ?? base.nudgeForce,
         protectedTools: [...new Set([...base.protectedTools, ...(override.protectedTools ?? [])])],

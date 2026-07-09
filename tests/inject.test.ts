@@ -358,3 +358,120 @@ test("injectCompressNudges persists new nudge baseline to disk when a growth nud
     )
     await cleanupPersistSession()
 })
+
+// --- toolOutput reminder adaptive threshold (issue #18) ---
+// Reminder threshold scales with context (via nudgeGrowthTokens); on a 1M model
+// it is 50K, not the old hardcoded 5000. Tool chars ≈ JSON.stringify(part).length/4.
+
+function suffixText(messages: WithParts[]): string {
+    return messages
+        .map((m) => m.parts.map((p: any) => (typeof p.text === "string" ? p.text : "")).join(""))
+        .join("")
+}
+
+test("toolOutput reminder does NOT fire for small tool growth on large-context model (#18 regression)", () => {
+    const state = createSessionState()
+    state.modelContextLimit = 1_000_000
+    const config = buildConfig()
+    config.compress.maxContextLimit = 900_000
+    config.compress.minContextLimit = 800_000
+
+    // Turn 1: seed tool baseline (~6K tokens of tool output content).
+    const turn1: WithParts[] = [
+        userMsg("u1", "hi"),
+        assistantMsgWithTokens("a1", "ok", { input: 50_000, output: 10_000 }, [
+            toolPart("c1", "x".repeat(24_000)),
+        ]),
+    ]
+    injectCompressNudges(state, config, logger, turn1, {} as any)
+    const baseline = state.nudges.lastToolOutputNudgeTokens
+    assert.ok(baseline !== undefined, "tool baseline seeded on first call")
+
+    // Turn 2: ~9K new tool growth. Old hardcoded 5000 → would fire; 50K adaptive → must NOT.
+    const turn2: WithParts[] = [
+        userMsg("u2", "more"),
+        assistantMsgWithTokens("a2", "ok", { input: 50_000, output: 10_000 }, [
+            toolPart("c2", "x".repeat(60_000)),
+        ]),
+    ]
+    injectCompressNudges(state, config, logger, turn2, {} as any)
+
+    assert.equal(
+        state.nudges.lastToolOutputNudgeTokens,
+        baseline,
+        "9K tool growth < 50K adaptive threshold — reminder must NOT fire (issue #18)",
+    )
+    assert.ok(
+        !suffixText(turn2).includes("new tool outputs accumulated"),
+        "no accumulation reminder text injected",
+    )
+})
+
+test("toolOutput reminder DOES fire when tool growth crosses adaptive threshold", () => {
+    const state = createSessionState()
+    state.modelContextLimit = 1_000_000
+    const config = buildConfig()
+    config.compress.maxContextLimit = 900_000
+    config.compress.minContextLimit = 800_000
+
+    const turn1: WithParts[] = [
+        userMsg("u1", "hi"),
+        assistantMsgWithTokens("a1", "ok", { input: 50_000, output: 10_000 }, [
+            toolPart("c1", "x".repeat(24_000)),
+        ]),
+    ]
+    injectCompressNudges(state, config, logger, turn1, {} as any)
+    const baseline = state.nudges.lastToolOutputNudgeTokens
+
+    // Turn 2: ~64K new tool growth — crosses the 50K adaptive threshold.
+    const turn2: WithParts[] = [
+        userMsg("u2", "more"),
+        assistantMsgWithTokens("a2", "ok", { input: 50_000, output: 10_000 }, [
+            toolPart("c2", "x".repeat(280_000)),
+        ]),
+    ]
+    injectCompressNudges(state, config, logger, turn2, {} as any)
+
+    assert.notEqual(
+        state.nudges.lastToolOutputNudgeTokens,
+        baseline,
+        "64K tool growth >= 50K adaptive threshold — reminder must fire and advance baseline",
+    )
+    assert.ok(
+        suffixText(turn2).includes("new tool outputs accumulated"),
+        "accumulation reminder text must be injected when threshold crossed",
+    )
+})
+
+test("explicit toolOutputNudgeThreshold override is respected", () => {
+    const state = createSessionState()
+    state.modelContextLimit = 1_000_000
+    const config = buildConfig()
+    config.compress.maxContextLimit = 900_000
+    config.compress.minContextLimit = 800_000
+    config.compress.toolOutputNudgeThreshold = 8_000
+
+    const turn1: WithParts[] = [
+        userMsg("u1", "hi"),
+        assistantMsgWithTokens("a1", "ok", { input: 50_000, output: 10_000 }, [
+            toolPart("c1", "x".repeat(24_000)),
+        ]),
+    ]
+    injectCompressNudges(state, config, logger, turn1, {} as any)
+    const baseline = state.nudges.lastToolOutputNudgeTokens
+
+    // ~9K tool growth: below the 50K adaptive default but above the 8K override → fires.
+    const turn2: WithParts[] = [
+        userMsg("u2", "more"),
+        assistantMsgWithTokens("a2", "ok", { input: 50_000, output: 10_000 }, [
+            toolPart("c2", "x".repeat(60_000)),
+        ]),
+    ]
+    injectCompressNudges(state, config, logger, turn2, {} as any)
+
+    assert.notEqual(
+        state.nudges.lastToolOutputNudgeTokens,
+        baseline,
+        "9K growth >= 8K override — reminder must fire (override wins over adaptive default)",
+    )
+})
