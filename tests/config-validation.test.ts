@@ -16,6 +16,13 @@ test("getInvalidConfigKeys returns empty array for valid nested keys", () => {
     assert.deepEqual(result, [])
 })
 
+test("getInvalidConfigKeys accepts compress.toolOutputNudgeThreshold (#18)", () => {
+    const result = getInvalidConfigKeys({
+        compress: { toolOutputNudgeThreshold: 20000 },
+    })
+    assert.deepEqual(result, [])
+})
+
 test("getInvalidConfigKeys returns dot-path keys for unknown nested keys", () => {
     const result = getInvalidConfigKeys({
         turnProtection: { enabled: false, unknownSubKey: true },

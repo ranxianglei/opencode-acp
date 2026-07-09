@@ -285,6 +285,10 @@
                 "nudgeGrowthTokens": {
                     "type": "number",
                     "description": "Token growth required between per-message nudges (absolute, not percentage). Shows Tips only after context grows by this many tokens. If unset, default is adaptive: 5% of modelContextLimit, clamped to [6000, 50000] — e.g. 128K→6.4K, 200K→10K, 1M→50K. Must be unset (not 6000) for adaptive default to work."
+                },
+                "toolOutputNudgeThreshold": {
+                    "type": "number",
+                    "description": "Tool-output token growth required before the tool-output accumulation reminder fires (absolute, not percentage). If unset, default follows nudgeGrowthTokens (adaptive: 5% of modelContextLimit, clamped to [6000, 50000]). Was hardcoded to 5000 — fired ~10x too often on large-context models (issue #18)."
                 }
             },
             "default": {

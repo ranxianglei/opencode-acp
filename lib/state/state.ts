@@ -219,6 +219,9 @@ export async function ensureSessionInitialized(
     if (persistedAny._persistedLastCompaction !== undefined) {
         state.lastCompaction = Math.max(state.lastCompaction, persistedAny._persistedLastCompaction)
     }
+    if (typeof persisted.modelContextLimit === "number" && persisted.modelContextLimit > 0) {
+        state.modelContextLimit = persisted.modelContextLimit
+    }
 
     const applied = applyPendingCompressionDurations(state)
     if (applied > 0) {
