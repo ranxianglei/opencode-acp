@@ -649,8 +649,8 @@ export function estimateContextComposition(
         messageTokens,
         textTokens: Math.max(0, messageTokens - codeTokens),
         total: toolTokens + summaryTokens + messageTokens,
-        largestRanges: perMessage.slice(0, 10),
-        largestToolRanges: perTool.slice(0, 5),
+        largestRanges: perMessage.slice(0, 15),
+        largestToolRanges: perTool.slice(0, 15),
         largestCodeRanges: perCode.slice(0, 5),
         largestMessageRanges: perText.slice(0, 5),
     }
