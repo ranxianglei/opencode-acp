@@ -186,7 +186,7 @@ test("acp_status: overview includes drill-down hint", async () => {
     const blocks = blocksMap(makeBlock({ blockId: 1 }))
     const result = await runStatus([1], blocks)
 
-    assert.match(result, /Drill down/)
+    assert.match(result, /Tip:/)
     assert.match(result, /scope/)
 })
 
@@ -315,7 +315,7 @@ test("acp_status: invalid scope falls back to overview", async () => {
     const result = await runStatus([1], blocks, { scope: "bogus" as any })
 
     assert.match(result, /COMPRESSED BLOCKS/)
-    assert.match(result, /Drill down/)
+    assert.match(result, /Tip:/)
 })
 
 test("acp_status: invalid sort falls back to size", async () => {

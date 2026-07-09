@@ -123,6 +123,13 @@ function renderOverview(
 ): string[] {
     const lines: string[] = []
 
+    const toolTypeMap = new Map<string, number>()
+    for (const m of visibleMessages) {
+        toolTypeMap.set(m.tool, (toolTypeMap.get(m.tool) || 0) + m.tokens)
+    }
+    const topToolName = Array.from(toolTypeMap.entries())
+        .sort((a, b) => b[1] - a[1])[0]?.[0]
+
     if (fetchFailed) {
         lines.push("VISIBLE CONTEXT (uncompressed)")
         lines.push("  (unable to fetch messages for breakdown)")
@@ -144,10 +151,6 @@ function renderOverview(
             `  ${formatTokens(total)} total | ${formatTokens(totalTool)} tool (${toolPct}%) | ${formatTokens(totalText)} text (${textPct}%) | ${formatTokens(summaryTokens)} summaries (${summaryPct}%)`,
         )
 
-        const toolTypeMap = new Map<string, number>()
-        for (const m of visibleMessages) {
-            toolTypeMap.set(m.tool, (toolTypeMap.get(m.tool) || 0) + m.tokens)
-        }
         const topTypes = Array.from(toolTypeMap.entries())
             .map(([tool, tokens]) => ({ tool, tokens }))
             .sort((a, b) => b.tokens - a.tokens)
@@ -179,7 +182,9 @@ function renderOverview(
     }
 
     lines.push("")
-    lines.push('Tip: acp_status({scope:"uncompressed", tool:"todowrite", sort:"size"}) — mix any params freely')
+
+    const hintTool = topToolName || "bash"
+    lines.push(`Tip: acp_status({scope:"uncompressed", tool:"${hintTool}", sort:"size"}) — mix any params freely`)
 
     return lines
 }
