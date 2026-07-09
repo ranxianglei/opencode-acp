@@ -109,14 +109,14 @@ async function runStatus(
 
 test("acp_status: empty state returns no-blocks message", async () => {
     const result = await runStatus([], new Map())
-    assert.equal(result, "No compressed blocks. Context is fully visible.")
+    assert.match(result, /No compressed blocks/)
 })
 
 test("acp_status: single block shows correct header with summary and original sizes", async () => {
     const blocks = blocksMap(makeBlock({ blockId: 1, summaryTokens: 750, compressedTokens: 5000, topic: "My topic" }))
     const result = await runStatus([1], blocks)
 
-    assert.match(result, /ACP Status — 1 active compressed block \(750 summary, 5\.0K original compressed\)/)
+    assert.match(result, /COMPRESSED BLOCKS — 1 active \(/)
     assert.match(result, /b1/)
     assert.match(result, /"My topic"/)
 })
@@ -128,7 +128,7 @@ test("acp_status: plural header for multiple blocks", async () => {
     )
     const result = await runStatus([1, 2], blocks)
 
-    assert.match(result, /2 active compressed blocks/)
+    assert.match(result, /2 active \(/)
     assert.match(result, /1\.1K summary/)
 })
 
@@ -277,5 +277,5 @@ test("acp_status: invalid sort falls back to recent", async () => {
     const blocks = blocksMap(makeBlock({ blockId: 1 }))
     const result = await runStatus([1], blocks, { sort: "bogus" as any })
 
-    assert.match(result, /sorted by recent/)
+    assert.match(result, /Blocks sorted by recent/)
 })

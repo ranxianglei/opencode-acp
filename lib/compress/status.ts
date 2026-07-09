@@ -1,18 +1,25 @@
 import { tool } from "@opencode-ai/plugin"
 import type { ToolContext } from "./types"
 import { formatAge } from "../ui/utils"
-import type { CompressionBlock } from "../state/types"
+import type { CompressionBlock, WithParts } from "../state/types"
+import { estimateContextComposition, type ContextComposition } from "../messages/inject/utils"
+import { fetchSessionMessages } from "./search"
 
-const ACP_STATUS_TOOL_DESCRIPTION = `Show detailed status of all active compressed context blocks. Returns block IDs, sizes, ages, topics, and the message-ID ranges each block consumed — use this to see what has been compressed away and to choose safe compress boundaries.
+const ACP_STATUS_TOOL_DESCRIPTION = `Show full context status: visible (uncompressed) breakdown + compressed block list.
+
+Returns two sections:
+1. VISIBLE CONTEXT — token breakdown by category (tool outputs, code, text, summaries) with largest items per category. Helps you decide what to compress.
+2. COMPRESSED BLOCKS — active compression blocks with sizes, ages, topics, and message-ID ranges consumed. Helps you choose safe boundaries and track what was compressed away.
 
 Use this tool when:
+- You want to see what's consuming context (tool outputs? code? text?)
 - You are unsure which mNNNNN refs are still compressible
 - Before choosing compress boundaries, if any prior compressions exist
 - You want to see block sizes before deciding to decompress
 - A compress call failed with "not available" (the ID was likely consumed)
 
 Args:
-- mode: "summary" (default) — one line per block with size/range/topic. "detailed" — adds age, generation, effective message count, consumed block lineage.
+- mode: "summary" (default) — compact one-line per category and per block. "detailed" — adds largest items per category, plus block age/generation/effective message count/consumed lineage.
 - sort: "recent" (default) | "size" (largest compressed first) | "age" (oldest surviving first, nearing GC).
 - limit: max blocks to show (default 30).`
 
@@ -73,6 +80,66 @@ function renderDetailedRow(block: CompressionBlock, idWidth: number): string {
     return `  ${idStr} ${sizeStr}  ${ageStr}  ${rangeStr}  age=${survived} ${gen} eff=${effCount}${consumedLineage}  "${topic}"`
 }
 
+function pct(n: number, total: number): number {
+    return total > 0 ? Math.round((n / total) * 100) : 0
+}
+
+function renderVisibleBreakdown(
+    composition: ContextComposition,
+    mode: "summary" | "detailed",
+): string[] {
+    const lines: string[] = []
+    const total = composition.total
+    const toolPct = pct(composition.toolTokens, total)
+    const codePct = pct(composition.codeTokens, total)
+    const textPct = pct(composition.textTokens, total)
+    const summaryPct = pct(composition.summaryTokens, total)
+
+    lines.push("VISIBLE CONTEXT (uncompressed)")
+    lines.push(
+        `  ${formatTokens(total)} total | ${formatTokens(composition.toolTokens)} tool (${toolPct}%) | ${formatTokens(composition.codeTokens)} code (${codePct}%) | ${formatTokens(composition.textTokens)} text (${textPct}%) | ${formatTokens(composition.summaryTokens)} summaries (${summaryPct}%)`,
+    )
+
+    if (mode === "detailed") {
+        if (composition.largestToolRanges.length > 0) {
+            lines.push(
+                `  Largest tool outputs: ${composition.largestToolRanges.map((r) => `${r.ref} (${formatTokens(r.tokens)})`).join(", ")}`,
+            )
+        }
+        if (composition.largestCodeRanges.length > 0) {
+            lines.push(
+                `  Largest code messages: ${composition.largestCodeRanges.map((r) => `${r.ref} (${formatTokens(r.tokens)})`).join(", ")}`,
+            )
+        }
+        if (composition.largestMessageRanges.length > 0) {
+            lines.push(
+                `  Largest text messages: ${composition.largestMessageRanges.map((r) => `${r.ref} (${formatTokens(r.tokens)})`).join(", ")}`,
+            )
+        }
+        if (
+            composition.largestToolRanges.length === 0 &&
+            composition.largestCodeRanges.length === 0 &&
+            composition.largestMessageRanges.length === 0
+        ) {
+            lines.push("  (no large items — all messages are small)")
+        }
+    }
+
+    return lines
+}
+
+function filterVisibleMessages(
+    rawMessages: WithParts[],
+    ctx: ToolContext,
+): WithParts[] {
+    const pruneMap = ctx.state.prune.messages.byMessageId
+    return rawMessages.filter((msg) => {
+        const msgId = (msg.info as any)?.id || ""
+        const entry = pruneMap.get(msgId)
+        return !entry || entry.activeBlockIds.length === 0
+    })
+}
+
 export function createAcpStatusTool(ctx: ToolContext): ReturnType<typeof tool> {
     ctx.prompts.reload()
 
@@ -86,23 +153,39 @@ export function createAcpStatusTool(ctx: ToolContext): ReturnType<typeof tool> {
             sort: tool.schema
                 .string()
                 .optional()
-                .describe('Sort order: "recent" (default), "size", or "age"'),
+                .describe('Sort order for blocks: "recent" (default), "size", or "age"'),
             limit: tool.schema
                 .number()
                 .optional()
                 .describe("Maximum blocks to show (default 30)"),
         },
-        async execute(args) {
+        async execute(args, toolCtx) {
             const mode = args.mode === "detailed" ? "detailed" : "summary"
             const sort: "recent" | "size" | "age" =
                 args.sort === "size" || args.sort === "age" ? args.sort : "recent"
             const limit = Number.isFinite(args.limit) && args.limit! > 0 ? Math.min(args.limit!, 200) : 30
 
+            const lines: string[] = []
+
+            try {
+                const rawMessages = await fetchSessionMessages(ctx.client, toolCtx.sessionID)
+                const visibleMessages = filterVisibleMessages(rawMessages, ctx)
+                const composition = estimateContextComposition(visibleMessages, ctx.state)
+
+                lines.push(...renderVisibleBreakdown(composition, mode))
+            } catch {
+                lines.push("VISIBLE CONTEXT (uncompressed)")
+                lines.push("  (unable to fetch messages for breakdown)")
+            }
+
+            lines.push("")
             const messages = ctx.state.prune.messages
             const activeIds = Array.from(messages.activeBlockIds).sort((a, b) => a - b)
 
             if (activeIds.length === 0) {
-                return "No compressed blocks. Context is fully visible."
+                lines.push("COMPRESSED BLOCKS")
+                lines.push("  No compressed blocks. Context is fully visible.")
+                return lines.join("\n")
             }
 
             const allBlocks = activeIds
@@ -110,7 +193,9 @@ export function createAcpStatusTool(ctx: ToolContext): ReturnType<typeof tool> {
                 .filter((b): b is NonNullable<typeof b> => b !== undefined && b.active)
 
             if (allBlocks.length === 0) {
-                return "No compressed blocks. Context is fully visible."
+                lines.push("COMPRESSED BLOCKS")
+                lines.push("  No compressed blocks. Context is fully visible.")
+                return lines.join("\n")
             }
 
             const totalSummary = allBlocks.reduce((s, b) => s + (b.summaryTokens || 0), 0)
@@ -121,10 +206,10 @@ export function createAcpStatusTool(ctx: ToolContext): ReturnType<typeof tool> {
 
             const idWidth = Math.max(...shown.map((b) => String(b.blockId).length))
 
-            const lines: string[] = [
-                `ACP Status — ${allBlocks.length} active compressed block${allBlocks.length === 1 ? "" : "s"} (${formatTokens(totalSummary)} summary, ${formatTokens(totalCompressed)} original compressed)`,
-                "",
-            ]
+            lines.push(
+                `COMPRESSED BLOCKS — ${allBlocks.length} active (${formatTokens(totalSummary)} summary, ${formatTokens(totalCompressed)} original compressed)`,
+            )
+            lines.push("")
 
             for (const b of shown) {
                 lines.push(
@@ -140,8 +225,8 @@ export function createAcpStatusTool(ctx: ToolContext): ReturnType<typeof tool> {
             lines.push("")
             const sortHint =
                 sort === "recent"
-                    ? 'sorted by recent. Use acp_status({sort:"size"}) for largest, {sort:"age"} for near-GC.'
-                    : `sorted by ${sort}.`
+                    ? 'Blocks sorted by recent. Use acp_status({sort:"size"}) for largest, {sort:"age"} for near-GC.'
+                    : `Blocks sorted by ${sort}.`
             lines.push(`${sortHint} Use decompress to restore a block's full content, or search_context to search within compressed blocks.`)
 
             return lines.join("\n")
