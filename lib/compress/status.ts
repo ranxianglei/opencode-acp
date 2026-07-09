@@ -98,11 +98,11 @@ function collectVisibleMessages(
         for (const part of msg.parts || []) {
             if (part.type === "text" && typeof (part as any).text === "string") {
                 tokens += Math.round(((part as any).text as string).length / 4)
-            } else if (part.type !== "text" && part.type !== "reasoning") {
+            } else if (part.type === "tool") {
                 const raw = JSON.stringify(part)
                 tokens += Math.round(raw.length / 4)
                 if (!toolName) {
-                    toolName = (part as any)?.tool || (part as any)?.type || "unknown"
+                    toolName = (part as any)?.tool || "unknown"
                 }
             }
         }

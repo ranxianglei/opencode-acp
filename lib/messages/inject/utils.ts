@@ -622,13 +622,13 @@ export function estimateContextComposition(
                         msgCode += cTokens
                     }
                 }
-            } else if (part.type !== "text" && part.type !== "reasoning") {
+            } else if (part.type === "tool") {
                 const raw = JSON.stringify(part)
                 const tokens = Math.round(raw.length / 4)
                 msgTotal += tokens
                 toolTokens += tokens
                 msgTool += tokens
-                const toolName = (part as any)?.tool || (part as any)?.type || "unknown"
+                const toolName = (part as any)?.tool || "unknown"
                 toolTypeMap.set(toolName, (toolTypeMap.get(toolName) || 0) + tokens)
                 if (!msgToolName) msgToolName = toolName
             }
