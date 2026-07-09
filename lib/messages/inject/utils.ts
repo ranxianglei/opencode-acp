@@ -561,6 +561,7 @@ export interface ContextComposition {
     largestToolRanges: { ref: string; tokens: number }[]
     largestCodeRanges: { ref: string; tokens: number }[]
     largestMessageRanges: { ref: string; tokens: number }[]
+    toolTypeBreakdown: { tool: string; tokens: number }[]
 }
 
 function estimateCodeTokens(text: string): number {
@@ -589,6 +590,7 @@ export function estimateContextComposition(
     const perTool: { ref: string; tokens: number }[] = []
     const perCode: { ref: string; tokens: number }[] = []
     const perText: { ref: string; tokens: number }[] = []
+    const toolTypeMap = new Map<string, number>()
 
     for (const msg of messages) {
         const text = (msg.parts || [])
@@ -625,6 +627,8 @@ export function estimateContextComposition(
                 msgTotal += tokens
                 toolTokens += tokens
                 msgTool += tokens
+                const toolName = (part as any)?.tool || (part as any)?.type || "unknown"
+                toolTypeMap.set(toolName, (toolTypeMap.get(toolName) || 0) + tokens)
             }
         }
 
@@ -642,6 +646,10 @@ export function estimateContextComposition(
     perCode.sort((a, b) => b.tokens - a.tokens)
     perText.sort((a, b) => b.tokens - a.tokens)
 
+    const toolTypeBreakdown = Array.from(toolTypeMap.entries())
+        .map(([tool, tokens]) => ({ tool, tokens }))
+        .sort((a, b) => b.tokens - a.tokens)
+
     return {
         toolTokens,
         codeTokens,
@@ -653,5 +661,6 @@ export function estimateContextComposition(
         largestToolRanges: perTool.slice(0, 15),
         largestCodeRanges: perCode.slice(0, 5),
         largestMessageRanges: perText.slice(0, 5),
+        toolTypeBreakdown,
     }
 }

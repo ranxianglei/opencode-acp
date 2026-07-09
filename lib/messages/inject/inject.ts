@@ -241,6 +241,11 @@ export const injectCompressNudges = (
                 : ""
             let breakdown = `${efficiencyNote}\nBreakdown: ${fmt(composition.toolTokens)} tool (${pct(composition.toolTokens)}%) | ${fmt(composition.summaryTokens)} summaries (${pct(composition.summaryTokens)}%) | ${fmt(composition.codeTokens)} code (${pct(composition.codeTokens)}%) | ${fmt(plainTextTokens)} text (${pct(plainTextTokens)}%)${growthStr}`
 
+            const topToolTypes = composition.toolTypeBreakdown.slice(0, 3)
+            if (topToolTypes.length > 0) {
+                breakdown += `\nTop tools: ${topToolTypes.map((t) => `${t.tool} (${pct(t.tokens)}%)`).join(", ")}`
+            }
+
             const topBlocks = Array.from(state.prune.messages.blocksById.values())
                 .filter((b) => b.active)
                 .sort((a, b) => b.compressedTokens - a.compressedTokens)
@@ -303,6 +308,10 @@ export const injectCompressNudges = (
                     .sort((a, b) => b.compressedTokens - a.compressedTokens)
                     .slice(0, 3)
                 let mini = `\nBreakdown: ${fmt2(composition.toolTokens)} tool outputs (${pct2(composition.toolTokens)}%) | ${fmt2(composition.summaryTokens)} summaries (${pct2(composition.summaryTokens)}%) | ${fmt2(composition.messageTokens)} messages (${pct2(composition.messageTokens)}%)`
+                const miniTopTypes = composition.toolTypeBreakdown.slice(0, 3)
+                if (miniTopTypes.length > 0) {
+                    mini += `\nTop tools: ${miniTopTypes.map((t) => `${t.tool} (${pct2(t.tokens)}%)`).join(", ")}`
+                }
                 if (topBlocks.length > 0) {
                     mini += `\nTop blocks: ${topBlocks.map((b) => `b${b.blockId} ${fmt2(b.compressedTokens)}→${fmt2(b.summaryTokens)}`).join(", ")}`
                 }

@@ -89,19 +89,20 @@ function describeToolMessage(msg: WithParts): string {
         if (part.type === "tool") {
             const toolPart = part as any
             const toolName = toolPart.tool || "?"
-            const input = toolPart.input
+            const input = toolPart.state?.input
             if (input && typeof input === "object") {
-                if (input.filePath) return `${toolName}: ${String(input.filePath).slice(0, 50)}`
-                if (input.command) return `${toolName}: ${String(input.command).slice(0, 50)}`
-                if (input.query) return `${toolName}: ${String(input.query).slice(0, 50)}`
-                if (input.pattern) return `${toolName}: ${String(input.pattern).slice(0, 50)}`
+                if (input.command) return `${toolName}: ${String(input.command).slice(0, 60)}`
+                if (input.filePath) return `${toolName}: ${String(input.filePath).slice(0, 60)}`
+                if (input.query) return `${toolName}: ${String(input.query).slice(0, 60)}`
+                if (input.pattern) return `${toolName}: ${String(input.pattern).slice(0, 60)}`
+                if (input.content) return `${toolName}: ${String(input.content).slice(0, 40)}`
             }
             return toolName
         }
     }
     const textPart = (msg.parts || []).find((p) => p.type === "text") as any
     if (textPart?.text) {
-        return textPart.text.slice(0, 50).replace(/\n/g, " ")
+        return textPart.text.slice(0, 60).replace(/\n/g, " ")
     }
     return "?"
 }
@@ -123,6 +124,17 @@ function renderVisibleBreakdown(
     lines.push(
         `  ${formatTokens(total)} total | ${formatTokens(composition.toolTokens)} tool (${toolPct}%) | ${formatTokens(composition.codeTokens)} code (${codePct}%) | ${formatTokens(composition.textTokens)} text (${textPct}%) | ${formatTokens(composition.summaryTokens)} summaries (${summaryPct}%)`,
     )
+
+    const topTypes = composition.toolTypeBreakdown.slice(0, mode === "detailed" ? 5 : 3)
+    if (topTypes.length > 0) {
+        const parts = topTypes.map((t) => {
+            const tp = pct(t.tokens, total)
+            return mode === "detailed"
+                ? `${t.tool} (${formatTokens(t.tokens)}, ${tp}%)`
+                : `${t.tool} (${tp}%)`
+        })
+        lines.push(`  Top tools: ${parts.join(", ")}`)
+    }
 
     if (mode === "detailed") {
         const byRef = state?.messageIds?.byRef
@@ -147,13 +159,6 @@ function renderVisibleBreakdown(
             lines.push(
                 `  Largest text messages: ${composition.largestMessageRanges.map((r) => `${r.ref} (${formatTokens(r.tokens)})`).join(", ")}`,
             )
-        }
-        if (
-            composition.largestToolRanges.length === 0 &&
-            composition.largestCodeRanges.length === 0 &&
-            composition.largestMessageRanges.length === 0
-        ) {
-            lines.push("  (no large items — all messages are small)")
         }
     }
 
