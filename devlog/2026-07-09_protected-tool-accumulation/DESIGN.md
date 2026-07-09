@@ -1,18 +1,17 @@
-# Proposal: Protected Tool Accumulation — Analysis & Solutions
+# Design: Batch Sweep Compression + Age-Based Protection
 
-> **Status**: Proposal (analysis + design only, no implementation yet)
+> **Status**: Confirmed design (v2 — supersedes original Solutions A–D which proposed silent pre-pruning, **rejected** by maintainer)
 > **Date**: 2026-07-09
-> **Motivation**: Empirical analysis of a long-running session revealed that protected tool calls (`write`, `edit`, `todowrite`) accumulate indefinitely in visible context, consuming 40–60% of the tool-category token budget with content that is largely redundant after consumption.
+> **Decision**: Model-driven batch compression with cache-friendly ranges, NOT silent content stripping.
 
 ---
 
 ## 1. Problem Statement
 
-ACP's protected-tools mechanism (Bug 39 fix) ensures that calls to `write`, `edit`, `todowrite`, `task`, `skill`, and similar tools are **hard-excluded from compression ranges** and their content is **soft-appended to summaries** when they fall inside a compressed range.
+ACP's protected-tools mechanism (Bug 39) hard-excludes protected tool messages from compression ranges. This has two consequences:
 
-This design correctly **prevents content loss** — but it has an unintended consequence: **protected tool calls that are never inside a compressed range accumulate forever in visible context.**
-
-The model compresses large outputs aggressively (delegate_task results, build logs, file reads) but rarely sweeps up the scattered small protected calls between them. Over a long session, these pile up.
+1. **Protected tools accumulate** — `todowrite`, `write`, `edit` calls between compressed ranges are never swept.
+2. **Small compressions fragment cache** — the model does many small range compressions (<5 messages each), each invalidating the prefix cache.
 
 ### 1.1 The Accumulation Pattern
 
@@ -30,244 +29,332 @@ Session timeline:
          never swept      never swept   never swept           never swept
 ```
 
-The small protected calls between compressed ranges are never captured into any block, so their content stays in full visible context for the entire session.
+### 1.2 The Cache Fragmentation Problem
+
+Each compression changes the message array sent to the API. The prefix cache (Anthropic prompt caching) matches from the beginning; any change at position N invalidates the cache for everything after N.
+
+**Empirical finding**: One session had 70 compressions, 71% covering <5 messages. That's ~50 small compressions, each breaking the cache at a different point. Another session (same model, same task type) had 37 compressions, 0% small ranges, 72% large ranges — dramatically better cache efficiency.
 
 ---
 
-## 2. Empirical Analysis
+## 2. Empirical Analysis (5 Sessions)
 
 ### 2.1 Methodology
 
-Analyzed one long-running session (~574 messages, ~500 tool calls, 60 active compression blocks) using direct SQLite queries against the session database. Token estimates use chars/4 heuristic (cross-validated against API-reported token counts; ±15% accuracy).
+Analyzed 5 sessions (331–1638 messages each) using `acp-inspect --tool-analysis` mode and direct SQLite queries. Data is sanitized: no file paths, no session IDs, no project-specific content.
 
-**All data below is sanitized**: no file paths, no session IDs, no project-specific content. Only structural patterns are reported.
+### 2.2 Per-Tool Accumulation
 
-### 2.2 Overall Compression Effectiveness
+| Tool | Typical visible calls | Typical visible tok | % of visible tool | Key pattern |
+|------|-----------------------|---------------------|-------------------|-------------|
+| `bash` | 14–78 | 12K–33K | 23–47% | Repeated env-prefix commands (`export CI=true...` ×11–30), repeated SSH commands (×30), status checks |
+| `todowrite` | 32–84 | 12K–19K | 18–51% | **0% pruned** in most sessions; spread across 70%+ of session; avg gap 5–7 msgs |
+| `write` | 3–8 | 3K–12K | 5–17% | Input dominated (file content duplicates disk) |
+| `edit` | 3–12 | 1K–4K | 4–12% | "Edit applied successfully." echoes |
+| `compress` | 1–22 | 1K–15K | 2–24% | Compression tool calls themselves accumulate |
 
-| Metric | Value |
-|--------|-------|
-| Total tool calls | ~500 |
-| Compressed (pruned) | ~200 (40%) |
-| Still visible | ~300 (60%) |
-| Compressed tokens | ~286K tok |
-| Summary tokens | ~67K tok |
-| **Compression savings** | **81% of tool chars compressed away** |
+### 2.3 bash Prefix Duplication
 
-**Verdict**: ACP's compression is highly effective at removing large tool outputs. The problem is specifically with the **small protected calls that survive**.
+The single biggest waste pattern across all sessions:
 
-### 2.3 Visible Small Tool Calls (<0.5K tok each)
+| Pattern | Repetitions | Waste per session |
+|---------|-------------|-------------------|
+| `export CI=true DEBIAN_FRONTEND=noninteractive...` (env injection) | 11–30× | 24K–66K chars |
+| `ssh -p 1194 -o StrictHostKeyChecking=no...` (remote ops) | 30× | ~40K chars |
+| `awork-reply N owner/repo << 'AWORK_REPLY_END'` (bot replies) | 7–10× | ~4K chars |
 
-~300 visible tool calls under 0.5K tokens each, totaling ~58K tok. Breakdown by type:
+These are command prefixes repeated in every invocation due to environment injection, not user choice.
 
-| Tool | Calls | Total tok | Avg tok | Primary content |
-|------|-------|-----------|---------|-----------------|
-| `bash` | ~114 | ~21K | 186 | Repeated status checks (`tmux ls`, GPU monitoring, log reads) |
-| `todowrite` | ~73 | ~18K | 243 | Full todo list snapshots; old states are pure history |
-| `write` | ~38 | ~51K | — | See §2.4 (dominated by file content + hook echoes) |
-| `edit` | ~48 | ~18K | — | "Edit applied successfully." × 48 |
-| `read` | ~46 | ~8K | 177 | Directory listings, short file reads |
+### 2.4 todowrite Fragmentation
 
-### 2.4 The `write` Deep Dive (Largest Single Contributor)
+| Session | Visible calls | Pruned calls | Span (% of session) | Avg gap (msgs) |
+|---------|--------------|--------------|---------------------|-----------------|
+| Session A | 84 | **0** | 70%+ | 5–7 |
+| Session B | 34 | 41 | 60% | 8–10 |
+| Session C | 32 | **0** | 65% | 6–8 |
+| Session D | 46 | 11 | 75% | 4–6 |
 
-The `write` tool's 51K tok is NOT "all success echoes." Breakdown:
+**Key finding**: todowrite is **never pruned** in sessions where ACP doesn't explicitly compress a range containing it. This is because Bug 39 hard-excludes it from compression selections.
 
-| Component | tok | Description |
-|-----------|-----|-------------|
-| **File content (input)** | **~29K** | Full source code of files written to disk (.py scripts, .md docs, .yaml configs) |
-| **Hook output** | **~12K** | A project-level git hook ("comment/docstring detected") fired 16×, each producing 2.5–5.6K chars of identical warning text |
-| Markdown content | ~4K | DESIGN.md, WORKLOG.md, analysis docs |
-| YAML configs | <1K | .meta.yaml files |
-| "Wrote file successfully." | <1K | Actual success echo |
+### 2.5 Cache Invalidation Impact
 
-**Key insight**: 29K tok of `write` input is **file content that already exists on disk**. It is functionally equivalent to a `read` of that file — except `read` output can be compressed, while `write` input cannot (it's protected).
+| Session | Compressions | Small ranges (<5 msgs) | Large ranges (≥20 msgs) |
+|---------|-------------|----------------------|------------------------|
+| Session A | 70 | **50 (71%)** | 4 (5%) |
+| Session B | 37 | 0 (0%) | 27 (72%) |
 
-### 2.5 Compression Quality Spot-Check (Control)
-
-To verify that the compression itself is working well, sampled 5 active blocks across the session timeline:
-
-| Block | Compressed tok | Summary tok | Ratio | Quality |
-|-------|---------------|-------------|-------|---------|
-| b1 | 18.9K | 2.0K | 9.6× | Excellent — preserved file paths with line numbers, critical code lines, exact PPL values, decisions with rationale |
-| b20 | 28.7K | 1.0K | 27.9× | Excellent — design formulas, user directives verbatim, training configs |
-| b38 | 1.6K | 0.15K | 10.7× | Good — concise checkpoint status |
-| b54 | 3.7K | 0.08K | 48.6× | Adequate — minimal but sufficient |
-| b68 | 1.1K | 0.10K | 11.4× | Good — reply summary |
-
-**Conclusion**: Compression quality is high. The problem is NOT compression quality — it's that protected tools are never **reached** by compression.
+Session A's 50 small compressions each broke the cache prefix. Session B's large-range strategy preserved cache much better.
 
 ---
 
-## 3. Root Cause Analysis
+## 3. Root Cause
 
-### 3.1 Protection vs. Accumulation
+### 3.1 Why todowrite Can't Be Compressed
 
-The protected-tools mechanism has two effects:
+**Code path**: `lib/compress/range.ts:99`
 
-1. **Hard exclusion** (Bug 39): Protected tool messages are excluded from compression ranges — they survive intact in visible context.
-2. **Soft injection**: When a protected tool IS inside a compressed range, its content is appended to the summary.
+```typescript
+selection: filterProtectedToolMessages(
+    plan.selection,
+    searchContext,
+    ctx.config.compress.protectedTools,  // ["task", "skill", "todowrite", "todoread"]
+    ctx.config.protectedFilePatterns,
+)
+```
 
-Effect #1 means protected calls between compressed ranges are **never swept**. Effect #2 only triggers when the model explicitly compresses a range containing them.
+`filterProtectedToolMessages` (`lib/compress/protected-content.ts:233`) unconditionally removes any message containing a protected tool from the compression selection. The removed messages survive intact in visible context.
 
-### 3.2 Why the Model Doesn't Sweep Them
+**The problem**: This protection is **ageless** — a todowrite from 2 messages ago and one from 200 messages ago are treated identically. Recent todowrite state may be actively referenced by the model, but old todowrite state is pure history.
 
-The compression philosophy instructs the model to "target one large consumed range per compress call." The model correctly identifies large outputs (delegate_task 12K, background_output 10.9K) and compresses those. But:
+### 3.2 Why Small Compressions Fragment Cache
 
-- Small protected calls are scattered individually between big outputs.
-- Compressing them requires a "sweep" compress call covering many small messages.
-- The model does attempt this ("Consumed tool outputs batch" topics appear in the data), but too infrequently.
+The current nudge system (`lib/messages/inject/inject.ts`) triggers on:
+- Context usage exceeding `minContextLimit` / `maxContextLimit` (percentage of model context)
+- Tool output growth exceeding `toolOutputNudgeThreshold` (adaptive, ~5% of context)
 
-### 3.3 The Redundancy Tax
-
-Protected tools carry inherently redundant content:
-
-| Tool | Redundant content | Why redundant |
-|------|------------------|---------------|
-| `write` | Full file content in input | File exists on disk; `read` can retrieve it |
-| `edit` | "Edit applied successfully." | Zero information value after consumption |
-| `todowrite` | Full todo list snapshot | Only latest state matters; old states are history |
-| `bash` | Repeated status checks | Latest output supersedes earlier ones |
+The nudge lists top ranges and says "compress these now." The model tends to compress the largest single output it sees, then the next, creating many small blocks. There's no mechanism to encourage batching multiple small items into one large range.
 
 ---
 
-## 4. Proposed Solutions
+## 4. Solution: Two Features
 
-### Solution A: Protected Tool Input Pruning (`write`/`edit`)
+### Feature A: Age-Based Protection Expiry (PR-A)
 
-**Concept**: After a `write` or `edit` call is N turns old, strip its input content, keeping only `filePath` + output.
+**Concept**: Protected tools lose protection status after N messages. Old protected tool calls become compressible; recent ones stay protected.
 
-**Mechanism**: New strategy module `lib/strategies/strip-written-content.ts`:
-- Runs in `prepareSession()` alongside `deduplicate()` and `purgeErrors()`
-- For `write`/`edit` calls older than `turns` threshold:
-  - Replace `input.content` with `"[content pruned — file exists at {filePath}]"`
-  - Keep `input.filePath` and `output` intact
-- Config: `strategies.stripWrittenContent: { enabled: true, turns: 4, protectedTools: [] }`
+**Config**:
+```jsonc
+{
+    "compress": {
+        "protectedTools": ["task", "skill", "todowrite", "todoread"],
+        "protectedToolMaxAge": {
+            "todowrite": 15,
+            "todoread": 15
+            // task/skill: not listed → Infinity (permanent protection)
+        }
+    }
+}
+```
 
-**Estimated savings**: ~29K tok (write input) + ~18K tok (edit — if input contains large oldString/newString)
+**Implementation**: Modify `filterProtectedToolMessages` in `lib/compress/protected-content.ts`:
 
-**Risk**: LOW. The file exists on disk. If the model needs the content, it can `read` it (and that `read` CAN be compressed normally). The only loss is the "what did I write at this point in history" audit trail — which is low-value for most workflows.
+```typescript
+// Current (Bug 39): unconditional removal
+if (messageContainsProtectedTool(message, protectedTools, patterns)) {
+    removedMessageIds.add(messageId)
+}
 
-**Edge cases**:
-- Write followed by delete: content is gone from disk. Mitigation: only prune if file still exists (check via `fs.existsSync`).
-- Write that failed: keep full content for debugging. Mitigation: only prune successful writes.
+// New: age-conditional removal
+if (messageContainsProtectedTool(message, protectedTools, patterns)) {
+    const toolName = getProtectedToolName(message, protectedTools)
+    const maxAge = protectedToolMaxAge?.[toolName] ?? Infinity
+    const messageIndex = searchContext.rawIndexById.get(messageId) ?? 0
+    const currentIndex = searchContext.rawMessages.length - 1
+    const age = currentIndex - messageIndex
+    if (age <= maxAge) {
+        removedMessageIds.add(messageId)  // recent: protect
+    }
+    // old: allow compression (don't add to removedMessageIds)
+}
+```
 
-### Solution B: Hook Output Deduplication
+**Scope**: 
+- Changes: `lib/compress/protected-content.ts` (filterProtectedToolMessages), `lib/config.ts` (new config field), `lib/config-validation.ts` (validate new field)
+- Tests: `tests/compress-state.test.ts` or new `tests/protected-age.test.ts`
+- Risk: LOW — opt-in via config; default behavior unchanged if `protectedToolMaxAge` not set
 
-**Concept**: Detect repeated identical/similar tool outputs and keep only the latest K instances.
+**Why this works for todowrite**: Recent todowrite (last 15 msgs) stays visible — the model can reference the current todo list. Old todowrite (50+ msgs ago) gets compressed into summaries when the model next compresses a range containing it.
 
-**Mechanism**: Extend `lib/strategies/deduplication.ts`:
-- Current dedup: same tool + same args → prune all but last
-- **New**: same tool + output prefix matches pattern → prune all but last K
-- Config: `strategies.deduplication: { outputPrefixMatch: { enabled: true, prefixLength: 100, keep: 2 } }`
+### Feature B: Batch Sweep Compression (PR-B)
 
-**Estimated savings**: ~12K tok (the 16 repeated hook warnings → keep 2)
+**Concept**: Track accumulated small tool calls per type. When a tool type hits 5% of context AND a quantitative threshold, inject a batch nudge suggesting cache-friendly contiguous ranges.
 
-**Risk**: LOW. If the hook output changed meaningfully between calls, the prefix match won't trigger. Only exact-prefix duplicates are pruned.
+#### B.1 Accumulation Tracker (SessionState)
 
-### Solution C: TodoWrite State Dedup
+```typescript
+// New field in SessionState
+batchSweep: {
+    byToolType: Map<string, {
+        visibleTokens: number,      // total tokens of visible calls of this type
+        visibleCallCount: number,   // count of visible calls
+        candidateRanges: Array<{    // pre-computed compressible ranges
+            startRef: string,       // mNNNNN
+            endRef: string,         // mNNNNN
+            msgCount: number,
+            estimatedTokens: number,
+        }>,
+    }>,
+    lastSweepBlockId: number | null,  // last block created by a batch sweep
+}
+```
 
-**Concept**: Keep only the latest K `todowrite` calls visible; prune older snapshots.
+Updated every message-transform cycle by scanning visible messages.
 
-**Mechanism**: New strategy `lib/strategies/todo-dedup.ts`:
-- Track all `todowrite` calls in session
-- Keep latest `keep` calls (default: 3) fully visible
-- For older calls: replace full todo list with a one-line status summary: `"[{N} todos: {completed}/{total} completed, pruned — see latest todowrite]"`
+#### B.2 Trigger Conditions (AND logic)
 
-**Estimated savings**: ~15K tok (73 calls → 3 visible)
+A batch sweep nudge fires when ALL of the following are true for at least one tool type:
 
-**Risk**: MEDIUM. Todo history can be useful for understanding task progression. Mitigation: the summary line preserves the completion ratio; the latest 3 calls preserve recent context. If full history is needed, the user can scroll up in the UI.
+1. **Percentage threshold**: `visibleTokens / totalContextTokens >= 5%`
+2. **Quantitative threshold**: `visibleTokens >= tokenThreshold` (default: 10K)
+3. **Call count threshold**: `visibleCallCount >= messageThreshold` (default: 10)
+4. **Fragmentation detected**: `avgGap >= 3` (calls are scattered, not clustered)
 
-**Note**: `todowrite` is environment-managed (its output is auto-preserved during compression). This strategy operates at the **message-transform** level (before compression), pruning old calls from visible context. It does NOT interfere with the compression-protection mechanism.
+#### B.3 Range Pre-Computation
 
-### Solution D: Status Check Dedup (`bash`)
+When trigger conditions are met, compute optimal batch ranges:
 
-**Concept**: For repeated `bash` status commands (same command, different output over time), keep only the latest output.
+```
+1. Scan visible messages, find contiguous segments of uncompressed small tool calls
+2. Merge segments with gap < 3 messages (reduce fragmentation)
+3. Filter out segments < 500 tokens (too small to bother)
+4. Sort by recency: newest first (cache-friendly — end of message array)
+5. Output top 1-3 ranges as recommendations
+```
 
-**Mechanism**: Extend `lib/strategies/deduplication.ts`:
-- **New mode**: `sameCommandKeepLatest` — for bash commands matching configurable patterns (e.g., `nvidia-smi`, `tmux ls`, `git status`), keep only the latest output.
-- Config: `strategies.deduplication: { statusCommands: { enabled: true, patterns: ["nvidia-smi", "tmux ls", "git status"], keep: 1 } }`
+**Why newest-first**: Prefix cache matches from the beginning of the message array. Compressing the newest content (end of array) only invalidates cache at the tail. Compressing old content (middle of array) invalidates everything after it.
 
-**Estimated savings**: ~5–10K tok
+#### B.4 Deferred Delivery
 
-**Risk**: LOW. Status checks are inherently supersedeable. The latest GPU utilization replaces all previous checks.
+Don't fire the nudge if the model is mid-task:
 
-### Solution E: acp-inspect `--tool-analysis` Mode
+```
+Check: is the last message a tool call with no assistant response yet?
+  YES → defer (model is executing tools)
+  NO  → fire (natural pause point: user message or completed turn)
 
-**Concept**: Add a new analysis mode to the `acp-inspect` diagnostic tool that provides the per-tool-call granularity used in this analysis.
+Exception: if context > 90% full, force-fire regardless of deferral
+```
 
-**Features**:
-- Break down visible tool calls by tool type (bash/write/todowrite/edit/...)
-- Split input vs output tokens per call
-- Detect redundancy patterns (repeated commands, repeated outputs)
-- Sample tool calls per category for manual inspection
-- Show temporal distribution (which quartile of the session are small tools concentrated in?)
+This respects @dog's requirement: "允许他把提醒稍微滞后" (allow the reminder to be slightly delayed).
 
-**Rationale**: The current `--breakdown` mode only categorizes messages as tool/code/text/summary at the aggregate level. The `--stats` mode shows cumulative traffic. Neither provides the per-tool-type, per-call granularity needed to diagnose accumulation issues.
+#### B.5 Nudge Format
 
-**Estimated effort**: Medium (1–2 hours). The acp-inspect script already loads messages and ACP state; this adds categorization + reporting logic.
+```
+📦 Batch compression opportunity: {toolType} has {N} visible calls (~{K} tokens, {P}% of context).
+These are scattered across your context and compressing them individually would cause
+multiple cache invalidations. Consider one batch compress:
+
+  {startRef}–{endRef} ({msgCount} msgs, ~{tokens} tok)  ← most recent
+  {startRef}–{endRef} ({msgCount} msgs, ~{tokens} tok)
+
+⚠️ These tool calls may contain important information. When writing the summary,
+transcribe any critical details (file paths, decisions, error messages) before discarding.
+
+This batch compress would save ~{totalSavings} tokens with only 1 cache invalidation.
+```
+
+#### B.6 Config
+
+```jsonc
+{
+    "compress": {
+        "batchSweep": {
+            "enabled": false,                  // opt-in
+            "contextPercentThreshold": 5,      // tool type must be ≥5% of context
+            "tokenThreshold": 10000,           // AND ≥10K tokens
+            "callCountThreshold": 10,          // AND ≥10 visible calls
+            "fragmentationGapThreshold": 3,    // AND avg gap ≥3 msgs
+            "rangeMergeGapThreshold": 3,       // merge segments with gap <3
+            "minRangeTokens": 500,             // skip ranges <500 tok
+            "maxRecommendedRanges": 3,         // suggest at most 3 ranges
+            "deferDuringToolUse": true,        // don't interrupt mid-task
+            "forceAtContextPercent": 90        // force fire if context >90%
+        }
+    }
+}
+```
+
+#### B.7 Fragmentation Detection
+
+For each tool type, compute:
+
+```typescript
+interface FragmentationReport {
+    toolType: string
+    callCount: number
+    positions: number[]           // message indices of visible calls
+    spanPercent: number           // (last - first) / totalMessages * 100
+    avgGap: number                // average messages between consecutive calls
+    isFragmented: boolean         // avgGap >= 3 && spanPercent >= 30
+    mergeStrategy: "batch" | "individual"
+}
+```
+
+| Tool type | Typical pattern | Strategy |
+|-----------|----------------|----------|
+| `todowrite` | span 70%+, gap 5–7 | **batch** (highly fragmented) |
+| `bash` | clustered in work phases | **batch** (moderate fragmentation) |
+| `delegate_task` | 1–2 large blocks | **individual** (not fragmented) |
 
 ---
 
-## 5. Solution Priority Matrix
+## 5. Implementation Plan
 
-| Solution | Est. savings | Risk | Effort | Priority |
-|----------|-------------|------|--------|----------|
-| **A: Write/edit input pruning** | ~29K+ tok | LOW | Medium | **P0** — biggest single win |
-| **B: Hook output dedup** | ~12K tok | LOW | Low | **P1** — easy, high ROI |
-| **C: TodoWrite dedup** | ~15K tok | MEDIUM | Low | **P1** — high ROI, needs config tuning |
-| **D: Status check dedup** | ~5–10K tok | LOW | Low | **P2** — incremental |
-| **E: acp-inspect analysis** | 0 (tooling) | NONE | Medium | **P2** — enables future diagnosis |
+### PR-A: Age-Based Protection (standalone, no dependencies)
 
-**Total estimated savings**: ~60–75K tok per long session (if A+B+C+D all implemented).
+**Files changed**:
+- `lib/config.ts` — add `protectedToolMaxAge` to compress config
+- `lib/config-validation.ts` — validate new field
+- `lib/compress/protected-content.ts` — modify `filterProtectedToolMessages`
+- `tests/protected-age.test.ts` — new test file
 
----
+**Effort**: Small (1–2 hours). Low risk. Can ship independently.
 
-## 6. Implementation Plan
+**Testing**:
+- Recent protected tool (age < maxAge) → excluded from compression (protected)
+- Old protected tool (age > maxAge) → included in compression (compressible)
+- Tool not in maxAge map → permanent protection (backward compat)
+- Config not set → all tools permanently protected (backward compat)
 
-### Phase 1: Analysis & Config Foundation (this PR)
+### PR-B: Batch Sweep Compression (depends on PR-A for todowrite)
 
-- [x] This design document (analysis + proposed solutions)
-- [ ] Add config schema for new strategies (no logic yet)
-- [ ] Add `acp-inspect --tool-analysis` mode (Solution E)
+**Files changed**:
+- `lib/state/types.ts` — add `batchSweep` to SessionState
+- `lib/messages/inject/batch-sweep.ts` — new module (tracker + trigger + range computation)
+- `lib/messages/inject/inject.ts` — wire batch sweep nudge into pipeline
+- `lib/config.ts` — add `batchSweep` config
+- `lib/config-validation.ts` — validate new config
+- `tests/batch-sweep.test.ts` — new test file
 
-### Phase 2: High-ROI Strategies (follow-up PRs)
+**Effort**: Medium (3–5 hours). Moderate complexity (range computation, fragmentation detection).
 
-- [ ] Solution B (hook output dedup) — lowest risk, extends existing dedup module
-- [ ] Solution C (todowrite dedup) — new module, well-isolated
-- [ ] Solution A (write/edit input pruning) — biggest win, needs careful edge-case handling
+**Why depends on PR-A**: Without age-based protection, todowrite can never be compressed even if batch sweep recommends a range containing it. PR-A unlocks todowrite compressibility; PR-B provides the trigger mechanism.
 
-### Phase 3: Incremental (follow-up PRs)
+### PR-E: acp-inspect --tool-analysis (already done ✅)
 
-- [ ] Solution D (status check dedup) — extends dedup with pattern matching
-
-### Testing Strategy
-
-Each strategy module gets its own test file (`tests/strategies-*.test.ts`) following the existing pattern. Tests use mock message arrays and verify:
-1. Correct calls are pruned (age threshold, pattern match)
-2. Protected calls survive (configurable `protectedTools`)
-3. Edge cases (file deleted, write failed, empty todo list)
-
-### Backward Compatibility
-
-- All strategies are **opt-in** via config (default: `enabled: false` for new strategies until validated).
-- Existing config without the new keys continues to work (defaults applied).
-- No changes to persisted state format (strategies operate at message-transform time, before persistence).
+- Script: `~/.local/bin/acp-inspect` (+200 lines)
+- Docs: `~/.claude/skills/acp-inspect/SKILL.md`
+- Status: Complete, tested on 4 sessions
 
 ---
 
-## 7. Open Questions
+## 6. What Was Rejected (v1 Solutions A–D)
 
-1. **Should write/edit input pruning be a "strategy" or a core message-transform step?** Strategies run in `prepareSession()` (only when `compress` tool is called). Core transform runs every LLM call. If we want continuous pruning, it should be in the transform pipeline. If we want it only at compression time, strategy is correct.
+The original proposal (v1) included silent pre-pruning strategies:
+- **Solution A**: Strip write/edit input content after N turns
+- **Solution B**: Deduplicate repeated hook outputs
+- **Solution C**: Keep only latest K todowrite calls, prune rest
+- **Solution D**: Keep only latest status check output
 
-2. **Should todowrite dedup respect `turnProtection`?** If `turnProtection` is enabled and a todowrite is within the protection window, should it be exempt from dedup?
+**Why rejected**: These operate without model involvement. The maintainer's position is that tools may contain important information — the model must decide what to keep by transcribing to summaries. Silent stripping removes model agency.
 
-3. **Config granularity**: Should the dedup patterns (Solution D) be user-configurable per-project, or ship sensible defaults? Project-specific commands (e.g., `kubectl get pods`) would benefit from customization.
-
-4. **Should write/input pruning interact with `decompress`?** If we prune a write's input, should `decompress` be able to restore it from the database? (The raw message is still in the DB; we're only modifying the transformed view sent to the LLM.)
+The v2 approach (batch sweep + age protection) preserves model agency: the model still writes the summary, decides what's important, and controls the compression. ACP only provides better triggers and range suggestions.
 
 ---
 
-## 8. Non-Goals
+## 7. Backward Compatibility
 
-- **Changing the protected-tools mechanism itself.** Bug 39's hard-exclusion is correct — protected tools should survive intact when inside a compressed range. This proposal adds **pre-compression pruning** for redundant content, not changes to the protection logic.
-- **Auto-compressing without model involvement.** All solutions operate at the message-transform level (pruning redundant content from what the model sees), not at the compression level (creating summary blocks). The model still decides when to compress.
-- **Touching the compression prompt.** The compression philosophy and format guidance are separate concerns.
+- All new config fields default to disabled/opt-in
+- `protectedToolMaxAge` unset → permanent protection (current behavior)
+- `batchSweep.enabled = false` → no batch nudges (current behavior)
+- No changes to persisted state format (batch sweep state is ephemeral, recomputed each cycle)
+- No changes to compression tool API (model calls `compress` the same way)
+
+---
+
+## 8. Open Questions
+
+1. **Age threshold value**: 15 messages for todowrite? Or should it be turn-based (after N user messages) rather than message-based?
+2. **Batch sweep reset**: Should the accumulation tracker reset after a successful batch compression, or continue accumulating?
+3. **Multiple tool types triggering simultaneously**: If both bash and todowrite hit thresholds at the same time, should the nudge suggest separate ranges per type, or one merged range?
+4. **Interaction with existing nudges**: Should batch sweep replace the current `toolOutputNudgeThreshold` nudge, or coexist?
