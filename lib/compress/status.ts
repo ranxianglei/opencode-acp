@@ -81,7 +81,8 @@ function renderDetailedRow(block: CompressionBlock, idWidth: number): string {
 }
 
 function pct(n: number, total: number): number {
-    return total > 0 ? Math.round((n / total) * 100) : 0
+    if (n <= 0 || total <= 0) return 0
+    return Math.max(1, Math.round((n / total) * 100))
 }
 
 function describeToolMessage(msg: WithParts): string {

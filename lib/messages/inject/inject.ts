@@ -228,7 +228,7 @@ export const injectCompressNudges = (
 
         if (suffixMessage && composition.total > 0) {
             const fmt = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n))
-            const pct = (n: number) => Math.round((n / composition.total) * 100)
+            const pct = (n: number) => n > 0 ? Math.max(1, Math.round((n / composition.total) * 100)) : 0
             const growth = currentTokens !== undefined && state.nudges.lastPerMessageNudgeTokens !== undefined
                 ? currentTokens - state.nudges.lastPerMessageNudgeTokens : 0
             const growthStr = growth > 0 ? ` (+${fmt(growth)} since last nudge)` : ""
@@ -302,7 +302,7 @@ export const injectCompressNudges = (
             injectContextUsage(suffixMessage, config, currentTokens, modelContextLimit)
             if (composition.total > 0) {
                 const fmt2 = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n))
-                const pct2 = (n: number) => Math.round((n / composition.total) * 100)
+                const pct2 = (n: number) => n > 0 ? Math.max(1, Math.round((n / composition.total) * 100)) : 0
                 const topBlocks = Array.from(state.prune.messages.blocksById.values())
                     .filter((b) => b.active)
                     .sort((a, b) => b.compressedTokens - a.compressedTokens)
