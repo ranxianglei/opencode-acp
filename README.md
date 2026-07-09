@@ -422,6 +422,42 @@ For the complete list with root cause analysis, see the [bug tracker](https://gi
 
 ## Changelog
 
+### v1.10.1 — Over-Compression Fix & More Compression Candidates
+
+Fixes the over-compression bug reported in issue #18 and GitHub #85, where the `toolOutputReminder` nudge bypassed the adaptive 5%-of-context growth protection and fired ~10x too often on large-context models.
+
+#### Over-Compression: toolOutputReminder Bypassed 5% Protection (issue #18, GitHub #85, PR #83)
+
+**Problem**: ACP has two independent nudge mechanisms. The main growth nudge correctly uses an adaptive threshold (`nudgeGrowthTokens` = 5% of model context, clamped 6K–50K). But a separate `toolOutputReminder` — added in v1.9.0 to surface accumulated tool outputs — used a **hardcoded 5000-token** tool-growth threshold that fired independently of `minContextLimit` / `maxContextLimit`. On a 1M-context model, 5000 tokens is 0.5% of context, so the reminder fired ~10x more often than intended, emitting a strong "compress these ranges **now**" directive every time. This drove severe over-compression: one investigated session hit only 22.6% peak context yet ran 68 compressions across 499 LLM calls.
+
+Additionally, the `compress.toolOutputNudgeThreshold` config key was **dead** — declared in the type but missing from the config merge, validation list, and JSON schema, so user overrides were silently dropped.
+
+**Fix** (4 coordinated changes):
+- `lib/messages/inject/inject.ts`: `toolOutputThreshold` now defaults to `nudgeGrowthTokens` (adaptive) instead of the hardcoded `5000`.
+- `lib/config.ts` `mergeCompress`: `toolOutputNudgeThreshold` override now flows through the config merge.
+- `lib/config-validation.ts`: `compress.toolOutputNudgeThreshold` registered as a valid config key.
+- `dcp.schema.json`: `toolOutputNudgeThreshold` property added to the schema.
+
+Tests: 3 behavior tests (no-fire on small growth, fire on large growth, override respected) + 1 config-validation test in `tests/inject.test.ts` / `tests/config-validation.test.ts`.
+
+#### Persist modelContextLimit Across Restart (issue #18, PR #83)
+
+**Problem**: `state.modelContextLimit` was runtime-only — set by the system-prompt hook (which runs after the message-transform hook), so on the first turn after restart it was undefined, causing the adaptive thresholds to fall back to the 6000-token floor instead of the correct value (e.g. 50K for a 1M model). This partially reintroduced the over-compression on the first turn after every restart.
+
+**Fix**: `modelContextLimit` is now persisted to the state JSON and restored on load. A guard handles old state files without the field (backward-compatible). The system-prompt hook still refreshes it with the live model value every turn, so a stale persisted value self-corrects within one turn after a model switch.
+
+Tests: 2 persistence tests (save+reload round-trip, backward-compat with old files) in `tests/inject.test.ts`.
+
+#### Systemic Regression Guard (issue #18, PR #83)
+
+A regression test that asserts the **invariant**: the same tool-token growth fires the reminder on a small-context model (200K → 10K threshold) but does NOT fire on a large-context model (400K → 20K threshold). Any future change that reverts a threshold to a fixed value fails this test immediately.
+
+#### Increase Max Compression Candidates 5 → 15 (issue #13, PR #81)
+
+The context breakdown and tool-output reminder only showed 5 compression candidates, causing the model to compress too narrowly (1 message per batch). Increased to 15 (`largestRanges`, `largestToolRanges`, `toolOutputReminder topRanges`) so the model sees more candidates at once and can cover larger ranges in a single compress call.
+
+---
+
 ### v1.10.0 — Hard-Exclusion, Compression Prompt Rewrite, Suffix & Deploy Fixes
 
 This release bundles 7 merged PRs. The headline change is **hard-exclusion of protected tool messages** from compression ranges; the rest are fixes and a prompt rewrite that shipped in the same release window.
