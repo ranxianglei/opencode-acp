@@ -19,7 +19,7 @@ Use this tool when:
 - A compress call failed with "not available" (the ID was likely consumed)
 
 Args:
-- mode: "summary" (default) — compact one-line per category and per block. "detailed" — adds largest items per category, plus block age/generation/effective message count/consumed lineage.
+- mode: "summary" (default) — compact one-line per category and per block. "detailed" — adds largest items per category with descriptions, plus block age/generation/effective message count/consumed lineage.
 - sort: "recent" (default) | "size" (largest compressed first) | "age" (oldest surviving first, nearing GC).
 - limit: max blocks to show (default 30).`
 
@@ -84,8 +84,32 @@ function pct(n: number, total: number): number {
     return total > 0 ? Math.round((n / total) * 100) : 0
 }
 
+function describeToolMessage(msg: WithParts): string {
+    for (const part of msg.parts || []) {
+        if (part.type === "tool") {
+            const toolPart = part as any
+            const toolName = toolPart.tool || "?"
+            const input = toolPart.input
+            if (input && typeof input === "object") {
+                if (input.filePath) return `${toolName}: ${String(input.filePath).slice(0, 50)}`
+                if (input.command) return `${toolName}: ${String(input.command).slice(0, 50)}`
+                if (input.query) return `${toolName}: ${String(input.query).slice(0, 50)}`
+                if (input.pattern) return `${toolName}: ${String(input.pattern).slice(0, 50)}`
+            }
+            return toolName
+        }
+    }
+    const textPart = (msg.parts || []).find((p) => p.type === "text") as any
+    if (textPart?.text) {
+        return textPart.text.slice(0, 50).replace(/\n/g, " ")
+    }
+    return "?"
+}
+
 function renderVisibleBreakdown(
     composition: ContextComposition,
+    visibleMessages: WithParts[],
+    state: any,
     mode: "summary" | "detailed",
 ): string[] {
     const lines: string[] = []
@@ -101,10 +125,18 @@ function renderVisibleBreakdown(
     )
 
     if (mode === "detailed") {
+        const byRef = state?.messageIds?.byRef
         if (composition.largestToolRanges.length > 0) {
-            lines.push(
-                `  Largest tool outputs: ${composition.largestToolRanges.map((r) => `${r.ref} (${formatTokens(r.tokens)})`).join(", ")}`,
-            )
+            const items = composition.largestToolRanges.slice(0, 10).map((r) => {
+                const rawId = byRef?.get(r.ref) || ""
+                const msg = visibleMessages.find((m) => (m.info as any)?.id === rawId)
+                const desc = msg ? describeToolMessage(msg) : ""
+                return `${r.ref} (${formatTokens(r.tokens)}) ${desc}`
+            })
+            lines.push(`  Largest tool outputs:`)
+            for (const item of items) {
+                lines.push(`    ${item}`)
+            }
         }
         if (composition.largestCodeRanges.length > 0) {
             lines.push(
@@ -128,16 +160,29 @@ function renderVisibleBreakdown(
     return lines
 }
 
-function filterVisibleMessages(
+function buildVisibleMessages(
     rawMessages: WithParts[],
     ctx: ToolContext,
 ): WithParts[] {
     const pruneMap = ctx.state.prune.messages.byMessageId
-    return rawMessages.filter((msg) => {
+    const visible = rawMessages.filter((msg) => {
         const msgId = (msg.info as any)?.id || ""
         const entry = pruneMap.get(msgId)
         return !entry || entry.activeBlockIds.length === 0
     })
+
+    const activeBlocks = Array.from(ctx.state.prune.messages.activeBlockIds)
+        .map((id) => ctx.state.prune.messages.blocksById.get(id))
+        .filter((b): b is NonNullable<typeof b> => b !== undefined && b.active)
+
+    for (const block of activeBlocks) {
+        visible.push({
+            info: { id: `msg_acp_summary_b${block.blockId}` } as any,
+            parts: [{ type: "text", text: block.summary || "[Compressed conversation section]" } as any],
+        } as any)
+    }
+
+    return visible
 }
 
 export function createAcpStatusTool(ctx: ToolContext): ReturnType<typeof tool> {
@@ -169,10 +214,10 @@ export function createAcpStatusTool(ctx: ToolContext): ReturnType<typeof tool> {
 
             try {
                 const rawMessages = await fetchSessionMessages(ctx.client, toolCtx.sessionID)
-                const visibleMessages = filterVisibleMessages(rawMessages, ctx)
+                const visibleMessages = buildVisibleMessages(rawMessages, ctx)
                 const composition = estimateContextComposition(visibleMessages, ctx.state)
 
-                lines.push(...renderVisibleBreakdown(composition, mode))
+                lines.push(...renderVisibleBreakdown(composition, visibleMessages, ctx.state, mode))
             } catch {
                 lines.push("VISIBLE CONTEXT (uncompressed)")
                 lines.push("  (unable to fetch messages for breakdown)")
@@ -225,7 +270,7 @@ export function createAcpStatusTool(ctx: ToolContext): ReturnType<typeof tool> {
             lines.push("")
             const sortHint =
                 sort === "recent"
-                    ? 'Blocks sorted by recent. Use acp_status({sort:"size"}) for largest, {sort:"age"} for near-GC.'
+                    ? 'Blocks sorted by recent. Use acp_status({sort:"size"}) for largest, {sort:"age"}) for near-GC.'
                     : `Blocks sorted by ${sort}.`
             lines.push(`${sortHint} Use decompress to restore a block's full content, or search_context to search within compressed blocks.`)
 
