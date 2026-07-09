@@ -558,7 +558,7 @@ export interface ContextComposition {
     textTokens: number
     total: number
     largestRanges: { ref: string; tokens: number }[]
-    largestToolRanges: { ref: string; tokens: number }[]
+    largestToolRanges: { ref: string; tokens: number; tool?: string }[]
     largestCodeRanges: { ref: string; tokens: number }[]
     largestMessageRanges: { ref: string; tokens: number }[]
     toolTypeBreakdown: { tool: string; tokens: number }[]
@@ -587,7 +587,7 @@ export function estimateContextComposition(
     let summaryTokens = 0
     let messageTokens = 0
     const perMessage: { ref: string; tokens: number }[] = []
-    const perTool: { ref: string; tokens: number }[] = []
+    const perTool: { ref: string; tokens: number; tool?: string }[] = []
     const perCode: { ref: string; tokens: number }[] = []
     const perText: { ref: string; tokens: number }[] = []
     const toolTypeMap = new Map<string, number>()
@@ -604,6 +604,7 @@ export function estimateContextComposition(
         let msgTool = 0
         let msgCode = 0
         let msgText = 0
+        let msgToolName = ""
 
         for (const part of msg.parts || []) {
             if (part.type === "text" && typeof (part as any).text === "string") {
@@ -629,13 +630,14 @@ export function estimateContextComposition(
                 msgTool += tokens
                 const toolName = (part as any)?.tool || (part as any)?.type || "unknown"
                 toolTypeMap.set(toolName, (toolTypeMap.get(toolName) || 0) + tokens)
+                if (!msgToolName) msgToolName = toolName
             }
         }
 
         if (!isSummary) {
             const ref = state?.messageIds?.byRawId?.get(msgId) || "?"
             if (msgTotal > 500) perMessage.push({ ref, tokens: msgTotal })
-            if (msgTool > 500) perTool.push({ ref, tokens: msgTool })
+            if (msgTool > 500) perTool.push({ ref, tokens: msgTool, tool: msgToolName })
             if (msgCode > 300) perCode.push({ ref, tokens: msgCode })
             if (msgText > 500 && msgCode === 0) perText.push({ ref, tokens: msgText })
         }

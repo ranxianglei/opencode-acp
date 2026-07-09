@@ -247,7 +247,7 @@ export const injectCompressNudges = (
             }
 
             if (composition.largestToolRanges.length > 0) {
-                breakdown += `\nLargest tool outputs: ${composition.largestToolRanges.map((r) => `${r.ref} (${fmt(r.tokens)})`).join(", ")}`
+                breakdown += `\nLargest tool outputs: ${composition.largestToolRanges.slice(0, 10).map((r) => `${r.ref} (${fmt(r.tokens)})${r.tool ? " " + r.tool : ""}`).join(", ")}`
             }
             if (composition.largestCodeRanges.length > 0) {
                 breakdown += `\nLargest code messages: ${composition.largestCodeRanges.map((r) => `${r.ref} (${fmt(r.tokens)})`).join(", ")}`
