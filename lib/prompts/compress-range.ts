@@ -1,9 +1,5 @@
 export const COMPRESS_RANGE = `Collapse a range in the conversation into a detailed summary.
 
-TWO MODES:
-1. Range mode (content param): compress contiguous ranges with summaries you write.
-2. Prune mode (toolType param): remove all old messages of a specific tool type, keeping only the latest few. No summary needed — the system auto-generates one. Use for disposable tool outputs (old todowrite states, edit echoes).
-
 COMPRESSED BLOCK PLACEHOLDERS
 The system auto-detects any previously compressed blocks whose anchor messages fall inside your selected range. You do NOT need to manually list \`(bN)\` placeholders in your summary — every consumed block is tracked automatically.
 

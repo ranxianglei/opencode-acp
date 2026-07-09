@@ -5,6 +5,7 @@ import {
     createCompressMessageTool,
     createCompressRangeTool,
     createDecompressTool,
+    createPruneTool,
     createSearchContextTool,
 } from "./lib/compress"
 import {
@@ -91,6 +92,7 @@ const server: Plugin = (async (ctx) => {
                         ? createCompressMessageTool(compressToolContext)
                         : createCompressRangeTool(compressToolContext),
                 decompress: createDecompressTool(compressToolContext),
+                prune: createPruneTool(compressToolContext),
                 search_context: createSearchContextTool(compressToolContext),
                 acp_status: createAcpStatusTool(compressToolContext),
             }),

@@ -21,9 +21,10 @@ TOOLS
 
 You have four context-management tools:
 
-- \`compress\` — Two modes. Range mode: replace a contiguous range with a detailed summary. Example: \`compress({ topic: "API exploration", content: [{ startId: "m00150", endId: "m00220", summary: "..." }] })\`. Prune mode: remove all old messages of a tool type, keeping only recent ones. For disposable outputs like old todowrite states. Example: \`compress({ topic: "old todowrite", toolType: "todowrite", keepLatest: 3 })\`.
+- \`compress\` — Replace a contiguous range of older conversation with a single detailed summary you write. Use when content is genuinely consumed (no longer needed for the current task step). Example: \`compress({ topic: "API exploration", content: [{ startId: "m00150", endId: "m00220", summary: "..." }] })\`.
 - \`decompress\` — Restore a previously compressed block's full original content, optionally to a file for large blocks. Use when a summary lacks the exact detail you need. Example: \`decompress({ blockId: "b5" })\` or \`decompress({ blockId: "b5", toFile: "path" })\`.
 - \`search_context\` — Search compressed block summaries (and optionally visible messages) by keyword. Use BEFORE decompressing to find the right block. Example: \`search_context({ query: "auth token refresh" })\`.
+- \`prune\` — Remove old tool outputs by tool type, keeping only recent calls. Unlike compress (which creates summaries), prune directly strips outputs. Use for disposable outputs like old todowrite states or edit echoes. Example: \`prune({ toolType: "todowrite", keepLatest: 3 })\`.
 - \`acp_status\` — Context status with drilldown. No args = overview. \`scope:"uncompressed"\` lists all visible messages; add \`tool:"bash"\` to filter by tool type. \`scope:"compressed"\` shows block details. Example: \`acp_status({scope:"uncompressed", tool:"todowrite"})\`.
 
 COMPRESSION PHILOSOPHY
