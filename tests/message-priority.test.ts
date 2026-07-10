@@ -271,8 +271,8 @@ test("injectMessageIds marks every protected user text part as BLOCKED in messag
     assert.equal(userTextOne?.type, "text")
     assert.equal(userTextTwo?.type, "text")
     assert.equal(assistantText?.type, "text")
-    assert.match((userTextOne as any).text, /\n\n<dcp-message-id>BLOCKED<\/dcp-message-id>/)
-    assert.match((userTextTwo as any).text, /\n\n<dcp-message-id>BLOCKED<\/dcp-message-id>/)
+    assert.match((userTextOne as any).text, /\n\n<dcp-message-id[^>]*>BLOCKED<\/dcp-message-id>/)
+    assert.match((userTextTwo as any).text, /\n\n<dcp-message-id[^>]*>BLOCKED<\/dcp-message-id>/)
     assert.doesNotMatch((userTextOne as any).text, /priority=/)
     assert.doesNotMatch((userTextTwo as any).text, /priority=/)
     assert.match(
