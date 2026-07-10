@@ -422,7 +422,45 @@ For the complete list with root cause analysis, see the [bug tracker](https://gi
 
 ## Changelog
 
-### v1.10.1 — Over-Compression Fix & More Compression Candidates
+### v1.11.0 — Tool-Result Recap Injection, Context Breakdown & Fork Rebuild
+
+This release fixes two critical compression-injection bugs (#20 echo, #78 drift), adds a visible context breakdown to `acp_status`, and introduces a fork-rebuild mechanism.
+
+#### Tool-Result Recap Injection — Fixes #20 & #78 (PR #95)
+
+**Problem**: Compression summaries were injected as text-based `role:assistant` or `role:user` messages. Both roles misled the model:
+- `role:assistant` (Bug 37 path) → model treated summaries as its own prior output and echoed them verbatim (#20, GLM-5.2).
+- `role:user` (Bug 36 merge path) → model treated summaries as user instructions and chased old topics (#78, gpt-5.5).
+
+**Fix**: Summaries are now injected as synthetic **tool-call + tool-result** pairs via `acp_context_recap`. At the API level, the model sees `role:"tool"` — a neutral third role meaning "data from a tool", neither instruction nor own voice. This eliminates both echo (#20) and drift (#78) without breaking prefix caching (mid-stream injection, system prompt unchanged) and works across all providers (OpenAI `role:"tool"`, Anthropic `tool_result` content type).
+
+Files: `lib/messages/utils.ts` (`createSyntheticToolRecap`), `lib/messages/prune.ts` (single-path injection), `lib/messages/query.ts` (`isSyntheticMessage` recognizes `msg_acp_recap_` prefix), `lib/prompts/system.ts` (updated tool description). Removed dead code: `prependCompressionSummary`, `MERGED_SUMMARY_HEADER/FOOTER`, `[ACP system message]` notification wrapper.
+
+Tests: 600 total (10 updated for tool-result format + 1 new multi-block test). TypeScript: 0 errors. Dual-agent reviewed.
+
+#### acp_status Visible Context Breakdown (PR #91)
+
+`acp_status` now shows a per-category token breakdown (tool/code/text/summaries) with largest-item identification. Added drilldown params: `scope:"uncompressed"` with optional `tool:"bash"` filter and `sort:"size"`. The nudge injection was simplified — removed mini breakdown and Top blocks, replaced with a cleaner per-tool-type breakdown. Fixed tool-type detection to only count `type:"tool"` parts (skip step-start/step-finish). Added a dynamic drill-down hint that shows the session's actual top tool.
+
+Files: `lib/compress/status.ts`, `lib/messages/inject/inject.ts`, `lib/messages/inject/utils.ts`, `tests/acp-status.test.ts`.
+
+#### Fork Rebuild & Prune Tool (PR #90)
+
+Added `lib/state/rebuild.ts` — rebuilds compression state after a session fork to prevent context overflow. Added `lib/compress/prune-tool.ts` — a standalone `prune` tool that removes old tool outputs by type (`toolType` param), separate from the `compress` tool for safety.
+
+Files: `lib/state/rebuild.ts`, `lib/compress/prune-tool.ts`, `lib/compress/index.ts`, `index.ts`, `tests/rebuild.test.ts`.
+
+#### Remove todowrite/todoread from compress.protectedTools defaults (PR #87)
+
+`todowrite` and `todoread` were in the `compress.protectedTools` default list, which prevented them from being compressed. Removed so that old todowrite states can be pruned normally.
+
+---
+
+### v1.10.2 — Protected Tools Default Update (PR #87)
+
+Removed `todowrite` and `todoread` from the `compress.protectedTools` default configuration. These tools' outputs accumulate over long sessions and should be eligible for compression like other tool outputs. Users who want to keep them protected can set `compress.protectedTools: ["todowrite", "todoread"]` in their config.
+
+---
 
 Fixes the over-compression bug reported in issue #18 and GitHub #85, where the `toolOutputReminder` nudge bypassed the adaptive 5%-of-context growth protection and fired ~10x too often on large-context models.
 

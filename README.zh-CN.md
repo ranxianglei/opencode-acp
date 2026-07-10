@@ -395,7 +395,37 @@ ACP 在首次启动时自动将配置从 `dcp.jsonc` 迁移到 `acp.jsonc`，将
 
 ## 更新日志
 
-### v1.10.0 — 受保护工具硬排除、压缩提示词重写、后缀与部署修复
+### v1.11.0 — 工具结果注入、上下文分解 & Fork 重建
+
+本次发布修复了两个关键压缩注入 bug（#20 复读、#78 漂移），为 `acp_status` 添加了可见上下文分解，并引入了 fork 重建机制。
+
+#### 工具结果注入 — 修复 #20 & #78（PR #95）
+
+**问题**：压缩摘要以文本形式的 `role:assistant` 或 `role:user` 消息注入。两种角色都会误导模型：
+- `role:assistant`（Bug 37 路径）→ 模型将摘要当作自己的前文，逐字复读（#20，GLM-5.2）。
+- `role:user`（Bug 36 合并路径）→ 模型将摘要当作用户指令，去执行旧话题（#78，gpt-5.5）。
+
+**修复**：摘要现在以合成的 **tool-call + tool-result** 对注入（`acp_context_recap`）。在 API 层面，模型看到的是 `role:"tool"` —— 一个中立角色，表示「工具返回的数据」，既不是指令也不是自己的前文。这同时消除了复读（#20）和漂移（#78），不破坏前缀缓存（mid-stream 注入，system prompt 不变），且跨所有 provider 兼容。
+
+#### acp_status 可见上下文分解（PR #91）
+
+`acp_status` 现在显示按类别（tool/code/text/summaries）的 token 分解，并标识最大项。新增下钻参数：`scope:"uncompressed"` + 可选 `tool:"bash"` 过滤和 `sort:"size"`。简化了 nudge 注入 —— 移除了 mini breakdown 和 Top blocks，替换为更清晰的按工具类型分解。
+
+#### Fork 重建 & Prune 工具（PR #90）
+
+新增 `lib/state/rebuild.ts` —— 在 session fork 后重建压缩状态以防止上下文溢出。新增 `lib/compress/prune-tool.ts` —— 独立的 `prune` 工具，按类型（`toolType` 参数）移除旧工具输出，与 `compress` 工具分离以提高安全性。
+
+#### 移除 todowrite/todoread 的默认保护（PR #87）
+
+从 `compress.protectedTools` 默认配置中移除了 `todowrite` 和 `todoread`，使旧 todowrite 状态可以正常被压缩。
+
+---
+
+### v1.10.2 — 受保护工具默认配置更新（PR #87）
+
+从 `compress.protectedTools` 默认配置中移除了 `todowrite` 和 `todoread`。这些工具的输出在长会话中累积，应像其他工具输出一样可被压缩。如需保持保护，可在配置中设置 `compress.protectedTools: ["todowrite", "todoread"]`。
+
+---
 
 本次发布合并了 7 个 PR。核心变更是**受保护工具消息硬排除**；其余为同期合入的修复和提示词重写。
 
