@@ -1,7 +1,9 @@
 import type { SessionState, ToolParameterEntry, WithParts } from "./types"
+import type { PluginConfig } from "../config"
 import type { Logger } from "../logger"
 import { applyPendingCompressionDurations } from "../compress/timing"
 import { loadSessionState, saveSessionState } from "./persistence"
+import { rebuildCompressionState } from "./rebuild"
 import {
     isSubAgentSession,
     findLastCompactionTimestamp,
@@ -21,6 +23,7 @@ export const checkSession = async (
     logger: Logger,
     messages: WithParts[],
     manualModeDefault: boolean,
+    config?: PluginConfig,
 ): Promise<void> => {
     const lastUserMessage = getLastUserMessage(messages)
     if (!lastUserMessage) {
@@ -39,6 +42,7 @@ export const checkSession = async (
                 logger,
                 messages,
                 manualModeDefault,
+                config,
             )
         } catch (err: any) {
             logger.error("Failed to initialize session state", { error: err.message })
@@ -150,6 +154,7 @@ export async function ensureSessionInitialized(
     logger: Logger,
     messages: WithParts[],
     manualModeEnabled: boolean,
+    config?: PluginConfig,
 ): Promise<void> {
     if (state.sessionId === sessionId) {
         return
@@ -168,6 +173,15 @@ export async function ensureSessionInitialized(
 
     const persisted = await loadSessionState(sessionId, logger)
     if (persisted === null) {
+        // Fork recovery: no persisted state for this session. If config is
+        // available, replay historical compress tool invocations to rebuild
+        // pruning state using the current session's message IDs.
+        if (config) {
+            const rebuilt = rebuildCompressionState(state, messages, config, logger)
+            if (rebuilt > 0) {
+                await saveSessionState(state, logger)
+            }
+        }
         return
     }
 

@@ -233,7 +233,7 @@ export function createChatMessageTransformHandler(
             return
         }
 
-        await checkSession(client, state, logger, output.messages, config.manualMode.enabled)
+        await checkSession(client, state, logger, output.messages, config.manualMode.enabled, config)
 
         syncCompressPermissionState(state, config, hostPermissions, output.messages)
 
@@ -316,6 +316,7 @@ export function createCommandExecuteHandler(
                 logger,
                 messages,
                 config.manualMode.enabled,
+                config,
             )
 
             syncCompressPermissionState(state, config, hostPermissions, messages)
