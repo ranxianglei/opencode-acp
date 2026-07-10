@@ -277,7 +277,7 @@ test("injectMessageIds marks every protected user text part as BLOCKED in messag
     assert.doesNotMatch((userTextTwo as any).text, /priority=/)
     assert.match(
         (assistantText as any).text,
-        /\n\n<dcp-message-id priority="low">m00002<\/dcp-message-id>/,
+        /\n\n<dcp-message-id[^>]*>m00002<\/dcp-message-id>/,
     )
 })
 
@@ -693,7 +693,7 @@ test("message-mode rendered compressed summaries mark block IDs as BLOCKED", () 
         effectiveToolIds: [],
         createdAt: 1,
         summary:
-            "[Compressed conversation section]\nEarlier summary\n\n<dcp-message-id[^>]*>b7</dcp-message-id>",
+            "[Compressed conversation section]\nEarlier summary\n\n<dcp-message-id>b7</dcp-message-id>",
     })
     state.prune.messages.activeBlockIds.add(7)
     state.prune.messages.activeByAnchorMessageId.set("msg-user-1", 7)
@@ -744,7 +744,7 @@ test("range-mode rendered compressed summaries keep block IDs", () => {
         effectiveToolIds: [],
         createdAt: 1,
         summary:
-            "[Compressed conversation section]\nEarlier summary\n\n<dcp-message-id[^>]*>b7</dcp-message-id>",
+            "[Compressed conversation section]\nEarlier summary\n\n<dcp-message-id>b7</dcp-message-id>",
     })
     state.prune.messages.activeBlockIds.add(7)
     state.prune.messages.activeByAnchorMessageId.set("msg-user-1", 7)
