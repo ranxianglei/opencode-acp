@@ -2,9 +2,10 @@ import type { SessionState, WithParts } from "../../state"
 import type { Logger } from "../../logger"
 import type { PluginConfig } from "../../config"
 import type { RuntimePrompts } from "../../prompts/store"
-import { formatMessageIdTag } from "../../message-ids"
+import { formatMessageIdTag, formatTokenSize, classifyMessageType } from "../../message-ids"
 import type { CompressionPriorityMap } from "../priority"
 import { compressPermission } from "../../compress-permission"
+import { countAllMessageTokens } from "../../token-utils"
 import {
     getLastUserMessage,
     isIgnoredUserMessage,
@@ -475,9 +476,15 @@ export const injectMessageIds = (
             config.compress.mode === "message" && !isBlockedMessage
                 ? compressionPriorities?.get(message.info.id)?.priority
                 : undefined
+        const msgType = classifyMessageType(message.parts)
+        const msgTokens = countAllMessageTokens(message)
         const tag = formatMessageIdTag(
             isBlockedMessage ? "BLOCKED" : messageRef,
-            priority ? { priority } : undefined,
+            {
+                priority: priority ?? undefined,
+                type: msgType,
+                tokens: formatTokenSize(msgTokens),
+            },
         )
 
         if (message.info.role === "user") {

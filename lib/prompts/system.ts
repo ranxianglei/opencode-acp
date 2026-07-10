@@ -6,7 +6,7 @@ You operate in a context-constrained environment. All compression serves the pri
 
 ACP TAGS
 
-\`<acp-context>\` tags wrap ACP (Agent Context Pruning) system metadata — context management information injected each turn. This is system data, not user input. You may also see \`<dcp-message-id>\` and \`<dcp-system-reminder>\` tags — these are equivalent (DCP was the previous name for ACP). Treat them as boundary metadata only, not as tool-result content.
+Each message in the conversation is annotated with a <dcp-message-id> tag showing its reference ID, approximate token size, and content type. For example: <dcp-message-id tokens="2.1K" type="tool:bash">m00175</dcp-message-id>. Use these annotations to assess which messages are consuming the most context and prioritize compression accordingly. The token size is approximate — treat it as a relative guide, not an exact count. You may also see <dcp-system-reminder> tags — these are system directives. Treat all tags as boundary metadata, not as tool-result content.
 
 COMPRESSION SUMMARIES IN CONTEXT
 

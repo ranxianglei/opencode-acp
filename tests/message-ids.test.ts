@@ -7,6 +7,9 @@ import {
     parseBlockRef,
     parseBoundaryId,
     assignMessageRefs,
+    formatMessageIdTag,
+    formatTokenSize,
+    classifyMessageType,
 } from "../lib/message-ids"
 import type { PrunedMessageEntry, SessionState, WithParts } from "../lib/state/types"
 
@@ -379,4 +382,77 @@ test("5-digit refs are unchanged by roundtrip", () => {
     const parsed = parseMessageRef(ref)
     const normalized = formatMessageRef(parsed!)
     assert.equal(normalized, ref)
+})
+
+// =====================================================================
+// formatTokenSize
+// =====================================================================
+
+test("formatTokenSize formats small counts as exact numbers", () => {
+    assert.equal(formatTokenSize(0), "0")
+    assert.equal(formatTokenSize(500), "500")
+    assert.equal(formatTokenSize(999), "999")
+})
+
+test("formatTokenSize formats thousands with one decimal", () => {
+    assert.equal(formatTokenSize(1000), "1.0K")
+    assert.equal(formatTokenSize(2100), "2.1K")
+    assert.equal(formatTokenSize(9999), "10.0K")
+})
+
+test("formatTokenSize formats large thousands rounded", () => {
+    assert.equal(formatTokenSize(10000), "10K")
+    assert.equal(formatTokenSize(20700), "21K")
+    assert.equal(formatTokenSize(100000), "100K")
+})
+
+// =====================================================================
+// classifyMessageType
+// =====================================================================
+
+test("classifyMessageType returns 'text' for text-only parts", () => {
+    assert.equal(classifyMessageType([{ type: "text", text: "hello" }]), "text")
+})
+
+test("classifyMessageType returns 'tool:<name>' for tool parts", () => {
+    assert.equal(
+        classifyMessageType([{ type: "tool", tool: "bash", state: { status: "completed" } }]),
+        "tool:bash",
+    )
+})
+
+test("classifyMessageType returns 'tool' for tool parts without name", () => {
+    assert.equal(classifyMessageType([{ type: "tool", state: { status: "completed" } }]), "tool")
+})
+
+test("classifyMessageType returns multiple tool names comma-separated", () => {
+    assert.equal(
+        classifyMessageType([
+            { type: "tool", tool: "bash", state: { status: "completed" } },
+            { type: "tool", tool: "read", state: { status: "completed" } },
+        ]),
+        "tool:bash,read",
+    )
+})
+
+test("classifyMessageType returns 'reasoning' for reasoning-only parts", () => {
+    assert.equal(classifyMessageType([{ type: "reasoning", text: "thinking..." }]), "reasoning")
+})
+
+// =====================================================================
+// formatMessageIdTag with token/type attributes
+// =====================================================================
+
+test("formatMessageIdTag includes tokens and type attributes", () => {
+    const tag = formatMessageIdTag("m00175", { tokens: "20.7K", type: "tool:bash" })
+    assert.ok(tag.includes('tokens="20.7K"'), "tag should contain tokens attribute")
+    assert.ok(tag.includes('type="tool:bash"'), "tag should contain type attribute")
+    assert.ok(tag.includes(">m00175<"), "tag should contain the ref")
+})
+
+test("formatMessageIdTag omits empty/undefined attributes", () => {
+    const tag = formatMessageIdTag("m00001", { tokens: undefined, type: "", priority: "low" })
+    assert.ok(!tag.includes("tokens="), "should omit undefined tokens")
+    assert.ok(!tag.includes("type="), "should omit empty type")
+    assert.ok(tag.includes('priority="low"'), "should include priority")
 })
