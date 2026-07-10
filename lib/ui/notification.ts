@@ -282,9 +282,6 @@ export async function sendIgnoredMessage(
               }
             : undefined
 
-    // Wrap with system message markers so the model does not confuse this with user input
-    const wrappedText = `[ACP system message — not a user comment]\n\n${text}\n\n[ACP system message — not a user comment]`
-
     try {
         await client.session.prompt({
             path: {
@@ -298,7 +295,7 @@ export async function sendIgnoredMessage(
                 parts: [
                     {
                         type: "text",
-                        text: wrappedText,
+                        text: text,
                         ignored: true,
                     },
                 ],
