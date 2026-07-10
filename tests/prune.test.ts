@@ -154,17 +154,20 @@ test("prune removes messages in active compression ranges", () => {
 
     prune(state, logger, buildConfig(), messages)
 
-    // m2, m3 should be removed; summary should be injected at m1 anchor
+    // m2, m3 should be removed; summary should be injected as tool-result at m1 anchor
     const ids = messages.map((m) => m.info.id)
     assert.ok(!ids.includes("m2"), "m2 should be pruned")
     assert.ok(!ids.includes("m3"), "m3 should be pruned")
     assert.ok(ids.includes("m1"), "anchor m1 should survive")
     assert.ok(ids.includes("m4"), "m4 should survive")
-    const summaryMsg = messages.find((m) => m.info.role === "user" && m.parts.some((p: any) => p.type === "text" && p.text?.includes("Summary of m2-m3")))
-    assert.ok(summaryMsg, "summary should be injected")
+    const recapMsg = messages.find((m) =>
+        m.info.role === "assistant" &&
+        m.parts.some((p: any) => p.type === "tool" && p.tool === "acp_context_recap" && p.state?.output?.includes("Summary of m2-m3")),
+    )
+    assert.ok(recapMsg, "summary should be injected as acp_context_recap tool-result")
 })
 
-test("prune merges summary into surviving user message at anchor (Bug 36 fix)", () => {
+test("prune injects summary as tool-result regardless of next surviving message role", () => {
     const state = createSessionState()
     state.prune.messages.byMessageId.set("m2", { tokenCount: 100, allBlockIds: [1], activeBlockIds: [1] })
     state.prune.messages.activeByAnchorMessageId.set("m1", 1)
@@ -198,18 +201,21 @@ test("prune merges summary into surviving user message at anchor (Bug 36 fix)", 
     const ids = messages.map((m) => m.info.id)
     assert.ok(!ids.includes("m2"), "m2 should be pruned")
 
+    // Summary should be injected as a tool-result recap, NOT merged into any user message
     const m1 = messages.find((m) => m.info.id === "m1")
     assert.ok(m1, "m1 (anchor) should survive")
     const m1Text = m1!.parts.map((p: any) => p.text ?? "").join("")
-    assert.ok(m1Text.includes("Merged summary text"), "summary should be merged into anchor m1")
+    assert.ok(!m1Text.includes("Merged summary text"), "summary should NOT be merged into anchor m1")
     assert.ok(m1Text.includes("first question"), "original m1 text should be preserved")
-    const syntheticCount = messages.filter(
-        (m) => m.info.role === "user" && m.parts.some((p: any) => p.type === "text" && p.text?.includes("Merged summary text") && m.info.id !== "m1"),
-    ).length
-    assert.equal(syntheticCount, 0, "should not create standalone summary when merged into anchor")
+
+    const recapMsg = messages.find((m) =>
+        m.info.role === "assistant" &&
+        m.parts.some((p: any) => p.type === "tool" && p.tool === "acp_context_recap" && p.state?.output?.includes("Merged summary text")),
+    )
+    assert.ok(recapMsg, "summary should be injected as tool-result recap")
 })
 
-test("prune creates standalone summary when anchor is assistant and no user follows", () => {
+test("prune injects tool-result recap when anchor is assistant and no user follows", () => {
     const state = createSessionState()
     state.prune.messages.byMessageId.set("m2", { tokenCount: 100, allBlockIds: [1], activeBlockIds: [1] })
     state.prune.messages.activeByAnchorMessageId.set("a1", 1)
@@ -241,10 +247,11 @@ test("prune creates standalone summary when anchor is assistant and no user foll
 
     prune(state, logger, buildConfig(), messages)
 
-    const summaryMsg = messages.find(
-        (m) => m.info.role === "assistant" && m.parts.some((p: any) => p.text?.includes("Standalone summary")),
+    const recapMsg = messages.find((m) =>
+        m.info.role === "assistant" &&
+        m.parts.some((p: any) => p.type === "tool" && p.tool === "acp_context_recap" && p.state?.output?.includes("Standalone summary")),
     )
-    assert.ok(summaryMsg, "standalone summary should be created as assistant role when anchor is assistant")
+    assert.ok(recapMsg, "summary should be injected as tool-result recap regardless of anchor role")
 })
 
 test("prune skips inactive compression blocks", () => {
@@ -308,7 +315,7 @@ test("prune strips stale mNNNN refs from summary content (Bug 28 fix)", () => {
         effectiveToolIds: [],
         anchorMessageId: "m1",
         topic: "stale refs",
-        summary: "Summary with <dcp-message-id>m00005</dcp-message-id> stale ref",
+        summary: "Summary with <dcp-message-id>m00999</dcp-message-id> stale ref",
     } as CompressionBlock)
 
     const messages: WithParts[] = [
@@ -319,10 +326,13 @@ test("prune strips stale mNNNN refs from summary content (Bug 28 fix)", () => {
 
     prune(state, logger, buildConfig(), messages)
 
-    const m1 = messages.find((m) => m.info.id === "m1")
-    const m1Text = m1!.parts.map((p: any) => p.text ?? "").join("")
-    assert.ok(!m1Text.includes("<dcp-message-id>"), "stale dcp-message-id tag should be stripped")
-    assert.ok(m1Text.includes("Summary with"), "summary content should remain after stripping")
+    const recapMsg = messages.find((m) =>
+        m.parts.some((p: any) => p.type === "tool" && p.tool === "acp_context_recap"),
+    )
+    assert.ok(recapMsg, "recap tool-result should be injected")
+    const output = (recapMsg!.parts.find((p: any) => p.type === "tool") as any)?.state?.output ?? ""
+    assert.ok(!output.includes("</dcp-message-id>"), "stale dcp-message-id tag should be stripped")
+    assert.ok(output.includes("Summary with"), "summary content should remain after stripping")
 })
 
 // =====================================================================
