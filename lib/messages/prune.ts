@@ -92,9 +92,6 @@ const pruneFullTool = (state: SessionState, logger: Logger, messages: WithParts[
             if (!state.prune.tools.has(part.callID)) {
                 continue
             }
-            if (part.tool !== "edit" && part.tool !== "write") {
-                continue
-            }
 
             partsToRemove.push(part.callID)
         }

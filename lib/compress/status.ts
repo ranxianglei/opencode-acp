@@ -1,28 +1,32 @@
 import { tool } from "@opencode-ai/plugin"
 import type { ToolContext } from "./types"
 import { formatAge } from "../ui/utils"
-import type { CompressionBlock } from "../state/types"
+import type { CompressionBlock, WithParts } from "../state/types"
+import { estimateContextComposition } from "../messages/inject/utils"
+import { fetchSessionMessages } from "./search"
 
-const ACP_STATUS_TOOL_DESCRIPTION = `Show detailed status of all active compressed context blocks. Returns block IDs, sizes, ages, topics, and the message-ID ranges each block consumed — use this to see what has been compressed away and to choose safe compress boundaries.
+const ACP_STATUS_TOOL_DESCRIPTION = `Show context status — overview or drill down into compressed/uncompressed sections.
 
-Use this tool when:
-- You are unsure which mNNNNN refs are still compressible
-- Before choosing compress boundaries, if any prior compressions exist
-- You want to see block sizes before deciding to decompress
-- A compress call failed with "not available" (the ID was likely consumed)
+No args: Overview of both visible (uncompressed) context and compressed blocks.
+scope:"uncompressed": Drill into all visible messages — list each with ref, tokens, tool type. Add tool:"bash" to filter by tool type.
+scope:"compressed": Drill into compressed blocks — list each with full details (age, generation, consumed lineage).
 
-Args:
-- mode: "summary" (default) — one line per block with size/range/topic. "detailed" — adds age, generation, effective message count, consumed block lineage.
-- sort: "recent" (default) | "size" (largest compressed first) | "age" (oldest surviving first, nearing GC).
-- limit: max blocks to show (default 30).`
+Sort options: "size" (default, largest first), "time" (chronological), "tool" (group by tool type).
+
+Use this tool to:
+- See what's consuming context (overview)
+- Find all messages of a specific tool type to batch-compress
+- Check block details before decompressing
+- Find compression candidates when context grows`
 
 function formatTokens(n: number): string {
     if (!Number.isFinite(n) || n <= 0) return "0"
     return n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n)
 }
 
-function formatSizePair(compressed: number, summary: number): string {
-    return `${formatTokens(compressed)}→${formatTokens(summary)}`
+function pct(n: number, total: number): number {
+    if (n <= 0 || total <= 0) return 0
+    return Math.max(1, Math.round((n / total) * 100))
 }
 
 function formatIdRange(block: CompressionBlock): string {
@@ -33,44 +37,288 @@ function formatIdRange(block: CompressionBlock): string {
     return `${start}–${end}`
 }
 
-function sortBlocks(
-    blocks: CompressionBlock[],
-    sort: "recent" | "size" | "age",
-): CompressionBlock[] {
-    const copy = [...blocks]
-    if (sort === "size") {
-        copy.sort((a, b) => (b.compressedTokens || 0) - (a.compressedTokens || 0))
-    } else if (sort === "age") {
-        copy.sort((a, b) => (b.survivedCount || 0) - (a.survivedCount || 0))
-    } else {
-        copy.sort((a, b) => b.createdAt - a.createdAt)
+function describeToolMessage(msg: WithParts): string {
+    for (const part of msg.parts || []) {
+        if (part.type === "tool") {
+            const toolPart = part as any
+            const toolName = toolPart.tool || "?"
+            const input = toolPart.state?.input
+            if (input && typeof input === "object") {
+                if (input.command) return `${toolName}: ${String(input.command).slice(0, 60)}`
+                if (input.filePath) return `${toolName}: ${String(input.filePath).slice(0, 60)}`
+                if (input.query) return `${toolName}: ${String(input.query).slice(0, 60)}`
+                if (input.pattern) return `${toolName}: ${String(input.pattern).slice(0, 60)}`
+                if (input.content) return `${toolName}: ${String(input.content).slice(0, 40)}`
+            }
+            return toolName
+        }
     }
-    return copy
+    const textPart = (msg.parts || []).find((p) => p.type === "text") as any
+    if (textPart?.text) {
+        return textPart.text.slice(0, 60).replace(/\n/g, " ")
+    }
+    return "?"
 }
 
-function renderSummaryRow(block: CompressionBlock, idWidth: number): string {
-    const idStr = `b${block.blockId}`.padEnd(idWidth + 1)
-    const sizeStr = formatSizePair(block.compressedTokens, block.summaryTokens).padStart(13)
-    const ageStr = formatAge(block.createdAt).padStart(10)
-    const rangeStr = formatIdRange(block).padStart(19)
-    const topic = block.topic || "(no topic)"
-    return `  ${idStr} ${sizeStr}  ${ageStr}  ${rangeStr}   "${topic}"`
+interface VisibleMessageInfo {
+    ref: string
+    tokens: number
+    tool: string
+    index: number
 }
 
-function renderDetailedRow(block: CompressionBlock, idWidth: number): string {
-    const idStr = `b${block.blockId}`.padEnd(idWidth + 1)
-    const sizeStr = formatSizePair(block.compressedTokens, block.summaryTokens).padStart(13)
-    const ageStr = formatAge(block.createdAt).padStart(10)
-    const rangeStr = formatIdRange(block).padStart(19)
-    const survived = block.survivedCount ?? 0
-    const gen = block.generation ?? "young"
-    const effCount = block.effectiveMessageIds?.length ?? 0
-    const consumedLineage =
-        block.consumedBlockIds && block.consumedBlockIds.length > 0
-            ? ` nested=[${block.consumedBlockIds.map((n) => `b${n}`).join(",")}]`
-            : ""
-    const topic = block.topic || "(no topic)"
-    return `  ${idStr} ${sizeStr}  ${ageStr}  ${rangeStr}  age=${survived} ${gen} eff=${effCount}${consumedLineage}  "${topic}"`
+function collectVisibleMessages(
+    rawMessages: WithParts[],
+    ctx: ToolContext,
+): { messages: VisibleMessageInfo[]; summaryTokens: number } {
+    const pruneMap = ctx.state.prune.messages.byMessageId
+    const byRawId = ctx.state.messageIds.byRawId
+    const result: VisibleMessageInfo[] = []
+    let summaryTokens = 0
+
+    const activeBlocks = Array.from(ctx.state.prune.messages.activeBlockIds)
+        .map((id) => ctx.state.prune.messages.blocksById.get(id))
+        .filter((b): b is NonNullable<typeof b> => b !== undefined && b.active)
+
+    for (const block of activeBlocks) {
+        summaryTokens += block.summaryTokens || 0
+    }
+
+    rawMessages.forEach((msg, idx) => {
+        const msgId = (msg.info as any)?.id || ""
+        const entry = pruneMap.get(msgId)
+        if (entry && entry.activeBlockIds.length > 0) return
+
+        const ref = byRawId.get(msgId)
+        if (!ref) return
+
+        let tokens = 0
+        let toolName = ""
+
+        for (const part of msg.parts || []) {
+            if (part.type === "text" && typeof (part as any).text === "string") {
+                tokens += Math.round(((part as any).text as string).length / 4)
+            } else if (part.type === "tool") {
+                const raw = JSON.stringify(part)
+                tokens += Math.round(raw.length / 4)
+                if (!toolName) {
+                    toolName = (part as any)?.tool || "unknown"
+                }
+            }
+        }
+
+        if (tokens > 0) {
+            result.push({ ref, tokens, tool: toolName || "text", index: idx })
+        }
+    })
+
+    return { messages: result, summaryTokens }
+}
+
+function renderOverview(
+    visibleMessages: VisibleMessageInfo[],
+    summaryTokens: number,
+    blocks: CompressionBlock[],
+    fetchFailed: boolean,
+): string[] {
+    const lines: string[] = []
+
+    const toolTypeMap = new Map<string, number>()
+    for (const m of visibleMessages) {
+        toolTypeMap.set(m.tool, (toolTypeMap.get(m.tool) || 0) + m.tokens)
+    }
+    const topToolName = Array.from(toolTypeMap.entries())
+        .sort((a, b) => b[1] - a[1])[0]?.[0]
+
+    if (fetchFailed) {
+        lines.push("VISIBLE CONTEXT (uncompressed)")
+        lines.push("  (unable to fetch messages for breakdown)")
+    } else {
+        const totalTool = visibleMessages
+            .filter((m) => m.tool !== "text" && m.tool !== "step-finish")
+            .reduce((s, m) => s + m.tokens, 0)
+        const totalText = visibleMessages
+            .filter((m) => m.tool === "text")
+            .reduce((s, m) => s + m.tokens, 0)
+        const total = totalTool + totalText + summaryTokens
+
+        const toolPct = pct(totalTool, total)
+        const textPct = pct(totalText, total)
+        const summaryPct = pct(summaryTokens, total)
+
+        lines.push("VISIBLE CONTEXT (uncompressed)")
+        lines.push(
+            `  ${formatTokens(total)} total | ${formatTokens(totalTool)} tool (${toolPct}%) | ${formatTokens(totalText)} text (${textPct}%) | ${formatTokens(summaryTokens)} summaries (${summaryPct}%)`,
+        )
+
+        const topTypes = Array.from(toolTypeMap.entries())
+            .map(([tool, tokens]) => ({ tool, tokens }))
+            .sort((a, b) => b.tokens - a.tokens)
+            .slice(0, 3)
+        if (topTypes.length > 0) {
+            lines.push(`  Top tools: ${topTypes.map((t) => `${t.tool} (${pct(t.tokens, total)}%)`).join(", ")}`)
+        }
+    }
+
+    lines.push("")
+
+    if (blocks.length === 0) {
+        lines.push("COMPRESSED BLOCKS")
+        lines.push("  No compressed blocks.")
+    } else {
+        const totalSummary = blocks.reduce((s, b) => s + (b.summaryTokens || 0), 0)
+        const totalCompressed = blocks.reduce((s, b) => s + (b.compressedTokens || 0), 0)
+        lines.push(
+            `COMPRESSED BLOCKS — ${blocks.length} active (${formatTokens(totalSummary)} summary, ${formatTokens(totalCompressed)} original)`,
+        )
+        lines.push("")
+        const sorted = [...blocks].sort((a, b) => b.createdAt - a.createdAt)
+        for (const b of sorted.slice(0, 30)) {
+            const ageStr = formatAge(b.createdAt)
+            const range = formatIdRange(b)
+            const topic = b.topic || "(no topic)"
+            lines.push(`  b${b.blockId}  ${formatTokens(b.compressedTokens)}→${formatTokens(b.summaryTokens)}  ${ageStr}  ${range}  "${topic}"`)
+        }
+    }
+
+    lines.push("")
+
+    const hintTool = topToolName || "bash"
+    lines.push(`Tip: acp_status({scope:"uncompressed", tool:"${hintTool}", sort:"size"}) — mix any params freely`)
+
+    return lines
+}
+
+function renderUncompressedDrilldown(
+    visibleMessages: VisibleMessageInfo[],
+    toolFilter: string | undefined,
+    sort: string,
+    limit: number,
+): string[] {
+    const lines: string[] = []
+    let filtered = visibleMessages
+
+    if (toolFilter) {
+        filtered = filtered.filter((m) => m.tool === toolFilter)
+    }
+
+    if (sort === "time") {
+        filtered.sort((a, b) => a.index - b.index)
+    } else if (sort === "tool") {
+        filtered.sort((a, b) => a.tool.localeCompare(b.tool) || b.tokens - a.tokens)
+    } else {
+        filtered.sort((a, b) => b.tokens - a.tokens)
+    }
+
+    const totalTokens = filtered.reduce((s, m) => s + m.tokens, 0)
+    const allTokens = visibleMessages.reduce((s, m) => s + m.tokens, 0)
+
+    const header = toolFilter
+        ? `UNCOMPRESSED — ${toolFilter}: ${formatTokens(totalTokens)} | ${filtered.length} msgs | ${pct(totalTokens, allTokens)}% of visible`
+        : `UNCOMPRESSED — ${formatTokens(totalTokens)} | ${filtered.length} msgs`
+
+    lines.push(header)
+    lines.push(`Sorted by ${sort}`)
+    lines.push("")
+
+    const shown = filtered.slice(0, limit)
+    for (const m of shown) {
+        lines.push(`  ${m.ref} (${formatTokens(m.tokens)}) ${m.tool}`)
+    }
+
+    if (filtered.length > shown.length) {
+        lines.push("")
+        lines.push(`${shown.length} of ${filtered.length} shown (${filtered.length - shown.length} hidden).`)
+    }
+
+    if (filtered.length > 1 && sort !== "time") {
+        const refs = filtered.map((m) => m.index)
+        const minIdx = Math.min(...refs)
+        const maxIdx = Math.max(...refs)
+        const span = maxIdx - minIdx
+        const avgGap = span / (filtered.length - 1)
+        const minRef = filtered.find((m) => m.index === minIdx)?.ref || "?"
+        const maxRef = filtered.find((m) => m.index === maxIdx)?.ref || "?"
+        lines.push("")
+        lines.push(`Spread: ${minRef}–${maxRef} (avg gap ${avgGap.toFixed(0)} msgs)`)
+    }
+
+    return lines
+}
+
+function renderCompressedDrilldown(
+    blocks: CompressionBlock[],
+    sort: string,
+    limit: number,
+): string[] {
+    const lines: string[] = []
+    let sorted = [...blocks]
+
+    if (sort === "time") {
+        sorted.sort((a, b) => a.createdAt - b.createdAt)
+    } else if (sort === "age") {
+        sorted.sort((a, b) => (b.survivedCount || 0) - (a.survivedCount || 0))
+    } else {
+        sorted.sort((a, b) => (b.compressedTokens || 0) - (a.compressedTokens || 0))
+    }
+
+    const totalSummary = sorted.reduce((s, b) => s + (b.summaryTokens || 0), 0)
+    const totalCompressed = sorted.reduce((s, b) => s + (b.compressedTokens || 0), 0)
+
+    lines.push(`COMPRESSED — ${sorted.length} blocks | ${formatTokens(totalCompressed)} original → ${formatTokens(totalSummary)} summary`)
+    lines.push(`Sorted by ${sort === "time" ? "time" : sort === "age" ? "age" : "size"}`)
+    lines.push("")
+
+    const shown = sorted.slice(0, limit)
+    for (const b of shown) {
+        const survived = b.survivedCount ?? 0
+        const gen = b.generation ?? "young"
+        const effCount = b.effectiveMessageIds?.length ?? 0
+        const consumed =
+            b.consumedBlockIds && b.consumedBlockIds.length > 0
+                ? ` nested=[${b.consumedBlockIds.map((n) => `b${n}`).join(",")}]`
+                : ""
+        const topic = b.topic || "(no topic)"
+        lines.push(
+            `  b${b.blockId}  ${formatTokens(b.compressedTokens)}→${formatTokens(b.summaryTokens)}  ${formatAge(b.createdAt)}  ${formatIdRange(b)}  age=${survived} ${gen} eff=${effCount}${consumed}`,
+        )
+        lines.push(`    "${topic}"`)
+    }
+
+    if (sorted.length > shown.length) {
+        lines.push("")
+        lines.push(`${shown.length} of ${sorted.length} shown.`)
+    }
+
+    lines.push("")
+    lines.push("Use decompress to restore a block's content, or search_context to search within blocks.")
+
+    return lines
+}
+
+function buildVisibleWithSummaries(
+    rawMessages: WithParts[],
+    ctx: ToolContext,
+): WithParts[] {
+    const pruneMap = ctx.state.prune.messages.byMessageId
+    const visible = rawMessages.filter((msg) => {
+        const msgId = (msg.info as any)?.id || ""
+        const entry = pruneMap.get(msgId)
+        return !entry || entry.activeBlockIds.length === 0
+    })
+
+    const activeBlocks = Array.from(ctx.state.prune.messages.activeBlockIds)
+        .map((id) => ctx.state.prune.messages.blocksById.get(id))
+        .filter((b): b is NonNullable<typeof b> => b !== undefined && b.active)
+
+    for (const block of activeBlocks) {
+        visible.push({
+            info: { id: `msg_acp_summary_b${block.blockId}` } as any,
+            parts: [{ type: "text", text: block.summary || "[Compressed conversation section]" } as any],
+        } as any)
+    }
+
+    return visible
 }
 
 export function createAcpStatusTool(ctx: ToolContext): ReturnType<typeof tool> {
@@ -79,70 +327,61 @@ export function createAcpStatusTool(ctx: ToolContext): ReturnType<typeof tool> {
     return tool({
         description: ACP_STATUS_TOOL_DESCRIPTION,
         args: {
-            mode: tool.schema
+            scope: tool.schema
                 .string()
                 .optional()
-                .describe('Output detail level: "summary" (default) or "detailed"'),
+                .describe('Drill down: "compressed" or "uncompressed". No arg = overview of both.'),
+            tool: tool.schema
+                .string()
+                .optional()
+                .describe('Filter by tool type (only with scope:"uncompressed"). e.g., "bash", "todowrite", "write"'),
             sort: tool.schema
                 .string()
                 .optional()
-                .describe('Sort order: "recent" (default), "size", or "age"'),
+                .describe('Sort order: "size" (default), "time", or "tool"'),
             limit: tool.schema
                 .number()
                 .optional()
-                .describe("Maximum blocks to show (default 30)"),
+                .describe("Max items to list (default 30)"),
         },
-        async execute(args) {
-            const mode = args.mode === "detailed" ? "detailed" : "summary"
-            const sort: "recent" | "size" | "age" =
-                args.sort === "size" || args.sort === "age" ? args.sort : "recent"
+        async execute(args, toolCtx) {
+            const scope = args.scope === "compressed" || args.scope === "uncompressed" ? args.scope : undefined
+            const toolFilter = typeof args.tool === "string" ? args.tool : undefined
+            const sort = args.sort === "time" || args.sort === "tool" || args.sort === "age" ? args.sort : "size"
             const limit = Number.isFinite(args.limit) && args.limit! > 0 ? Math.min(args.limit!, 200) : 30
 
-            const messages = ctx.state.prune.messages
-            const activeIds = Array.from(messages.activeBlockIds).sort((a, b) => a - b)
-
-            if (activeIds.length === 0) {
-                return "No compressed blocks. Context is fully visible."
-            }
-
+            const msgState = ctx.state.prune.messages
+            const activeIds = Array.from(msgState.activeBlockIds).sort((a, b) => a - b)
             const allBlocks = activeIds
-                .map((id) => messages.blocksById.get(id))
+                .map((id) => msgState.blocksById.get(id))
                 .filter((b): b is NonNullable<typeof b> => b !== undefined && b.active)
 
-            if (allBlocks.length === 0) {
-                return "No compressed blocks. Context is fully visible."
+            const lines: string[] = []
+
+            if (scope === "compressed") {
+                lines.push(...renderCompressedDrilldown(allBlocks, sort, limit))
+                return lines.join("\n")
             }
 
-            const totalSummary = allBlocks.reduce((s, b) => s + (b.summaryTokens || 0), 0)
-            const totalCompressed = allBlocks.reduce((s, b) => s + (b.compressedTokens || 0), 0)
-            const sorted = sortBlocks(allBlocks, sort)
-            const shown = sorted.slice(0, limit)
-            const truncated = sorted.length - shown.length
+            let visibleMsgs: VisibleMessageInfo[] = []
+            let summaryTokens = 0
+            let fetchFailed = false
 
-            const idWidth = Math.max(...shown.map((b) => String(b.blockId).length))
-
-            const lines: string[] = [
-                `ACP Status — ${allBlocks.length} active compressed block${allBlocks.length === 1 ? "" : "s"} (${formatTokens(totalSummary)} summary, ${formatTokens(totalCompressed)} original compressed)`,
-                "",
-            ]
-
-            for (const b of shown) {
-                lines.push(
-                    mode === "detailed" ? renderDetailedRow(b, idWidth) : renderSummaryRow(b, idWidth),
-                )
+            try {
+                const rawMessages = await fetchSessionMessages(ctx.client, toolCtx.sessionID)
+                const result = collectVisibleMessages(rawMessages, ctx)
+                visibleMsgs = result.messages
+                summaryTokens = result.summaryTokens
+            } catch {
+                fetchFailed = true
             }
 
-            if (truncated > 0) {
-                lines.push("")
-                lines.push(`${shown.length} of ${sorted.length} blocks shown (${truncated} hidden). Raise limit or change sort to see more.`)
+            if (scope === "uncompressed") {
+                if (fetchFailed) return "(unable to fetch messages)"
+                lines.push(...renderUncompressedDrilldown(visibleMsgs, toolFilter, sort, limit))
+            } else {
+                lines.push(...renderOverview(visibleMsgs, summaryTokens, allBlocks, fetchFailed))
             }
-
-            lines.push("")
-            const sortHint =
-                sort === "recent"
-                    ? 'sorted by recent. Use acp_status({sort:"size"}) for largest, {sort:"age"} for near-GC.'
-                    : `sorted by ${sort}.`
-            lines.push(`${sortHint} Use decompress to restore a block's full content, or search_context to search within compressed blocks.`)
 
             return lines.join("\n")
         },

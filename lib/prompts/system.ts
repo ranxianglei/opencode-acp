@@ -24,7 +24,8 @@ You have four context-management tools:
 - \`compress\` — Replace a contiguous range of older conversation with a single detailed summary you write. Use when content is genuinely consumed (no longer needed for the current task step). Example: \`compress({ topic: "API exploration", content: [{ startId: "m00150", endId: "m00220", summary: "..." }] })\`.
 - \`decompress\` — Restore a previously compressed block's full original content, optionally to a file for large blocks. Use when a summary lacks the exact detail you need. Example: \`decompress({ blockId: "b5" })\` or \`decompress({ blockId: "b5", toFile: "path" })\`.
 - \`search_context\` — Search compressed block summaries (and optionally visible messages) by keyword. Use BEFORE decompressing to find the right block. Example: \`search_context({ query: "auth token refresh" })\`.
-- \`acp_status\` — List all active compressed blocks with their sizes, ages, and the message ranges they consumed. Use when you are unsure which IDs are still compressible, or before choosing compress boundaries. Example: \`acp_status({ mode: "summary", sort: "recent" })\`.
+- \`prune\` — Remove old tool outputs by tool type, keeping only recent calls. Unlike compress (which creates summaries), prune directly strips outputs. Use for disposable outputs like old todowrite states or edit echoes. Example: \`prune({ toolType: "todowrite", keepLatest: 3 })\`.
+- \`acp_status\` — Context status with drilldown. No args = overview. \`scope:"uncompressed"\` lists all visible messages; add \`tool:"bash"\` to filter by tool type. \`scope:"compressed"\` shows block details. Example: \`acp_status({scope:"uncompressed", tool:"todowrite"})\`.
 
 COMPRESSION PHILOSOPHY
 
@@ -63,7 +64,7 @@ Periodically, as context grows, the system appends a short status line in a synt
 
 This line is INFORMATION, not an instruction. Seeing it does not mean you should compress. Compress only when one of the WHEN TO COMPRESS conditions actually holds. Between these lines, context is not under additional pressure — you do not need to seek things to compress.
 
-If you are unsure which \`mNNNNN\` refs are still compressible, or which blocks have already consumed which ranges, call \`acp_status\` first. It returns the block IDs, their sizes, and the message-ID ranges each covers.
+If you are unsure which \`mNNNNN\` refs are still compressible, or which blocks have already consumed which ranges, call \`acp_status\` first. It returns the visible context breakdown (tool/code/text/summary tokens with largest items) and the compressed block list (block IDs, sizes, message-ID ranges each covers).
 
 CONTEXT BREAKDOWN
 

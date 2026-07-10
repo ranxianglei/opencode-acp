@@ -558,9 +558,10 @@ export interface ContextComposition {
     textTokens: number
     total: number
     largestRanges: { ref: string; tokens: number }[]
-    largestToolRanges: { ref: string; tokens: number }[]
+    largestToolRanges: { ref: string; tokens: number; tool?: string }[]
     largestCodeRanges: { ref: string; tokens: number }[]
     largestMessageRanges: { ref: string; tokens: number }[]
+    toolTypeBreakdown: { tool: string; tokens: number }[]
 }
 
 function estimateCodeTokens(text: string): number {
@@ -586,9 +587,10 @@ export function estimateContextComposition(
     let summaryTokens = 0
     let messageTokens = 0
     const perMessage: { ref: string; tokens: number }[] = []
-    const perTool: { ref: string; tokens: number }[] = []
+    const perTool: { ref: string; tokens: number; tool?: string }[] = []
     const perCode: { ref: string; tokens: number }[] = []
     const perText: { ref: string; tokens: number }[] = []
+    const toolTypeMap = new Map<string, number>()
 
     for (const msg of messages) {
         const text = (msg.parts || [])
@@ -602,6 +604,7 @@ export function estimateContextComposition(
         let msgTool = 0
         let msgCode = 0
         let msgText = 0
+        let msgToolName = ""
 
         for (const part of msg.parts || []) {
             if (part.type === "text" && typeof (part as any).text === "string") {
@@ -619,19 +622,22 @@ export function estimateContextComposition(
                         msgCode += cTokens
                     }
                 }
-            } else if (part.type !== "text" && part.type !== "reasoning") {
+            } else if (part.type === "tool") {
                 const raw = JSON.stringify(part)
                 const tokens = Math.round(raw.length / 4)
                 msgTotal += tokens
                 toolTokens += tokens
                 msgTool += tokens
+                const toolName = (part as any)?.tool || "unknown"
+                toolTypeMap.set(toolName, (toolTypeMap.get(toolName) || 0) + tokens)
+                if (!msgToolName) msgToolName = toolName
             }
         }
 
         if (!isSummary) {
             const ref = state?.messageIds?.byRawId?.get(msgId) || "?"
             if (msgTotal > 500) perMessage.push({ ref, tokens: msgTotal })
-            if (msgTool > 500) perTool.push({ ref, tokens: msgTool })
+            if (msgTool > 500) perTool.push({ ref, tokens: msgTool, tool: msgToolName })
             if (msgCode > 300) perCode.push({ ref, tokens: msgCode })
             if (msgText > 500 && msgCode === 0) perText.push({ ref, tokens: msgText })
         }
@@ -641,6 +647,10 @@ export function estimateContextComposition(
     perTool.sort((a, b) => b.tokens - a.tokens)
     perCode.sort((a, b) => b.tokens - a.tokens)
     perText.sort((a, b) => b.tokens - a.tokens)
+
+    const toolTypeBreakdown = Array.from(toolTypeMap.entries())
+        .map(([tool, tokens]) => ({ tool, tokens }))
+        .sort((a, b) => b.tokens - a.tokens)
 
     return {
         toolTokens,
@@ -653,5 +663,6 @@ export function estimateContextComposition(
         largestToolRanges: perTool.slice(0, 15),
         largestCodeRanges: perCode.slice(0, 5),
         largestMessageRanges: perText.slice(0, 5),
+        toolTypeBreakdown,
     }
 }
