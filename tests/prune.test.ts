@@ -335,6 +335,56 @@ test("prune strips stale mNNNN refs from summary content (Bug 28 fix)", () => {
     assert.ok(output.includes("Summary with"), "summary content should remain after stripping")
 })
 
+test("prune injects multiple tool-result recaps in a single pass", () => {
+    const state = createSessionState()
+    // Block 1 at anchor m1, compressing m2
+    state.prune.messages.byMessageId.set("m2", { tokenCount: 100, allBlockIds: [1], activeBlockIds: [1] })
+    state.prune.messages.activeByAnchorMessageId.set("m1", 1)
+    state.prune.messages.blocksById.set(1, {
+        blockId: 1, runId: 1, active: true, deactivatedByUser: false,
+        compressedTokens: 100, summaryTokens: 50, durationMs: 100,
+        generation: "young", survivedCount: 0,
+        directMessageIds: ["m2"], effectiveMessageIds: ["m2"],
+        directToolIds: [], effectiveToolIds: [],
+        anchorMessageId: "m1", topic: "topic A", summary: "Summary A",
+    } as CompressionBlock)
+    // Block 2 at anchor m4, compressing m5
+    state.prune.messages.byMessageId.set("m5", { tokenCount: 200, allBlockIds: [2], activeBlockIds: [2] })
+    state.prune.messages.activeByAnchorMessageId.set("m4", 2)
+    state.prune.messages.blocksById.set(2, {
+        blockId: 2, runId: 1, active: true, deactivatedByUser: false,
+        compressedTokens: 200, summaryTokens: 60, durationMs: 100,
+        generation: "young", survivedCount: 0,
+        directMessageIds: ["m5"], effectiveMessageIds: ["m5"],
+        directToolIds: [], effectiveToolIds: [],
+        anchorMessageId: "m4", topic: "topic B", summary: "Summary B",
+    } as CompressionBlock)
+
+    const messages: WithParts[] = [
+        userMessage("m1", "q1", 1),
+        assistantMessage("m2", 2),
+        userMessage("m3", "mid", 3),
+        userMessage("m4", "q2", 4),
+        assistantMessage("m5", 5),
+        userMessage("m6", "end", 6),
+    ]
+
+    prune(state, logger, buildConfig(), messages)
+
+    // Both m2 and m5 should be pruned
+    const ids = messages.map((m) => m.info.id)
+    assert.ok(!ids.includes("m2"), "m2 should be pruned")
+    assert.ok(!ids.includes("m5"), "m5 should be pruned")
+
+    // Two separate recap tool-results should be injected
+    const recapOutputs = messages
+        .flatMap((m) => m.parts.filter((p: any) => p.type === "tool" && p.tool === "acp_context_recap"))
+        .map((p: any) => p.state?.output ?? "")
+    assert.equal(recapOutputs.length, 2, "should have exactly 2 recap tool-results")
+    assert.ok(recapOutputs.some((o) => o.includes("Summary A")), "should contain Summary A")
+    assert.ok(recapOutputs.some((o) => o.includes("Summary B")), "should contain Summary B")
+})
+
 // =====================================================================
 // pruneToolOutputs — completed tool output replacement
 // =====================================================================
