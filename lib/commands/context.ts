@@ -42,6 +42,7 @@
 
 import type { Logger } from "../logger"
 import type { SessionState, WithParts } from "../state"
+import type { PluginConfig } from "../config"
 import { sendIgnoredMessage } from "../ui/notification"
 import { formatTokenCount } from "../ui/utils"
 import { isIgnoredUserMessage } from "../messages/query"
@@ -55,6 +56,7 @@ export interface ContextCommandContext {
     logger: Logger
     sessionId: string
     messages: WithParts[]
+    config: PluginConfig
 }
 
 interface TokenBreakdown {
@@ -294,12 +296,12 @@ function formatContextMessage(breakdown: TokenBreakdown): string {
 }
 
 export async function handleContextCommand(ctx: ContextCommandContext): Promise<void> {
-    const { client, state, logger, sessionId, messages } = ctx
+    const { client, state, logger, sessionId, messages, config } = ctx
 
     const breakdown = analyzeTokens(state, messages)
 
     const message = formatContextMessage(breakdown)
 
     const params = getCurrentParams(state, messages, logger)
-    await sendIgnoredMessage(client, sessionId, message, params, logger)
+    await sendIgnoredMessage(client, sessionId, message, params, logger, config)
 }

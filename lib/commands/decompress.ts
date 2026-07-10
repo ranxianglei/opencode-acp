@@ -1,5 +1,6 @@
 import type { Logger } from "../logger"
 import type { SessionState, WithParts } from "../state"
+import type { PluginConfig } from "../config"
 import { syncCompressionBlocks } from "../messages"
 import { getCurrentParams } from "../token-utils"
 import { sendIgnoredMessage } from "../ui/notification"
@@ -22,6 +23,7 @@ import { saveSessionState } from "../state/persistence"
 export interface DecompressCommandContext {
     client: any
     state: SessionState
+    config: PluginConfig
     logger: Logger
     sessionId: string
     messages: WithParts[]
@@ -86,7 +88,7 @@ function formatAvailableBlocksMessage(availableTargets: CompressionTarget[]): st
 }
 
 export async function handleDecompressCommand(ctx: DecompressCommandContext): Promise<void> {
-    const { client, state, logger, sessionId, messages, args } = ctx
+    const { client, state, logger, sessionId, messages, args, config } = ctx
 
     const params = getCurrentParams(state, messages, logger)
     const targetArg = args[0]
@@ -98,6 +100,7 @@ export async function handleDecompressCommand(ctx: DecompressCommandContext): Pr
             "Invalid arguments. Usage: /acp decompress <n>",
             params,
             logger,
+            config,
         )
         return
     }
@@ -108,7 +111,7 @@ export async function handleDecompressCommand(ctx: DecompressCommandContext): Pr
     if (!targetArg) {
         const availableTargets = getActiveCompressionTargets(messagesState)
         const message = formatAvailableBlocksMessage(availableTargets)
-        await sendIgnoredMessage(client, sessionId, message, params, logger)
+        await sendIgnoredMessage(client, sessionId, message, params, logger, config)
         return
     }
 
@@ -120,6 +123,7 @@ export async function handleDecompressCommand(ctx: DecompressCommandContext): Pr
             `Please enter a compression number. Example: /acp decompress 2`,
             params,
             logger,
+            config,
         )
         return
     }
@@ -132,6 +136,7 @@ export async function handleDecompressCommand(ctx: DecompressCommandContext): Pr
             `Compression ${targetBlockId} does not exist.`,
             params,
             logger,
+            config,
         )
         return
     }
@@ -146,6 +151,7 @@ export async function handleDecompressCommand(ctx: DecompressCommandContext): Pr
                 `Compression ${target.displayId} is inside compression ${activeAncestorBlockId}. Restore compression ${activeAncestorBlockId} first.`,
                 params,
                 logger,
+                config,
             )
             return
         }
@@ -156,6 +162,7 @@ export async function handleDecompressCommand(ctx: DecompressCommandContext): Pr
             `Compression ${target.displayId} is not active.`,
             params,
             logger,
+            config,
         )
         return
     }
@@ -184,7 +191,7 @@ export async function handleDecompressCommand(ctx: DecompressCommandContext): Pr
         restoredTokens,
         reactivatedBlockIds,
     )
-    await sendIgnoredMessage(client, sessionId, message, params, logger)
+    await sendIgnoredMessage(client, sessionId, message, params, logger, config)
 
     logger.info("Decompress command completed", {
         targetBlockId: target.displayId,

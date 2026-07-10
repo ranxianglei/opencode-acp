@@ -156,7 +156,7 @@ export async function handleSweepCommand(ctx: SweepCommandContext): Promise<void
         if (lastUserMsgIndex === -1) {
             // No user message found - show message and return
             const message = formatNoUserMessage()
-            await sendIgnoredMessage(client, sessionId, message, params, logger)
+            await sendIgnoredMessage(client, sessionId, message, params, logger, config)
             logger.info("Sweep command: no user message found")
             return
         } else {
@@ -214,7 +214,7 @@ export async function handleSweepCommand(ctx: SweepCommandContext): Promise<void
             workingDirectory,
             skippedProtected,
         )
-        await sendIgnoredMessage(client, sessionId, message, params, logger)
+        await sendIgnoredMessage(client, sessionId, message, params, logger, config)
         logger.info("Sweep command: no new tools to sweep", { skippedProtected })
         return
     }
@@ -253,7 +253,7 @@ export async function handleSweepCommand(ctx: SweepCommandContext): Promise<void
         workingDirectory,
         skippedProtected,
     )
-    await sendIgnoredMessage(client, sessionId, message, params, logger)
+    await sendIgnoredMessage(client, sessionId, message, params, logger, config)
 
     logger.info("Sweep command completed", {
         toolsSwept: newToolIds.length,

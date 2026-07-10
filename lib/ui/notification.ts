@@ -261,7 +261,7 @@ export async function sendCompressNotification(
         return true
     }
 
-    await sendIgnoredMessage(client, sessionId, message, params, logger)
+    await sendIgnoredMessage(client, sessionId, message, params, logger, config)
     return true
 }
 
@@ -271,6 +271,7 @@ export async function sendIgnoredMessage(
     text: string,
     params: any,
     logger: Logger,
+    config: PluginConfig,
 ): Promise<void> {
     const agent = params.agent || undefined
     const variant = params.variant || undefined
@@ -282,8 +283,10 @@ export async function sendIgnoredMessage(
               }
             : undefined
 
-    // Wrap with system message markers so the model does not confuse this with user input
-    const wrappedText = `[ACP system message — not a user comment]\n\n${text}\n\n[ACP system message — not a user comment]`
+    // debug=true: wrap to help model distinguish system vs user; debug=false: send clean
+    const finalText = config.debug
+        ? `[ACP system message — not a user comment]\n\n${text}\n\n[ACP system message — not a user comment]`
+        : text
 
     try {
         await client.session.prompt({
@@ -298,7 +301,7 @@ export async function sendIgnoredMessage(
                 parts: [
                     {
                         type: "text",
-                        text: wrappedText,
+                        text: finalText,
                         ignored: true,
                     },
                 ],

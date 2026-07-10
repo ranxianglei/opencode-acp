@@ -5,6 +5,7 @@
 
 import type { Logger } from "../logger"
 import type { SessionState, WithParts } from "../state"
+import type { PluginConfig } from "../config"
 import { sendIgnoredMessage } from "../ui/notification"
 import { formatTokenCount } from "../ui/utils"
 import { loadAllSessionStats, type AggregatedStats } from "../state/persistence"
@@ -17,6 +18,7 @@ export interface StatsCommandContext {
     logger: Logger
     sessionId: string
     messages: WithParts[]
+    config: PluginConfig
 }
 
 function formatStatsMessage(
@@ -90,7 +92,7 @@ function formatCompressionTime(ms: number): string {
 }
 
 export async function handleStatsCommand(ctx: StatsCommandContext): Promise<void> {
-    const { client, state, logger, sessionId, messages } = ctx
+    const { client, state, logger, sessionId, messages, config } = ctx
 
     // Session stats from in-memory state
     const sessionTokens = state.stats.totalPruneTokens
@@ -133,7 +135,7 @@ export async function handleStatsCommand(ctx: StatsCommandContext): Promise<void
     )
 
     const params = getCurrentParams(state, messages, logger)
-    await sendIgnoredMessage(client, sessionId, message, params, logger)
+    await sendIgnoredMessage(client, sessionId, message, params, logger, config)
 
     logger.info("Stats command executed", {
         sessionTokens,

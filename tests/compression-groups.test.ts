@@ -323,6 +323,7 @@ test("decompress groups batched message compressions by tool call", async () => 
     await handleDecompressCommand({
         client,
         state,
+        config: buildConfig("message"),
         logger,
         sessionId: sessionID,
         messages: rawMessages,
@@ -336,6 +337,7 @@ test("decompress groups batched message compressions by tool call", async () => 
     await handleDecompressCommand({
         client,
         state,
+        config: buildConfig("message"),
         logger,
         sessionId: sessionID,
         messages: rawMessages,
@@ -348,6 +350,7 @@ test("decompress groups batched message compressions by tool call", async () => 
     await handleRecompressCommand({
         client,
         state,
+        config: buildConfig("message"),
         logger,
         sessionId: sessionID,
         messages: rawMessages,
@@ -422,6 +425,7 @@ test("decompress keeps batched ranges individually restorable", async () => {
     await handleDecompressCommand({
         client,
         state,
+        config: buildConfig("range"),
         logger,
         sessionId: sessionID,
         messages: rawMessages,
@@ -435,6 +439,7 @@ test("decompress keeps batched ranges individually restorable", async () => {
     await handleDecompressCommand({
         client,
         state,
+        config: buildConfig("range"),
         logger,
         sessionId: sessionID,
         messages: rawMessages,

@@ -58,7 +58,7 @@ export async function handleManualToggleCommand(
     ctx: ManualCommandContext,
     modeArg?: string,
 ): Promise<void> {
-    const { client, state, logger, sessionId, messages } = ctx
+    const { client, state, config, logger, sessionId, messages } = ctx
 
     if (modeArg === "on") {
         state.manualMode = "active"
@@ -75,6 +75,7 @@ export async function handleManualToggleCommand(
         state.manualMode ? MANUAL_MODE_ON : MANUAL_MODE_OFF,
         params,
         logger,
+        config,
     )
 
     logger.info("Manual mode toggled", { manualMode: state.manualMode })

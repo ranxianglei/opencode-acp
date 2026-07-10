@@ -1,4 +1,5 @@
 import type { Logger } from "../logger"
+import type { PluginConfig } from "../config"
 import type { PruneMessagesState, SessionState, WithParts } from "../state"
 import { syncCompressionBlocks } from "../messages"
 import { parseBlockRef } from "../message-ids"
@@ -15,6 +16,7 @@ import {
 export interface RecompressCommandContext {
     client: any
     state: SessionState
+    config: PluginConfig
     logger: Logger
     sessionId: string
     messages: WithParts[]
@@ -104,7 +106,7 @@ function formatAvailableBlocksMessage(availableTargets: CompressionTarget[]): st
 }
 
 export async function handleRecompressCommand(ctx: RecompressCommandContext): Promise<void> {
-    const { client, state, logger, sessionId, messages, args } = ctx
+    const { client, state, config, logger, sessionId, messages, args } = ctx
 
     const params = getCurrentParams(state, messages, logger)
     const targetArg = args[0]
@@ -116,6 +118,7 @@ export async function handleRecompressCommand(ctx: RecompressCommandContext): Pr
             "Invalid arguments. Usage: /acp recompress <n>",
             params,
             logger,
+            config,
         )
         return
     }
@@ -130,7 +133,7 @@ export async function handleRecompressCommand(ctx: RecompressCommandContext): Pr
             availableMessageIds,
         )
         const message = formatAvailableBlocksMessage(availableTargets)
-        await sendIgnoredMessage(client, sessionId, message, params, logger)
+        await sendIgnoredMessage(client, sessionId, message, params, logger, config)
         return
     }
 
@@ -142,6 +145,7 @@ export async function handleRecompressCommand(ctx: RecompressCommandContext): Pr
             `Please enter a compression number. Example: /acp recompress 2`,
             params,
             logger,
+            config,
         )
         return
     }
@@ -154,6 +158,7 @@ export async function handleRecompressCommand(ctx: RecompressCommandContext): Pr
             `Compression ${targetBlockId} does not exist.`,
             params,
             logger,
+            config,
         )
         return
     }
@@ -165,6 +170,7 @@ export async function handleRecompressCommand(ctx: RecompressCommandContext): Pr
             `Compression ${target.displayId} can no longer be re-applied because its origin message is no longer in this session.`,
             params,
             logger,
+            config,
         )
         return
     }
@@ -173,7 +179,7 @@ export async function handleRecompressCommand(ctx: RecompressCommandContext): Pr
         const message = target.blocks.some((block) => block.active)
             ? `Compression ${target.displayId} is already active.`
             : `Compression ${target.displayId} is not user-decompressed.`
-        await sendIgnoredMessage(client, sessionId, message, params, logger)
+        await sendIgnoredMessage(client, sessionId, message, params, logger, config)
         return
     }
 
@@ -212,7 +218,7 @@ export async function handleRecompressCommand(ctx: RecompressCommandContext): Pr
         recompressedTokens,
         deactivatedBlockIds,
     )
-    await sendIgnoredMessage(client, sessionId, message, params, logger)
+    await sendIgnoredMessage(client, sessionId, message, params, logger, config)
 
     logger.info("Recompress command completed", {
         targetBlockId: target.displayId,
