@@ -213,8 +213,7 @@ export const injectCompressNudges = (
             const toolGrowth = composition.toolTokens - state.nudges.lastToolOutputNudgeTokens
             if (toolGrowth >= toolOutputThreshold) {
                 const fmt = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n))
-                const topRanges = composition.largestRanges.slice(0, 15).map((r) => `${r.ref} (${fmt(r.tokens)})`).join(", ")
-                toolOutputReminder = `\n\n⚠️ ${fmt(toolGrowth)} new tool outputs accumulated (${fmt(composition.toolTokens)} total). Largest: ${topRanges}. Use compress tool to compress these ranges now.`
+                toolOutputReminder = `\n\n⚠️ ${fmt(toolGrowth)} new tool outputs accumulated (${fmt(composition.toolTokens)} total). Use \`acp_status\` or review the context above to identify and compress consumed ranges. Prefer large continuous ranges by work phase — convert tool outputs into concise summaries rather than keeping raw content.`
                 state.nudges.lastToolOutputNudgeTokens = composition.toolTokens
                 anchorsChanged = true
             }
@@ -246,16 +245,7 @@ export const injectCompressNudges = (
                 breakdown += `\nTop tools: ${topToolTypes.map((t) => `${t.tool} (${pct(t.tokens)}%)`).join(", ")}`
             }
 
-            if (composition.largestToolRanges.length > 0) {
-                breakdown += `\nLargest tool outputs: ${composition.largestToolRanges.slice(0, 10).map((r) => `${r.ref} (${fmt(r.tokens)})${r.tool ? " " + r.tool : ""}`).join(", ")}`
-            }
-            if (composition.largestCodeRanges.length > 0) {
-                breakdown += `\nLargest code messages: ${composition.largestCodeRanges.map((r) => `${r.ref} (${fmt(r.tokens)})`).join(", ")}`
-            }
-            if (composition.largestMessageRanges.length > 0) {
-                breakdown += `\nLargest text messages: ${composition.largestMessageRanges.map((r) => `${r.ref} (${fmt(r.tokens)})`).join(", ")}`
-            }
-            breakdown += `\n💡 Compress incrementally: target the ranges above whose content you have already extracted for this step. Size alone is not a reason to compress — if a large range is still needed in full, keep it.`
+            breakdown += `\n💡 Use \`acp_status\` or review the context above to identify consumed content. Prefer compressing large continuous ranges by work phase — not small incremental steps. Convert verbose tool outputs into concise summaries rather than keeping raw content.`
             if (decision.tipsVariant !== "maxLimit") {
                 breakdown += `\n\n${HOW_TO_COMPRESS_RULES}`
             }
