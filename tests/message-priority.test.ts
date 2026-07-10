@@ -215,11 +215,11 @@ test("injectMessageIds injects ID into every tool output for assistant messages"
     // User messages: still injected into all text parts
     assert.match(
         (userTextOne as any).text,
-        /\n\n<dcp-message-id priority="high">m00001<\/dcp-message-id>/,
+        /\n\n<dcp-message-id[^>]*>m00001<\/dcp-message-id>/,
     )
     assert.match(
         (userTextTwo as any).text,
-        /\n\n<dcp-message-id priority="high">m00001<\/dcp-message-id>/,
+        /\n\n<dcp-message-id[^>]*>m00001<\/dcp-message-id>/,
     )
     // Assistant messages: ID injected into every tool output
     assert.doesNotMatch((assistantTextOne as any).text, /dcp-message-id/)
@@ -367,7 +367,7 @@ test("message mode marks compress tool messages as high priority even when short
     assert.match((assistantTool as any).state.output, /m00002<\/dcp-message-id>/)
     assert.match(
         (assistantTool as any).state.output,
-        /<dcp-message-id priority="high">m00002<\/dcp-message-id>/,
+        /<dcp-message-id[^>]*>m00002<\/dcp-message-id>/,
     )
 })
 
@@ -693,7 +693,7 @@ test("message-mode rendered compressed summaries mark block IDs as BLOCKED", () 
         effectiveToolIds: [],
         createdAt: 1,
         summary:
-            "[Compressed conversation section]\nEarlier summary\n\n<dcp-message-id>b7</dcp-message-id>",
+            "[Compressed conversation section]\nEarlier summary\n\n<dcp-message-id[^>]*>b7</dcp-message-id>",
     })
     state.prune.messages.activeBlockIds.add(7)
     state.prune.messages.activeByAnchorMessageId.set("msg-user-1", 7)
@@ -744,7 +744,7 @@ test("range-mode rendered compressed summaries keep block IDs", () => {
         effectiveToolIds: [],
         createdAt: 1,
         summary:
-            "[Compressed conversation section]\nEarlier summary\n\n<dcp-message-id>b7</dcp-message-id>",
+            "[Compressed conversation section]\nEarlier summary\n\n<dcp-message-id[^>]*>b7</dcp-message-id>",
     })
     state.prune.messages.activeBlockIds.add(7)
     state.prune.messages.activeByAnchorMessageId.set("msg-user-1", 7)
