@@ -700,9 +700,10 @@ test("message-mode rendered compressed summaries mark block IDs as BLOCKED", () 
 
     prune(state, logger, config, messages)
 
-    const summaryText = (messages[0]?.parts[0] as any)?.text || ""
-    assert.match(summaryText, /<dcp-message-id>BLOCKED<\/dcp-message-id>/)
-    assert.doesNotMatch(summaryText, /<dcp-message-id>b7<\/dcp-message-id>/)
+    const recapTool = messages.flatMap((m) => m.parts).find((p: any) => p.type === "tool" && p.tool === "acp_context_recap")
+    const summaryText = (recapTool as any)?.state?.output || ""
+    assert.match(summaryText, /BLOCKED<\/dcp-message-id>/)
+    assert.doesNotMatch(summaryText, /b7<\/dcp-message-id>/)
 })
 
 test("range-mode rendered compressed summaries keep block IDs", () => {
@@ -750,9 +751,10 @@ test("range-mode rendered compressed summaries keep block IDs", () => {
 
     prune(state, logger, config, messages)
 
-    const summaryText = (messages[0]?.parts[0] as any)?.text || ""
-    assert.match(summaryText, /<dcp-message-id>b7<\/dcp-message-id>/)
-    assert.doesNotMatch(summaryText, /<dcp-message-id>BLOCKED<\/dcp-message-id>/)
+    const recapTool = messages.flatMap((m) => m.parts).find((p: any) => p.type === "tool" && p.tool === "acp_context_recap")
+    const summaryText = (recapTool as any)?.state?.output || ""
+    assert.match(summaryText, /b7<\/dcp-message-id>/)
+    assert.doesNotMatch(summaryText, /BLOCKED<\/dcp-message-id>/)
 })
 
 test("hallucination stripping removes all dcp-prefixed XML tags including variants", async () => {
