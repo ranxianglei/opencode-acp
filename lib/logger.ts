@@ -228,3 +228,4 @@ export class Logger {
         } catch (error) {}
     }
 }
+// test: bad branch name
