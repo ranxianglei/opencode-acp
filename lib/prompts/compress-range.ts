@@ -51,4 +51,6 @@ The rest of the bash calls were repetitive export commands. See [[REF:m00078|tes
 \`\`\`
 
 Use KEEP sparingly — each expansion adds to the summary length. Prefer REF for content that is important but not immediately critical.
+
+Do NOT use KEEP for verbose command output, diagnostic scripts, log dumps, or any content whose VALUE is in the conclusion rather than the raw output — these should be summarized or referenced with REF instead.
 `
