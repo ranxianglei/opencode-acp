@@ -566,94 +566,133 @@ All source code changes (files under `lib/`) MUST undergo independent review by 
 | **Type safety**            | No `as any`, no `@ts-ignore`, no type assertion hacks                                        |
 | **State integrity**        | State mutations are safe, no lost data on save/load cycle                                    |
 
-### 5.4 Pre-Publish Checklist (MANDATORY)
+### 5.4 Release Workflow (Automated via CI)
 
-Before every `npm publish`, ALL of the following steps MUST be executed **in order**.
+Releases are **automated through GitHub Actions**. The workflow is: create a release PR → merge → push tag → CI auto-builds, tests, and publishes to npm.
 
-**Step 0: Git state (MUST pass before anything else)**
+#### 5.4.1 CI Enforcement
+
+Two GitHub Actions workflows enforce AGENTS.md standards automatically:
+
+**`pr-checks.yml`** — runs on every PR to master:
+
+| Check | What it validates | Script |
+|-------|------------------|--------|
+| Branch name | Matches `YYYY-MM-DD_short-title` (regex: `^\d{4}-\d{2}-\d{2}_[a-z0-9.-]+$`) | `scripts/ci/check-pr.sh` |
+| Devlog | `devlog/{branch-name}/REQ.md` and `WORKLOG.md` exist | same |
+| Changelog | If `package.json` version changed, `README.md` and `README.zh-CN.md` must be modified and contain `### v{VERSION}` | same |
+
+If any check fails, the PR cannot be merged (GitHub branch protection requires the check to pass).
+
+**`release.yml`** — triggers on `v*` tag push:
+
+1. `npm ci` — install dependencies
+2. `npm run check:package` — build + verify package contents
+3. `npm test` — run full test suite
+4. `npm publish` — publish to npm registry (uses `NPM_TOKEN` secret)
+5. Create GitHub Release with auto-generated notes
+
+No manual `npm publish` is needed. The entire build-test-publish pipeline runs in CI.
+
+#### 5.4.2 Release Process (Step-by-Step)
+
+**Step 1: Create a release branch**
 
 ```bash
-# 1. Clean working tree — no uncommitted changes
-git status --porcelain
-# MUST output nothing. If not: commit or stash first.
-
-# 2. On master branch
-git branch --show-current
-# MUST output "master". If not: git checkout master
-
-# 3. Local synced with remote
-git fetch origin && git status
-# MUST show "Your branch is up to date with 'origin/master'".
-# If behind: git pull
-# If ahead: git push first
+git checkout master
+git pull origin master
+git checkout -b YYYY-MM-DD_release-v{VERSION}
 ```
 
-| Check              | Expected                                 | Fix if failed                      |
-| ------------------ | ---------------------------------------- | ---------------------------------- |
-| Clean working tree | `git status --porcelain` outputs nothing | Commit or stash changes            |
-| On master          | `git branch --show-current` = `master`   | `git checkout master`              |
-| Local = remote     | `git status` shows up-to-date            | `git pull` or `git push` as needed |
-
-**If ANY git check fails: STOP. Do NOT proceed to Step 1.**
-
-**Step 1: Automated verification**
+**Step 2: Bump version + update changelog + devlog**
 
 ```bash
-npm run check:package    # build + verify-package.mjs
+# Edit package.json — bump version
+# Edit README.md — add changelog entry under "## Changelog"
+# Edit README.zh-CN.md — add changelog entry under "## 更新日志"
+# Create devlog/YYYY-MM-DD_release-v{VERSION}/REQ.md + WORKLOG.md
 ```
 
-This runs `verify-package.mjs` which checks:
+Changelog format:
 
-- Required files exist (`dist/index.js`, `dist/index.d.ts`, `README.md`, `LICENSE`)
-- `package.json` shape is correct (`main`, `exports`, `files`)
-- Runtime import graph has no CommonJS dependencies
-- `npm pack --dry-run` contains no forbidden paths
+```markdown
+### v{VERSION} — Title (PR #NNN)
 
-**Step 2: Privacy / Security audit (MANUAL)**
-
-```bash
-# Inspect what will actually be published
-npm pack --dry-run 2>&1
-
-# Scan for secrets in the tarball
-npm pack && tar -tf opencode-acp-*.tgz | grep -iE '\.env|secret|credential|token|key|\.pem|\.key'
-rm opencode-acp-*.tgz
+**Problem**: What was wrong.
+**Fix**: What changed.
+Files: `path/to/file.ts`. Tests: `tests/file.test.ts`.
 ```
 
-| Check                               | What to verify                                                                          |
-| ----------------------------------- | --------------------------------------------------------------------------------------- |
-| **`files` field**                   | Only contains `dist/`, `README.md`, `LICENSE` — no source, tests, configs, or dev files |
-| **No secrets in tarball**           | No API keys, tokens, passwords, or credentials in any packed file                       |
-| **`.git/config` not packed**        | Verify `.git/` is excluded (contains OAuth token in remote URL)                         |
-| **No hardcoded secrets in `dist/`** | Grep `dist/` for patterns like `sk-`, `gho_`, `api_key`, `apiKey`, `password`           |
-| **`.npmignore` is current**         | Explicitly excludes `AGENTS.md`, `devlog/`, `tests/`, `scripts/`, `.github/`, `.git/`   |
-| **Version bumped**                  | `package.json` version matches the intended release version                             |
-
-**Step 3: Content review**
-
-After `npm pack --dry-run`, visually verify:
-
-1. Only `dist/*.js`, `dist/*.d.ts`, `dist/*.map`, `README.md`, `LICENSE`, `package.json` appear
-2. No `lib/`, `tests/`, `scripts/`, `devlog/`, `AGENTS.md`, `.github/`, `tsconfig.json`, etc.
-3. `dist/` bundle does not contain hardcoded API keys or internal URLs
-
-**Step 4: Tag and publish**
+**Step 3: Verify locally, commit, push, create PR**
 
 ```bash
-# Tag FIRST — if publish fails, the tag marks the attempt
+# Verify CI checks pass locally
+./scripts/ci/check-pr.sh YYYY-MM-DD_release-v{VERSION} origin/master
+
+# Commit
+git add -A
+git commit -m "release: v{VERSION} — title"
+git push origin YYYY-MM-DD_release-v{VERSION}
+
+# Create PR (CI will run pr-checks.yml + ci.yml)
+gh pr create --title "release: v{VERSION} — title" --body "..."
+```
+
+**Step 4: Merge PR (requires human confirmation)**
+
+Wait for CI to pass (`pr-validation`, `test`, `build`), then a human merges the PR.
+
+**Step 5: Tag and push (triggers auto-publish)**
+
+```bash
+git checkout master
+git pull origin master
 git tag -a "v{VERSION}" -m "release v{VERSION}"
 git push origin "v{VERSION}"
+```
 
-# Then publish
+Pushing the tag triggers `release.yml`. The CI workflow will build, test, and publish to npm automatically. A GitHub Release is also created.
+
+**Step 6: Verify**
+
+```bash
+# Check npm registry
+npm view opencode-acp version
+
+# Check GitHub Release
+gh release view v{VERSION} --repo ranxianglei/opencode-acp
+```
+
+#### 5.4.3 Prerequisites
+
+- **`NPM_TOKEN` secret** must be set in GitHub repo settings (Settings → Secrets → Actions). Create an "Automation" type token at https://www.npmjs.com/settings/ranxianglei/tokens.
+- **GitHub branch protection** on `master` must require `pr-validation` check to pass before merge.
+
+#### 5.4.4 Manual Publish (Legacy Fallback)
+
+If CI is down or `NPM_TOKEN` is misconfigured, publish manually as a fallback:
+
+```bash
+# 0. Ensure clean state on master
+git checkout master && git pull origin master
+git status --porcelain  # MUST be empty
+
+# 1. Build + verify
+npm run check:package
+
+# 2. Privacy audit
+npm pack --dry-run 2>&1
+npm pack && tar -tf opencode-acp-*.tgz | grep -iE '\.env|secret|credential|token|key|\.pem|\.key'
+rm opencode-acp-*.tgz
+
+# 3. Publish
 npm publish
 
-# Verify
+# 4. Verify
 npm view opencode-acp version
 ```
 
-**Tag BEFORE publish.** If `npm publish` fails, the tag documents the intended version. Do NOT tag after — that risks forgetting if publish succeeds.
-
-**If any check in Steps 0–3 fails: DO NOT PUBLISH.** Fix the issue first.
+Only use this as a fallback. The automated workflow (Section 5.4.2) is the standard release process.
 
 ### 5.5 Commit Convention
 
