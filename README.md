@@ -422,6 +422,16 @@ For the complete list with root cause analysis, see the [bug tracker](https://gi
 
 ## Changelog
 
+### v1.11.3 — Auto-Tag on Release Branch Merge (PR #111)
+
+**Problem**: After merging a release PR, the version tag (`v{VERSION}`) still had to be pushed manually — easy to forget.
+
+**Fix**: Added `auto-tag.yml` workflow. When a `YYYY-MM-DD_release-v*` branch is merged to master, CI automatically reads `package.json` version, creates the tag, and pushes it. The tag push then triggers `release.yml` for auto-publish. Normal (non-release) branches that accidentally change the version are ignored.
+
+Files: `.github/workflows/auto-tag.yml`. AGENTS.md Section 5.4 updated.
+
+---
+
 ### v1.11.2 — CI Enforcement & Auto-Publish (PR #104)
 
 Added GitHub Actions CI to automate AGENTS.md compliance enforcement:

@@ -395,6 +395,16 @@ ACP 在首次启动时自动将配置从 `dcp.jsonc` 迁移到 `acp.jsonc`，将
 
 ## 更新日志
 
+### v1.11.3 — 发布分支合并自动打 Tag（PR #111）
+
+**问题**：合并发布 PR 后，仍需手动 push 版本 tag（`v{VERSION}`）——容易遗忘。
+
+**修复**：新增 `auto-tag.yml` 工作流。当 `YYYY-MM-DD_release-v*` 分支合并到 master 时，CI 自动读取 `package.json` 版本号，创建并 push tag。Tag push 随即触发 `release.yml` 自动发布。普通分支误改版本号不会触发。
+
+文件：`.github/workflows/auto-tag.yml`。AGENTS.md Section 5.4 已更新。
+
+---
+
 ### v1.11.2 — CI 自动校验 & 自动发布（PR #104）
 
 新增 GitHub Actions CI 自动执行 AGENTS.md 规范：
