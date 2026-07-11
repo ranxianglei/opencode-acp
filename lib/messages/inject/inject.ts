@@ -102,6 +102,7 @@ export const injectCompressNudges = (
     }
 
     let anchorsChanged = false
+    let baselineReEstablished = false
 
     if (!overMinLimit) {
         const hadTurnAnchors = state.nudges.turnNudgeAnchors.size > 0
@@ -202,6 +203,7 @@ export const injectCompressNudges = (
         currentTokens !== undefined
     ) {
         state.nudges.lastPerMessageNudgeTokens = currentTokens
+        baselineReEstablished = true
     }
 
     const composition = estimateContextComposition(messages, state)
@@ -315,7 +317,7 @@ export const injectCompressNudges = (
     // baseline (above) but anchorsChanged stays false when anchor sets are
     // saturated, so the on-disk baseline went stale and the nudge refired every
     // turn after restart.
-    if (anchorsChanged || decision.shouldNudge) {
+    if (anchorsChanged || decision.shouldNudge || baselineReEstablished) {
         saveSessionState(state, logger).catch(() => {})
     }
 }
