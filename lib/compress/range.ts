@@ -26,6 +26,7 @@ import {
     wrapCompressedSummary,
 } from "./state"
 import type { CompressRangeToolArgs } from "./types"
+import { resolveKeepMarkers } from "./keep-markers"
 
 function buildSchema(maxSummaryLengthHard: number) {
     return {
@@ -228,6 +229,13 @@ export function createCompressRangeTool(ctx: ToolContext): ReturnType<typeof too
 
             for (const preparedPlan of preparedPlans) {
                 const blockId = allocateBlockId(ctx.state)
+                const keepResult = resolveKeepMarkers(
+                    preparedPlan.finalSummary,
+                    rawMessages,
+                    ctx.state,
+                    ctx.config,
+                )
+                preparedPlan.finalSummary = keepResult.summary
                 const storedSummary = wrapCompressedSummary(blockId, preparedPlan.finalSummary)
                 const summaryTokens = countTokens(storedSummary)
 

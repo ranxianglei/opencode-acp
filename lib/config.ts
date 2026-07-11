@@ -35,6 +35,7 @@ export interface CompressConfig {
     maxSummaryLengthHard: number
     minCompressRange: number
     maxVisibleSegments: number
+    keepEmbedMaxChars: number
 }
 
 export interface Commands {
@@ -202,6 +203,7 @@ const defaultConfig: PluginConfig = {
         maxSummaryLengthHard: 10000,
         minCompressRange: 2000,
         maxVisibleSegments: 50,
+        keepEmbedMaxChars: 2000,
     },
     strategies: {
         deduplication: {
@@ -414,6 +416,7 @@ function mergeCompress(
         maxSummaryLengthHard: override.maxSummaryLengthHard ?? base.maxSummaryLengthHard,
         minCompressRange: override.minCompressRange ?? base.minCompressRange,
         maxVisibleSegments: override.maxVisibleSegments ?? base.maxVisibleSegments,
+        keepEmbedMaxChars: override.keepEmbedMaxChars ?? base.keepEmbedMaxChars,
     }
 }
 

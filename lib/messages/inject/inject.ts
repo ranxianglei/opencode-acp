@@ -24,11 +24,13 @@ import {
 import {
     addAnchor,
     applyAnchoredNudges,
+    buildCompressibleRanges,
     buildContextUsageGuidance,
     computeShouldNudge,
     countMessagesAfterIndex,
     estimateContextComposition,
     findLastNonIgnoredMessage,
+    formatCompressibleRanges,
     getIterationNudgeThreshold,
     getNudgeFrequency,
     getModelInfo,
@@ -255,13 +257,14 @@ export const injectCompressNudges = (
             if (composition.largestToolRanges.length > 0) {
                 breakdown += `\nLargest tool outputs: ${composition.largestToolRanges.slice(0, 10).map((r) => `${r.ref} (${fmt(r.tokens)})${r.tool ? " " + r.tool : ""}`).join(", ")}`
             }
-            if (composition.largestCodeRanges.length > 0) {
-                breakdown += `\nLargest code messages: ${composition.largestCodeRanges.map((r) => `${r.ref} (${fmt(r.tokens)})`).join(", ")}`
+
+            const ranges = buildCompressibleRanges(messages, state)
+            if (ranges.length > 0) {
+                breakdown += `\n\n${formatCompressibleRanges(ranges)}`
+                breakdown += `\n💡 Each range is a conversation turn. Compress whole ranges where the work is done. Use [[KEEP:mNNNNN]] in the summary to preserve critical content verbatim, [[REF:mNNNNN|desc]] for compact links.`
+            } else {
+                breakdown += `\n💡 Compress incrementally: target the ranges above whose content you have already extracted for this step. Size alone is not a reason to compress — if a large range is still needed in full, keep it.`
             }
-            if (composition.largestMessageRanges.length > 0) {
-                breakdown += `\nLargest text messages: ${composition.largestMessageRanges.map((r) => `${r.ref} (${fmt(r.tokens)})`).join(", ")}`
-            }
-            breakdown += `\n💡 Compress incrementally: target the ranges above whose content you have already extracted for this step. Size alone is not a reason to compress — if a large range is still needed in full, keep it.`
             if (decision.tipsVariant !== "maxLimit") {
                 breakdown += `\n\n${HOW_TO_COMPRESS_RULES}`
             }

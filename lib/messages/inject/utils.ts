@@ -666,3 +666,102 @@ export function estimateContextComposition(
         toolTypeBreakdown,
     }
 }
+
+export interface CompressibleRange {
+    startRef: string
+    endRef: string
+    msgCount: number
+    tokens: number
+    toolPct: number
+    textPct: number
+    summaryPct: number
+}
+
+export function buildCompressibleRanges(
+    messages: WithParts[],
+    state: SessionState,
+    maxRanges: number = 15,
+): CompressibleRange[] {
+    const isSynthetic = (msg: WithParts) => {
+        const id = msg.info.id || ""
+        return id.startsWith("msg_acp_recap") || id.startsWith("msg_dcp_summary") ||
+            id.startsWith("msg_acp_suffix") || id.startsWith("msg_dcp_suffix")
+    }
+
+    const segments: CompressibleRange[] = []
+    let current: { msgs: WithParts[]; startRef: string; endRef: string } | null = null
+
+    for (const msg of messages) {
+        const ref = state.messageIds.byRawId.get(msg.info.id)
+        if (!ref) continue
+        if (isSynthetic(msg)) continue
+
+        const isUser = msg.info.role === "user"
+        if (isUser && current && current.msgs.length >= 3) {
+            segments.push(buildRange(current))
+            current = null
+        }
+        if (!current) {
+            current = { msgs: [], startRef: ref, endRef: ref }
+        }
+        current.msgs.push(msg)
+        current.endRef = ref
+    }
+    if (current && current.msgs.length >= 3) {
+        segments.push(buildRange(current))
+    }
+
+    segments.sort((a, b) => {
+        const refA = parseInt(a.startRef.slice(1), 10)
+        const refB = parseInt(b.startRef.slice(1), 10)
+        return refA - refB
+    })
+
+    return segments.slice(0, maxRanges)
+}
+
+function buildRange(current: { msgs: WithParts[]; startRef: string; endRef: string }): CompressibleRange {
+    let toolTokens = 0
+    let textTokens = 0
+    let summaryTokens = 0
+
+    for (const msg of current.msgs) {
+        const id = msg.info.id || ""
+        const isSummary = id.startsWith("msg_acp_recap") || id.startsWith("msg_dcp_summary")
+        for (const part of msg.parts || []) {
+            if (part.type === "text" && typeof (part as any).text === "string") {
+                const t = Math.round(((part as any).text as string).length / 4)
+                if (isSummary) summaryTokens += t
+                else textTokens += t
+            } else if (part.type === "tool") {
+                toolTokens += Math.round(JSON.stringify(part).length / 4)
+            }
+        }
+    }
+
+    const total = toolTokens + textTokens + summaryTokens || 1
+    return {
+        startRef: current.startRef,
+        endRef: current.endRef,
+        msgCount: current.msgs.length,
+        tokens: total,
+        toolPct: Math.round((toolTokens / total) * 100),
+        textPct: Math.round((textTokens / total) * 100),
+        summaryPct: Math.round((summaryTokens / total) * 100),
+    }
+}
+
+export function formatCompressibleRanges(ranges: CompressibleRange[]): string {
+    if (ranges.length === 0) return ""
+    const fmt = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n))
+    const lines = ranges.map((r) => {
+        const span = r.startRef === r.endRef ? r.startRef : `${r.startRef}–${r.endRef}`
+        const comps: string[] = []
+        if (r.toolPct > 0) comps.push(`tool ${r.toolPct}%`)
+        if (r.textPct > 0) comps.push(`text ${r.textPct}%`)
+        if (r.summaryPct > 0) comps.push(`summary ${r.summaryPct}%`)
+        const compStr = comps.length > 0 ? ` [${comps.join(", ")}]` : ""
+        return `  ${span.padEnd(16)} ${String(r.msgCount).padStart(3)} msgs  ${fmt(r.tokens).padStart(6)}${compStr}`
+    })
+    return `Compressible ranges (oldest first):\n${lines.join("\n")}`
+}

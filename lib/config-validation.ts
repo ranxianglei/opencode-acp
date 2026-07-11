@@ -45,6 +45,7 @@ export const VALID_CONFIG_KEYS = new Set([
     "compress.maxSummaryLengthHard",
     "compress.minCompressRange",
     "compress.maxVisibleSegments",
+    "compress.keepEmbedMaxChars",
     "gc",
     "gc.algorithm",
     "gc.promotionThreshold",
@@ -435,6 +436,28 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
                     key: "compress.maxVisibleSegments",
                     expected: "positive number (>= 1)",
                     actual: `${compress.maxVisibleSegments}`,
+                })
+            }
+
+            if (
+                compress.keepEmbedMaxChars !== undefined &&
+                typeof compress.keepEmbedMaxChars !== "number"
+            ) {
+                errors.push({
+                    key: "compress.keepEmbedMaxChars",
+                    expected: "number",
+                    actual: typeof compress.keepEmbedMaxChars,
+                })
+            }
+
+            if (
+                typeof compress.keepEmbedMaxChars === "number" &&
+                compress.keepEmbedMaxChars < 100
+            ) {
+                errors.push({
+                    key: "compress.keepEmbedMaxChars",
+                    expected: "positive number (>= 100)",
+                    actual: `${compress.keepEmbedMaxChars}`,
                 })
             }
 
