@@ -464,7 +464,100 @@ test("injectCompressNudges persists new nudge baseline to disk when a growth nud
     await cleanupPersistSession()
 })
 
-// --- toolOutput reminder adaptive threshold (issue #18) ---
+test("E2E: nudge survives compress → restart → re-establishment → growth (issue #23)", async () => {
+    await cleanupPersistSession()
+
+    const state = createSessionState()
+    state.sessionId = PERSIST_SESSION
+    state.modelContextLimit = 1_000_000
+    const config = buildConfig()
+    config.compress.maxContextLimit = 800_000
+    config.compress.minContextLimit = 200_000
+
+    // Turn 1: model calls compress → baseline cleared to undefined
+    const turn1: WithParts[] = [
+        userMsg("u1", "hello"),
+        assistantMsgWithTokens("a1", "done", { input: 200_000, output: 50_000 }, [
+            compressToolPart("c1", "compressed"),
+        ]),
+    ]
+    injectCompressNudges(state, config, logger, turn1, {} as any)
+    assert.equal(state.nudges.lastPerMessageNudgeTokens, undefined, "compress should clear baseline")
+
+    // Simulate restart: load from disk
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    const loaded1 = await loadSessionState(PERSIST_SESSION, logger)
+    assert.equal(loaded1!.nudges.lastPerMessageNudgeTokens, undefined, "on-disk baseline must be undefined after compress")
+
+    const state2 = createSessionState()
+    state2.sessionId = PERSIST_SESSION
+    state2.modelContextLimit = 1_000_000
+    state2.nudges.lastPerMessageNudgeTokens = loaded1!.nudges.lastPerMessageNudgeTokens
+
+    // Turn 2: post-compress turn → baseline re-established (no nudge)
+    const turn2: WithParts[] = [
+        userMsg("u2", "next"),
+        assistantMsgWithTokens("a2", "response", { input: 150_000, output: 5_000 }),
+    ]
+    injectCompressNudges(state2, config, logger, turn2, {} as any)
+    assert.equal(state2.nudges.shouldInjectThisTurn, false, "baseline re-establishment turn should NOT nudge")
+    assert.equal(state2.nudges.lastPerMessageNudgeTokens, 155_000, "baseline re-established to real post-compression tokens")
+
+    // Simulate restart AGAIN: the bug was that baseline was NOT persisted here
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    const loaded2 = await loadSessionState(PERSIST_SESSION, logger)
+    assert.equal(
+        loaded2!.nudges.lastPerMessageNudgeTokens,
+        155_000,
+        "baseline re-establishment MUST persist to disk — otherwise nudges never fire after restart following compress",
+    )
+
+    // Turn 3: load persisted baseline, then grow past threshold → nudge MUST fire
+    const state3 = createSessionState()
+    state3.sessionId = PERSIST_SESSION
+    state3.modelContextLimit = 1_000_000
+    state3.nudges.lastPerMessageNudgeTokens = loaded2!.nudges.lastPerMessageNudgeTokens
+
+    const turn3: WithParts[] = [
+        userMsg("u3", "more work"),
+        assistantMsgWithTokens("a3", "result", { input: 200_000, output: 10_000 }),
+    ]
+    injectCompressNudges(state3, config, logger, turn3, {} as any)
+    assert.equal(
+        state3.nudges.shouldInjectThisTurn,
+        true,
+        "55K growth past re-established baseline (155K→210K, >50K threshold) — nudge MUST fire",
+    )
+
+    await cleanupPersistSession()
+})
+
+test("E2E: nudge recommendation content includes composition breakdown and compress guidance (issue #23)", () => {
+    const state = createSessionState()
+    state.modelContextLimit = 1_000_000
+    state.nudges.lastPerMessageNudgeTokens = 200_000
+    const config = buildConfig()
+    config.compress.maxContextLimit = 800_000
+    config.compress.minContextLimit = 200_000
+
+    const messages: WithParts[] = [
+        userMsg("u1", "hello"),
+        assistantMsgWithTokens("a1", "done", { input: 200_000, output: 55_000 }, [
+            toolPart("c1", "x".repeat(40_000)),
+        ]),
+    ]
+    injectCompressNudges(state, config, logger, messages, {} as any)
+
+    assert.equal(state.nudges.shouldInjectThisTurn, true, "should nudge (55K growth >= 50K threshold)")
+
+    const injected = suffixText(messages)
+    assert.ok(injected.includes("Breakdown:"), "nudge must include composition breakdown")
+    assert.ok(injected.includes("tool"), "breakdown must show tool category")
+    assert.ok(
+        injected.includes("acp_status") || injected.includes("compress") || injected.includes("review"),
+        "nudge must include compress guidance",
+    )
+})
 // Reminder threshold scales with context (via nudgeGrowthTokens); on a 1M model
 // it is 50K, not the old hardcoded 5000. Tool chars ≈ JSON.stringify(part).length/4.
 

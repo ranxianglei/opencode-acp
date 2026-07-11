@@ -106,9 +106,15 @@ async function writePersistedSessionState(
     state: PersistedSessionState,
     logger: Logger,
 ): Promise<void> {
-    await ensureStorageDir(logger)
-
+    // Capture file path synchronously before any await — prevents race condition
+    // when fire-and-forget saves execute after XDG_DATA_HOME has changed (tests).
     const filePath = getSessionFilePath(sessionId)
+    const storageDir = getStorageDir()
+    if (!existsSync(storageDir)) {
+        migrateFromLegacyIfNeeded(logger)
+        await fs.mkdir(storageDir, { recursive: true })
+    }
+
     const content = JSON.stringify(state, null, 2)
     await fs.writeFile(filePath, content, "utf-8")
 
