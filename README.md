@@ -422,6 +422,16 @@ For the complete list with root cause analysis, see the [bug tracker](https://gi
 
 ## Changelog
 
+### v1.11.4 — Baseline Persistence Fix + Unified Release Workflow (PR #112, #113)
+
+**Bug fix (PR #112)**: After compress sets `lastPerMessageNudgeTokens = undefined`, the next transform re-establishes the baseline in memory but never persists it to disk (save condition was false). After restart, nudges break again. Fix: added `baselineReEstablished` flag to save condition. Also fixed async save race condition in `writePersistedSessionState` (file path resolved after `await`).
+
+**CI fix (PR #113)**: Merged `auto-tag.yml` + `release.yml` into single workflow. GitHub Actions `GITHUB_TOKEN` cannot trigger chained workflows — the tag pushed by `auto-tag.yml` didn't fire `release.yml`.
+
+Files: `lib/messages/inject/inject.ts`, `lib/state/persistence.ts`. Tests: `tests/inject.test.ts` (+94 lines, 2 new E2E tests).
+
+---
+
 ### v1.11.3 — Auto-Tag on Release Branch Merge (PR #111)
 
 **Problem**: After merging a release PR, the version tag (`v{VERSION}`) still had to be pushed manually — easy to forget.
