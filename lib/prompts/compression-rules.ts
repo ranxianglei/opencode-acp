@@ -38,6 +38,8 @@ DROP — extract the signal, discard the vessel:
 
 For each significant item you DROP (scripts, reports, large analyses, long tool outputs), add a one-line CONTENT description of what it covers — not where it lives. Bad: "probe script at /path/probe_kvnet.py". Good: "probe_kvnet.py: tests n-gram baseline, generation quality, long-range dependency, position sensitivity, op pipeline, QUERY attention." This lets a later decompress target the right block by relevance, not by guessing locations.
 
+KEEP MARKERS: \`[[KEEP:mNNNNN]]\` expands original message content into the summary (truncated to a max length). Do NOT use KEEP for verbose command output, diagnostic scripts, log dumps, or any content whose value is in the conclusion rather than the raw output — summarize these or use \`[[REF:mNNNNN|desc]]\` instead.
+
 PRIORITY — when the summary must be compact, preserve in this order:
 1. User's overall goal, goal evolution, intent, and hard constraints (losing these changes the task).
 2. Decisions and rationale.
