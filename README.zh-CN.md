@@ -395,6 +395,16 @@ ACP 在首次启动时自动将配置从 `dcp.jsonc` 迁移到 `acp.jsonc`，将
 
 ## 更新日志
 
+### v1.11.1 — 压缩基线修复（PR #99）
+
+**问题**：当模型调用 `compress` 时，`lastPerMessageNudgeTokens` 和 `lastToolOutputNudgeTokens` 都被设为 `currentTokens` —— 这是调用 compress 的 assistant 消息的 token 计数，反映的是**压缩前**的上下文。压缩 100K→50K 后，基线卡在 100K，导致 `growth = 50K - 100K = -50K`，nudge 永远不再触发。
+
+**修复**：压缩时将两个基线都设为 `undefined`。下一次 message-transform 运行时从真实的压缩后 API token 计数重建基线，不会误触发 nudge（`computeShouldNudge` 在基线为 `undefined` 时返回 `shouldNudge: false`）。
+
+文件：`lib/messages/inject/inject.ts`（第 98-99 行）。测试：`tests/inject.test.ts` — 3 个更新 + 2 个新增（共 621 个测试，0 失败）。
+
+---
+
 ### v1.11.0 — 工具结果注入、上下文分解 & Fork 重建
 
 本次发布修复了两个关键压缩注入 bug（#20 复读、#78 漂移），为 `acp_status` 添加了可见上下文分解，并引入了 fork 重建机制。
