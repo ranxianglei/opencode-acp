@@ -122,7 +122,7 @@ export function formatTokenSize(tokens: number): string {
     return `${Math.round(tokens / 1000)}K`
 }
 
-export function classifyMessageType(parts: any[]): string {
+export function classifyMessageType(parts: WithParts["parts"]): string {
     let hasTool = false
     let hasText = false
     let hasReasoning = false

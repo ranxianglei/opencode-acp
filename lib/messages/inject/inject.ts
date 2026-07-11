@@ -5,7 +5,7 @@ import type { RuntimePrompts } from "../../prompts/store"
 import { formatMessageIdTag, formatTokenSize, classifyMessageType } from "../../message-ids"
 import type { CompressionPriorityMap } from "../priority"
 import { compressPermission } from "../../compress-permission"
-import { countAllMessageTokens } from "../../token-utils"
+import { countMessageCharacters } from "../../token-utils"
 import {
     getLastUserMessage,
     isIgnoredUserMessage,
@@ -477,7 +477,7 @@ export const injectMessageIds = (
                 ? compressionPriorities?.get(message.info.id)?.priority
                 : undefined
         const msgType = classifyMessageType(message.parts)
-        const msgTokens = countAllMessageTokens(message)
+        const msgTokens = Math.round(countMessageCharacters(message) / 4)
         const tag = formatMessageIdTag(
             isBlockedMessage ? "BLOCKED" : messageRef,
             {
