@@ -93,9 +93,10 @@ export const injectCompressNudges = (
         state.nudges.contextLimitAnchors.clear()
         state.nudges.turnNudgeAnchors.clear()
         state.nudges.iterationNudgeAnchors.clear()
-        // currentTokens reflects PRE-compression context; baseline must wait
+        // currentTokens reflects PRE-compression context; baselines must wait
         // for the next API response to capture the real post-compression level.
         state.nudges.lastPerMessageNudgeTokens = undefined
+        state.nudges.lastToolOutputNudgeTokens = undefined
         saveSessionState(state, logger).catch(() => {})
         return
     }
