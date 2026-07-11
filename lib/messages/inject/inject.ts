@@ -69,6 +69,7 @@ export const injectCompressNudges = (
     messages: WithParts[],
     prompts: RuntimePrompts,
     compressionPriorities?: CompressionPriorityMap,
+    debugNotify?: (text: string) => void,
 ): void => {
     if (compressPermission(state, config) === "deny") {
         return
@@ -315,10 +316,18 @@ export const injectCompressNudges = (
     }
 
     if (suffixMessage) {
-        // [FIX #12] Nothing injected this turn → drop the empty synthetic user
-        // message. (appendToLastTextPart would no-op on "\n" anyway.)
         if (hasContent(suffixMessage)) {
             appendToLastTextPart(suffixMessage, "\n")
+            if (debugNotify) {
+                const text = suffixMessage.parts
+                    .filter((p) => p.type === "text")
+                    .map((p) => (p as any).text || "")
+                    .join("\n")
+                    .trim()
+                if (text) {
+                    debugNotify(text)
+                }
+            }
         } else {
             const idx = messages.lastIndexOf(suffixMessage)
             if (idx !== -1) {
