@@ -1,0 +1,25 @@
+name: PR Checks
+
+on:
+    pull_request:
+        branches: [master]
+
+jobs:
+    pr-validation:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
+
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 22
+
+            - name: Make script executable
+              run: chmod +x scripts/ci/check-pr.sh
+
+            - name: Run PR validation
+              run: ./scripts/ci/check-pr.sh "$GITHUB_HEAD_REF" "origin/$GITHUB_BASE_REF"
+              env:
+                  GITHUB_HEAD_REF: ${{ github.head_ref }}
