@@ -422,6 +422,18 @@ For the complete list with root cause analysis, see the [bug tracker](https://gi
 
 ## Changelog
 
+### v1.11.2 — CI Enforcement & Auto-Publish (PR #104)
+
+Added GitHub Actions CI to automate AGENTS.md compliance enforcement:
+
+- **PR validation** (`pr-checks.yml`): every PR to master is checked for branch name convention (`YYYY-MM-DD_short-title`), devlog existence (`devlog/{branch}/REQ.md` + `WORKLOG.md`), and changelog updates on version bumps.
+- **Auto-publish** (`release.yml`): pushing a `v*` tag triggers `npm ci` → `npm run check:package` → `npm test` → `npm publish` → GitHub Release, fully automated.
+- Script: `scripts/ci/check-pr.sh` — reusable PR validation logic.
+
+Requires `NPM_TOKEN` secret in GitHub repo settings.
+
+---
+
 ### v1.11.1 — Compress Baseline Fix (PR #99)
 
 **Problem**: When the model called `compress`, both `lastPerMessageNudgeTokens` and `lastToolOutputNudgeTokens` were set to `currentTokens` — the token count from the compress-calling assistant message, which reflects **pre-compression** context. After compressing 100K→50K, the baseline was stuck at 100K, so `growth = 50K - 100K = -50K` and nudges never fired again.
