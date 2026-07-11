@@ -422,6 +422,16 @@ For the complete list with root cause analysis, see the [bug tracker](https://gi
 
 ## Changelog
 
+### v1.11.1 — Compress Baseline Fix (PR #99)
+
+**Problem**: When the model called `compress`, both `lastPerMessageNudgeTokens` and `lastToolOutputNudgeTokens` were set to `currentTokens` — the token count from the compress-calling assistant message, which reflects **pre-compression** context. After compressing 100K→50K, the baseline was stuck at 100K, so `growth = 50K - 100K = -50K` and nudges never fired again.
+
+**Fix**: Both baselines are now set to `undefined` on compress detection. The next message-transform run re-establishes the baseline from the real post-compression API token count, without triggering a nudge (`computeShouldNudge` returns `shouldNudge: false` when baseline is `undefined`).
+
+Files: `lib/messages/inject/inject.ts` (line 98-99). Tests: `tests/inject.test.ts` — 3 updated + 2 new (621 total, 0 fail).
+
+---
+
 ### v1.11.0 — Tool-Result Recap Injection, Context Breakdown & Fork Rebuild
 
 This release fixes two critical compression-injection bugs (#20 echo, #78 drift), adds a visible context breakdown to `acp_status`, and introduces a fork-rebuild mechanism.
