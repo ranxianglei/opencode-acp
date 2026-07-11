@@ -233,7 +233,7 @@ test("createSyntheticUserMessage produces an all-synthetic user message that ens
     )
 })
 
-test("injectCompressNudges: after compress, lastPerMessageNudgeTokens = currentTokens (not 0)", () => {
+test("injectCompressNudges: after compress, baseline cleared to undefined for re-establishment", () => {
     const state = createSessionState()
     state.modelContextLimit = 1_000_000
     const config = buildConfig()
@@ -249,18 +249,19 @@ test("injectCompressNudges: after compress, lastPerMessageNudgeTokens = currentT
 
     assert.equal(
         state.nudges.lastPerMessageNudgeTokens,
-        250_000,
-        "lastPerMessageNudgeTokens must equal currentTokens (250K) after compress — NOT 0",
+        undefined,
+        "lastPerMessageNudgeTokens must be undefined after compress — currentTokens reflects pre-compression context, not post-compression",
     )
 })
 
-test("injectCompressNudges: post-compress small growth does NOT re-nudge", () => {
+test("injectCompressNudges: post-compress baseline re-establishment then small growth does NOT re-nudge", () => {
     const state = createSessionState()
     state.modelContextLimit = 1_000_000
     const config = buildConfig()
     config.compress.maxContextLimit = 800_000
     config.compress.minContextLimit = 550_000
 
+    // Turn 1: compress detected → baseline cleared to undefined
     const turn1: WithParts[] = [
         userMsg("u1", "hello"),
         assistantMsgWithTokens("a1", "done", { input: 200_000, output: 50_000 }, [
@@ -268,8 +269,9 @@ test("injectCompressNudges: post-compress small growth does NOT re-nudge", () =>
         ]),
     ]
     injectCompressNudges(state, config, logger, turn1, {} as any)
-    assert.equal(state.nudges.lastPerMessageNudgeTokens, 250_000)
+    assert.equal(state.nudges.lastPerMessageNudgeTokens, undefined)
 
+    // Turn 2: baseline re-established from post-compression API tokens, no nudge
     const turn2: WithParts[] = [
         userMsg("u2", "next"),
         assistantMsgWithTokens("a2", "response", { input: 247_000, output: 6_000 }),
@@ -279,11 +281,11 @@ test("injectCompressNudges: post-compress small growth does NOT re-nudge", () =>
     assert.equal(
         state.nudges.shouldInjectThisTurn,
         false,
-        "only 3K growth after compress (< 50K adaptive threshold) — should NOT nudge",
+        "baseline re-establishment turn — should NOT nudge",
     )
 })
 
-test("injectCompressNudges: post-compress large growth DOES nudge", () => {
+test("injectCompressNudges: post-compress baseline re-establishment then large growth DOES nudge", () => {
     const state = createSessionState()
     state.modelContextLimit = 1_000_000
     const config = buildConfig()
@@ -300,16 +302,28 @@ test("injectCompressNudges: post-compress large growth DOES nudge", () => {
 
     const turn2: WithParts[] = [
         userMsg("u2", "next"),
-        assistantMsgWithTokens("a2", "response", { input: 250_000, output: 55_000 }),
+        assistantMsgWithTokens("a2", "baseline", { input: 250_000, output: 55_000 }),
     ]
     injectCompressNudges(state, config, logger, turn2, {} as any)
+    assert.equal(
+        state.nudges.shouldInjectThisTurn,
+        false,
+        "baseline establishment turn — should NOT nudge",
+    )
+    assert.equal(state.nudges.lastPerMessageNudgeTokens, 305_000)
+
+    const turn3: WithParts[] = [
+        userMsg("u3", "more"),
+        assistantMsgWithTokens("a3", "growth", { input: 356_000, output: 5_000 }),
+    ]
+    injectCompressNudges(state, config, logger, turn3, {} as any)
 
     assert.equal(
         state.nudges.shouldInjectThisTurn,
         true,
-        "55K growth after compress (> 50K adaptive threshold) — should nudge",
+        "56K growth after baseline re-establishment (> 50K adaptive threshold) — should nudge",
     )
-    assert.equal(state.nudges.lastPerMessageNudgeTokens, 305_000)
+    assert.equal(state.nudges.lastPerMessageNudgeTokens, 361_000)
 })
 
 test("injectCompressNudges persists new nudge baseline to disk when a growth nudge fires without anchor changes (#60)", async () => {
