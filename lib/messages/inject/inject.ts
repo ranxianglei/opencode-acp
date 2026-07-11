@@ -91,7 +91,18 @@ export const injectCompressNudges = (
         messages,
     )
 
-    if (lastAssistantMessage && messageHasCompress(lastAssistantMessage)) {
+    // Only process compress detection if the compress-calling assistant message
+    // is from the CURRENT turn (after the last user message). On restart, the
+    // last assistant message may still have a compress call from a previous turn —
+    // re-processing it would overwrite the disk-loaded baseline with undefined.
+    const lastAssistantIdx = lastAssistantMessage
+        ? messages.lastIndexOf(lastAssistantMessage)
+        : -1
+    const lastUserIdx = messages.findLastIndex((message) => message.info.role === "user")
+    const isCurrentTurnCompress =
+        lastAssistantIdx >= 0 && lastAssistantIdx > lastUserIdx
+
+    if (isCurrentTurnCompress && lastAssistantMessage && messageHasCompress(lastAssistantMessage)) {
         state.nudges.contextLimitAnchors.clear()
         state.nudges.turnNudgeAnchors.clear()
         state.nudges.iterationNudgeAnchors.clear()
