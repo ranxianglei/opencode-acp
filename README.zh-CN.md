@@ -395,6 +395,18 @@ ACP 在首次启动时自动将配置从 `dcp.jsonc` 迁移到 `acp.jsonc`，将
 
 ## 更新日志
 
+### v1.11.2 — CI 自动校验 & 自动发布（PR #104）
+
+新增 GitHub Actions CI 自动执行 AGENTS.md 规范：
+
+- **PR 校验**（`pr-checks.yml`）：每个到 master 的 PR 自动检查分支名规范（`YYYY-MM-DD_short-title`）、devlog 是否存在（`devlog/{分支}/REQ.md` + `WORKLOG.md`）、版本号变更时 changelog 是否更新。
+- **自动发布**（`release.yml`）：push `v*` tag 后自动执行 `npm ci` → `npm run check:package` → `npm test` → `npm publish` → GitHub Release，全自动。
+- 脚本：`scripts/ci/check-pr.sh` — 可复用的 PR 校验逻辑。
+
+需要在 GitHub Secrets 中配置 `NPM_TOKEN`。
+
+---
+
 ### v1.11.1 — 压缩基线修复（PR #99）
 
 **问题**：当模型调用 `compress` 时，`lastPerMessageNudgeTokens` 和 `lastToolOutputNudgeTokens` 都被设为 `currentTokens` —— 这是调用 compress 的 assistant 消息的 token 计数，反映的是**压缩前**的上下文。压缩 100K→50K 后，基线卡在 100K，导致 `growth = 50K - 100K = -50K`，nudge 永远不再触发。
