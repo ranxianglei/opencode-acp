@@ -1,0 +1,46 @@
+name: Auto-Tag
+
+on:
+    push:
+        branches: [master]
+
+jobs:
+    auto-tag:
+        runs-on: ubuntu-latest
+        permissions:
+            contents: write
+        steps:
+            - uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
+
+            - name: Check if release branch was merged
+              id: check
+              run: |
+                  MERGE_MSG=$(git log -1 --pretty=%B)
+                  echo "Commit message: $MERGE_MSG"
+
+                  if echo "$MERGE_MSG" | grep -qE 'Merge pull request #[0-9]+ from .*[0-9]{4}-[0-9]{2}-[0-9]{2}_release-v'; then
+                      echo "is_release=true" >> "$GITHUB_OUTPUT"
+                      echo "Release branch detected"
+                  else
+                      echo "is_release=false" >> "$GITHUB_OUTPUT"
+                      echo "Not a release branch merge — skipping"
+                  fi
+
+            - name: Create tag from package.json version
+              if: steps.check.outputs.is_release == 'true'
+              run: |
+                  VERSION=$(node -p "require('./package.json').version")
+                  TAG="v${VERSION}"
+
+                  if git rev-parse "$TAG" >/dev/null 2>&1; then
+                      echo "Tag $TAG already exists — skipping"
+                      exit 0
+                  fi
+
+                  echo "Creating tag $TAG"
+                  git config user.name "github-actions[bot]"
+                  git config user.email "github-actions[bot]@users.noreply.github.com"
+                  git tag -a "$TAG" -m "release $TAG (auto-tagged on merge)"
+                  git push origin "$TAG"
