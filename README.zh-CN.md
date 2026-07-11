@@ -395,6 +395,16 @@ ACP 在首次启动时自动将配置从 `dcp.jsonc` 迁移到 `acp.jsonc`，将
 
 ## 更新日志
 
+### v1.11.4 — 基线持久化修复 + 统一发布工作流（PR #112, #113）
+
+**Bug 修复（PR #112）**：压缩后 baseline 设为 `undefined`，下一轮重建为真实值但**不写盘**（save 条件为 false）。重启后 nudge 失效。修复：新增 `baselineReEstablished` flag 加入 save 条件。同时修复 `writePersistedSessionState` 异步竞态（文件路径在 `await` 之后解析）。
+
+**CI 修复（PR #113）**：合并 `auto-tag.yml` + `release.yml` 为单一工作流。GitHub Actions `GITHUB_TOKEN` 无法链式触发 workflow——auto-tag push 的 tag 不会触发 release.yml。
+
+文件：`lib/messages/inject/inject.ts`、`lib/state/persistence.ts`。测试：`tests/inject.test.ts`（+94 行，2 个新 E2E 测试）。
+
+---
+
 ### v1.11.3 — 发布分支合并自动打 Tag（PR #111）
 
 **问题**：合并发布 PR 后，仍需手动 push 版本 tag（`v{VERSION}`）——容易遗忘。
