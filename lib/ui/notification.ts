@@ -81,16 +81,26 @@ function buildCompressionSummary(
         return entries[0]?.summary ?? ""
     }
 
+    const perEntryMax = Math.floor(NOTIFICATION_SUMMARY_MAX_CHARS / entries.length)
     let result = ""
-    for (const entry of entries) {
+    let shown = 0
+    for (let i = 0; i < entries.length; i++) {
+        const entry = entries[i]
         const topic =
             state.prune.messages.blocksById.get(entry.blockId)?.topic ?? "(unknown topic)"
-        const section = `### ${topic}\n${entry.summary}`
+        const truncated = entry.summary.length > perEntryMax
+            ? entry.summary.slice(0, perEntryMax - 3) + "..."
+            : entry.summary
+        const section = `### ${topic}\n${truncated}`
         if (result.length + section.length + 2 > NOTIFICATION_SUMMARY_MAX_CHARS) {
-            result += `\n\n... and ${entries.length - entries.indexOf(entry)} more`
+            const remaining = entries.length - shown
+            if (remaining > 0) {
+                result += (result ? "\n\n" : "") + `... and ${remaining} more`
+            }
             break
         }
         result += (result ? "\n\n" : "") + section
+        shown++
     }
     return result
 }
