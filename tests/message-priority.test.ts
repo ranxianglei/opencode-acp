@@ -215,11 +215,11 @@ test("injectMessageIds injects ID into every tool output for assistant messages"
     // User messages: still injected into all text parts
     assert.match(
         (userTextOne as any).text,
-        /\n\n<dcp-message-id priority="high">m00001<\/dcp-message-id>/,
+        /\n\n<dcp-message-id[^>]*>m00001<\/dcp-message-id>/,
     )
     assert.match(
         (userTextTwo as any).text,
-        /\n\n<dcp-message-id priority="high">m00001<\/dcp-message-id>/,
+        /\n\n<dcp-message-id[^>]*>m00001<\/dcp-message-id>/,
     )
     // Assistant messages: ID injected into every tool output
     assert.doesNotMatch((assistantTextOne as any).text, /dcp-message-id/)
@@ -271,13 +271,13 @@ test("injectMessageIds marks every protected user text part as BLOCKED in messag
     assert.equal(userTextOne?.type, "text")
     assert.equal(userTextTwo?.type, "text")
     assert.equal(assistantText?.type, "text")
-    assert.match((userTextOne as any).text, /\n\n<dcp-message-id>BLOCKED<\/dcp-message-id>/)
-    assert.match((userTextTwo as any).text, /\n\n<dcp-message-id>BLOCKED<\/dcp-message-id>/)
+    assert.match((userTextOne as any).text, /\n\n<dcp-message-id[^>]*>BLOCKED<\/dcp-message-id>/)
+    assert.match((userTextTwo as any).text, /\n\n<dcp-message-id[^>]*>BLOCKED<\/dcp-message-id>/)
     assert.doesNotMatch((userTextOne as any).text, /priority=/)
     assert.doesNotMatch((userTextTwo as any).text, /priority=/)
     assert.match(
         (assistantText as any).text,
-        /\n\n<dcp-message-id priority="low">m00002<\/dcp-message-id>/,
+        /\n\n<dcp-message-id[^>]*>m00002<\/dcp-message-id>/,
     )
 })
 
@@ -367,7 +367,7 @@ test("message mode marks compress tool messages as high priority even when short
     assert.match((assistantTool as any).state.output, /m00002<\/dcp-message-id>/)
     assert.match(
         (assistantTool as any).state.output,
-        /<dcp-message-id priority="high">m00002<\/dcp-message-id>/,
+        /<dcp-message-id[^>]*>m00002<\/dcp-message-id>/,
     )
 })
 

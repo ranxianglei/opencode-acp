@@ -116,6 +116,38 @@ export function formatMessageIdTag(
     return `\n<${MESSAGE_ID_TAG_NAME}${serializedAttributes}>${ref}</${MESSAGE_ID_TAG_NAME}>`
 }
 
+export function formatTokenSize(tokens: number): string {
+    if (tokens < 1000) return String(tokens)
+    if (tokens < 10000) return `${(tokens / 1000).toFixed(1)}K`
+    return `${Math.round(tokens / 1000)}K`
+}
+
+export function classifyMessageType(parts: WithParts["parts"]): string {
+    let hasTool = false
+    let hasText = false
+    let hasReasoning = false
+    const toolNames: string[] = []
+
+    for (const part of parts) {
+        if (part.type === "tool") {
+            hasTool = true
+            if (typeof part.tool === "string" && !toolNames.includes(part.tool)) {
+                toolNames.push(part.tool)
+            }
+        } else if (part.type === "text") {
+            hasText = true
+        } else if (part.type === "reasoning") {
+            hasReasoning = true
+        }
+    }
+
+    if (hasTool) {
+        return toolNames.length > 0 ? `tool:${toolNames.join(",")}` : "tool"
+    }
+    if (hasReasoning && !hasText) return "reasoning"
+    return "text"
+}
+
 export function assignMessageRefs(state: SessionState, messages: WithParts[]): number {
     let assigned = 0
     let skippedSubAgentPrompt = false
