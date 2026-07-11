@@ -2,8 +2,13 @@ name: Release
 
 on:
     push:
-        tags:
-            - "v*"
+        branches: [master]
+    workflow_dispatch:
+        inputs:
+            force:
+                description: "Force publish even if not a release branch merge"
+                required: false
+                default: "false"
 
 jobs:
     publish:
@@ -12,29 +17,81 @@ jobs:
             contents: write
         steps:
             - uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
+
+            - name: Check if release branch was merged
+              id: check
+              run: |
+                  MERGE_MSG=$(git log -1 --pretty=%B)
+                  echo "Commit message: $MERGE_MSG"
+
+                  FORCE="${{ github.event.inputs.force }}"
+                  IS_RELEASE="false"
+
+                  if echo "$MERGE_MSG" | grep -qE 'Merge pull request #[0-9]+ from .*[0-9]{4}-[0-9]{2}-[0-9]{2}_release-v'; then
+                      IS_RELEASE="true"
+                      echo "Release branch detected"
+                  elif [ "$FORCE" = "true" ]; then
+                      IS_RELEASE="true"
+                      echo "Force publish requested"
+                  else
+                      echo "Not a release branch merge — skipping"
+                  fi
+
+                  echo "is_release=$IS_RELEASE" >> "$GITHUB_OUTPUT"
+
+            - name: Read version
+              if: steps.check.outputs.is_release == 'true'
+              id: version
+              run: |
+                  VERSION=$(node -p "require('./package.json').version")
+                  TAG="v${VERSION}"
+                  echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+                  echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+                  echo "Version: $VERSION, Tag: $TAG"
 
             - uses: actions/setup-node@v4
+              if: steps.check.outputs.is_release == 'true'
               with:
                   node-version: 22
                   cache: npm
                   registry-url: https://registry.npmjs.org
 
-            - run: npm ci
+            - if: steps.check.outputs.is_release == 'true'
+              run: npm ci
 
-            - name: Build & verify
+            - if: steps.check.outputs.is_release == 'true'
               run: npm run check:package
 
-            - name: Run tests
+            - if: steps.check.outputs.is_release == 'true'
               run: npm test
 
+            - name: Create tag
+              if: steps.check.outputs.is_release == 'true'
+              run: |
+                  TAG="${{ steps.version.outputs.tag }}"
+                  if git rev-parse "$TAG" >/dev/null 2>&1; then
+                      echo "Tag $TAG already exists — skipping"
+                  else
+                      git config user.name "github-actions[bot]"
+                      git config user.email "github-actions[bot]@users.noreply.github.com"
+                      git tag -a "$TAG" -m "release $TAG (auto-tagged on merge)"
+                      git push origin "$TAG"
+                      echo "Created tag $TAG"
+                  fi
+
             - name: Publish to npm
+              if: steps.check.outputs.is_release == 'true'
               run: npm publish
               env:
                   NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
             - name: Create GitHub Release
+              if: steps.check.outputs.is_release == 'true'
               uses: softprops/action-gh-release@v2
               with:
+                  tag_name: ${{ steps.version.outputs.tag }}
                   generate_release_notes: true
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

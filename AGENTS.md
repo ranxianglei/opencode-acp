@@ -568,11 +568,11 @@ All source code changes (files under `lib/`) MUST undergo independent review by 
 
 ### 5.4 Release Workflow (Automated via CI)
 
-Releases are **fully automated through GitHub Actions**. The workflow is: create a release PR → merge → CI auto-tags → CI auto-builds, tests, and publishes to npm. No manual `npm publish` or `git tag` needed.
+Releases are **fully automated through GitHub Actions**. The workflow is: create a release PR → merge → CI auto-tags, builds, tests, and publishes to npm. No manual `npm publish` or `git tag` needed.
 
 #### 5.4.1 CI Workflows
 
-Three GitHub Actions workflows enforce AGENTS.md standards and automate releases:
+Two GitHub Actions workflows enforce AGENTS.md standards and automate releases:
 
 **`pr-checks.yml`** — runs on every PR to master:
 
@@ -582,19 +582,17 @@ Three GitHub Actions workflows enforce AGENTS.md standards and automate releases
 | Devlog | `devlog/{branch-name}/REQ.md` and `WORKLOG.md` exist | same |
 | Changelog | If `package.json` version changed, `README.md` and `README.zh-CN.md` must be modified and contain `### v{VERSION}` | same |
 
-**`auto-tag.yml`** — triggers on push to master (PR merge):
+**`release.yml`** — triggers on push to master (PR merge):
 
 1. Checks if the merge commit came from a release branch (`YYYY-MM-DD_release-v*`)
 2. If yes, reads `package.json` version and creates `v{VERSION}` tag
-3. Only triggers on release branches — normal branches that accidentally change version are ignored
+3. Runs `npm ci` → `npm run check:package` → `npm test`
+4. Publishes to npm registry (uses `NPM_TOKEN` secret)
+5. Creates GitHub Release with auto-generated notes
 
-**`release.yml`** — triggers on `v*` tag push (auto-tagged by `auto-tag.yml` or manually pushed):
+**Why not separate tag-triggered publish?** GitHub Actions does not allow workflows pushed by `GITHUB_TOKEN` to trigger other workflows. A separate `auto-tag.yml` + tag-triggered `release.yml` chain does not work — the tag push from `auto-tag.yml` won't fire `release.yml`. The unified workflow solves this by doing everything in one job.
 
-1. `npm ci` — install dependencies
-2. `npm run check:package` — build + verify package contents
-3. `npm test` — run full test suite
-4. `npm publish` — publish to npm registry (uses `NPM_TOKEN` secret)
-5. Create GitHub Release with auto-generated notes
+Can also be triggered manually via `workflow_dispatch` with `force: true` to publish outside a release branch merge.
 
 #### 5.4.2 Release Process (Step-by-Step)
 
@@ -646,12 +644,14 @@ gh pr create --title "release: v{VERSION} — title" --body "..."
 
 Wait for CI to pass (`pr-validation`, `test`, `build`), then a human merges the PR.
 
-**Step 5: Auto-tag + auto-publish (fully automated)**
+**Step 5: Auto-publish (fully automated)**
 
-Merging the PR triggers the following chain automatically — no manual action needed:
+Merging the PR triggers `release.yml` automatically — no manual action needed:
 
-1. Push to master → `auto-tag.yml` detects release branch merge → creates `v{VERSION}` tag
-2. Tag push → `release.yml` runs → builds, tests, publishes to npm → creates GitHub Release
+1. Push to master → `release.yml` detects release branch merge (`YYYY-MM-DD_release-v*`)
+2. Creates `v{VERSION}` tag, builds, tests, publishes to npm, creates GitHub Release
+
+All in one workflow — no chained workflows (GitHub Actions limitation: `GITHUB_TOKEN` cannot trigger other workflows).
 
 **Step 6: Verify**
 
