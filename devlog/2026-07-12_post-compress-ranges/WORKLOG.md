@@ -2,39 +2,39 @@
 
 ## Branch: `2026-07-12_post-compress-ranges`
 ## Base: `github/master` (v1.12.0)
+## Commits: 4
 
-### Three-Tier Strategy
+### Commit `ada5906` — feat: post-compress range visibility + notification range display
+- Added `formatEntryRanges()` in notification.ts for `→ Range: b20: m00150–m00155`
+- Added `postCompressRangesShown` flag + one-time ranges injection after compress
+- Updated inject.ts with proportional baseline adjustment + compressBaselineSet lock
 
-#### Tier 1: Nudge Guidance
-- Added after compressible ranges in nudge:
-  `💡 Compress all ranges in one call if possible (pass multiple content entries). If you need this list after compressing, call acp_status.`
+### Commit `094212b` — fix: remove post-compress ranges + proportional baseline adjustment
+- **REVERTED** `postCompressRangesShown` (caused over-compression chains b36→b37→b38→b39)
+- Kept proportional baseline formula: `adjustment = min(1, compressed/growth * 2)`
+- Pre-prune token count captured from `hooks.ts:260` (`prePruneTokens`)
+- Voluntary compress (no nudge) → baseline unchanged
 
-#### Tier 2: Post-Compress One-Time Fallback
-- `postCompressRangesShown: boolean` flag in Nudges state
-- Shows remaining ranges ONCE after first compress in a turn
-- Never shows again until new turn resets the flag
-- Gated by `overMinLimit` — only when context is still high enough
-- Debug: sends to terminal via `debugNotify` callback
-- Format: `[Post-compress — shown once] N ranges remaining (~XK). Compress all at once, or call acp_status to re-fetch`
+### Commit `37005f6` — fix: register acp_context_recap tool + strip stale compress calls + KEEP/REF fixes
+- **Register `acp_context_recap`** as real tool (`lib/compress/recap.ts`) — fixes compression recap injection
+- **`stripStaleCompressCalls`** (`lib/messages/prune.ts`) — removes compress tool-call parts from previous turns
+- **KEEP/REF regex normalization** (`keep-markers.ts`) — `normalizeRef()` via `parseMessageRef` + `formatMessageRef`
+- **`resolveKeepMarkers` in message mode** (`compress/message.ts`)
+- **Toast notification fix** — `displaySummary` hoisted, used as replace target
+- **`formatEntryRanges` fix** — use `block.startId`/`endId` directly (already refs, not raw IDs)
+- Remove `DETAILED_NOTIFICATION_SUMMARY_MAX_CHARS` — detailed shows full summary
 
-#### Tier 3: On-Demand via acp_status
-- Already available since v1.12.0
-- Model can call `acp_status({scope:"uncompressed"})` for ranges view
+### Commit `1ba9d98` — test: add stripStaleCompressCalls tests + fix stale TODOs (Oracle W1+W2)
+- 7 tests in `tests/strip-stale-compress.test.ts`: (a) prev-turn stripped, (b) current-turn preserved, (c) all-compress removed, (d) multiple stripped, (e) no-user no-op, (f) non-compress parts preserved, (g) idempotent
+- Replace stale TODOs in `message.ts:191` and `range.ts:275` with implementation pointers
 
-#### Notification Range Display
-- `formatEntryRanges(entries, state)` in `lib/ui/notification.ts`
-- Converts block startId/endId to mNNNNN refs
-- Added `→ Range: b20: m00150–m00155` line
-
-### Files Changed
-- `lib/messages/inject/inject.ts`
-- `lib/ui/notification.ts`
-- `lib/state/types.ts`
-- `lib/state/state.ts`
-- `lib/state/persistence.ts`
-- `lib/state/utils.ts`
+### Oracle Review
+- Session: `ses_0a9e7225fffeLEUmfoSEBSs7vG`
+- Verdict: 0 CRITICAL, 2 WARN (both addressed)
+- All edge cases verified: recap preservation, current-turn preservation, idempotency, ref normalization, toast fix
 
 ### Verification
-- 630 tests pass, 0 failures
+- 638 tests pass (631 + 7 new), 0 failures
 - typecheck OK
-- Deployed to local cache (8 matches for `postCompressRangesShown`)
+- Deployed + verified at runtime (37 recaps all `type: tool`, 0 compress calls in context)
+- Test design: user instruction "ls /tmp" compressed into recap → model did NOT re-execute → tool-result format confirmed working
