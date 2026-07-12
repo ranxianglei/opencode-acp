@@ -112,7 +112,7 @@ test("buildContextUsageGuidance returns context number without compression guida
     assert.match(mid, /Context:/)
     assert.match(high, /Context:/)
 
-    assert.match(low, /be frugal/i)
+    assert.doesNotMatch(low, /be frugal/i)
     assert.doesNotMatch(low, /MUST|aggressive|critical/i)
     assert.doesNotMatch(mid, /growing|MUST|aggressive/i)
     assert.doesNotMatch(high, /aggressive|MUST/i)

@@ -140,7 +140,7 @@ test("buildCompressibleRanges: groups by conversation turns", () => {
     ]
     const ranges = buildCompressibleRanges(messages, state)
     assert.ok(ranges.length >= 1, "should produce at least 1 range")
-    assert.ok(ranges[0].msgCount >= 3, "first range should contain multiple messages")
+    assert.ok(ranges[0].count >= 3, "first range should contain multiple messages")
     assert.ok(ranges[0].tokens > 0, "range should have positive token count")
 })
 

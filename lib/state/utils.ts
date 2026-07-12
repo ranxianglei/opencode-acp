@@ -359,8 +359,10 @@ export function resetOnCompaction(state: SessionState): void {
         iterationNudgeAnchors: new Set<string>(),
         lastPerMessageNudgeTurn: 0,
         lastPerMessageNudgeTokens: undefined,
+        lastNudgeShownTokens: undefined,
         lastToolOutputNudgeTokens: undefined,
         shouldInjectThisTurn: undefined,
+        compressBaselineSet: false,
     }
     // [FIX] Reset message IDs on compaction — old mappings are stale after
     // compaction replaces messages with a summary. Keeping them causes

@@ -2,22 +2,20 @@ import { tool } from "@opencode-ai/plugin"
 import type { ToolContext } from "./types"
 import { formatAge } from "../ui/utils"
 import type { CompressionBlock, WithParts } from "../state/types"
-import { estimateContextComposition } from "../messages/inject/utils"
+import { estimateContextComposition, buildCompressibleRanges, formatCompressibleRanges } from "../messages/inject/utils"
 import { fetchSessionMessages } from "./search"
 
-const ACP_STATUS_TOOL_DESCRIPTION = `Show context status — overview or drill down into compressed/uncompressed sections.
+const ACP_STATUS_TOOL_DESCRIPTION = `Show context status — overview includes compressible ranges by default.
 
-No args: Overview of both visible (uncompressed) context and compressed blocks.
-scope:"uncompressed": Drill into all visible messages — list each with ref, tokens, tool type. Add tool:"bash" to filter by tool type.
+No args: Overview with totals, compressed blocks, and compressible ranges.
+scope:"uncompressed": Compressible ranges only (default view:"ranges"). Add view:"messages" for per-message listing with tool/sort filters.
 scope:"compressed": Drill into compressed blocks — list each with full details (age, generation, consumed lineage).
 
-Sort options: "size" (default, largest first), "time" (chronological), "tool" (group by tool type).
-
 Use this tool to:
-- See what's consuming context (overview)
-- Find all messages of a specific tool type to batch-compress
-- Check block details before decompressing
-- Find compression candidates when context grows`
+- See what's consuming context + compressible ranges in one call (no args)
+- Focus on ranges only (scope:"uncompressed")
+- Find all messages of a specific tool type (scope:"uncompressed", view:"messages", tool:"bash")
+- Check block details before decompressing (scope:"compressed")`
 
 function formatTokens(n: number): string {
     if (!Number.isFinite(n) || n <= 0) return "0"
@@ -120,6 +118,8 @@ function renderOverview(
     summaryTokens: number,
     blocks: CompressionBlock[],
     fetchFailed: boolean,
+    rawMessages: WithParts[],
+    ctx: ToolContext,
 ): string[] {
     const lines: string[] = []
 
@@ -181,10 +181,56 @@ function renderOverview(
         }
     }
 
+    if (!fetchFailed) {
+        const pruneMap = ctx.state.prune.messages.byMessageId
+        const visibleRaw = rawMessages.filter((msg) => {
+            const msgId = (msg.info as any)?.id || ""
+            const entry = pruneMap.get(msgId)
+            return !entry || entry.activeBlockIds.length === 0
+        })
+        const ranges = buildCompressibleRanges(visibleRaw, ctx.state)
+        if (ranges.length > 0) {
+            lines.push("")
+            lines.push(formatCompressibleRanges(ranges))
+        }
+    }
+
     lines.push("")
 
     const hintTool = topToolName || "bash"
-    lines.push(`Tip: acp_status({scope:"uncompressed", tool:"${hintTool}", sort:"size"}) — mix any params freely`)
+    lines.push(`Tip: acp_status({scope:"uncompressed", view:"messages", tool:"${hintTool}"}) for per-message listing`)
+
+    return lines
+}
+
+function renderUncompressedRanges(
+    rawMessages: WithParts[],
+    ctx: ToolContext,
+): string[] {
+    const pruneMap = ctx.state.prune.messages.byMessageId
+    const visibleMessages = rawMessages.filter((msg) => {
+        const msgId = (msg.info as any)?.id || ""
+        const entry = pruneMap.get(msgId)
+        return !entry || entry.activeBlockIds.length === 0
+    })
+
+    const ranges = buildCompressibleRanges(visibleMessages, ctx.state)
+    const totalTokens = ranges.reduce((s, r) => s + r.tokens, 0)
+    const totalMsgs = ranges.reduce((s, r) => s + r.count, 0)
+
+    const lines: string[] = []
+    lines.push(`UNCOMPRESSED — ${formatTokens(totalTokens)} | ${totalMsgs} msgs in ${ranges.length} ranges`)
+    lines.push("")
+
+    if (ranges.length === 0) {
+        lines.push("  (no compressible ranges)")
+    } else {
+        lines.push(formatCompressibleRanges(ranges))
+    }
+
+    lines.push("")
+    lines.push(`Per-message listing: acp_status({scope:"uncompressed", view:"messages"})`)
+    lines.push(`Filter by tool: acp_status({scope:"uncompressed", view:"messages", tool:"bash"})`)
 
     return lines
 }
@@ -331,10 +377,14 @@ export function createAcpStatusTool(ctx: ToolContext): ReturnType<typeof tool> {
                 .string()
                 .optional()
                 .describe('Drill down: "compressed" or "uncompressed". No arg = overview of both.'),
+            view: tool.schema
+                .string()
+                .optional()
+                .describe('Display format for scope:"uncompressed": "ranges" (default, grouped by turn — matches nudge format) or "messages" (per-message listing with sort/filter)'),
             tool: tool.schema
                 .string()
                 .optional()
-                .describe('Filter by tool type (only with scope:"uncompressed"). e.g., "bash", "todowrite", "write"'),
+                .describe('Filter by tool type (only with scope:"uncompressed", view:"messages"). e.g., "bash", "todowrite", "write"'),
             sort: tool.schema
                 .string()
                 .optional()
@@ -346,6 +396,7 @@ export function createAcpStatusTool(ctx: ToolContext): ReturnType<typeof tool> {
         },
         async execute(args, toolCtx) {
             const scope = args.scope === "compressed" || args.scope === "uncompressed" ? args.scope : undefined
+            const view = args.view === "messages" ? "messages" : "ranges"
             const toolFilter = typeof args.tool === "string" ? args.tool : undefined
             const sort = args.sort === "time" || args.sort === "tool" || args.sort === "age" ? args.sort : "size"
             const limit = Number.isFinite(args.limit) && args.limit! > 0 ? Math.min(args.limit!, 200) : 30
@@ -366,9 +417,10 @@ export function createAcpStatusTool(ctx: ToolContext): ReturnType<typeof tool> {
             let visibleMsgs: VisibleMessageInfo[] = []
             let summaryTokens = 0
             let fetchFailed = false
+            let rawMessages: WithParts[] = []
 
             try {
-                const rawMessages = await fetchSessionMessages(ctx.client, toolCtx.sessionID)
+                rawMessages = await fetchSessionMessages(ctx.client, toolCtx.sessionID)
                 const result = collectVisibleMessages(rawMessages, ctx)
                 visibleMsgs = result.messages
                 summaryTokens = result.summaryTokens
@@ -378,9 +430,13 @@ export function createAcpStatusTool(ctx: ToolContext): ReturnType<typeof tool> {
 
             if (scope === "uncompressed") {
                 if (fetchFailed) return "(unable to fetch messages)"
-                lines.push(...renderUncompressedDrilldown(visibleMsgs, toolFilter, sort, limit))
+                if (view === "messages") {
+                    lines.push(...renderUncompressedDrilldown(visibleMsgs, toolFilter, sort, limit))
+                } else {
+                    lines.push(...renderUncompressedRanges(rawMessages, ctx))
+                }
             } else {
-                lines.push(...renderOverview(visibleMsgs, summaryTokens, allBlocks, fetchFailed))
+                lines.push(...renderOverview(visibleMsgs, summaryTokens, allBlocks, fetchFailed, rawMessages, ctx))
             }
 
             return lines.join("\n")

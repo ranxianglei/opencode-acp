@@ -55,6 +55,7 @@ function buildDetailedMessage(
 const TOAST_BODY_MAX_LINES = 12
 const TOAST_SUMMARY_MAX_CHARS = 600
 const NOTIFICATION_SUMMARY_MAX_CHARS = 1500
+const DETAILED_NOTIFICATION_SUMMARY_MAX_CHARS = 10000
 
 function truncateToastBody(body: string, maxLines: number = TOAST_BODY_MAX_LINES): string {
     const lines = body.split("\n")
@@ -238,9 +239,12 @@ export async function sendCompressNotification(
             message += ` compressed`
         }
         if (config.compress.showCompression) {
+            const maxChars = config.pruneNotification === "detailed"
+                ? DETAILED_NOTIFICATION_SUMMARY_MAX_CHARS
+                : NOTIFICATION_SUMMARY_MAX_CHARS
             const displaySummary =
-                summary.length > NOTIFICATION_SUMMARY_MAX_CHARS
-                    ? truncateToastSummary(summary, NOTIFICATION_SUMMARY_MAX_CHARS)
+                summary.length > maxChars
+                    ? truncateToastSummary(summary, maxChars)
                     : summary
             message += `\n→ Compression (~${summaryTokensStr}): ${displaySummary}`
         }
