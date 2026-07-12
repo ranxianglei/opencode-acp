@@ -422,6 +422,24 @@ For the complete list with root cause analysis, see the [bug tracker](https://gi
 
 ## Changelog
 
+### v1.12.0 — Baseline Leak Fix + KEEP/REF Markers + Compressible Ranges (PR #115)
+
+Comprehensive fix for issue #23 (context memory leak). 7 commits, 22 files, 851 insertions, 327 deletions.
+
+**Baseline Leak Fix**: After compress, the model continues working in the same turn, inflating context from ~78K to ~150K. Each transform re-established the nudge baseline to the inflated value, leaking 72K of headroom. Fix: `compressBaselineSet` lock flag sets baseline only on the first post-compress transform; turn-wide compress scan (`messages.slice(currentTurnStart).some(...)`) replaces last-message-only check.
+
+**KEEP/REF Markers**: Models over-summarize because they can't precisely retype large content. `[[KEEP:mNNNNN]]` auto-expands original message content inline (truncated to 2000 chars). `[[REF:mNNNNN|desc]]` creates compact links. Resolution runs after summary finalization, before wrapping.
+
+**Compressible Ranges**: Replaces size-based "Largest code/text messages" listing with need-based ranges grouped by conversation turn. Shows ALL ranges with gap detection (no ranges spanning compressed holes). The nudge now says "compress ALL listed ranges" instead of recommending specific large items.
+
+**Compression Philosophy (5 bullets)**: Need-based guidance replacing size-based recommendations — compress by need not by percentage, work from summaries not raw outputs, curate with KEEP/REF for critical content.
+
+**Other fixes**: Removed `toolOutputReminder` (bypassed adaptive threshold, caused over-compression); `acp_status` default = compressible ranges view; debug nudge (`config.debug` → terminal output); `baselineCorrected` persistence fix; Bug 14 cap (detailed notification: 10K chars); system prompt 5 fixes; multi-block notification empty summary fix. Oracle reviewed.
+
+Files: `lib/messages/inject/inject.ts`, `lib/compress/keep-markers.ts`, `lib/messages/inject/utils.ts`, `lib/compress/status.ts`, `lib/prompts/compression-rules.ts`, `lib/prompts/system.ts`, `lib/state/`, `lib/ui/notification.ts`, `lib/hooks.ts`. Tests: 630 pass.
+
+---
+
 ### v1.11.4 — Baseline Persistence Fix + Unified Release Workflow (PR #112, #113)
 
 **Bug fix (PR #112)**: After compress sets `lastPerMessageNudgeTokens = undefined`, the next transform re-establishes the baseline in memory but never persists it to disk (save condition was false). After restart, nudges break again. Fix: added `baselineReEstablished` flag to save condition. Also fixed async save race condition in `writePersistedSessionState` (file path resolved after `await`).

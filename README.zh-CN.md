@@ -395,6 +395,24 @@ ACP 在首次启动时自动将配置从 `dcp.jsonc` 迁移到 `acp.jsonc`，将
 
 ## 更新日志
 
+### v1.12.0 — 基线泄露修复 + KEEP/REF 标记 + 可压缩范围（PR #115）
+
+Issue #23（上下文内存泄露）的综合修复。7 个 commit，22 个文件，851 行新增，327 行删除。
+
+**基线泄露修复**：压缩后模型在同一轮继续工作，上下文从 ~78K 膨胀到 ~150K。每次 transform 重新建立 nudge 基线到膨胀后的值，泄露 72K 余量。修复：`compressBaselineSet` 锁标志只在首次 post-compress transform 设基线；全轮扫描（`messages.slice(currentTurnStart).some(...)`）替换仅检查最后一条 assistant 消息。
+
+**KEEP/REF 标记**：模型过度摘要因为无法精确重打大段内容。`[[KEEP:mNNNNN]]` 自动展开原始消息内容（截断到 2000 字符）。`[[REF:mNNNNN|描述]]` 生成紧凑链接。解析在摘要定稿后、包装前执行。
+
+**可压缩范围**：用按需分组范围替换基于大小的"最大代码/文本消息"列表。显示所有范围，带间隔检测（不会跨越压缩洞）。nudge 现在说"压缩所有列出的范围"而不是推荐特定大项。
+
+**压缩哲学（5 条）**：基于需要的指导替换基于大小的推荐——按需压缩而非按百分比，基于摘要工作而非原始输出，用 KEEP/REF 策展关键内容。
+
+**其他修复**：移除 `toolOutputReminder`（绕过自适应阈值，导致过度压缩）；`acp_status` 默认 = 可压缩范围视图；调试 nudge（`config.debug` → 终端输出）；`baselineCorrected` 持久化修复；Bug 14 截断（detailed 通知：10K 字符）；系统提示 5 处修复；多块通知空摘要修复。经 Oracle 审查。
+
+文件：`lib/messages/inject/inject.ts`、`lib/compress/keep-markers.ts`、`lib/messages/inject/utils.ts`、`lib/compress/status.ts`、`lib/prompts/compression-rules.ts`、`lib/prompts/system.ts`、`lib/state/`、`lib/ui/notification.ts`、`lib/hooks.ts`。测试：630 通过。
+
+---
+
 ### v1.11.4 — 基线持久化修复 + 统一发布工作流（PR #112, #113）
 
 **Bug 修复（PR #112）**：压缩后 baseline 设为 `undefined`，下一轮重建为真实值但**不写盘**（save 条件为 false）。重启后 nudge 失效。修复：新增 `baselineReEstablished` flag 加入 save 条件。同时修复 `writePersistedSessionState` 异步竞态（文件路径在 `await` 之后解析）。
