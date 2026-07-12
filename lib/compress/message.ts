@@ -11,6 +11,7 @@ import {
     applyCompressionState,
     wrapCompressedSummary,
 } from "./state"
+import { resolveKeepMarkers } from "./keep-markers"
 import type { CompressMessageToolArgs } from "./types"
 
 function buildSchema(maxSummaryLengthHard: number) {
@@ -146,7 +147,14 @@ export function createCompressMessageTool(ctx: ToolContext): ReturnType<typeof t
 
             for (const { plan, summaryWithTools } of preparedPlans) {
                 const blockId = allocateBlockId(ctx.state)
-                const storedSummary = wrapCompressedSummary(blockId, summaryWithTools)
+                const keepResult = resolveKeepMarkers(
+                    summaryWithTools,
+                    rawMessages,
+                    ctx.state,
+                    ctx.config,
+                )
+                const resolvedSummary = keepResult.summary
+                const storedSummary = wrapCompressedSummary(blockId, resolvedSummary)
                 const summaryTokens = countTokens(storedSummary)
 
                 applyCompressionState(
@@ -173,7 +181,7 @@ export function createCompressMessageTool(ctx: ToolContext): ReturnType<typeof t
                 notifications.push({
                     blockId,
                     runId,
-                    summary: summaryWithTools,
+                    summary: resolvedSummary,
                     summaryTokens,
                 })
             }

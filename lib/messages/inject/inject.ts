@@ -292,8 +292,9 @@ export const injectCompressNudges = (
             const ranges = buildCompressibleRanges(messages, state)
             if (ranges.length > 0) {
                 breakdown += `\n\n${formatCompressibleRanges(ranges)}`
-                breakdown += `\n💡 Compress all ranges in one call if possible (pass multiple content entries: \`content: [{...}, {...}]\`). If you need this list after compressing, call \`acp_status\`.`
+                breakdown += `\n💡 Compress all ranges in one call (pass multiple content entries: \`content: [{...}, {...}]\`).`
             }
+            breakdown += `\nUse \`acp_status({scope:"uncompressed"})\` to re-fetch compressible ranges after compressing, or \`acp_status\` for compressed block details.`
 
             if (decision.tipsVariant !== "maxLimit") {
                 breakdown += `\n\n${HOW_TO_COMPRESS_RULES}`
@@ -325,8 +326,6 @@ export const injectCompressNudges = (
         if (tipsText && suffixMessage) {
             appendToLastTextPart(suffixMessage, tipsText)
         }
-
-        injectVisibleIdRange(state, config, messages, suffixMessage)
     }
 
     if (suffixMessage) {

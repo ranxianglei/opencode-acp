@@ -1,6 +1,7 @@
 import type { WithParts } from "../state"
 import type { SessionState } from "../state"
 import type { PluginConfig } from "../config"
+import { parseMessageRef, formatMessageRef } from "../message-ids"
 
 const KEEP_REGEX = /\[\[KEEP:(m\d+)\]\]/g
 const REF_REGEX = /\[\[REF:(m\d+)\|([^\]]+)\]\]/g
@@ -31,25 +32,33 @@ export function resolveKeepMarkers(
 
     const expanded = summary
         .replace(KEEP_REGEX, (match, ref: string) => {
-            const msg = msgByRef.get(ref)
+            const normalized = normalizeRef(ref)
+            const msg = normalized ? msgByRef.get(normalized) : undefined
             if (!msg) {
                 unresolvedRefs.push(ref)
                 return match
             }
             expandedCount++
-            return formatKeptMessage(msg, ref, maxChars)
+            return formatKeptMessage(msg, normalized!, maxChars)
         })
         .replace(REF_REGEX, (_match, ref: string, desc: string) => {
-            const msg = msgByRef.get(ref)
+            const normalized = normalizeRef(ref)
+            const msg = normalized ? msgByRef.get(normalized) : undefined
             if (!msg) {
                 unresolvedRefs.push(ref)
                 return _match
             }
             refCount++
-            return `[→ ${ref}: ${desc.trim()}]`
+            return `[→ ${normalized}: ${desc.trim()}]`
         })
 
     return { summary: expanded, expandedCount, refCount, unresolvedRefs }
+}
+
+function normalizeRef(ref: string): string | null {
+    const idx = parseMessageRef(ref)
+    if (idx === null) return null
+    return formatMessageRef(idx)
 }
 
 function formatKeptMessage(msg: WithParts, ref: string, maxChars: number): string {

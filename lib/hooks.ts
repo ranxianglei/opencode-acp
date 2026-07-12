@@ -10,6 +10,7 @@ import {
     injectExtendedSubAgentResults,
     injectMessageIds,
     prune,
+    stripStaleCompressCalls,
     stripHallucinations,
     stripHallucinationsFromString,
     stripStaleMetadata,
@@ -259,6 +260,7 @@ export function createChatMessageTransformHandler(
         }
         const prePruneTokens = getCurrentTokenUsage(state, output.messages)
         prune(state, logger, config, output.messages)
+        stripStaleCompressCalls(output.messages)
         // [FIX Bug 2] assign refs to newly created synthetic messages from prune/filterCompressedRanges
         assignMessageRefs(state, output.messages)
         await injectExtendedSubAgentResults(
