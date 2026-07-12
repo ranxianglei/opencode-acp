@@ -70,6 +70,7 @@ export const injectCompressNudges = (
     prompts: RuntimePrompts,
     compressionPriorities?: CompressionPriorityMap,
     debugNotify?: (text: string) => void,
+    preCompressTokens?: number,
 ): void => {
     if (compressPermission(state, config) === "deny") {
         return
@@ -109,38 +110,39 @@ export const injectCompressNudges = (
         state.nudges.lastNudgeShownTokens = undefined
         state.nudges.lastToolOutputNudgeTokens = undefined
 
-        // Only reset baseline for nudge-triggered compress. Voluntary compress
-        // (no nudge was shown) keeps the original baseline — growth tracking
-        // continues. Otherwise: baseline=50K, grows to 90K, model voluntarily
-        // compresses to 80K → baseline jumps to 80K → leaks 30K of growth.
+        // Proportional baseline adjustment: if nudge-triggered compress, adjust
+        // baseline by how much was actually compressed. >50% of growth compressed
+        // → full baseline update. 20-30% → partial update. This prevents both
+        // baseline leak (small compress → full reset → growth forgotten) and
+        // over-compression (model gets re-nudged too soon after a small compress).
+        //
+        // Voluntary compress (no nudge shown) keeps the original baseline entirely.
         if (wasNudgeTriggered && !state.nudges.compressBaselineSet) {
-            state.nudges.lastPerMessageNudgeTokens = currentTokens
-            state.nudges.compressBaselineSet = true
-        }
+            const baseline = state.nudges.lastPerMessageNudgeTokens
+            const postCompress = currentTokens
+            // preCompressTokens is captured in hooks.ts BEFORE prune() runs
+            const preCompress = preCompressTokens
 
-        // Show remaining ranges ONCE after compress as a fallback. After this,
-        // the model should use `acp_status` to re-fetch the list. Showing every
-        // turn causes over-compression chains (b36→b37→b38→b39 pattern).
-        if (overMinLimit && !state.nudges.postCompressRangesShown) {
-            state.nudges.postCompressRangesShown = true
-            const suffixMessage = createSuffixMessage(messages)
-            if (suffixMessage) {
-                const remainingRanges = buildCompressibleRanges(messages, state)
-                if (remainingRanges.length > 0) {
-                    const fmt = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n))
-                    const totalTokens = remainingRanges.reduce((s, r) => s + r.tokens, 0)
-                    let rangeText = `[Post-compress — shown once] ${remainingRanges.length} compressible range${remainingRanges.length === 1 ? "" : "s"} remaining (~${fmt(totalTokens)} tokens). Compress all at once, or call \`acp_status\` to re-fetch this list later:\n`
-                    rangeText += formatCompressibleRanges(remainingRanges)
-                    appendToLastTextPart(suffixMessage, "\n\n" + rangeText)
-                    appendToLastTextPart(suffixMessage, "\n")
-                    if (debugNotify) {
-                        debugNotify(`[ACP Debug] Post-compress ranges (shown once):\n${formatCompressibleRanges(remainingRanges)}`)
-                    }
+            if (
+                baseline !== undefined &&
+                postCompress !== undefined &&
+                preCompress !== undefined &&
+                preCompress > postCompress
+            ) {
+                const growth = preCompress - baseline
+                const compressed = preCompress - postCompress
+                if (growth > 0 && compressed > 0) {
+                    const ratio = Math.min(1, compressed / growth)
+                    const adjustment = Math.min(1, ratio * 2) // 50%→1.0, 25%→0.5, 10%→0.2
+                    const newBaseline = baseline + Math.round((postCompress - baseline) * adjustment)
+                    state.nudges.lastPerMessageNudgeTokens = newBaseline
                 } else {
-                    const idx = messages.lastIndexOf(suffixMessage)
-                    if (idx !== -1) messages.splice(idx, 1)
+                    state.nudges.lastPerMessageNudgeTokens = postCompress
                 }
+            } else {
+                state.nudges.lastPerMessageNudgeTokens = postCompress
             }
+            state.nudges.compressBaselineSet = true
         }
 
         saveSessionState(state, logger).catch(() => {})
@@ -149,7 +151,6 @@ export const injectCompressNudges = (
 
     // New turn (no compress) — release the lock
     state.nudges.compressBaselineSet = false
-    state.nudges.postCompressRangesShown = false
 
     let anchorsChanged = false
     let baselineReEstablished = false

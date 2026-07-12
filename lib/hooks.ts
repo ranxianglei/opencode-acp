@@ -257,6 +257,7 @@ export function createChatMessageTransformHandler(
         if (batchResult.mergedCount > 0) {
             saveSessionState(state, logger).catch(() => {})
         }
+        const prePruneTokens = getCurrentTokenUsage(state, output.messages)
         prune(state, logger, config, output.messages)
         // [FIX Bug 2] assign refs to newly created synthetic messages from prune/filterCompressedRanges
         assignMessageRefs(state, output.messages)
@@ -287,6 +288,7 @@ export function createChatMessageTransformHandler(
                       ).catch(() => {})
                   }
                 : undefined,
+            prePruneTokens,
         )
         injectMessageIds(state, config, output.messages, compressionPriorities)
         applyPendingManualTrigger(state, output.messages, logger)
