@@ -395,6 +395,14 @@ ACP 在首次启动时自动将配置从 `dcp.jsonc` 迁移到 `acp.jsonc`，将
 
 ## 更新日志
 
+### v1.12.1 — 压缩摘要注入修复 + 历史压缩调用剥离（PR #119）
+
+**问题**：`acp_context_recap` 用于创建合成的 tool-result 摘要消息，但未注册为真实工具——provider 可能剥离/转换未注册的 tool-result，导致模型将压缩摘要视为纯文本或用户消息（回声/漂移 bug）。此外，compress 工具调用的输入与 block recap 内容重复占用上下文。
+
+**修复**：将 `acp_context_recap` 注册为真实工具（`lib/compress/recap.ts`），使 provider 正确序列化 tool-result。新增 `stripStaleCompressCalls`（`lib/messages/prune.ts`），剥离历史轮次的 compress 工具调用部分。同时修复：KEEP/REF 正则归一化（`m150` → `m00150`）、message 模式下 `resolveKeepMarkers` 调用、toast 通知 `replace()` 失败、通知范围显示（`→ Range: b20: m00150–m00155`）、压缩后比例基线调整，并回退了有问题的 `postCompressRangesShown` 功能。
+
+文件：`lib/compress/recap.ts`（新增）、`lib/messages/prune.ts`、`lib/compress/keep-markers.ts`、`lib/compress/message.ts`、`lib/messages/inject/inject.ts`、`lib/ui/notification.ts`。测试：`tests/strip-stale-compress.test.ts`（新增，7 个测试）。经 Oracle 审查。
+
 ### v1.12.0 — 基线泄露修复 + KEEP/REF 标记 + 可压缩范围（PR #115）
 
 Issue #23（上下文内存泄露）的综合修复。7 个 commit，22 个文件，851 行新增，327 行删除。

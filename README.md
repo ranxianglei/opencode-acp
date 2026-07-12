@@ -422,6 +422,14 @@ For the complete list with root cause analysis, see the [bug tracker](https://gi
 
 ## Changelog
 
+### v1.12.1 — Compression Recap Injection Fix + Stale Compress Stripping (PR #119)
+
+**Problem**: `acp_context_recap` was used to create synthetic tool-result recap messages but was NOT registered as a real tool — providers could strip/convert unregistered tool-results, causing the model to see compression summaries as plain text or user messages (echo/drift bugs). Additionally, compress tool-call inputs duplicated block recap content in context.
+
+**Fix**: Register `acp_context_recap` as a real tool (`lib/compress/recap.ts`) so providers properly serialize tool-results. Add `stripStaleCompressCalls` (`lib/messages/prune.ts`) to remove compress tool-call parts from previous turns. Also fixes: KEEP/REF regex normalization (`m150` → `m00150`), `resolveKeepMarkers` in message mode, toast notification `replace()` failure, notification range display (`→ Range: b20: m00150–m00155`), proportional baseline adjustment after compress, and reverts the problematic `postCompressRangesShown` feature.
+
+Files: `lib/compress/recap.ts` (NEW), `lib/messages/prune.ts`, `lib/compress/keep-markers.ts`, `lib/compress/message.ts`, `lib/messages/inject/inject.ts`, `lib/ui/notification.ts`. Tests: `tests/strip-stale-compress.test.ts` (NEW, 7 tests). Oracle-reviewed.
+
 ### v1.12.0 — Baseline Leak Fix + KEEP/REF Markers + Compressible Ranges (PR #115)
 
 Comprehensive fix for issue #23 (context memory leak). 7 commits, 22 files, 851 insertions, 327 deletions.
