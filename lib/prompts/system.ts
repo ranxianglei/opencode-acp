@@ -26,7 +26,7 @@ You have five context-management tools:
 - \`decompress\` — Restore a previously compressed block's full original content, optionally to a file for large blocks. Use when a summary lacks the exact detail you need. Example: \`decompress({ blockId: "b5" })\` or \`decompress({ blockId: "b5", toFile: "path" })\`.
 - \`search_context\` — Search compressed block summaries (and optionally visible messages) by keyword. Use BEFORE decompressing to find the right block. Example: \`search_context({ query: "auth token refresh" })\`.
 - \`prune\` — Remove old tool outputs by tool type, keeping only recent calls. Unlike compress (which creates summaries), prune directly strips outputs. Use for disposable outputs like old todowrite states or edit echoes. Example: \`prune({ toolType: "todowrite", keepLatest: 3 })\`.
-- \`acp_status\` — Context status with drilldown. No args = overview. \`scope:"uncompressed"\` lists all visible messages; add \`tool:"bash"\` to filter by tool type. \`scope:"compressed"\` shows block details. Example: \`acp_status({scope:"uncompressed", tool:"todowrite"})\`.
+- \`acp_status\` — Context status with compressible ranges. No args = overview + ranges. \`scope:"uncompressed"\` for range view; add \`view:"messages"\` for per-message listing with \`tool\`/\`sort\` filters. \`scope:"compressed"\` for block details.
 
 COMPRESSION PHILOSOPHY
 
@@ -34,9 +34,9 @@ Two failure modes to avoid:
 - Over-compression: Compressing too aggressively loses critical details, decisions, and state needed for your task. This directly harms task quality.
 - Under-compression: Failing to compress verbose outputs causes context overflow, reducing accuracy and eventually blocking your work.
 
-Balance is key. The single test for whether to compress is: "Is this content still needed by the current task step?" If yes, keep it. If no, it is a candidate. When uncertain, lean toward keeping content.
+Balance is key. The single test for whether to compress is: "Is this content still needed by the current task step?" If yes, keep it. If no, compress it. All ranges listed in the context breakdown should be compressed to summary format \u2014 the only exceptions are protected content, content the current step is actively using, or critical content you cannot reconstruct.
 
-Be frugal with context. Compress obvious waste proactively — verbose outputs you have already used, duplicate reads, abandoned explorations. Do not wait until context is critically full; that harms retrieval quality and risks overflow. When compressing, cover the largest range you can in a single call — aim for 20+ messages. Compressing 3-5 messages at a time creates many small summaries that collectively waste more tokens than they save. But never let the urge to compress distract from the actual task.
+Be frugal with context. Compress obvious waste proactively — verbose outputs you have already used, duplicate reads, abandoned explorations. Do not wait until context is critically full; that harms retrieval quality and risks overflow. But never let the urge to compress distract from the actual task.
 
 WHEN TO COMPRESS
 
@@ -53,7 +53,7 @@ WHEN NOT TO COMPRESS
 
 - Content the current task step is actively reading or reasoning about.
 - Important user messages — preserve their exact intent, constraints, and acceptance criteria verbatim, not just the most recent one.
-- Outputs from protected tools (e.g. \`task\`, \`skill\`, \`todowrite\`, \`write\`, \`edit\`) — these are appended to summaries automatically, not compressed away.
+- Protected tool outputs (default: \`skill\` only) — hard-excluded from compression ranges, survive intact in visible context.
 
 ${HOW_TO_COMPRESS_RULES}
 
@@ -78,7 +78,7 @@ Breakdown: 12.3K tool (40%) | 3.1K summaries (10%) | 8.5K code (28%) | 6.5K text
 - "code" = messages containing code blocks
 - "text" = plain text messages
 
-Below the breakdown, the system lists the largest ranges in each category (e.g. \`Largest tool outputs: m00175 (20.7K), m00200 (8.1K)\`). These are high-value compression candidates — compress those whose content you have already consumed (extracted the facts you need). Keep any you still need to reference.
+Below the breakdown, the system lists compressible ranges grouped by conversation turn. All listed ranges should be compressed to summary format — the only exceptions are protected content, content the current step is actively using, or critical content you cannot reconstruct. Compress the largest ranges first when the current step no longer needs them.
 
-Compress incrementally: target one large consumed range per compress call (e.g. m00150–m00200), not the entire context at once. Each compression creates a reusable summary block you can decompress later if needed.
+Each compression creates a reusable summary block you can decompress later if needed.
 `

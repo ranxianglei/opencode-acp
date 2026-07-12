@@ -452,7 +452,7 @@ export function buildContextUsageGuidance(
 
     const formatK = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n))
 
-    return `\n\nContext: ${formatK(currentTokens)} tokens.\nAll compression serves the primary task, but be frugal. Context capacity is precious. Save context by compressing consumed outputs, not by avoiding tools. Compress by need, not by percentage.`
+    return `\n\nContext: ${formatK(currentTokens)} tokens.`
 }
 
 export function applyAnchoredNudges(
@@ -665,4 +665,88 @@ export function estimateContextComposition(
         largestMessageRanges: perText.slice(0, 5),
         toolTypeBreakdown,
     }
+}
+
+export interface CompressibleRange {
+    startRef: string
+    endRef: string
+    count: number
+    tokens: number
+    toolPct: number
+    textPct: number
+}
+
+function refNum(ref: string): number {
+    const n = parseInt(ref.slice(1), 10)
+    return Number.isNaN(n) ? -1 : n
+}
+
+export function buildCompressibleRanges(
+    messages: WithParts[],
+    state: SessionState,
+): CompressibleRange[] {
+    const msgInfo: { ref: string; refNum: number; tokens: number; isTool: boolean; isUser: boolean }[] = []
+    for (const msg of messages) {
+        if (isSyntheticMessage(msg)) continue
+        const ref = state.messageIds.byRawId.get(msg.info.id)
+        if (!ref) continue
+        let tokens = 0
+        let isTool = false
+        for (const part of msg.parts || []) {
+            if (part.type === "text" && typeof (part as any).text === "string") {
+                tokens += Math.round(((part as any).text as string).length / 4)
+            } else if (part.type !== "text" && part.type !== "reasoning") {
+                tokens += Math.round(JSON.stringify(part).length / 4)
+                isTool = true
+            }
+        }
+        const refNum = parseInt(ref.slice(1), 10)
+        msgInfo.push({ ref, refNum, tokens, isTool, isUser: msg.info.role === "user" })
+    }
+    if (msgInfo.length === 0) return []
+
+    const groups: CompressibleRange[] = []
+    let cur: CompressibleRange | null = null
+    let prevRefNum = -2
+    for (const info of msgInfo) {
+        const hasGap = info.refNum > prevRefNum + 1
+        if (cur && ((info.isUser && cur.count >= 3) || hasGap)) {
+            groups.push(cur)
+            cur = null
+        }
+        prevRefNum = info.refNum
+        if (!cur) {
+            cur = {
+                startRef: info.ref,
+                endRef: info.ref,
+                count: 1,
+                tokens: info.tokens,
+                toolPct: info.isTool ? 100 : 0,
+                textPct: info.isTool ? 0 : 100,
+            }
+        } else {
+            cur.endRef = info.ref
+            cur.count++
+            cur.tokens += info.tokens
+            if (info.isTool) {
+                cur.toolPct = Math.round((cur.toolPct * (cur.count - 1) + 100) / cur.count)
+            } else {
+                cur.toolPct = Math.round((cur.toolPct * (cur.count - 1)) / cur.count)
+            }
+            cur.textPct = 100 - cur.toolPct
+        }
+    }
+    if (cur) groups.push(cur)
+
+    return groups.filter((g) => g.tokens > 0)
+}
+
+export function formatCompressibleRanges(ranges: CompressibleRange[]): string {
+    if (ranges.length === 0) return ""
+    const fmt = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n))
+    const lines = ranges.map((r, i) => {
+        const suffix = i === ranges.length - 1 ? "  (recent — may still be in active use)" : ""
+        return `  ${r.startRef}–${r.endRef}  ${r.count} msgs  ${fmt(r.tokens)} [tool ${r.toolPct}% | text ${r.textPct}%]${suffix}`
+    })
+    return `Compressible ranges (oldest first):\n${lines.join("\n")}`
 }

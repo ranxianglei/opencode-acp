@@ -45,7 +45,9 @@ export interface PersistedNudges {
     iterationNudgeAnchors?: string[]
     lastPerMessageNudgeTurn?: number
     lastPerMessageNudgeTokens?: number
+    lastNudgeShownTokens?: number
     lastToolOutputNudgeTokens?: number
+    compressBaselineSet?: boolean
 }
 
 export interface PersistedMessageIds {
@@ -146,7 +148,9 @@ export async function saveSessionState(
             iterationNudgeAnchors: Array.from(sessionState.nudges.iterationNudgeAnchors),
             lastPerMessageNudgeTurn: sessionState.nudges.lastPerMessageNudgeTurn ?? 0,
             lastPerMessageNudgeTokens: sessionState.nudges.lastPerMessageNudgeTokens,
+            lastNudgeShownTokens: sessionState.nudges.lastNudgeShownTokens,
             lastToolOutputNudgeTokens: sessionState.nudges.lastToolOutputNudgeTokens,
+            compressBaselineSet: sessionState.nudges.compressBaselineSet,
         },
         stats: sessionState.stats,
         lastUpdated: new Date().toISOString(),

@@ -112,7 +112,7 @@ function blocksMap(...blocks: CompressionBlock[]): Map<number, CompressionBlock>
 async function runStatus(
     activeIds: number[],
     blocks: Map<number, CompressionBlock>,
-    args: { scope?: string; tool?: string; sort?: string; limit?: number } = {},
+    args: { scope?: string; view?: string; tool?: string; sort?: string; limit?: number } = {},
     client?: any,
 ): Promise<string> {
     const ctx = makeToolContext(activeIds, blocks, client)
@@ -266,7 +266,7 @@ test("acp_status: scope=compressed includes decompress hint", async () => {
     assert.match(result, /search_context/)
 })
 
-test("acp_status: scope=uncompressed shows message list header", async () => {
+test("acp_status: scope=uncompressed defaults to ranges view", async () => {
     const mockMsgs = [
         { info: { id: "raw-1", role: "assistant" }, parts: [{ type: "text", text: "hello world" }] },
     ]
@@ -284,10 +284,31 @@ test("acp_status: scope=uncompressed shows message list header", async () => {
     const result = await statusTool.execute({ scope: "uncompressed" } as any, { sessionID: SID } as any)
 
     assert.match(result, /UNCOMPRESSED/)
+    assert.match(result, /ranges/)
+})
+
+test("acp_status: scope=uncompressed view=messages shows per-message listing", async () => {
+    const mockMsgs = [
+        { info: { id: "raw-1", role: "assistant" }, parts: [{ type: "text", text: "hello world" }] },
+    ]
+    const mockClient = makeMockClient(mockMsgs)
+    const state = makeState([], new Map())
+    state.messageIds.byRawId.set("raw-1", "m00001")
+    const ctx: ToolContext = {
+        client: mockClient,
+        state,
+        logger: { enabled: false } as any,
+        config: {} as any,
+        prompts: { reload: () => {} } as any,
+    }
+    const statusTool = createAcpStatusTool(ctx)
+    const result = await statusTool.execute({ scope: "uncompressed", view: "messages" } as any, { sessionID: SID } as any)
+
+    assert.match(result, /UNCOMPRESSED/)
     assert.match(result, /Sorted by/)
 })
 
-test("acp_status: scope=uncompressed with tool filter shows filter in header", async () => {
+test("acp_status: scope=uncompressed view=messages with tool filter shows filter in header", async () => {
     const mockMsgs = [
         {
             info: { id: "raw-1", role: "assistant" },
@@ -305,7 +326,7 @@ test("acp_status: scope=uncompressed with tool filter shows filter in header", a
         prompts: { reload: () => {} } as any,
     }
     const statusTool = createAcpStatusTool(ctx)
-    const result = await statusTool.execute({ scope: "uncompressed", tool: "bash" } as any, { sessionID: SID } as any)
+    const result = await statusTool.execute({ scope: "uncompressed", view: "messages", tool: "bash" } as any, { sessionID: SID } as any)
 
     assert.match(result, /UNCOMPRESSED — bash:/)
 })

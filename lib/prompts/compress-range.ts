@@ -34,4 +34,21 @@ Rules:
 
 BATCHING
 When multiple independent ranges are ready and their boundaries do not overlap, include all of them as separate entries in the \`content\` array of a single tool call. Each entry should have its own \`startId\`, \`endId\`, and \`summary\`.
+
+KEEP AND REF MARKERS
+When writing a summary, you may embed markers that reference specific messages in the compressed range. The system resolves them automatically:
+
+- \`[[KEEP:mNNNNN]]\` — Expands to the original message content inline (truncated to a max length). Use for critical content you want preserved verbatim in the summary without re-typing it: key function definitions, important error messages, essential file contents.
+- \`[[REF:mNNNNN|short description]]\` — Creates a compact link like \`[→ m00065: key function definition]\`. Use for content the reader can decompress later if needed. Does not expand — saves space.
+
+Example:
+\`\`\`
+Implemented the QuotaMonitor feature. Key design: observer pattern.
+
+[[KEEP:m00065]]
+
+The rest of the bash calls were repetitive export commands. See [[REF:m00078|test results]] for details.
+\`\`\`
+
+Use KEEP sparingly — each expansion adds to the summary length. Prefer REF for content that is important but not immediately critical.
 `

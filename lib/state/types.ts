@@ -95,9 +95,19 @@ export interface Nudges {
     iterationNudgeAnchors: Set<string>
     lastPerMessageNudgeTurn: number
     lastPerMessageNudgeTokens: number | undefined
+    lastNudgeShownTokens: number | undefined
     lastToolOutputNudgeTokens: number | undefined
     /** Set by injectCompressNudges; read by system prompt handler next turn (1-turn lag). Undefined = first turn. */
     shouldInjectThisTurn: boolean | undefined
+    /**
+     * Lock flag: prevents baseline leak after compress.
+     *
+     * When compress is detected in the current turn, the baseline is set to
+     * currentTokens ONLY on the first transform (before continuation work
+     * inflates it). Subsequent transforms in the same turn skip the update.
+     * Reset to false when compress is NOT in the current turn.
+     */
+    compressBaselineSet: boolean
 }
 
 export interface SessionState {
