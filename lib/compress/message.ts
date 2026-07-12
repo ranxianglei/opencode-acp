@@ -188,13 +188,10 @@ export function createCompressMessageTool(ctx: ToolContext): ReturnType<typeof t
 
             await finalizeSession(ctx, toolCtx, rawMessages, notifications, input.topic)
 
-            // TODO: compress input cleanup needs OpenCode API support.
-            // After execution, the stored tool part's input still contains the full
-            // summaries (duplicated in the block). The ToolContext exposes no API to
-            // modify stored parts; rawMessages are fetched copies that don't persist;
-            // and "tool.execute.after" can only modify output/title/metadata, not
-            // input/args. Consider truncating compress tool inputs in the
-            // "experimental.chat.messages.transform" hook instead.
+            // Compress input cleanup: handled by stripStaleCompressCalls in
+            // lib/messages/prune.ts, called from hooks.ts during message transform.
+            // Removes compress tool-call parts from previous turns so the API
+            // context doesn't duplicate the summaries already injected as recaps.
 
             return formatResult(plans.length, skippedIssues, skippedCount)
         },
