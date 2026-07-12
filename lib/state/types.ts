@@ -108,6 +108,7 @@ export interface Nudges {
      * Reset to false when compress is NOT in the current turn.
      */
     compressBaselineSet: boolean
+    postCompressRangesShown: boolean
 }
 
 export interface SessionState {

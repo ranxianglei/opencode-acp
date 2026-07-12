@@ -57,6 +57,26 @@ const TOAST_SUMMARY_MAX_CHARS = 600
 const NOTIFICATION_SUMMARY_MAX_CHARS = 1500
 const DETAILED_NOTIFICATION_SUMMARY_MAX_CHARS = 10000
 
+function formatEntryRanges(
+    entries: CompressionNotificationEntry[],
+    state: SessionState,
+): string | null {
+    const parts: string[] = []
+    for (const entry of entries) {
+        const block = state.prune.messages.blocksById.get(entry.blockId)
+        if (!block) continue
+        const startRef = state.messageIds.byRawId.get(block.startId)
+        const endRef = state.messageIds.byRawId.get(block.endId)
+        if (!startRef || !endRef) continue
+        if (startRef === endRef) {
+            parts.push(`b${entry.blockId}: ${startRef}`)
+        } else {
+            parts.push(`b${entry.blockId}: ${startRef}–${endRef}`)
+        }
+    }
+    return parts.length > 0 ? parts.join(", ") : null
+}
+
 function truncateToastBody(body: string, maxLines: number = TOAST_BODY_MAX_LINES): string {
     const lines = body.split("\n")
     if (lines.length <= maxLines) {
@@ -231,6 +251,10 @@ export async function sendCompressNotification(
         )
         message += `\n\n${progressBar}`
         message += `\n▣ ${compressionLabel} ${formatCompressionMetrics(compressedTokens, summaryTokens)}`
+        const rangeStr = formatEntryRanges(entries, state)
+        if (rangeStr) {
+            message += `\n→ Range: ${rangeStr}`
+        }
         message += `\n→ Topic: ${topic}`
         message += `\n→ Items: ${newlyCompressedMessageIds.length} messages`
         if (newlyCompressedToolIds.length > 0) {

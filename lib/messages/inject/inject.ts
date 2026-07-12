@@ -101,27 +101,55 @@ export const injectCompressNudges = (
         .some((m) => m.info.role === "assistant" && messageHasCompress(m))
 
     if (currentTurnHasCompress) {
+        const wasNudgeTriggered = state.nudges.lastNudgeShownTokens !== undefined
+
         state.nudges.contextLimitAnchors.clear()
         state.nudges.turnNudgeAnchors.clear()
         state.nudges.iterationNudgeAnchors.clear()
         state.nudges.lastNudgeShownTokens = undefined
         state.nudges.lastToolOutputNudgeTokens = undefined
-        // Set baseline to post-compression currentTokens ONLY on the first
-        // transform after compress. Subsequent transforms in the same turn
-        // (model continues working) must NOT update the baseline — otherwise
-        // the post-compression headroom leaks. E.g. compress drops context
-        // to 78K, model works to 150K in same turn: without this lock, the
-        // last transform sets baseline=150K, leaking 72K of headroom.
-        if (!state.nudges.compressBaselineSet) {
+
+        // Only reset baseline for nudge-triggered compress. Voluntary compress
+        // (no nudge was shown) keeps the original baseline — growth tracking
+        // continues. Otherwise: baseline=50K, grows to 90K, model voluntarily
+        // compresses to 80K → baseline jumps to 80K → leaks 30K of growth.
+        if (wasNudgeTriggered && !state.nudges.compressBaselineSet) {
             state.nudges.lastPerMessageNudgeTokens = currentTokens
             state.nudges.compressBaselineSet = true
         }
+
+        // Show remaining ranges ONCE after compress as a fallback. After this,
+        // the model should use `acp_status` to re-fetch the list. Showing every
+        // turn causes over-compression chains (b36→b37→b38→b39 pattern).
+        if (overMinLimit && !state.nudges.postCompressRangesShown) {
+            state.nudges.postCompressRangesShown = true
+            const suffixMessage = createSuffixMessage(messages)
+            if (suffixMessage) {
+                const remainingRanges = buildCompressibleRanges(messages, state)
+                if (remainingRanges.length > 0) {
+                    const fmt = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n))
+                    const totalTokens = remainingRanges.reduce((s, r) => s + r.tokens, 0)
+                    let rangeText = `[Post-compress — shown once] ${remainingRanges.length} compressible range${remainingRanges.length === 1 ? "" : "s"} remaining (~${fmt(totalTokens)} tokens). Compress all at once, or call \`acp_status\` to re-fetch this list later:\n`
+                    rangeText += formatCompressibleRanges(remainingRanges)
+                    appendToLastTextPart(suffixMessage, "\n\n" + rangeText)
+                    appendToLastTextPart(suffixMessage, "\n")
+                    if (debugNotify) {
+                        debugNotify(`[ACP Debug] Post-compress ranges (shown once):\n${formatCompressibleRanges(remainingRanges)}`)
+                    }
+                } else {
+                    const idx = messages.lastIndexOf(suffixMessage)
+                    if (idx !== -1) messages.splice(idx, 1)
+                }
+            }
+        }
+
         saveSessionState(state, logger).catch(() => {})
         return
     }
 
     // New turn (no compress) — release the lock
     state.nudges.compressBaselineSet = false
+    state.nudges.postCompressRangesShown = false
 
     let anchorsChanged = false
     let baselineReEstablished = false
@@ -263,6 +291,7 @@ export const injectCompressNudges = (
             const ranges = buildCompressibleRanges(messages, state)
             if (ranges.length > 0) {
                 breakdown += `\n\n${formatCompressibleRanges(ranges)}`
+                breakdown += `\n💡 Compress all ranges in one call if possible (pass multiple content entries: \`content: [{...}, {...}]\`). If you need this list after compressing, call \`acp_status\`.`
             }
 
             if (decision.tipsVariant !== "maxLimit") {
