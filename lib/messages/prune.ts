@@ -2,6 +2,7 @@ import type { SessionState, WithParts } from "../state"
 import type { Logger } from "../logger"
 import type { PluginConfig } from "../config"
 import { isMessageCompacted } from "../state/utils"
+import { isIgnoredUserMessage } from "./query"
 import { createSyntheticToolRecap, replaceBlockIdsWithBlocked, stripStaleMessageRefs } from "./utils"
 
 const PRUNED_TOOL_OUTPUT_REPLACEMENT =
@@ -269,4 +270,44 @@ const filterCompressedRanges = (
 
     messages.length = 0
     messages.push(...result)
+}
+
+export function stripStaleCompressCalls(messages: WithParts[]): number {
+    const lastUserIdx = messages.findLastIndex(
+        (m) => m.info.role === "user" && !isIgnoredUserMessage(m),
+    )
+    if (lastUserIdx < 0) return 0
+
+    let stripped = 0
+    const result: WithParts[] = []
+
+    for (let i = 0; i < messages.length; i++) {
+        const msg = messages[i]!
+        if (i >= lastUserIdx) {
+            result.push(msg)
+            continue
+        }
+
+        const hasCompress = msg.parts.some(
+            (p) => p.type === "tool" && (p as { tool?: string }).tool === "compress",
+        )
+        if (!hasCompress) {
+            result.push(msg)
+            continue
+        }
+
+        const remaining = msg.parts.filter(
+            (p) => !(p.type === "tool" && (p as { tool?: string }).tool === "compress"),
+        )
+        stripped++
+        if (remaining.length > 0) {
+            result.push({ ...msg, parts: remaining })
+        }
+    }
+
+    if (stripped > 0) {
+        messages.length = 0
+        messages.push(...result)
+    }
+    return stripped
 }

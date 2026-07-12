@@ -55,7 +55,26 @@ function buildDetailedMessage(
 const TOAST_BODY_MAX_LINES = 12
 const TOAST_SUMMARY_MAX_CHARS = 600
 const NOTIFICATION_SUMMARY_MAX_CHARS = 1500
-const DETAILED_NOTIFICATION_SUMMARY_MAX_CHARS = 10000
+
+function formatEntryRanges(
+    entries: CompressionNotificationEntry[],
+    state: SessionState,
+): string | null {
+    const parts: string[] = []
+    for (const entry of entries) {
+        const block = state.prune.messages.blocksById.get(entry.blockId)
+        if (!block) continue
+        const startRef = block.startId
+        const endRef = block.endId
+        if (!startRef || !endRef) continue
+        if (startRef === endRef) {
+            parts.push(`b${entry.blockId}: ${startRef}`)
+        } else {
+            parts.push(`b${entry.blockId}: ${startRef}–${endRef}`)
+        }
+    }
+    return parts.length > 0 ? parts.join(", ") : null
+}
 
 function truncateToastBody(body: string, maxLines: number = TOAST_BODY_MAX_LINES): string {
     const lines = body.split("\n")
@@ -212,6 +231,8 @@ export async function sendCompressNotification(
         contextTokensAfter,
     )}`
 
+    let displaySummary: string = summary
+
     if (config.pruneNotification === "minimal") {
         message = `${notificationHeader} — ${compressionLabel}`
     } else {
@@ -231,6 +252,10 @@ export async function sendCompressNotification(
         )
         message += `\n\n${progressBar}`
         message += `\n▣ ${compressionLabel} ${formatCompressionMetrics(compressedTokens, summaryTokens)}`
+        const rangeStr = formatEntryRanges(entries, state)
+        if (rangeStr) {
+            message += `\n→ Range: ${rangeStr}`
+        }
         message += `\n→ Topic: ${topic}`
         message += `\n→ Items: ${newlyCompressedMessageIds.length} messages`
         if (newlyCompressedToolIds.length > 0) {
@@ -239,28 +264,20 @@ export async function sendCompressNotification(
             message += ` compressed`
         }
         if (config.compress.showCompression) {
-            const maxChars = config.pruneNotification === "detailed"
-                ? DETAILED_NOTIFICATION_SUMMARY_MAX_CHARS
-                : NOTIFICATION_SUMMARY_MAX_CHARS
-            const displaySummary =
-                summary.length > maxChars
-                    ? truncateToastSummary(summary, maxChars)
-                    : summary
+            if (config.pruneNotification === "detailed") {
+                displaySummary = summary
+            } else {
+                displaySummary =
+                    summary.length > NOTIFICATION_SUMMARY_MAX_CHARS
+                        ? truncateToastSummary(summary, NOTIFICATION_SUMMARY_MAX_CHARS)
+                        : summary
+            }
             message += `\n→ Compression (~${summaryTokensStr}): ${displaySummary}`
         }
     }
 
     if (config.pruneNotificationType === "toast") {
         let toastMessage = message
-        if (config.compress.showCompression) {
-            const truncatedSummary = truncateToastSummary(summary)
-            if (truncatedSummary !== summary) {
-                toastMessage = toastMessage.replace(
-                    `\n→ Compression (~${summaryTokensStr}): ${truncateToastSummary(summary, NOTIFICATION_SUMMARY_MAX_CHARS)}`,
-                    `\n→ Compression (~${summaryTokensStr}): ${truncatedSummary}`,
-                )
-            }
-        }
         toastMessage =
             config.pruneNotification === "minimal" ? toastMessage : truncateToastBody(toastMessage)
 

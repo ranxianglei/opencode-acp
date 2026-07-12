@@ -1,4 +1,4 @@
-export { prune } from "./prune"
+export { prune, stripStaleCompressCalls } from "./prune"
 export { syncCompressionBlocks } from "./sync"
 export { injectCompressNudges } from "./inject/inject"
 export { computeInputBudget } from "./inject/utils"

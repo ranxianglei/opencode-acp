@@ -70,6 +70,7 @@ export const injectCompressNudges = (
     prompts: RuntimePrompts,
     compressionPriorities?: CompressionPriorityMap,
     debugNotify?: (text: string) => void,
+    preCompressTokens?: number,
 ): void => {
     if (compressPermission(state, config) === "deny") {
         return
@@ -101,21 +102,49 @@ export const injectCompressNudges = (
         .some((m) => m.info.role === "assistant" && messageHasCompress(m))
 
     if (currentTurnHasCompress) {
+        const wasNudgeTriggered = state.nudges.lastNudgeShownTokens !== undefined
+
         state.nudges.contextLimitAnchors.clear()
         state.nudges.turnNudgeAnchors.clear()
         state.nudges.iterationNudgeAnchors.clear()
         state.nudges.lastNudgeShownTokens = undefined
         state.nudges.lastToolOutputNudgeTokens = undefined
-        // Set baseline to post-compression currentTokens ONLY on the first
-        // transform after compress. Subsequent transforms in the same turn
-        // (model continues working) must NOT update the baseline — otherwise
-        // the post-compression headroom leaks. E.g. compress drops context
-        // to 78K, model works to 150K in same turn: without this lock, the
-        // last transform sets baseline=150K, leaking 72K of headroom.
-        if (!state.nudges.compressBaselineSet) {
-            state.nudges.lastPerMessageNudgeTokens = currentTokens
+
+        // Proportional baseline adjustment: if nudge-triggered compress, adjust
+        // baseline by how much was actually compressed. >50% of growth compressed
+        // → full baseline update. 20-30% → partial update. This prevents both
+        // baseline leak (small compress → full reset → growth forgotten) and
+        // over-compression (model gets re-nudged too soon after a small compress).
+        //
+        // Voluntary compress (no nudge shown) keeps the original baseline entirely.
+        if (wasNudgeTriggered && !state.nudges.compressBaselineSet) {
+            const baseline = state.nudges.lastPerMessageNudgeTokens
+            const postCompress = currentTokens
+            // preCompressTokens is captured in hooks.ts BEFORE prune() runs
+            const preCompress = preCompressTokens
+
+            if (
+                baseline !== undefined &&
+                postCompress !== undefined &&
+                preCompress !== undefined &&
+                preCompress > postCompress
+            ) {
+                const growth = preCompress - baseline
+                const compressed = preCompress - postCompress
+                if (growth > 0 && compressed > 0) {
+                    const ratio = Math.min(1, compressed / growth)
+                    const adjustment = Math.min(1, ratio * 2) // 50%→1.0, 25%→0.5, 10%→0.2
+                    const newBaseline = baseline + Math.round((postCompress - baseline) * adjustment)
+                    state.nudges.lastPerMessageNudgeTokens = newBaseline
+                } else {
+                    state.nudges.lastPerMessageNudgeTokens = postCompress
+                }
+            } else {
+                state.nudges.lastPerMessageNudgeTokens = postCompress
+            }
             state.nudges.compressBaselineSet = true
         }
+
         saveSessionState(state, logger).catch(() => {})
         return
     }
@@ -263,7 +292,9 @@ export const injectCompressNudges = (
             const ranges = buildCompressibleRanges(messages, state)
             if (ranges.length > 0) {
                 breakdown += `\n\n${formatCompressibleRanges(ranges)}`
+                breakdown += `\n💡 Compress all ranges in one call (pass multiple content entries: \`content: [{...}, {...}]\`).`
             }
+            breakdown += `\nUse \`acp_status({scope:"uncompressed"})\` to re-fetch compressible ranges after compressing, or \`acp_status\` for compressed block details.`
 
             if (decision.tipsVariant !== "maxLimit") {
                 breakdown += `\n\n${HOW_TO_COMPRESS_RULES}`
@@ -295,8 +326,6 @@ export const injectCompressNudges = (
         if (tipsText && suffixMessage) {
             appendToLastTextPart(suffixMessage, tipsText)
         }
-
-        injectVisibleIdRange(state, config, messages, suffixMessage)
     }
 
     if (suffixMessage) {

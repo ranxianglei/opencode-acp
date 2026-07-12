@@ -227,6 +227,7 @@ test("compress in current turn sets baseline to compress-calling assistant's cur
     const state = createSessionState()
     state.modelContextLimit = 1_000_000
     state.nudges.lastPerMessageNudgeTokens = 200_000
+    state.nudges.lastNudgeShownTokens = 200_000
     state.nudges.contextLimitAnchors.add("anchor-1")
     const config = buildConfig()
     const messages: WithParts[] = [
@@ -249,6 +250,7 @@ test("compress followed by continuation assistant sets baseline to continuation 
     const state = createSessionState()
     state.modelContextLimit = 1_000_000
     state.nudges.lastPerMessageNudgeTokens = 200_000
+    state.nudges.lastNudgeShownTokens = 200_000
     state.nudges.contextLimitAnchors.add("anchor-1")
     const config = buildConfig()
     const messages: WithParts[] = [
@@ -306,6 +308,7 @@ test("createSyntheticUserMessage produces an all-synthetic user message that ens
 test("injectCompressNudges: after compress, baseline set to compress-calling assistant's currentTokens", () => {
     const state = createSessionState()
     state.modelContextLimit = 1_000_000
+    state.nudges.lastNudgeShownTokens = 200_000
     const config = buildConfig()
     config.compress.maxContextLimit = 800_000
     config.compress.minContextLimit = 550_000
@@ -333,6 +336,7 @@ test("injectCompressNudges: post-compress baseline then small growth does NOT re
     config.compress.minContextLimit = 550_000
 
     // Turn 1: compress detected → baseline set to 250K (200K input + 50K output)
+    state.nudges.lastNudgeShownTokens = 200_000
     const turn1: WithParts[] = [
         userMsg("u1", "hello"),
         assistantMsgWithTokens("a1", "done", { input: 200_000, output: 50_000 }, [
@@ -364,6 +368,7 @@ test("injectCompressNudges: post-compress baseline then large growth DOES nudge"
     config.compress.minContextLimit = 550_000
 
     // Turn 1: compress → baseline set to 250K
+    state.nudges.lastNudgeShownTokens = 200_000
     const turn1: WithParts[] = [
         userMsg("u1", "hello"),
         assistantMsgWithTokens("a1", "done", { input: 200_000, output: 50_000 }, [
@@ -416,6 +421,27 @@ test("nudge threshold halves after first nudge without compress (issue #23)", ()
     injectCompressNudges(state, config, logger, messages3, {} as any)
     assert.equal(state.nudges.shouldInjectThisTurn, true, "25K growth from lastShown >= 25K (halved) → nudge fires")
     assert.equal(state.nudges.lastNudgeShownTokens, 175_000)
+})
+
+test("voluntary compress (no nudge shown) does NOT reset baseline", () => {
+    const state = createSessionState()
+    state.modelContextLimit = 1_000_000
+    state.nudges.lastPerMessageNudgeTokens = 50_000
+    // lastNudgeShownTokens is undefined — no nudge was shown
+    const config = buildConfig()
+    const messages: WithParts[] = [
+        userMsg("u1", "hello"),
+        assistantMsgWithTokens("a1", "done", { input: 80_000, output: 10_000 }, [
+            compressToolPart("c1", "compressed"),
+        ]),
+    ]
+    injectCompressNudges(state, config, logger, messages, {} as any)
+    assert.equal(
+        state.nudges.lastPerMessageNudgeTokens,
+        50_000,
+        "voluntary compress does NOT reset baseline — growth tracking continues from original baseline",
+    )
+    assert.equal(state.nudges.compressBaselineSet, false, "lock NOT set for voluntary compress")
 })
 
 test("nudge threshold restores to full after compress (issue #23)", () => {
@@ -496,6 +522,7 @@ test("E2E: nudge survives compress → restart → growth (issue #23)", async ()
     config.compress.minContextLimit = 200_000
 
     // Turn 1: model calls compress → baseline set to 250K (200K+50K)
+    state.nudges.lastNudgeShownTokens = 200_000
     const turn1: WithParts[] = [
         userMsg("u1", "hello"),
         assistantMsgWithTokens("a1", "done", { input: 200_000, output: 50_000 }, [

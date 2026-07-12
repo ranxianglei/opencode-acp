@@ -414,7 +414,7 @@ test("message ID injection: IDs are appended to tool parts", async () => {
 
 // ─── Test: Visible ID range injection ───────────────────────────────────────
 
-test("visible ID range: range tag injected into suffix message when shouldNudge fires", async () => {
+test("compressible ranges injected into suffix message when shouldNudge fires", async () => {
     const { state, handler } = setupPipeline(SID_A, {}, {
         modelContextLimit: 200000,
     })
@@ -438,12 +438,16 @@ test("visible ID range: range tag injected into suffix message when shouldNudge 
     const textParts = suffixMessage!.parts.filter((p: any) => p.type === "text")
     const combinedText = textParts.map((p: any) => p.text).join("")
     assert.ok(
-        combinedText.includes("[Visible:"),
-        "should inject visible segments tag",
+        combinedText.includes("Compressible ranges"),
+        "should inject compressible ranges section",
     )
     assert.ok(
-        /msgs?, \d+ segments?/.test(combinedText),
-        "range tag should mention message and segment counts",
+        /msgs?/.test(combinedText),
+        "compressible ranges should mention message counts",
+    )
+    assert.ok(
+        !combinedText.includes("[Visible:"),
+        "should NOT inject visible segments tag (removed)",
     )
 })
 

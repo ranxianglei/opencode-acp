@@ -2,6 +2,7 @@ import type { Plugin } from "@opencode-ai/plugin"
 import { getConfig } from "./lib/config"
 import {
     createAcpStatusTool,
+    createAcpContextRecapTool,
     createCompressMessageTool,
     createCompressRangeTool,
     createDecompressTool,
@@ -95,6 +96,7 @@ const server: Plugin = (async (ctx) => {
                 prune: createPruneTool(compressToolContext),
                 search_context: createSearchContextTool(compressToolContext),
                 acp_status: createAcpStatusTool(compressToolContext),
+                acp_context_recap: createAcpContextRecapTool(compressToolContext),
             }),
         },
         config: async (opencodeConfig) => {
