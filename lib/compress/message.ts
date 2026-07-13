@@ -3,7 +3,13 @@ import type { ToolContext } from "./types"
 import { countMessageCharacters, countTokens } from "../token-utils"
 import { MESSAGE_FORMAT_EXTENSION } from "../prompts/extensions/tool"
 import { formatIssues, formatResult, resolveMessages, validateArgs } from "./message-utils"
-import { finalizeSession, prepareSession, type NotificationEntry } from "./pipeline"
+import {
+    finalizeSession,
+    prepareSession,
+    snapshotCompressionState,
+    restoreCompressionState,
+    type NotificationEntry,
+} from "./pipeline"
 import { appendProtectedPromptInfo, appendProtectedTools } from "./protected-content"
 import {
     allocateBlockId,
@@ -41,7 +47,9 @@ function buildSchema(maxSummaryLengthHard: number) {
         summaryMaxChars: tool.schema
             .number()
             .optional()
-            .describe(`Override max summary length (default max: ${maxSummaryLengthHard} chars). Use when content is important and needs more detail — don't lose critical info just to fit the limit.`),
+            .describe(
+                `Override max summary length (default max: ${maxSummaryLengthHard} chars). Use when content is important and needs more detail — don't lose critical info just to fit the limit.`,
+            ),
     }
 }
 
@@ -56,7 +64,9 @@ export function createCompressMessageTool(ctx: ToolContext): ReturnType<typeof t
             const input = args as CompressMessageToolArgs
             validateArgs(input)
 
-            const maxLen = (args as { summaryMaxChars?: number }).summaryMaxChars ?? ctx.config.compress.maxSummaryLengthHard
+            const maxLen =
+                (args as { summaryMaxChars?: number }).summaryMaxChars ??
+                ctx.config.compress.maxSummaryLengthHard
             for (const entry of input.content) {
                 if (entry.summary.length > maxLen) {
                     throw new Error(
@@ -143,50 +153,56 @@ export function createCompressMessageTool(ctx: ToolContext): ReturnType<typeof t
                 })
             }
 
+            const snapshot = snapshotCompressionState(ctx.state)
             const runId = allocateRunId(ctx.state)
 
-            for (const { plan, summaryWithTools } of preparedPlans) {
-                const blockId = allocateBlockId(ctx.state)
-                const keepResult = resolveKeepMarkers(
-                    summaryWithTools,
-                    rawMessages,
-                    ctx.state,
-                    ctx.config,
-                )
-                const resolvedSummary = keepResult.summary
-                const storedSummary = wrapCompressedSummary(blockId, resolvedSummary)
-                const summaryTokens = countTokens(storedSummary)
+            try {
+                for (const { plan, summaryWithTools } of preparedPlans) {
+                    const blockId = allocateBlockId(ctx.state)
+                    const keepResult = resolveKeepMarkers(
+                        summaryWithTools,
+                        rawMessages,
+                        ctx.state,
+                        ctx.config,
+                    )
+                    const resolvedSummary = keepResult.summary
+                    const storedSummary = wrapCompressedSummary(blockId, resolvedSummary)
+                    const summaryTokens = countTokens(storedSummary)
 
-                applyCompressionState(
-                    ctx.state,
-                    {
-                        topic: plan.entry.topic,
-                        batchTopic: input.topic,
-                        startId: plan.entry.messageId,
-                        endId: plan.entry.messageId,
-                        mode: "message",
+                    applyCompressionState(
+                        ctx.state,
+                        {
+                            topic: plan.entry.topic,
+                            batchTopic: input.topic,
+                            startId: plan.entry.messageId,
+                            endId: plan.entry.messageId,
+                            mode: "message",
+                            runId,
+                            compressMessageId: toolCtx.messageID,
+                            compressCallId: callId,
+                            summaryTokens,
+                        },
+                        plan.selection,
+                        plan.anchorMessageId,
+                        blockId,
+                        storedSummary,
+                        [],
+                        ctx.config.gc,
+                    )
+
+                    notifications.push({
+                        blockId,
                         runId,
-                        compressMessageId: toolCtx.messageID,
-                        compressCallId: callId,
+                        summary: resolvedSummary,
                         summaryTokens,
-                    },
-                    plan.selection,
-                    plan.anchorMessageId,
-                    blockId,
-                    storedSummary,
-                    [],
-                    ctx.config.gc,
-                )
+                    })
+                }
 
-                notifications.push({
-                    blockId,
-                    runId,
-                    summary: resolvedSummary,
-                    summaryTokens,
-                })
+                await finalizeSession(ctx, toolCtx, rawMessages, notifications, input.topic)
+            } catch (error) {
+                restoreCompressionState(ctx.state, snapshot)
+                throw error
             }
-
-            await finalizeSession(ctx, toolCtx, rawMessages, notifications, input.topic)
 
             // Compress input cleanup: handled by stripStaleCompressCalls in
             // lib/messages/prune.ts, called from hooks.ts during message transform.

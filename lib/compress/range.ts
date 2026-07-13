@@ -2,7 +2,13 @@ import { tool } from "@opencode-ai/plugin"
 import type { ToolContext } from "./types"
 import { countMessageCharacters, countTokens } from "../token-utils"
 import { RANGE_FORMAT_EXTENSION } from "../prompts/extensions/tool"
-import { finalizeSession, prepareSession, type NotificationEntry } from "./pipeline"
+import {
+    finalizeSession,
+    prepareSession,
+    snapshotCompressionState,
+    restoreCompressionState,
+    type NotificationEntry,
+} from "./pipeline"
 import {
     appendProtectedPromptInfo,
     appendProtectedTools,
@@ -57,7 +63,9 @@ function buildSchema(maxSummaryLengthHard: number) {
         summaryMaxChars: tool.schema
             .number()
             .optional()
-            .describe(`Override max summary length (default max: ${maxSummaryLengthHard} chars). Use when content is important and needs more detail — don't lose critical info just to fit the limit.`),
+            .describe(
+                `Override max summary length (default max: ${maxSummaryLengthHard} chars). Use when content is important and needs more detail — don't lose critical info just to fit the limit.`,
+            ),
     }
 }
 
@@ -72,7 +80,9 @@ export function createCompressRangeTool(ctx: ToolContext): ReturnType<typeof too
             const input = args as CompressRangeToolArgs
             validateArgs(input)
 
-            const maxLen = (args as { summaryMaxChars?: number }).summaryMaxChars ?? ctx.config.compress.maxSummaryLengthHard
+            const maxLen =
+                (args as { summaryMaxChars?: number }).summaryMaxChars ??
+                ctx.config.compress.maxSummaryLengthHard
             for (const entry of input.content) {
                 if (entry.summary.length > maxLen) {
                     throw new Error(
@@ -225,52 +235,58 @@ export function createCompressRangeTool(ctx: ToolContext): ReturnType<typeof too
                 })
             }
 
+            const snapshot = snapshotCompressionState(ctx.state)
             const runId = allocateRunId(ctx.state)
 
-            for (const preparedPlan of preparedPlans) {
-                const blockId = allocateBlockId(ctx.state)
-                const keepResult = resolveKeepMarkers(
-                    preparedPlan.finalSummary,
-                    rawMessages,
-                    ctx.state,
-                    ctx.config,
-                )
-                preparedPlan.finalSummary = keepResult.summary
-                const storedSummary = wrapCompressedSummary(blockId, preparedPlan.finalSummary)
-                const summaryTokens = countTokens(storedSummary)
+            try {
+                for (const preparedPlan of preparedPlans) {
+                    const blockId = allocateBlockId(ctx.state)
+                    const keepResult = resolveKeepMarkers(
+                        preparedPlan.finalSummary,
+                        rawMessages,
+                        ctx.state,
+                        ctx.config,
+                    )
+                    preparedPlan.finalSummary = keepResult.summary
+                    const storedSummary = wrapCompressedSummary(blockId, preparedPlan.finalSummary)
+                    const summaryTokens = countTokens(storedSummary)
 
-                const applied = applyCompressionState(
-                    ctx.state,
-                    {
-                        topic: input.topic,
-                        batchTopic: input.topic,
-                        startId: preparedPlan.entry.startId,
-                        endId: preparedPlan.entry.endId,
-                        mode: "range",
+                    const applied = applyCompressionState(
+                        ctx.state,
+                        {
+                            topic: input.topic,
+                            batchTopic: input.topic,
+                            startId: preparedPlan.entry.startId,
+                            endId: preparedPlan.entry.endId,
+                            mode: "range",
+                            runId,
+                            compressMessageId: toolCtx.messageID,
+                            compressCallId: callId,
+                            summaryTokens,
+                        },
+                        preparedPlan.selection,
+                        preparedPlan.anchorMessageId,
+                        blockId,
+                        storedSummary,
+                        preparedPlan.consumedBlockIds,
+                        ctx.config.gc,
+                    )
+
+                    totalCompressedMessages += applied.messageIds.length
+
+                    notifications.push({
+                        blockId,
                         runId,
-                        compressMessageId: toolCtx.messageID,
-                        compressCallId: callId,
+                        summary: preparedPlan.finalSummary,
                         summaryTokens,
-                    },
-                    preparedPlan.selection,
-                    preparedPlan.anchorMessageId,
-                    blockId,
-                    storedSummary,
-                    preparedPlan.consumedBlockIds,
-                    ctx.config.gc,
-                )
+                    })
+                }
 
-                totalCompressedMessages += applied.messageIds.length
-
-                notifications.push({
-                    blockId,
-                    runId,
-                    summary: preparedPlan.finalSummary,
-                    summaryTokens,
-                })
+                await finalizeSession(ctx, toolCtx, rawMessages, notifications, input.topic)
+            } catch (error) {
+                restoreCompressionState(ctx.state, snapshot)
+                throw error
             }
-
-            await finalizeSession(ctx, toolCtx, rawMessages, notifications, input.topic)
 
             // Compress input cleanup: handled by stripStaleCompressCalls in
             // lib/messages/prune.ts, called from hooks.ts during message transform.
@@ -289,7 +305,11 @@ function extractBoundaryConsumedBlocks(
     const consumed: number[] = []
     const seen = new Set<number>()
     for (const ref of [startReference, endReference]) {
-        if (ref.kind === "compressed-block" && ref.blockId !== undefined && !seen.has(ref.blockId)) {
+        if (
+            ref.kind === "compressed-block" &&
+            ref.blockId !== undefined &&
+            !seen.has(ref.blockId)
+        ) {
             seen.add(ref.blockId)
             consumed.push(ref.blockId)
         }

@@ -50,19 +50,28 @@ export const syncCompressionBlocks = (
             continue
         }
 
-        // Only deactivate if anchor message is completely gone from both current messages AND DCP tracked messages
+        // Deactivate block when its anchor message is gone from the current
+        // message list. This handles both OpenCode compaction (which removes old
+        // messages) and external message deletion. Without the anchor,
+        // filterCompressedRanges cannot inject the block's recap — keeping the
+        // block active would hide messages with no summary replacement.
+        //
+        // [FIX issue #125] Previous code had a carve-out that kept blocks active
+        // when the anchor was tracked in byMessageId. This was intended to handle
+        // anchors hidden by ACP compression, but syncCompressionBlocks runs on
+        // the RAW message list (before filterCompressedRanges), so ACP-hidden
+        // anchors are still present and never reach this branch. The carve-out
+        // only triggered for externally-deleted anchors, causing messages to be
+        // hidden without recap injection → empty LLM requests.
         if (
             typeof block.anchorMessageId === "string" &&
             block.anchorMessageId.length > 0 &&
             !messageIds.has(block.anchorMessageId)
         ) {
-            // If anchor exists in DCP's byMessageId (persisted), keep block active
-            if (!messagesState.byMessageId.has(block.anchorMessageId)) {
-                block.active = false
-                block.deactivatedAt = now
-                block.deactivatedByBlockId = undefined
-                continue
-            }
+            block.active = false
+            block.deactivatedAt = now
+            block.deactivatedByBlockId = undefined
+            continue
         }
 
         for (const consumedBlockId of block.consumedBlockIds) {
