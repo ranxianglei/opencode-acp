@@ -46,6 +46,7 @@ export const VALID_CONFIG_KEYS = new Set([
     "compress.minCompressRange",
     "compress.maxVisibleSegments",
     "compress.keepEmbedMaxChars",
+    "compress.cooldownOutputs",
     "gc",
     "gc.algorithm",
     "gc.promotionThreshold",
@@ -458,6 +459,28 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
                     key: "compress.keepEmbedMaxChars",
                     expected: "positive number (>= 100)",
                     actual: `${compress.keepEmbedMaxChars}`,
+                })
+            }
+
+            if (
+                compress.cooldownOutputs !== undefined &&
+                typeof compress.cooldownOutputs !== "number"
+            ) {
+                errors.push({
+                    key: "compress.cooldownOutputs",
+                    expected: "number",
+                    actual: typeof compress.cooldownOutputs,
+                })
+            }
+
+            if (
+                typeof compress.cooldownOutputs === "number" &&
+                compress.cooldownOutputs < 0
+            ) {
+                errors.push({
+                    key: "compress.cooldownOutputs",
+                    expected: "non-negative number (>= 0)",
+                    actual: `${compress.cooldownOutputs}`,
                 })
             }
 

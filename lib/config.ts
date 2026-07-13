@@ -36,6 +36,7 @@ export interface CompressConfig {
     minCompressRange: number
     maxVisibleSegments: number
     keepEmbedMaxChars: number
+    cooldownOutputs?: number
 }
 
 export interface Commands {
@@ -204,6 +205,7 @@ const defaultConfig: PluginConfig = {
         minCompressRange: 2000,
         maxVisibleSegments: 50,
         keepEmbedMaxChars: 2000,
+        cooldownOutputs: 2,
     },
     strategies: {
         deduplication: {
@@ -417,6 +419,7 @@ function mergeCompress(
         minCompressRange: override.minCompressRange ?? base.minCompressRange,
         maxVisibleSegments: override.maxVisibleSegments ?? base.maxVisibleSegments,
         keepEmbedMaxChars: override.keepEmbedMaxChars ?? base.keepEmbedMaxChars,
+        cooldownOutputs: override.cooldownOutputs ?? base.cooldownOutputs,
     }
 }
 

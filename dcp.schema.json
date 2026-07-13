@@ -289,6 +289,12 @@
                 "toolOutputNudgeThreshold": {
                     "type": "number",
                     "description": "Tool-output token growth required before the tool-output accumulation reminder fires (absolute, not percentage). If unset, default follows nudgeGrowthTokens (adaptive: 5% of modelContextLimit, clamped to [6000, 50000]). Was hardcoded to 5000 — fired ~10x too often on large-context models (issue #18)."
+                },
+                "cooldownOutputs": {
+                    "type": "number",
+                    "minimum": 0,
+                    "default": 2,
+                    "description": "Minimum number of new assistant outputs required between successive compress calls. Blocks 'frequent compression' thrash (e.g. repeated tiny batches in the same turn). 0 or unset disables the cooldown. Exempt: first compress in a session, manual /acp compress, and compress when context is already over maxContextLimit (overflow priority)."
                 }
             },
             "default": {
