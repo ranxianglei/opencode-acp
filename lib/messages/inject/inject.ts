@@ -292,7 +292,7 @@ export const injectCompressNudges = (
             const ranges = buildCompressibleRanges(messages, state)
             if (ranges.length > 0) {
                 breakdown += `\n\n${formatCompressibleRanges(ranges)}`
-                breakdown += `\n💡 Compress all ranges in one call (pass multiple content entries: \`content: [{...}, {...}]\`).`
+                breakdown += `\n💡 Compress ALL ranges in one call via \`topics\` (\`topics: [{ topic, content: [{ startId, endId, summary }] }, ...]\`); don't split into multiple calls.`
             }
             breakdown += `\nUse \`acp_status({scope:"uncompressed"})\` to re-fetch compressible ranges after compressing, or \`acp_status\` for compressed block details.`
 
