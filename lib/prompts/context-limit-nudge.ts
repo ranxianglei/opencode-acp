@@ -8,15 +8,21 @@ If mid-atomic-operation, finish that step first, then compress.
 
 HOW TO CALL COMPRESS:
 {
-  "topic": "Short Label",
-  "content": [
+  "topics": [
     {
-      "startId": "<ID from early in this conversation>",
-      "endId": "<ID from later in this conversation>",
-      "summary": "Complete technical summary of everything in the range"
+      "topic": "Short Label",
+      "content": [
+        {
+          "startId": "<ID from early in this conversation>",
+          "endId": "<ID from later in this conversation>",
+          "summary": "Complete technical summary of everything in the range"
+        }
+      ]
     }
   ]
 }
+
+Put EVERY ready range into this single call (add more \`topics\` entries as needed). Do NOT make a second compress call right after — it will be rate-limited.
 
 ⚠️ ID RULES — MOST COMMON CAUSE OF ERRORS:
 - ONLY use IDs you can see in  tags in the messages ABOVE.
