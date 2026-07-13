@@ -108,6 +108,8 @@ export interface Nudges {
      * Reset to false when compress is NOT in the current turn.
      */
     compressBaselineSet: boolean
+    /** Assistant-output count at last successful compress. Undefined = no prior compress (first call allowed). Drives the compress cooldown rate-limiter. */
+    lastCompressAssistantCount: number | undefined
 }
 
 export interface SessionState {

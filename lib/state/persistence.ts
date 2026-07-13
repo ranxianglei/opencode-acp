@@ -48,6 +48,7 @@ export interface PersistedNudges {
     lastNudgeShownTokens?: number
     lastToolOutputNudgeTokens?: number
     compressBaselineSet?: boolean
+    lastCompressAssistantCount?: number
 }
 
 export interface PersistedMessageIds {
@@ -151,6 +152,7 @@ export async function saveSessionState(
             lastNudgeShownTokens: sessionState.nudges.lastNudgeShownTokens,
             lastToolOutputNudgeTokens: sessionState.nudges.lastToolOutputNudgeTokens,
             compressBaselineSet: sessionState.nudges.compressBaselineSet,
+            lastCompressAssistantCount: sessionState.nudges.lastCompressAssistantCount,
         },
         stats: sessionState.stats,
         lastUpdated: new Date().toISOString(),
