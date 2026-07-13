@@ -108,3 +108,47 @@ export async function finalizeSession(
         contextTokensBefore,
     )
 }
+
+function countAssistantOutputs(messages: WithParts[]): number {
+    return messages.filter((m) => m.info.role === "assistant" && m.info.summary !== true).length
+}
+
+function isOverMaxContextLimit(ctx: ToolContext, rawMessages: WithParts[]): boolean {
+    const limit = ctx.config.compress.maxContextLimit
+    const modelLimit = ctx.state.modelContextLimit
+    if (modelLimit === undefined || modelLimit <= 0) return false
+
+    let maxLimit: number
+    if (typeof limit === "number") {
+        maxLimit = limit
+    } else if (typeof limit === "string" && limit.endsWith("%")) {
+        const pct = Math.max(0, Math.min(100, Number.parseFloat(limit)))
+        if (!Number.isFinite(pct)) return false
+        maxLimit = Math.round((pct / 100) * modelLimit)
+    } else {
+        return false
+    }
+
+    return getCurrentTokenUsage(ctx.state, rawMessages) > maxLimit
+}
+
+export function checkCompressCooldown(ctx: ToolContext, rawMessages: WithParts[]): void {
+    const cooldown = ctx.config.compress.cooldownOutputs
+    if (cooldown === undefined || cooldown <= 0) return
+    if (ctx.state.manualMode === "compress-pending") return
+
+    const last = ctx.state.nudges.lastCompressAssistantCount
+    if (last === undefined) return
+    if (isOverMaxContextLimit(ctx, rawMessages)) return
+
+    const current = countAssistantOutputs(rawMessages)
+    if (current - last < cooldown) {
+        throw new Error(
+            `Frequent compression blocked: only ${current - last} new assistant output(s) since your last compress (cooldownOutputs=${cooldown}). Combine everything into a single compress call with multiple \`topics\` instead of many small calls. If context is genuinely full, finish the current step and compress the largest consumed ranges together.`,
+        )
+    }
+}
+
+export function recordCompressSuccess(ctx: ToolContext, rawMessages: WithParts[]): void {
+    ctx.state.nudges.lastCompressAssistantCount = countAssistantOutputs(rawMessages)
+}

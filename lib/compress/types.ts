@@ -22,6 +22,10 @@ export interface CompressRangeToolArgs {
     content: CompressRangeEntry[]
 }
 
+export interface CompressBatchTopic {
+    topic: string
+    content: CompressRangeEntry[]
+}
 export interface CompressMessageEntry {
     messageId: string
     topic: string
@@ -65,6 +69,7 @@ export interface ResolvedMessageCompression {
 
 export interface ResolvedRangeCompression {
     index: number
+    topic: string
     entry: CompressRangeEntry
     selection: SelectionResolution
     anchorMessageId: string

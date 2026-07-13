@@ -61,6 +61,7 @@ export function resolveRanges(
 
         return {
             index,
+            topic: args.topic,
             entry: normalizedEntry,
             selection,
             anchorMessageId: resolveAnchorMessageId(startReference),
@@ -90,7 +91,7 @@ export function validateNonOverlapping(plans: ResolvedRangeCompression[]): void 
         }
 
         issues.push(
-            `content[${previous.index}] (${previous.entry.startId}..${previous.entry.endId}) overlaps content[${current.index}] (${current.entry.startId}..${current.entry.endId}). Overlapping ranges cannot be compressed in the same batch.`,
+            `topic "${previous.topic}" content[${previous.index}] (${previous.entry.startId}..${previous.entry.endId}) overlaps topic "${current.topic}" content[${current.index}] (${current.entry.startId}..${current.entry.endId}). Overlapping ranges cannot be compressed in the same batch.`,
         )
     }
 
