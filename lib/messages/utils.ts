@@ -11,7 +11,7 @@ export const ACP_RECAP_TOOL_NAME = "acp_context_recap"
 const DCP_BLOCK_ID_TAG_REGEX = /(<dcp-message-id(?=[\s>])[^>]*>)b\d+(<\/(?:dcp|acp)-message-id>)/g
 // [FIX Bug 28] Regex to strip stale mNNNN refs from compressed summaries
 const DCP_MESSAGE_REF_TAG_REGEX = /<dcp-message-id>m\d+<\/(?:dcp|acp)-message-id>/g
-const DCP_PAIRED_TAG_REGEX = /<dcp[^>]*>[\s\S]*?<\/(?:dcp|acp)[^>]*>/gi
+const DCP_PAIRED_TAG_REGEX = /<(?:dcp|acp)[^>]*>[\s\S]*?<\/(?:dcp|acp)[^>]*>/gi
 const DCP_UNPAIRED_TAG_REGEX = /<\/?(?:dcp|acp)[^>]*>/gi
 
 const generateStableId = (prefix: string, seed: string): string => {
