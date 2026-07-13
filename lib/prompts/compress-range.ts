@@ -32,8 +32,23 @@ Rules:
 - Do not invent IDs. Use only IDs that are present in context.
 - NEVER use IDs from compressed block summaries, previous nudges, or your own memory — only IDs currently visible as XML metadata tags in the conversation.
 
-BATCHING
-When multiple independent ranges are ready and their boundaries do not overlap, include all of them as separate entries in the \`content\` array of a single tool call. Each entry should have its own \`startId\`, \`endId\`, and \`summary\`.
+BATCHING — MULTIPLE TOPICS IN ONE CALL
+Compress everything that is ready in a SINGLE tool call. Group independent ranges under separate \`topics\`. Each topic is a labeled group of one or more ranges; ranges that belong to the same phase or theme share a topic.
+
+\`\`\`
+{
+  "topics": [
+    { "topic": "Auth System Exploration", "content": [ { "startId": "m00005", "endId": "m00020", "summary": "..." } ] },
+    { "topic": "Build Fix", "content": [ { "startId": "m00030", "endId": "m00045", "summary": "..." } ] }
+  ]
+}
+\`\`\`
+
+Rules:
+- One topic per distinct concern. Give each a short label (3-5 words).
+- Put every ready range into this one call. Do NOT issue a second compress call immediately after — repeated tiny calls are rate-limited ("frequent compression blocked").
+- Ranges across all topics must not overlap (the system checks this globally).
+- The legacy single-topic \`{ "topic": "...", "content": [...] }\` shape is still accepted, but prefer \`topics\` so all ready ranges go in one call.
 
 KEEP AND REF MARKERS
 When writing a summary, you may embed markers that reference specific messages in the compressed range. The system resolves them automatically:

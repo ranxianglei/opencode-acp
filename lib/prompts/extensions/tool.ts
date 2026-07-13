@@ -5,18 +5,26 @@
 export const RANGE_FORMAT_EXTENSION = `
 THE FORMAT OF COMPRESS
 
+Compress everything ready in ONE call. Pass \`topics\` — an array where each entry groups one or more ranges under a short topic label.
+
 \`\`\`
 {
-  topic: string,           // Short label (3-5 words) - e.g., "Auth System Exploration"
-  content: [               // One or more ranges to compress
+  topics: [               // One or more topics — compress all ready ranges together
     {
-      startId: string,     // Boundary ID at range start: mNNNNN or bN
-      endId: string,       // Boundary ID at range end: mNNNNN or bN
-      summary: string      // Complete technical summary replacing all content in range
+      topic: string,      // Short label (3-5 words) for this group - e.g., "Auth System Exploration"
+      content: [          // One or more ranges to compress under this topic
+        {
+          startId: string, // Boundary ID at range start: mNNNNN or bN
+          endId: string,   // Boundary ID at range end: mNNNNN or bN
+          summary: string  // Complete technical summary replacing all content in range
+        }
+      ]
     }
   ]
 }
-\`\`\``
+\`\`\`
+
+Legacy single-topic \`{ topic, content: [...] }\` is also accepted. Do NOT split into multiple compress calls.`
 
 export const MESSAGE_FORMAT_EXTENSION = `
 THE FORMAT OF COMPRESS
