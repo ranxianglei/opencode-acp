@@ -3,7 +3,13 @@ import type { ToolContext } from "./types"
 import { countMessageCharacters, countTokens } from "../token-utils"
 import { MESSAGE_FORMAT_EXTENSION } from "../prompts/extensions/tool"
 import { formatIssues, formatResult, resolveMessages, validateArgs } from "./message-utils"
-import { finalizeSession, prepareSession, type NotificationEntry } from "./pipeline"
+import {
+    checkCompressCooldown,
+    finalizeSession,
+    prepareSession,
+    recordCompressSuccess,
+    type NotificationEntry,
+} from "./pipeline"
 import { appendProtectedPromptInfo, appendProtectedTools } from "./protected-content"
 import {
     allocateBlockId,
@@ -75,6 +81,7 @@ export function createCompressMessageTool(ctx: ToolContext): ReturnType<typeof t
                 toolCtx,
                 `Compress Message: ${input.topic}`,
             )
+            checkCompressCooldown(ctx, rawMessages)
             const { plans, skippedIssues, skippedCount } = resolveMessages(
                 input,
                 searchContext,
@@ -186,6 +193,7 @@ export function createCompressMessageTool(ctx: ToolContext): ReturnType<typeof t
                 })
             }
 
+            recordCompressSuccess(ctx, rawMessages)
             await finalizeSession(ctx, toolCtx, rawMessages, notifications, input.topic)
 
             // Compress input cleanup: handled by stripStaleCompressCalls in

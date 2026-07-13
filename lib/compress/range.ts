@@ -2,7 +2,13 @@ import { tool } from "@opencode-ai/plugin"
 import type { ToolContext } from "./types"
 import { countMessageCharacters, countTokens } from "../token-utils"
 import { RANGE_FORMAT_EXTENSION } from "../prompts/extensions/tool"
-import { finalizeSession, prepareSession, type NotificationEntry } from "./pipeline"
+import {
+    checkCompressCooldown,
+    finalizeSession,
+    prepareSession,
+    recordCompressSuccess,
+    type NotificationEntry,
+} from "./pipeline"
 import {
     appendProtectedPromptInfo,
     appendProtectedTools,
@@ -25,40 +31,80 @@ import {
     applyCompressionState,
     wrapCompressedSummary,
 } from "./state"
-import type { CompressRangeToolArgs } from "./types"
+import type { CompressBatchTopic, CompressRangeEntry } from "./types"
 import { resolveKeepMarkers } from "./keep-markers"
+
+function rangeEntrySchema() {
+    return tool.schema.object({
+        startId: tool.schema
+            .string()
+            .describe(
+                "Message or block ID marking the beginning of range (e.g. m00001, b2)",
+            ),
+        endId: tool.schema
+            .string()
+            .describe("Message or block ID marking the end of range (e.g. m00012, b5)"),
+        summary: tool.schema
+            .string()
+            .describe(
+                "Complete technical summary replacing all content in range. Keep only essential details (conclusions, file paths, decisions, exact values, etc.).",
+            ),
+    })
+}
 
 function buildSchema(maxSummaryLengthHard: number) {
     return {
-        topic: tool.schema
-            .string()
-            .describe("Short label (3-5 words) for display - e.g., 'Auth System Exploration'"),
-        content: tool.schema
+        topics: tool.schema
             .array(
                 tool.schema.object({
-                    startId: tool.schema
+                    topic: tool.schema
                         .string()
                         .describe(
-                            "Message or block ID marking the beginning of range (e.g. m00001, b2)",
+                            "Short label (3-5 words) for this group - e.g., 'Auth System Exploration'",
                         ),
-                    endId: tool.schema
-                        .string()
-                        .describe("Message or block ID marking the end of range (e.g. m00012, b5)"),
-                    summary: tool.schema
-                        .string()
-                        .describe(
-                            "Complete technical summary replacing all content in range. Keep only essential details (conclusions, file paths, decisions, exact values, etc.).",
-                        ),
+                    content: tool.schema
+                        .array(rangeEntrySchema())
+                        .describe("One or more ranges to compress under this topic"),
                 }),
             )
+            .optional()
             .describe(
-                "One or more ranges to compress, each with start/end boundaries and a summary",
+                "One or more topics, each grouping multiple ranges. Compress everything that is ready in a SINGLE call — do not split into multiple compress calls. Each topic becomes its own labeled block.",
+            ),
+        topic: tool.schema
+            .string()
+            .optional()
+            .describe(
+                "[Legacy] Single-topic label. Prefer `topics`. Accepted for backward compatibility.",
+            ),
+        content: tool.schema
+            .array(rangeEntrySchema())
+            .optional()
+            .describe(
+                "[Legacy] Ranges for a single topic. Prefer `topics`. Accepted for backward compatibility.",
             ),
         summaryMaxChars: tool.schema
             .number()
             .optional()
             .describe(`Override max summary length (default max: ${maxSummaryLengthHard} chars). Use when content is important and needs more detail — don't lose critical info just to fit the limit.`),
     }
+}
+
+function normalizeTopics(input: {
+    topics?: unknown
+    topic?: unknown
+    content?: unknown
+}): CompressBatchTopic[] {
+    const topicsField = input.topics
+    if (Array.isArray(topicsField) && topicsField.length > 0) {
+        return topicsField as CompressBatchTopic[]
+    }
+    if (typeof input.topic === "string" && Array.isArray(input.content)) {
+        return [{ topic: input.topic, content: input.content as CompressRangeEntry[] }]
+    }
+    throw new Error(
+        "Provide `topics` (an array of { topic, content: [{ startId, endId, summary }] }) so all ready ranges compress in one call. The legacy single-topic { topic, content } shape is also accepted.",
+    )
 }
 
 export function createCompressRangeTool(ctx: ToolContext): ReturnType<typeof tool> {
@@ -69,15 +115,22 @@ export function createCompressRangeTool(ctx: ToolContext): ReturnType<typeof too
         description: runtimePrompts.compressRange + RANGE_FORMAT_EXTENSION,
         args: buildSchema(ctx.config.compress.maxSummaryLengthHard),
         async execute(args, toolCtx) {
-            const input = args as CompressRangeToolArgs
-            validateArgs(input)
+            const topics = normalizeTopics(args as Parameters<typeof normalizeTopics>[0])
 
-            const maxLen = (args as { summaryMaxChars?: number }).summaryMaxChars ?? ctx.config.compress.maxSummaryLengthHard
-            for (const entry of input.content) {
-                if (entry.summary.length > maxLen) {
-                    throw new Error(
-                        `Summary too long (${entry.summary.length} chars, max ${maxLen}).\n1. If this summary is nearly the same size as the original content, it may not be worth compressing — skip it.\n2. Strip noise (failed attempts, verbose outputs) but keep project-critical details (file paths, decisions, exact values).\n3. For important content needing detail, pass summaryMaxChars to increase the limit — don't lose critical info just to fit. Example: add "summaryMaxChars": 6000 to the tool call args.`,
-                    )
+            for (const topic of topics) {
+                validateArgs(topic)
+            }
+
+            const maxLen =
+                (args as { summaryMaxChars?: number }).summaryMaxChars ??
+                ctx.config.compress.maxSummaryLengthHard
+            for (const topic of topics) {
+                for (const entry of topic.content) {
+                    if (entry.summary.length > maxLen) {
+                        throw new Error(
+                            `Summary too long (${entry.summary.length} chars, max ${maxLen}).\n1. If this summary is nearly the same size as the original content, it may not be worth compressing — skip it.\n2. Strip noise (failed attempts, verbose outputs) but keep project-critical details (file paths, decisions, exact values).\n3. For important content needing detail, pass summaryMaxChars to increase the limit — don't lose critical info just to fit. Example: add "summaryMaxChars": 6000 to the tool call args.`,
+                        )
+                    }
                 }
             }
 
@@ -89,9 +142,13 @@ export function createCompressRangeTool(ctx: ToolContext): ReturnType<typeof too
             const { rawMessages, searchContext } = await prepareSession(
                 ctx,
                 toolCtx,
-                `Compress Range: ${input.topic}`,
+                `Compress Range: ${topics.map((t) => t.topic).join(" + ")}`,
             )
-            const resolvedPlans = resolveRanges(input, searchContext, ctx.state)
+            checkCompressCooldown(ctx, rawMessages)
+
+            const resolvedPlans = topics.flatMap((topic) =>
+                resolveRanges(topic, searchContext, ctx.state),
+            )
             validateNonOverlapping(resolvedPlans)
 
             const filteredPlans = resolvedPlans
@@ -138,6 +195,7 @@ export function createCompressRangeTool(ctx: ToolContext): ReturnType<typeof too
 
             const notifications: NotificationEntry[] = []
             const preparedPlans: Array<{
+                topic: string
                 entry: (typeof filteredPlans)[number]["entry"]
                 selection: (typeof filteredPlans)[number]["selection"]
                 anchorMessageId: string
@@ -217,6 +275,7 @@ export function createCompressRangeTool(ctx: ToolContext): ReturnType<typeof too
                 })
 
                 preparedPlans.push({
+                    topic: plan.topic,
                     entry: plan.entry,
                     selection: plan.selection,
                     anchorMessageId: plan.anchorMessageId,
@@ -242,8 +301,8 @@ export function createCompressRangeTool(ctx: ToolContext): ReturnType<typeof too
                 const applied = applyCompressionState(
                     ctx.state,
                     {
-                        topic: input.topic,
-                        batchTopic: input.topic,
+                        topic: preparedPlan.topic,
+                        batchTopic: preparedPlan.topic,
                         startId: preparedPlan.entry.startId,
                         endId: preparedPlan.entry.endId,
                         mode: "range",
@@ -270,7 +329,14 @@ export function createCompressRangeTool(ctx: ToolContext): ReturnType<typeof too
                 })
             }
 
-            await finalizeSession(ctx, toolCtx, rawMessages, notifications, input.topic)
+            recordCompressSuccess(ctx, rawMessages)
+            await finalizeSession(
+                ctx,
+                toolCtx,
+                rawMessages,
+                notifications,
+                topics.length === 1 ? topics[0]!.topic : undefined,
+            )
 
             // Compress input cleanup: handled by stripStaleCompressCalls in
             // lib/messages/prune.ts, called from hooks.ts during message transform.
