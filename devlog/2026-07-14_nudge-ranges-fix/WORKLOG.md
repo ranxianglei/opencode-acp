@@ -1,65 +1,74 @@
-# WORKLOG: Nudge ranges fix — show compressible ranges when nudge anchors active
+# WORKLOG: Growth floor gate for compress nudges (anti-thrashing)
 
 ## Branch
 `2026-07-14_nudge-ranges-fix` (from `master`)
 
-## Root Cause (Recap)
-`injectCompressNudges` (`lib/messages/inject/inject.ts`) had two disconnected
-paths:
+## Evolution
 
-1. `applyAnchoredNudges` (always runs when `overMinLimit` or `overMaxLimit`)
-   injects the nudge prompt **text** ("compress now…").
-2. `if (decision.shouldNudge)` injects the **detailed breakdown** including
-   `Compressible ranges` list.
+### Commit 1 (PR #134 original): Show ranges when anchors active
+Fixed the "compress prompt without ranges" bug by broadening the breakdown
+condition to `shouldNudge || hasActiveNudgeAnchors`.
 
-`computeShouldNudge` is growth-gated: it returns `false` when
-`growthSinceLastNudge < nudgeGrowthTokens` and `!overMaxLimit`. So when context
-crossed `minContextLimit` (e.g. 20%) but growth was below the adaptive
-threshold (~6K–50K), path 1 fired but path 2 didn't → the model saw
-"compress now" with no ranges to target.
+### Commit 2 (this update): Growth floor gate
+Replaced the multi-condition gate with a single `nudgeAllowed` based on
+growth floor. This prevents over-compression thrashing after PR #134 removed
+the growth cadence protection for the `overMinLimit` path.
 
 ## Changes
 
+### `lib/config.ts`
+- Added `minNudgeGrowthRatio: number` (default 0.45) to `CompressConfig`
+- Added `minNudgeGrowthFloor: number` (default 5000) to `CompressConfig`
+- Added `emergencyThresholdPercent: number | \`${number}%\`` (default "98%")
+- Changed `minCompressRange` default: 2000 → 5000
+- Added merge logic for all three new fields
+
+### `lib/config-validation.ts`
+- Added all three new fields to `VALID_CONFIG_KEYS`
+- Added type + range validation:
+  - `minNudgeGrowthRatio`: number in [0, 1]
+  - `minNudgeGrowthFloor`: non-negative number
+  - `emergencyThresholdPercent`: number | "${number}%" (inlined check)
+
+### `dcp.schema.json`
+- Added property definitions for `minCompressRange`, `minNudgeGrowthRatio`,
+  `minNudgeGrowthFloor`, `emergencyThresholdPercent`
+- Updated defaults section
+
 ### `lib/messages/inject/inject.ts`
-- Introduced `hasActiveNudgeAnchors` = any of `contextLimitAnchors`,
-  `turnNudgeAnchors`, `iterationNudgeAnchors` is non-empty.
-- Broadened the detailed-breakdown block:
-  `if (decision.shouldNudge)` → `if (decision.shouldNudge || hasActiveNudgeAnchors)`.
-- Kept the growth-cadence-gated side effects inside a nested
-  `if (decision.shouldNudge)` block so they still only fire on real growth:
-  - `maxLimit` strong alert text (`tipsText`)
-  - `state.nudges.lastNudgeShownTokens = currentTokens` baseline update
-  - `buildCompressedBlockGuidance` block aging guidance
+- Moved `nudgeGrowthTokens` computation before `applyAnchoredNudges`
+- Added `resolveEmergencyThreshold()` helper function
+- Added growth floor computation:
+  ```typescript
+  const growthFloor = Math.max(
+      config.compress?.minNudgeGrowthFloor ?? 5000,
+      (config.compress?.minNudgeGrowthRatio ?? 0.45) * nudgeGrowthTokens,
+  )
+  ```
+- Added `emergencyOverride` check (context >= emergency threshold)
+- Added `nudgeAllowed = emergencyOverride || growth >= growthFloor`
+- Replaced `shouldInjectThisTurn = decision.shouldNudge` → `nudgeAllowed`
+- Added `effectiveTipsVariant` (forces "maxLimit" on emergency override)
+- Gated `applyAnchoredNudges` behind `nudgeAllowed`
+- Replaced `if (decision.shouldNudge || hasActiveNudgeAnchors)` → `if (nudgeAllowed)`
+- Removed nested `if (decision.shouldNudge)` — flattened into `if (nudgeAllowed)`
+- Changed save condition from `decision.shouldNudge` → `nudgeAllowed`
 
 ### `tests/inject.test.ts`
-- Added regression test: "breakdown + compressible ranges injected when
-  anchors active but growth below threshold (issue #27)".
-  - `modelContextLimit = 1_000_000`, `minContextLimit = 200_000`,
-    `maxContextLimit = 500_000`.
-  - `lastPerMessageNudgeTokens = 205_000`, assistant with `input=200K, output=10K`
-    → `currentTokens = 210K`, growth = 5K (< 50K threshold).
-  - Last message is user → `turnNudgeAnchors` populated.
-  - Asserts:
-    - `shouldInjectThisTurn === false` (growth cadence preserved).
-    - `turnNudgeAnchors.size > 0`.
-    - suffix text includes `"Breakdown:"`.
-    - suffix text includes `"Compressible ranges"` (the fix).
-    - `lastNudgeShownTokens === undefined` (growth-gated side effect NOT fired).
-    - suffix text does NOT include `"Context limit reached — compress now"`.
+- Updated `buildConfig()` to include all new config fields
+- Replaced PR #134 regression test with 4 new growth floor tests:
+  1. **Suppressed**: 5K growth < 22500 floor (1M model) → no output
+  2. **Fires**: 25K growth >= 22500 floor → breakdown + ranges
+  3. **Emergency**: 98% context, 0 growth → override fires + strong alert
+  4. **5000 floor**: 100K model, 4K < 5000 suppressed, 6K >= 5000 fires
 
 ## Verification
 - TypeScript: pass.
-- Tests: **667 pass**, 0 fail (666 prior + 1 new).
+- Tests: **670 pass**, 0 fail.
 - Build: success.
-- CI check (`scripts/ci/check-pr.sh`): all pass.
 
 ## Risk
-Low. The change only ADDS the breakdown output to a case where the model was
-already being told "compress now" (via `applyAnchoredNudges`). The
-growth-gated side effects (`lastNudgeShownTokens`, maxLimit alert, block aging)
-remain correctly gated, so nudge cadence is unchanged.
-
-## Not Changed
-- No changes to `computeShouldNudge`, `applyAnchoredNudges`, or the anchor
-  collection logic.
-- No changes to prompt templates.
+Medium. This changes the nudge firing behavior: previously (PR #134) nudges
+fired whenever anchors were active; now they require growth >= floor (or 98%
+emergency). This is the intended anti-thrashing behavior. Configurable via
+`minNudgeGrowthRatio`, `minNudgeGrowthFloor`, `emergencyThresholdPercent`.

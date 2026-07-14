@@ -44,6 +44,9 @@ export const VALID_CONFIG_KEYS = new Set([
     "compress.protectUserMessages",
     "compress.maxSummaryLengthHard",
     "compress.minCompressRange",
+    "compress.minNudgeGrowthRatio",
+    "compress.minNudgeGrowthFloor",
+    "compress.emergencyThresholdPercent",
     "compress.maxVisibleSegments",
     "compress.keepEmbedMaxChars",
     "gc",
@@ -414,6 +417,63 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
                     key: "compress.minCompressRange",
                     expected: "non-negative number (>= 0)",
                     actual: `${compress.minCompressRange}`,
+                })
+            }
+
+            if (
+                compress.minNudgeGrowthRatio !== undefined &&
+                typeof compress.minNudgeGrowthRatio !== "number"
+            ) {
+                errors.push({
+                    key: "compress.minNudgeGrowthRatio",
+                    expected: "number",
+                    actual: typeof compress.minNudgeGrowthRatio,
+                })
+            }
+
+            if (
+                typeof compress.minNudgeGrowthRatio === "number" &&
+                (compress.minNudgeGrowthRatio < 0 || compress.minNudgeGrowthRatio > 1)
+            ) {
+                errors.push({
+                    key: "compress.minNudgeGrowthRatio",
+                    expected: "number in range [0, 1]",
+                    actual: `${compress.minNudgeGrowthRatio}`,
+                })
+            }
+
+            if (
+                compress.minNudgeGrowthFloor !== undefined &&
+                typeof compress.minNudgeGrowthFloor !== "number"
+            ) {
+                errors.push({
+                    key: "compress.minNudgeGrowthFloor",
+                    expected: "number",
+                    actual: typeof compress.minNudgeGrowthFloor,
+                })
+            }
+
+            if (
+                typeof compress.minNudgeGrowthFloor === "number" &&
+                compress.minNudgeGrowthFloor < 0
+            ) {
+                errors.push({
+                    key: "compress.minNudgeGrowthFloor",
+                    expected: "non-negative number (>= 0)",
+                    actual: `${compress.minNudgeGrowthFloor}`,
+                })
+            }
+
+            const emergencyThreshold = compress.emergencyThresholdPercent
+            if (
+                emergencyThreshold !== undefined &&
+                typeof emergencyThreshold !== "number" &&
+                !(typeof emergencyThreshold === "string" && emergencyThreshold.endsWith("%"))
+            ) {
+                errors.push({
+                    key: "compress.emergencyThresholdPercent",
+                    expected: 'number | "${number}%"',
+                    actual: JSON.stringify(emergencyThreshold),
                 })
             }
 

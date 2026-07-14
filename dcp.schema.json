@@ -289,6 +289,30 @@
                 "toolOutputNudgeThreshold": {
                     "type": "number",
                     "description": "Tool-output token growth required before the tool-output accumulation reminder fires (absolute, not percentage). If unset, default follows nudgeGrowthTokens (adaptive: 5% of modelContextLimit, clamped to [6000, 50000]). Was hardcoded to 5000 — fired ~10x too often on large-context models (issue #18)."
+                },
+                "minCompressRange": {
+                    "type": "number",
+                    "default": 5000,
+                    "minimum": 0,
+                    "description": "Minimum compressible content (in characters) required for a compression to proceed. Below this threshold, the compress tool rejects the request to avoid overhead exceeding savings. Count excludes protected content."
+                },
+                "minNudgeGrowthRatio": {
+                    "type": "number",
+                    "default": 0.45,
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "Fraction of nudgeGrowthTokens that must accumulate before a compress nudge fires. Combined with minNudgeGrowthFloor: growthFloor = max(minNudgeGrowthFloor, minNudgeGrowthRatio × nudgeGrowthTokens). Only bypassed when context usage >= emergencyThresholdPercent."
+                },
+                "minNudgeGrowthFloor": {
+                    "type": "number",
+                    "default": 5000,
+                    "minimum": 0,
+                    "description": "Absolute floor for nudge growth threshold (in tokens). Prevents small-context models from having an excessively low growth floor. See minNudgeGrowthRatio."
+                },
+                "emergencyThresholdPercent": {
+                    "type": ["number", "string"],
+                    "default": "98%",
+                    "description": "Context usage threshold at which the growth floor is bypassed and nudges fire unconditionally (emergency override). Accepts absolute token count or percentage string (e.g. \"98%\")."
                 }
             },
             "default": {
@@ -306,7 +330,11 @@
                 "protectUserMessages": false,
                 "minNudgeContextPercent": 15,
                 "maxSummaryLengthHard": 3000,
-                "maxVisibleSegments": 50
+                "maxVisibleSegments": 50,
+                "minCompressRange": 5000,
+                "minNudgeGrowthRatio": 0.45,
+                "minNudgeGrowthFloor": 5000,
+                "emergencyThresholdPercent": "98%"
             }
         },
         "gc": {

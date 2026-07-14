@@ -1,42 +1,48 @@
-# REQ: Nudge ranges fix — show compressible ranges when nudge anchors active
+# REQ: Growth floor gate for compress nudges (anti-thrashing)
 
 ## Problem
 
-When context usage crosses `minContextLimit` (e.g., 20%) but growth since last nudge
-is below `nudgeGrowthTokens` (adaptive, ~6K–50K), the anchored nudge prompt text
-("Context is getting full...") is injected via `applyAnchoredNudges`, but the
-detailed breakdown — including the **compressible ranges list** — is NOT injected
-because `computeShouldNudge` returns `false`.
-
-Result: the model sees "compress now" but has no list of ranges to target.
+After PR #134 (show ranges when anchors active), the model could see compress
+nudges every turn once `minContextLimit` is crossed — even with negligible
+growth (e.g., 5K tokens on a 1M model). This risks over-compression: the model
+compresses, proportional baseline adjusts slightly, next turn anchors re-add,
+nudge fires again with minimal new growth.
 
 ## Root Cause
 
-`injectCompressNudges` (`lib/messages/inject/inject.ts`) has two disconnected nudge
-injection paths:
-
-1. **Anchored nudges** (`applyAnchoredNudges`, L228): injects nudge prompt text when
-   `overMinLimit` or `overMaxLimit`. NOT gated by growth cadence.
-
-2. **Detailed breakdown** (`if decision.shouldNudge`, L274→L284): injects context
-   usage stats + compressible ranges list + block guidance. Gated by growth cadence
-   (`computeShouldNudge`).
-
-When growth < `nudgeGrowthTokens` and `!overMaxLimit`, path 1 fires but path 2 doesn't.
+PR #134 broadened the nudge output gate to `shouldNudge || hasActiveNudgeAnchors`.
+While this fixed the "prompt without ranges" bug, it removed the growth cadence
+protection entirely for the `overMinLimit` path (turn anchors bypass
+`nudgeFrequency` interval).
 
 ## Fix
 
-Broaden the detailed breakdown condition from `decision.shouldNudge` to
-`decision.shouldNudge || hasActiveNudgeAnchors`. The growth cadence still controls:
-- `maxLimit` strong alert text
-- `lastNudgeShownTokens` baseline update
-- Block aging guidance
+Replace the multi-condition nudge gate with a single **growth floor** gate:
+
+```
+growthFloor = max(minNudgeGrowthFloor, minNudgeGrowthRatio × nudgeGrowthTokens)
+emergencyOverride = contextUsage >= emergencyThresholdPercent
+nudgeAllowed = emergencyOverride || (growthSinceBaseline >= growthFloor)
+```
+
+Defaults:
+- `minNudgeGrowthRatio`: 0.45 (45% of `nudgeGrowthTokens`)
+- `minNudgeGrowthFloor`: 5000 (absolute floor for small-context models)
+- `emergencyThresholdPercent`: "98%" (near-overflow always fires)
+
+Examples:
+- 1M model: `max(5000, 0.45×50000) = 22500` tokens growth required
+- 100K model: `max(5000, 0.45×6000) = 5000` tokens growth required
+
+Also: `minCompressRange` default 2000 → 5000 (raise the minimum compressible
+content threshold, counting compressible-only as before).
 
 ## Acceptance Criteria
 
-- When `overMinLimit` is true and nudge anchors are active, compressible ranges
-  list is always injected (even if growth < nudgeGrowthTokens).
-- Growth-based cadence (`computeShouldNudge`) still controls maxLimit tips and
-  `lastNudgeShownTokens`.
-- Existing tests for growth cadence continue to pass.
-- New test: verify ranges injection when `overMinLimit && !shouldNudge`.
+- Growth < floor (and context < 98%) → no nudge output at all (no text, no
+  breakdown, no ranges).
+- Growth >= floor → full nudge output (text + breakdown + ranges + cadence).
+- Context >= 98% → emergency override fires regardless of growth.
+- 5000 absolute floor prevents small-context models from having threshold < 5000.
+- `minCompressRange` default raised to 5000.
+- All existing growth cadence tests still pass.
