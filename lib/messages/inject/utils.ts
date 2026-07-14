@@ -19,7 +19,7 @@ import {
     createSyntheticTextPart,
     hasContent,
 } from "../utils"
-import { getLastUserMessage, isIgnoredUserMessage, isSyntheticMessage } from "../query"
+import { getLastUserMessage, hasCompressToolPart, isIgnoredUserMessage, isSyntheticMessage } from "../query"
 import { getCurrentTokenUsage } from "../../token-utils"
 import { getActiveSummaryTokenUsage } from "../../state/utils"
 
@@ -619,7 +619,9 @@ export function estimateContextComposition(
             .map((p: any) => p.text || "")
             .join("")
         const msgId = (msg.info as any)?.id || ""
+        const isCompressCall = hasCompressToolPart(msg)
         const isSummary =
+            isCompressCall ||
             msgId.startsWith("msg_dcp_summary") ||
             text.includes("[Compressed conversation section]")
 
@@ -653,11 +655,15 @@ export function estimateContextComposition(
                 const raw = JSON.stringify(part)
                 const tokens = Math.round(raw.length / 4)
                 msgTotal += tokens
-                toolTokens += tokens
-                msgTool += tokens
-                const toolName = (part as any)?.tool || "unknown"
-                toolTypeMap.set(toolName, (toolTypeMap.get(toolName) || 0) + tokens)
-                if (!msgToolName) msgToolName = toolName
+                if (isSummary) {
+                    summaryTokens += tokens
+                } else {
+                    toolTokens += tokens
+                    msgTool += tokens
+                    const toolName = (part as any)?.tool || "unknown"
+                    toolTypeMap.set(toolName, (toolTypeMap.get(toolName) || 0) + tokens)
+                    if (!msgToolName) msgToolName = toolName
+                }
             }
         }
 
@@ -747,6 +753,7 @@ export function buildCompressibleRanges(
     }[] = []
     for (const msg of messages) {
         if (isSyntheticMessage(msg)) continue
+        if (hasCompressToolPart(msg)) continue
         const ref = state.messageIds.byRawId.get(msg.info.id)
         if (!ref) continue
 

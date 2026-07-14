@@ -5,6 +5,7 @@ import { messageContainsProtectedTool } from "../compress/protected-content"
 import { isIgnoredUserMessage } from "./query"
 
 const EMERGENCY_PRUNE_STUB = "[Output emergency-pruned to prevent context overflow]"
+const EMERGENCY_PRUNE_SUMMARY_STUB = "[Summary emergency-pruned to prevent context overflow]"
 
 export interface EmergencyPruneResult {
     prunedCount: number
@@ -82,8 +83,32 @@ export function runEmergencyPrune(
         }
     }
 
+    if (tokensSaved < targetReduction) {
+        for (let i = 0; i < messages.length; i++) {
+            if (tokensSaved >= targetReduction) break
+            if (i >= lastUserIdx) break
+
+            const msg = messages[i]!
+            const parts = Array.isArray(msg.parts) ? msg.parts : []
+            for (const part of parts) {
+                if (tokensSaved >= targetReduction) break
+                if (part.type !== "tool") continue
+                if (part.tool !== "compress") continue
+                const input = part.state?.input
+                if (!input || typeof input === "string") continue
+                const rawInput = JSON.stringify(input)
+                if (rawInput.includes(EMERGENCY_PRUNE_SUMMARY_STUB)) continue
+
+                const estimatedTokens = Math.ceil(rawInput.length / 4)
+                ;(part.state as { input: unknown }).input = EMERGENCY_PRUNE_SUMMARY_STUB
+                prunedCount++
+                tokensSaved += estimatedTokens
+            }
+        }
+    }
+
     if (prunedCount > 0) {
-        logger.warn("Emergency pruned tool outputs to prevent context overflow", {
+        logger.warn("Emergency pruned to prevent context overflow", {
             prunedCount,
             estimatedTokensSaved: tokensSaved,
             currentTokens,

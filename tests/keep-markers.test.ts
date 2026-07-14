@@ -61,6 +61,22 @@ function toolPart(callID: string, tool: string, output: string, input: any = {})
     }
 }
 
+function compressPart(callID: string, summary: string) {
+    return {
+        id: `p-${callID}`,
+        messageID: "m",
+        sessionID: "s",
+        type: "tool" as const,
+        tool: "compress",
+        callID,
+        state: {
+            status: "completed" as const,
+            output: "Compressed 2 messages into [BLOCK b0].",
+            input: { topic: "test", content: [{ startId: "m1", endId: "m2", summary }] },
+        },
+    }
+}
+
 test("resolveKeepMarkers: expands [[KEEP:mNNNNN]] with formatted content", () => {
     const state = createSessionState()
     state.messageIds.byRawId.set("msg1", "m00001")
@@ -175,4 +191,26 @@ test("formatCompressibleRanges: produces formatted output", () => {
     const formatted = formatCompressibleRanges(result.compressible)
     assert.ok(formatted.includes("Compressible ranges"), "must have header")
     assert.ok(formatted.includes("m00001"), "must show start ref")
+})
+
+test("buildCompressibleRanges excludes compress tool call messages (compress-as-anchor)", () => {
+    const state = createSessionState()
+    state.messageIds.byRawId.set("msg1", "m00001")
+    state.messageIds.byRawId.set("msg2", "m00002")
+    state.messageIds.byRawId.set("msg3", "m00003")
+    const messages: WithParts[] = [
+        mkMsg("msg1", "user", [textPart("msg1", "hello")]),
+        mkMsg("msg2", "assistant", [compressPart("c-comp", "compressed summary text")]),
+        mkMsg("msg3", "assistant", [textPart("msg3", "done")]),
+    ]
+    const result = buildCompressibleRanges(messages, state)
+    const compressibleRefs = result.compressible.flatMap((r) => [r.startRef, r.endRef])
+    assert.ok(
+        !compressibleRefs.includes("m00002"),
+        "compress tool call (m00002) must NOT appear in compressible ranges",
+    )
+    assert.ok(
+        compressibleRefs.includes("m00001") || compressibleRefs.includes("m00003"),
+        "non-compress messages should still be compressible",
+    )
 })

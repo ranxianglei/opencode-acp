@@ -24,6 +24,11 @@ export const getLastUserMessage = (
     return null
 }
 
+export function hasCompressToolPart(message: WithParts): boolean {
+    const parts = Array.isArray(message?.parts) ? message.parts : []
+    return parts.some((part) => part.type === "tool" && part.tool === "compress")
+}
+
 export const messageHasCompress = (message: WithParts): boolean => {
     if (!isMessageWithInfo(message)) {
         return false

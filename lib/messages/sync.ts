@@ -33,34 +33,16 @@ export const syncCompressionBlocks = (
     messagesState.activeByAnchorMessageId.clear()
 
     const now = Date.now()
-    const missingOriginBlockIds: number[] = []
     const orderedBlocks = Array.from(messagesState.blocksById.values()).sort(sortBlocksByCreation)
 
-    // [PATCH Bug 3] Removed compressMessageId presence check.
-    // Blocks should remain active even if the compress tool call message was
-    // removed by opencode's internal compaction. The block's existence IS proof
-    // that compression happened.
+    // Compress-as-anchor: anchor presence is intentionally NOT checked.
+    // filterCompressedRanges hides messages via byMessageId, not anchor position.
     for (const block of orderedBlocks) {
         if (block.deactivatedByUser) {
             block.active = false
             if (block.deactivatedAt === undefined) {
                 block.deactivatedAt = now
             }
-            block.deactivatedByBlockId = undefined
-            continue
-        }
-
-        // Deactivate when the block's anchor (compress tool call) is gone.
-        // With compress-as-anchor, the compress tool call IS the visible anchor.
-        // Falls back to anchorMessageId for blocks from older persisted state.
-        const anchorId = block.compressMessageId ?? block.anchorMessageId
-        if (
-            typeof anchorId === "string" &&
-            anchorId.length > 0 &&
-            !messageIds.has(anchorId)
-        ) {
-            block.active = false
-            block.deactivatedAt = now
             block.deactivatedByBlockId = undefined
             continue
         }
@@ -120,9 +102,8 @@ export const syncCompressionBlocks = (
         }
     }
 
-    if (missingOriginBlockIds.length > 0 || deactivatedCount > 0 || reactivatedCount > 0) {
+    if (deactivatedCount > 0 || reactivatedCount > 0) {
         logger.info("Synced compress block state", {
-            missingOriginCount: missingOriginBlockIds.length,
             deactivatedCount,
             reactivatedCount,
         })

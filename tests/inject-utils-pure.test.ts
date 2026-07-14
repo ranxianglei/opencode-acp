@@ -224,6 +224,27 @@ function mkSummary(id: string, text: string): WithParts {
     return { info: { id: `msg_dcp_summary_${id}` } as any, parts: [{ type: "text", text: `[Compressed conversation section]\n${text}` }] as any }
 }
 
+function mkCompressCall(id: string, summary: string): WithParts {
+    return {
+        info: { id } as any,
+        parts: [
+            {
+                type: "tool",
+                tool: "compress",
+                callID: `${id}-call`,
+                state: {
+                    status: "completed",
+                    input: {
+                        topic: "test",
+                        content: [{ startId: "m1", endId: "m2", summary }],
+                    },
+                    output: "Compressed 2 messages into [BLOCK b0].",
+                },
+            } as any,
+        ],
+    }
+}
+
 test("estimateContextComposition: empty messages returns zeros", () => {
     const c = estimateContextComposition([])
     assert.equal(c.toolTokens, 0)
@@ -281,6 +302,16 @@ test("estimateContextComposition: total = tool + summary + message (mutually exc
     ]
     const c = estimateContextComposition(msgs)
     assert.equal(c.total, c.toolTokens + c.summaryTokens + c.messageTokens)
+})
+
+test("estimateContextComposition: compress tool call counted in summaryTokens not toolTokens (compress-as-anchor)", () => {
+    const summaryText = "x".repeat(400)
+    const msg = mkCompressCall("m-comp-1", summaryText)
+    const c = estimateContextComposition([msg])
+    assert.ok(c.summaryTokens > 0, "compress tool call should be counted as summaryTokens")
+    assert.equal(c.toolTokens, 0, "compress tool call should NOT be counted as toolTokens")
+    assert.equal(c.messageTokens, 0)
+    assert.equal(c.total, c.summaryTokens)
 })
 
 test("estimateContextComposition: largestRanges excludes summaries", () => {

@@ -419,3 +419,89 @@ test("emergency prune mutates output in-place (ephemeral, no state persistence)"
     // But message output should be stubbed
     assert.notEqual((messages[0]!.parts[0] as any).state.output, originalOutput)
 })
+
+// =====================================================================
+// Summary fallback — compression summaries pruned as last resort (Bug #3)
+// =====================================================================
+
+function compressToolPart(callID: string, summary: string) {
+    return toolPart(callID, "compress", "Compressed 2 messages.", {
+        topic: "test",
+        content: [{ startId: "m1", endId: "m2", summary }],
+    })
+}
+
+test("emergency prune falls back to compression summaries when tool outputs insufficient", () => {
+    const state = createSessionState()
+    const config = buildConfig({
+        emergencyPruneThreshold: "10%",
+        emergencyPruneTarget: "5%",
+    })
+    const largeSummary = "x".repeat(4000)
+    const messages = [
+        assistantMessage("a1", [
+            toolPart("c1", "bash", "small_output"),
+            compressToolPart("c2", largeSummary),
+        ]),
+        userMessage("u1", "hello"),
+    ]
+    // 1M model: threshold=100K, target=50K, current=150K, reduction=100K
+    const result = runEmergencyPrune(state, config, logger, messages, 150_000, 1_000_000)
+    const toolOutput = (messages[0]!.parts[0] as any).state.output
+    const compressInput = (messages[0]!.parts[1] as any).state.input
+    assert.equal(
+        toolOutput,
+        "[Output emergency-pruned to prevent context overflow]",
+        "tool output should be pruned first",
+    )
+    assert.equal(
+        typeof compressInput,
+        "string",
+        "compress summary should be stubbed as last resort fallback",
+    )
+    assert.equal(compressInput, "[Summary emergency-pruned to prevent context overflow]")
+    assert.ok(result.prunedCount >= 2, "should prune both tool output and compress summary")
+})
+
+test("emergency prune summary fallback is idempotent", () => {
+    const state = createSessionState()
+    const config = buildConfig({
+        emergencyPruneThreshold: "10%",
+        emergencyPruneTarget: "5%",
+    })
+    const messages = [
+        assistantMessage("a1", [
+            compressToolPart("c1", "x".repeat(4000)),
+            compressToolPart("c2", "y".repeat(4000)),
+        ]),
+        userMessage("u1", "hello"),
+    ]
+    // First pass: both summaries pruned
+    runEmergencyPrune(state, config, logger, messages, 150_000, 1_000_000)
+    const firstInput1 = (messages[0]!.parts[0] as any).state.input
+    const firstInput2 = (messages[0]!.parts[1] as any).state.input
+    assert.equal(firstInput1, "[Summary emergency-pruned to prevent context overflow]")
+    assert.equal(firstInput2, "[Summary emergency-pruned to prevent context overflow]")
+    // Second pass: should be no-op (already stubbed)
+    const result = runEmergencyPrune(state, config, logger, messages, 150_000, 1_000_000)
+    assert.equal(result.prunedCount, 0, "already-stubbed summaries should be skipped")
+})
+
+test("emergency prune does not prune compress tool calls at or after last user message", () => {
+    const state = createSessionState()
+    const config = buildConfig({
+        emergencyPruneThreshold: "10%",
+        emergencyPruneTarget: "5%",
+    })
+    const messages = [
+        userMessage("u1", "question"),
+        assistantMessage("a1", [compressToolPart("c1", "x".repeat(4000))]),
+    ]
+    // lastUserIdx = 0 (u1). Loop breaks at i >= 0. Compress at index 1 is safe.
+    runEmergencyPrune(state, config, logger, messages, 150_000, 1_000_000)
+    const compressInput = (messages[1]!.parts[0] as any).state.input
+    assert.ok(
+        typeof compressInput === "object",
+        "compress summary after last user message should be preserved",
+    )
+})

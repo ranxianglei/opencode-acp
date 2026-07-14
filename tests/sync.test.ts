@@ -63,18 +63,17 @@ test("syncCompressionBlocks keeps block active when anchor message exists", () =
     assert.equal(state.prune.messages.activeByAnchorMessageId.get("m1"), 1)
 })
 
-test("syncCompressionBlocks deactivates block when anchor message is deleted", () => {
+test("syncCompressionBlocks keeps block active when anchor message is deleted (compress-as-anchor)", () => {
     const state = createSessionState()
     state.prune.messages.blocksById.set(1, makeBlock({ blockId: 1, anchorMessageId: "m1" }))
     const messages = [userMsg("m2")]
     syncCompressionBlocks(state, logger, messages)
     const block = state.prune.messages.blocksById.get(1)!
-    assert.equal(block.active, false, "block should be deactivated")
-    assert.ok(!state.prune.messages.activeBlockIds.has(1))
-    assert.ok(block.deactivatedAt !== undefined)
+    assert.equal(block.active, true, "block stays active — anchor presence no longer checked")
+    assert.ok(state.prune.messages.activeBlockIds.has(1))
 })
 
-test("syncCompressionBlocks deactivates block when anchor is gone even if tracked in byMessageId", () => {
+test("syncCompressionBlocks keeps block active when anchor is gone even if tracked in byMessageId (compress-as-anchor)", () => {
     const state = createSessionState()
     state.prune.messages.blocksById.set(1, makeBlock({ blockId: 1, anchorMessageId: "m1" }))
     state.prune.messages.byMessageId.set("m1", {
@@ -87,10 +86,10 @@ test("syncCompressionBlocks deactivates block when anchor is gone even if tracke
     const block = state.prune.messages.blocksById.get(1)!
     assert.equal(
         block.active,
-        false,
-        "block should be deactivated — anchor gone means recap cannot be injected",
+        true,
+        "block stays active — compress-as-anchor doesn't check anchor presence",
     )
-    assert.ok(!state.prune.messages.activeBlockIds.has(1))
+    assert.ok(state.prune.messages.activeBlockIds.has(1))
 })
 
 test("syncCompressionBlocks deactivates user-deactivated blocks", () => {
@@ -126,7 +125,7 @@ test("syncCompressionBlocks deactivates consumed blocks when parent is active", 
     assert.equal(block2.active, true, "parent block should be active")
 })
 
-test("syncCompressionBlocks updates byMessageId activeBlockIds after sync", () => {
+test("syncCompressionBlocks keeps byMessageId activeBlockIds populated when block stays active (compress-as-anchor)", () => {
     const state = createSessionState()
     state.prune.messages.blocksById.set(1, makeBlock({ blockId: 1, anchorMessageId: "m1" }))
     state.prune.messages.byMessageId.set("m2", {
@@ -139,8 +138,8 @@ test("syncCompressionBlocks updates byMessageId activeBlockIds after sync", () =
     const entry2 = state.prune.messages.byMessageId.get("m2")!
     assert.equal(
         entry2.activeBlockIds.length,
-        0,
-        "m2 activeBlockIds should be empty after block deactivated (anchor m1 gone)",
+        1,
+        "m2 activeBlockIds stays populated — block active even without anchor in messages",
     )
 })
 
@@ -160,7 +159,7 @@ test("syncCompressionBlocks processes blocks in creation order", () => {
     assert.ok(state.prune.messages.activeBlockIds.has(2))
 })
 
-test("issue #125: external anchor deletion deactivates block and clears byMessageId activeBlockIds", () => {
+test("issue #125: compress-as-anchor keeps block active when anchor externally deleted", () => {
     const state = createSessionState()
     state.prune.messages.blocksById.set(1, makeBlock({ blockId: 1, anchorMessageId: "anchor-1" }))
     state.prune.messages.activeBlockIds.add(1)
@@ -181,15 +180,12 @@ test("issue #125: external anchor deletion deactivates block and clears byMessag
     syncCompressionBlocks(state, logger, messages)
 
     const block = state.prune.messages.blocksById.get(1)!
-    assert.equal(block.active, false, "block deactivated when anchor externally deleted")
-
-    const anchorEntry = state.prune.messages.byMessageId.get("anchor-1")!
-    assert.equal(anchorEntry.activeBlockIds.length, 0, "anchor activeBlockIds cleared")
+    assert.equal(block.active, true, "block stays active even when anchor externally deleted")
 
     const survivingEntry = state.prune.messages.byMessageId.get("surviving-msg")!
     assert.equal(
         survivingEntry.activeBlockIds.length,
-        0,
-        "surviving message activeBlockIds cleared — not hidden",
+        1,
+        "surviving message stays hidden — block still active",
     )
 })
