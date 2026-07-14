@@ -114,6 +114,19 @@ test("estimateContextComposition protectedTokens is 0 when no tools protected", 
     assert.equal(comp.protectedTokens, 0)
 })
 
+test("estimateContextComposition tracks protectedTokens via file patterns only (Oracle review)", () => {
+    const state = createSessionState()
+    const messages = [
+        makeMsg("m1", "user", "hello"),
+        makeMsg("m2", "assistant", "reading file", [toolPart("t1", "read", { filePath: "src/secret.ts" })]),
+        makeMsg("m3", "assistant", "normal text"),
+    ]
+    setupRefs(state, messages)
+
+    const comp = estimateContextComposition(messages, state, [], ["src/**/*.ts"])
+    assert.ok(comp.protectedTokens > 0, "file-pattern-only protection must be tracked")
+})
+
 test("estimateContextComposition backward compat: no protection params = no tracking", () => {
     const state = createSessionState()
     const messages = [
