@@ -298,3 +298,125 @@ test("isContextOverLimits does not extend the max threshold when summaryBuffer i
 
     assert.equal(overLimit.overMaxLimit, true)
 })
+
+function buildOutputZeroAssistantMessage(): WithParts {
+    const sessionID = "ses_compaction_token_usage"
+
+    return {
+        info: {
+            id: "msg-assistant-output-zero",
+            role: "assistant",
+            sessionID,
+            agent: "assistant",
+            time: { created: 5 },
+            tokens: {
+                input: 50000,
+                output: 0,
+                reasoning: 0,
+                cache: {
+                    read: 10000,
+                    write: 0,
+                },
+            },
+        } as WithParts["info"],
+        parts: [
+            textPart(
+                "msg-assistant-output-zero",
+                sessionID,
+                "msg-assistant-output-zero-part",
+                "",
+            ),
+        ],
+    }
+}
+
+test("getCurrentTokenUsage uses assistant message with output=0 but input>0", () => {
+    const messages = buildCompactedMessages()
+    messages.push(buildPostCompactionAssistantMessage())
+    messages.push(buildOutputZeroAssistantMessage())
+
+    const state = createSessionState()
+
+    // The output=0 message has input=50000, cache.read=10000
+    // Total = input + cacheRead + cacheWrite + output + reasoning
+    //       = 50000 + 10000 + 0 + 0 + 0 = 60000
+    assert.equal(getCurrentTokenUsage(state, messages), 60000)
+})
+
+test("getCurrentTokenUsage skips assistant message with both input=0 and output=0", () => {
+    const messages = buildCompactedMessages()
+    messages.push(buildPostCompactionAssistantMessage())
+
+    // Add a truly empty assistant message (no token data at all)
+    messages.push({
+        info: {
+            id: "msg-assistant-empty",
+            role: "assistant",
+            sessionID: "ses_compaction_token_usage",
+            agent: "assistant",
+            time: { created: 5 },
+            tokens: {
+                input: 0,
+                output: 0,
+                reasoning: 0,
+                cache: { read: 0, write: 0 },
+            },
+        } as WithParts["info"],
+        parts: [],
+    })
+
+    const state = createSessionState()
+
+    // Should skip the empty message and use the post-compaction one
+    const freshReportedTotal = 2400 + 600 + 150 + 300
+    assert.equal(getCurrentTokenUsage(state, messages), freshReportedTotal)
+})
+
+test("getCurrentTokenUsage fallback counts tool outputs not just text", () => {
+    const sessionID = "ses_tool_fallback"
+    const messages: WithParts[] = [
+        {
+            info: {
+                id: "msg-user-1",
+                role: "user",
+                sessionID,
+                agent: "assistant",
+                time: { created: 1 },
+            } as WithParts["info"],
+            parts: [
+                textPart("msg-user-1", sessionID, "prt-u1", "Short text"),
+                {
+                    id: "prt-tool-1",
+                    messageID: "msg-user-1",
+                    sessionID,
+                    type: "tool" as const,
+                    callID: "call-1",
+                    tool: "bash",
+                    state: {
+                        status: "completed" as const,
+                        input: { command: "ls -la" },
+                        output: "total 100\ndrwxr-xr-x  2 root root 4096 Jan  1 00:00 .",
+                        title: "ls",
+                        metadata: {},
+                        time: { start: 1, end: 2 },
+                    },
+                },
+            ],
+        },
+    ]
+
+    const state = createSessionState()
+
+    // No assistant messages → falls back to content estimation
+    // Should count BOTH the text part AND the tool output
+    const usage = getCurrentTokenUsage(state, messages)
+    assert.ok(usage > 0, "fallback should return non-zero for tool-heavy messages")
+
+    // Tool output "total 100\ndrwxr-xr-x ..." adds significant tokens
+    // that the old text-only fallback would have missed entirely
+    const textOnlyTokens = Math.ceil("Short text".length / 4)
+    assert.ok(
+        usage > textOnlyTokens,
+        "fallback should count tool outputs, not just text parts",
+    )
+})
