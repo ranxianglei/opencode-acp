@@ -14,18 +14,24 @@ import { applyPendingCompressionDurations } from "./timing"
 export interface CompressionSnapshot {
     messages: PruneMessagesState
     stats: SessionStats
+    manualMode: SessionState["manualMode"]
 }
 
 export function snapshotCompressionState(state: SessionState): CompressionSnapshot {
     return {
         messages: structuredClone(state.prune.messages),
         stats: { ...state.stats },
+        manualMode: state.manualMode,
     }
 }
 
-export function restoreCompressionState(state: SessionState, snapshot: CompressionSnapshot): void {
+export function restoreCompressionState(
+    state: SessionState,
+    snapshot: CompressionSnapshot,
+): void {
     state.prune.messages = structuredClone(snapshot.messages)
     state.stats = { ...snapshot.stats }
+    state.manualMode = snapshot.manualMode
 }
 
 interface RunContext {
