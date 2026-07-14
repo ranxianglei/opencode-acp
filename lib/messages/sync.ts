@@ -76,6 +76,15 @@ export const syncCompressionBlocks = (
         if (messageIds.has(block.anchorMessageId)) {
             messagesState.activeByAnchorMessageId.set(block.anchorMessageId, block.blockId)
         }
+        if (
+            typeof block.compressMessageId === "string" &&
+            !messageIds.has(block.compressMessageId)
+        ) {
+            logger.debug("Block active but compress tool call absent from messages", {
+                blockId: block.blockId,
+                compressMessageId: block.compressMessageId,
+            })
+        }
     }
 
     for (const entry of messagesState.byMessageId.values()) {
