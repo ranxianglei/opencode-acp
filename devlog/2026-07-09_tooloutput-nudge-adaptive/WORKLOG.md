@@ -7,13 +7,13 @@
 
 ## 1. Summary
 
-- **What was done**: 
-  1. Made the toolOutput accumulation reminder reuse the adaptive
-  `nudgeGrowthTokens` threshold (5% of context, clamped [6K, 50K]) instead of a
-  hardcoded 5000. Also wired the previously-dead `compress.toolOutputNudgeThreshold`
-  config option through config merge, validation, and the JSON schema.
-  2. Persisted `state.modelContextLimit` so adaptive thresholds (nudgeGrowthTokens,
-  toolOutputThreshold) don't fall to the 6000 floor on the first turn after restart.
+- **What was done**:
+    1. Made the toolOutput accumulation reminder reuse the adaptive
+       `nudgeGrowthTokens` threshold (5% of context, clamped [6K, 50K]) instead of a
+       hardcoded 5000. Also wired the previously-dead `compress.toolOutputNudgeThreshold`
+       config option through config merge, validation, and the JSON schema.
+    2. Persisted `state.modelContextLimit` so adaptive thresholds (nudgeGrowthTokens,
+       toolOutputThreshold) don't fall to the 6000 floor on the first turn after restart.
 - **Why**: The hardcoded 5000 fired ~10× too often on large-context models,
   bypassing the 5% growth protection and driving severe over-compression (68
   compressions / 499 calls in the reported session, never above 22.6% context).
@@ -29,8 +29,8 @@
 
 ### Commits
 
-| Commit | Description |
-|--------|-------------|
+| Commit  | Description                                                          |
+| ------- | -------------------------------------------------------------------- |
 | `<sha>` | fix: toolOutput reminder uses adaptive nudgeGrowthTokens (issue #18) |
 
 ### Key Files
@@ -85,11 +85,11 @@ bun test tests/        # full suite (this env has no real Node, only Bun)
 - New/modified test files: `tests/inject.test.ts` (+5), `tests/config-validation.test.ts` (+1).
 - Test count: 591 baseline + 6 new = 597 expected on real Node.
 - Key scenarios verified:
-  - 1M model, ~9K tool growth → reminder does NOT fire (regression).
-  - 1M model, ~64K tool growth → reminder DOES fire.
-  - `toolOutputNudgeThreshold: 8000` override → fires at ~9K growth.
-  - `modelContextLimit` survives save/load round-trip.
-  - `ensureSessionInitialized` restores persisted `modelContextLimit` after restart.
+    - 1M model, ~9K tool growth → reminder does NOT fire (regression).
+    - 1M model, ~64K tool growth → reminder DOES fire.
+    - `toolOutputNudgeThreshold: 8000` override → fires at ~9K growth.
+    - `modelContextLimit` survives save/load round-trip.
+    - `ensureSessionInitialized` restores persisted `modelContextLimit` after restart.
 
 ### Results
 
@@ -130,7 +130,7 @@ bun test tests/        # full suite (this env has no real Node, only Bun)
 
 ## 8. Systemic Regression Guard (added per user request on issue #18)
 
-User asked for a test that catches the *class* of bug — any future change that
+User asked for a test that catches the _class_ of bug — any future change that
 reverts a nudge mechanism to a fixed threshold. Added `inject.test.ts` test
 "nudge thresholds scale with modelContextLimit — fixed thresholds must not
 bypass 5% protection (#18 systemic guard)".

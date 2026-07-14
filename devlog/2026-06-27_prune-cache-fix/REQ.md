@@ -8,6 +8,7 @@ call. This mutates existing message content, invalidating the LLM provider's
 prefix cache from the first modified message onward.
 
 Observed impact (ses_102504697, Jun 25-27):
+
 - 176 cache misses over 2 days, each re-sending 120K-450K tokens
 - 89% of fresh input tokens wasted on cache-invalidating re-sends
 - ~50M tokens wasted total

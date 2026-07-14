@@ -19,9 +19,9 @@
 
 - **Environment**: GLM-5.2 model, 1M context limit, long sessions with aborted agent requests.
 - **Minimal reproduction steps**:
-  1. Have a session where recent assistant messages have `output=0` (from hidden agent requests/aborts)
-  2. Context grows past the configured limit
-  3. ACP never fires nudges because it underestimates usage by 10x
+    1. Have a session where recent assistant messages have `output=0` (from hidden agent requests/aborts)
+    2. Context grows past the configured limit
+    3. ACP never fires nudges because it underestimates usage by 10x
 - **Relevant configuration**: `minContextLimit: "20%"`, `maxContextLimit: "20%"` on 1M model.
 
 ## 3. Constraints & Non-Goals
@@ -32,17 +32,17 @@
 ## 4. Acceptance Criteria
 
 - **Correctness**:
-  - [x] Assistant messages with `output=0, input>0` are used (not skipped)
-  - [x] Assistant messages with `output=0, input=0` are still skipped (truly empty)
-  - [x] Compaction check still works (stale messages return 0)
-  - [x] Fallback estimation includes tool outputs, not just text
+    - [x] Assistant messages with `output=0, input>0` are used (not skipped)
+    - [x] Assistant messages with `output=0, input=0` are still skipped (truly empty)
+    - [x] Compaction check still works (stale messages return 0)
+    - [x] Fallback estimation includes tool outputs, not just text
 - **Regression**:
-  - [x] All 669 tests pass (4 existing + 3 new)
+    - [x] All 669 tests pass (4 existing + 3 new)
 
 ## 5. Proposed Approach
 
 - **Affected modules**: `lib/token-utils.ts`, `tests/token-usage.test.ts`
 - **Changes**:
-  1. Change skip condition from `output <= 0` to `input <= 0 && output <= 0`
-  2. Change fallback from text-only to `countAllMessageTokens` (text + tool outputs)
+    1. Change skip condition from `output <= 0` to `input <= 0 && output <= 0`
+    2. Change fallback from text-only to `countAllMessageTokens` (text + tool outputs)
 - **Risks**: Minimal — the token formula is unchanged, only the message selection condition widened.

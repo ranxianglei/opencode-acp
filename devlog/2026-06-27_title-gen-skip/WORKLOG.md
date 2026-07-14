@@ -61,9 +61,9 @@ node --import tsx --test tests/*.test.ts   # 389 pass, 0 fail
 ### Test Coverage
 
 - New tests: 3 in `tests/e2e-message-transform.test.ts`
-  - title agent request skipped, messages + state unmutated
-  - summary & compaction agent requests skipped
-  - build agent request still fully processed (no false positives)
+    - title agent request skipped, messages + state unmutated
+    - summary & compaction agent requests skipped
+    - build agent request still fully processed (no false positives)
 - Test count: 389 total, 389 pass, 0 fail (baseline 386 → +3)
 
 ### Results

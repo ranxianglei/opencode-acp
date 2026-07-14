@@ -72,12 +72,18 @@ test("isIgnoredUserMessage returns true for user message with no parts", () => {
 })
 
 test("isIgnoredUserMessage returns true for user message with all parts ignored", () => {
-    const msg = makeUser([{ type: "text", text: "hi", ignored: true }, { type: "text", text: "bye", ignored: true }])
+    const msg = makeUser([
+        { type: "text", text: "hi", ignored: true },
+        { type: "text", text: "bye", ignored: true },
+    ])
     assert.equal(isIgnoredUserMessage(msg as any), true)
 })
 
 test("isIgnoredUserMessage returns false for user message with non-ignored parts", () => {
-    const msg = makeUser([{ type: "text", text: "hi", ignored: true }, { type: "text", text: "real" }])
+    const msg = makeUser([
+        { type: "text", text: "hi", ignored: true },
+        { type: "text", text: "real" },
+    ])
     assert.equal(isIgnoredUserMessage(msg as any), false)
 })
 

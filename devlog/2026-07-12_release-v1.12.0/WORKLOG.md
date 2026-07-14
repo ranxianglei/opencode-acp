@@ -13,6 +13,7 @@
 ### Contents
 
 All 7 commits from `2026-07-11_compress-keep-ranges`:
+
 - `1e4a92d` feat: KEEP/REF markers + compressible ranges listing
 - `5bca817` fix: add KEEP anti-pattern guidance to compress prompt
 - `3d9c801` fix: move KEEP anti-pattern guidance to HOW TO COMPRESS rules

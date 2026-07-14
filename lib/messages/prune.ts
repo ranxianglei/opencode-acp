@@ -3,7 +3,11 @@ import type { Logger } from "../logger"
 import type { PluginConfig } from "../config"
 import { isMessageCompacted } from "../state/utils"
 import { isIgnoredUserMessage } from "./query"
-import { createSyntheticToolRecap, replaceBlockIdsWithBlocked, stripStaleMessageRefs } from "./utils"
+import {
+    createSyntheticToolRecap,
+    replaceBlockIdsWithBlocked,
+    stripStaleMessageRefs,
+} from "./utils"
 
 const PRUNED_TOOL_OUTPUT_REPLACEMENT =
     "[Output removed to save context - information superseded or no longer needed]"

@@ -81,7 +81,8 @@ function formatByType(msg: WithParts): string {
             switch (tool) {
                 case "bash":
                 case "interactive_bash": {
-                    const cmd = typeof input === "string" ? input : input.command || JSON.stringify(input)
+                    const cmd =
+                        typeof input === "string" ? input : input.command || JSON.stringify(input)
                     return `$ ${cmd}\n${output}`
                 }
                 case "read": {

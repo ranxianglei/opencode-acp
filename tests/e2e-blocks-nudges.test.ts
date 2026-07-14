@@ -193,9 +193,13 @@ function setupPipeline(
 // ─── Test: Nudge injection when context is near limits ──────────────────────
 
 test("nudge injection: context usage tag injected when modelContextLimit is set", async () => {
-    const { state, handler } = setupPipeline(SID_A, {}, {
-        modelContextLimit: 200000,
-    })
+    const { state, handler } = setupPipeline(
+        SID_A,
+        {},
+        {
+            modelContextLimit: 200000,
+        },
+    )
     // Simulate post-baseline state so growth-gating can fire (not first turn).
     state.nudges.lastPerMessageNudgeTokens = 0
 
@@ -219,14 +223,18 @@ test("nudge injection: context usage tag injected when modelContextLimit is set"
 // ─── Test: No nudge when permission is denied ───────────────────────────────
 
 test("nudge injection: no context usage tag when permission is denied", async () => {
-    const { state, handler } = setupPipeline(SID_A, {
-        compress: {
-            ...buildConfig().compress,
-            permission: "deny",
+    const { state, handler } = setupPipeline(
+        SID_A,
+        {
+            compress: {
+                ...buildConfig().compress,
+                permission: "deny",
+            },
         },
-    }, {
-        modelContextLimit: 200000,
-    })
+        {
+            modelContextLimit: 200000,
+        },
+    )
 
     const output = {
         messages: [
@@ -284,7 +292,9 @@ test("block aging: old blocks are deactivated by major GC", async () => {
     state.prune.messages.activeBlockIds.add(blockId)
     state.prune.messages.activeByAnchorMessageId.set("u2", blockId)
     state.prune.messages.byMessageId.set("u1", {
-        tokenCount: 200, allBlockIds: [blockId], activeBlockIds: [blockId],
+        tokenCount: 200,
+        allBlockIds: [blockId],
+        activeBlockIds: [blockId],
     })
 
     const output = {
@@ -314,9 +324,13 @@ test("tool error pruning: error tool inputs are preserved (prefix cache fix)", a
     state.prune.tools.set(callID, Date.now())
 
     const errorTool = makeToolPart(
-        callID, "bash", "error", "error output",
+        callID,
+        "bash",
+        "error",
+        "error output",
         { command: "rm -rf /", cwd: "/home/user" },
-        SID_A, "a1",
+        SID_A,
+        "a1",
     )
     const output = {
         messages: [
@@ -383,8 +397,13 @@ test("message ID injection: IDs are appended to tool parts", async () => {
     const { state, handler } = setupPipeline()
 
     const toolPart = makeToolPart(
-        "call-1", "read", "completed", "file contents",
-        { path: "/test.txt" }, SID_A, "a1",
+        "call-1",
+        "read",
+        "completed",
+        "file contents",
+        { path: "/test.txt" },
+        SID_A,
+        "a1",
     )
     const output = {
         messages: [
@@ -402,22 +421,20 @@ test("message ID injection: IDs are appended to tool parts", async () => {
     assert.ok(tool)
 
     const toolOutput = (tool as any).state.output as string
-    assert.ok(
-        toolOutput.includes("dcp-message-id"),
-        "tool output should contain message ID tag",
-    )
-    assert.ok(
-        toolOutput.includes("m00002"),
-        "tool output should contain the m00002 ref",
-    )
+    assert.ok(toolOutput.includes("dcp-message-id"), "tool output should contain message ID tag")
+    assert.ok(toolOutput.includes("m00002"), "tool output should contain the m00002 ref")
 })
 
 // ─── Test: Visible ID range injection ───────────────────────────────────────
 
 test("compressible ranges injected into suffix message when shouldNudge fires", async () => {
-    const { state, handler } = setupPipeline(SID_A, {}, {
-        modelContextLimit: 200000,
-    })
+    const { state, handler } = setupPipeline(
+        SID_A,
+        {},
+        {
+            modelContextLimit: 200000,
+        },
+    )
     // Simulate post-baseline state so growth-gating can fire (not first turn).
     state.nudges.lastPerMessageNudgeTokens = 0
 
@@ -441,10 +458,7 @@ test("compressible ranges injected into suffix message when shouldNudge fires", 
         combinedText.includes("Compressible ranges"),
         "should inject compressible ranges section",
     )
-    assert.ok(
-        /msgs?/.test(combinedText),
-        "compressible ranges should mention message counts",
-    )
+    assert.ok(/msgs?/.test(combinedText), "compressible ranges should mention message counts")
     assert.ok(
         !combinedText.includes("[Visible:"),
         "should NOT inject visible segments tag (removed)",
@@ -489,7 +503,9 @@ test("block consumption: newer block deactivates consumed blocks", async () => {
     state.prune.messages.activeBlockIds.add(oldBlockId)
     state.prune.messages.activeByAnchorMessageId.set("u1", oldBlockId)
     state.prune.messages.byMessageId.set("u1", {
-        tokenCount: 200, allBlockIds: [oldBlockId], activeBlockIds: [oldBlockId],
+        tokenCount: 200,
+        allBlockIds: [oldBlockId],
+        activeBlockIds: [oldBlockId],
     })
 
     // New block that consumes the old one
@@ -525,7 +541,9 @@ test("block consumption: newer block deactivates consumed blocks", async () => {
     state.prune.messages.activeBlockIds.add(newBlockId)
     state.prune.messages.activeByAnchorMessageId.set("u3", newBlockId)
     state.prune.messages.byMessageId.set("u2", {
-        tokenCount: 300, allBlockIds: [newBlockId], activeBlockIds: [newBlockId],
+        tokenCount: 300,
+        allBlockIds: [newBlockId],
+        activeBlockIds: [newBlockId],
     })
 
     const output = {
@@ -596,7 +614,9 @@ test("mixed messages: only valid messages survive, IDs assigned to survivors", a
     await handler({}, output)
 
     assert.equal(output.messages.length, 3, "3 valid messages (empty suffix dropped, issue #12)")
-    const ids = output.messages.filter((m: WithParts) => !isSyntheticMessage(m)).map((m: WithParts) => m.info.id)
+    const ids = output.messages
+        .filter((m: WithParts) => !isSyntheticMessage(m))
+        .map((m: WithParts) => m.info.id)
     assert.deepEqual(ids, ["u1", "a1", "u2"])
 
     assert.equal(state.messageIds.byRawId.get("u1"), "m00001")

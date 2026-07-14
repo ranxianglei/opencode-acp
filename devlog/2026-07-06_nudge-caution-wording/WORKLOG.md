@@ -10,8 +10,8 @@ caution after the largest-ranges list so the model keeps ranges still needed in 
 
 ## ChangeLog
 
-| File | Change |
-|------|--------|
+| File                          | Change                                                                                                                                                                                               |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | lib/messages/inject/inject.ts | `efficiencyNote` prepended to breakdown when `tipsVariant !== "maxLimit"`; `💡 Compress incrementally …` line moved to after the largest ranges and reworded to distinguish consumed-vs-still-needed |
 
 ## KeyFiles

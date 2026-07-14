@@ -9,12 +9,14 @@
 ### `lib/messages/inject/inject.ts`
 
 Added `baselineReEstablished` flag:
+
 - Set to `true` when `lastPerMessageNudgeTokens` transitions from `undefined` to a real value (lines 200-206)
 - Added to save condition (line 319): `if (anchorsChanged || decision.shouldNudge || baselineReEstablished)`
 
 ### `lib/state/persistence.ts`
 
 Fixed race condition in `writePersistedSessionState`:
+
 - Before: `await ensureStorageDir(logger)` then `getSessionFilePath(sessionId)` — path resolved after await
 - After: `const filePath = getSessionFilePath(sessionId)` captured synchronously before any await
 

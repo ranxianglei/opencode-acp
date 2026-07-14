@@ -12,7 +12,7 @@ Annotate each `<dcp-message-id>` tag with `tokens` (approximate size) and `type`
 (content classification: text/tool/reasoning + tool name).
 
 Before: `<dcp-message-id>m00175</dcp-message-id>`
-After:  `<dcp-message-id tokens="20.7K" type="tool:bash">m00175</dcp-message-id>`
+After: `<dcp-message-id tokens="20.7K" type="tool:bash">m00175</dcp-message-id>`
 
 ## Impact
 

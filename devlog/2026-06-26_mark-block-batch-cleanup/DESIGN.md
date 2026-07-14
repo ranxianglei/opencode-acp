@@ -5,8 +5,9 @@
 ### New state field
 
 `PruneMessagesState` in `lib/state/types.ts`:
+
 ```ts
-markedForCleanup: Set<number>  // blockIds marked by model for batch cleanup
+markedForCleanup: Set<number> // blockIds marked by model for batch cleanup
 ```
 
 Persisted in session state JSON. Loaded/saved via existing persistence mechanism.
@@ -17,11 +18,12 @@ Registered in `index.ts` alongside compress/decompress.
 
 **Input**: `blockId: string` (e.g., "b0", "b3")
 **Behavior**:
+
 1. Resolve blockId → numeric ID
 2. Validate block exists and is active
 3. Add to `state.prune.messages.markedForCleanup`
 4. Return confirmation: "Block bN marked for cleanup. It will be merge-compressed when context pressure rises. No immediate effect on context or cache."
-**Zero cache impact**: doesn't modify any messages or block summaries.
+   **Zero cache impact**: doesn't modify any messages or block summaries.
 
 ### New tool: unmark_block (optional)
 
@@ -37,17 +39,20 @@ runBatchCleanup(state, config, logger, messages, currentUsagePercent)
 ```
 
 **Tier 1 — Low threshold (configurable, default 60%)**:
+
 - Action: inject nudge text into the last user message
 - Nudge: "⚠️ N blocks marked for cleanup (b0, b1, ...). Consider merge-compressing them to free ~M tokens. Use compress with a range covering these blocks."
 - No automatic action — just reminds the model
 
 **Tier 2 — High threshold (configurable, default 75%)**:
+
 - Action: automatic merge-compress of all marked blocks
 - Concatenate marked block summaries → create one new block with merged summary
 - Deactivate old marked blocks
 - One cache break, maximum cleanup
 
 **Tier 3 — Near-100 (configurable, default 90%)**:
+
 - Action: force merge-compress ALL old-gen blocks (marked or not)
 - Last resort before GC at 100%
 - Ensures batch cleanup catches everything before GC's blind truncation
@@ -60,7 +65,7 @@ New function in `lib/gc/truncate.ts` (or new file `lib/gc/merge.ts`):
 function mergeMarkedBlocks(
     state: SessionState,
     markedIds: number[],
-    maxMergedLength: number  // e.g., maxOldGenSummaryLength or configurable
+    maxMergedLength: number, // e.g., maxOldGenSummaryLength or configurable
 ): { mergedCount: number; savedTokens: number }
 ```
 
@@ -129,28 +134,28 @@ Message transform hook runs:
 
 ## Cache impact analysis
 
-| Scenario | Cache breaks | When |
-|----------|-------------|------|
-| mark_block (any time) | 0 | Never modifies context |
-| Tier 1 nudge (60%) | 0 | Only appends to last message (cache already breaking there) |
-| Tier 2 auto merge (75%) | 1 | One break at merged block position |
-| Tier 3 force (90%) | 1 | One break at merged block position |
-| GC at 100% (existing) | 1 | One break at truncation point |
+| Scenario                | Cache breaks | When                                                        |
+| ----------------------- | ------------ | ----------------------------------------------------------- |
+| mark_block (any time)   | 0            | Never modifies context                                      |
+| Tier 1 nudge (60%)      | 0            | Only appends to last message (cache already breaking there) |
+| Tier 2 auto merge (75%) | 1            | One break at merged block position                          |
+| Tier 3 force (90%)      | 1            | One break at merged block position                          |
+| GC at 100% (existing)   | 1            | One break at truncation point                               |
 
 Total: maximum 1 cache break per pressure cycle (vs multiple if discarding individually).
 
 ## Files to modify
 
-| File | Change |
-|------|--------|
-| `lib/state/types.ts` | Add `markedForCleanup: Set<number>` to PruneMessagesState |
-| `lib/gc/truncate.ts` | Add `mergeMarkedBlocks()` + `runBatchCleanup()` functions |
-| `lib/hooks.ts` | Call `runBatchCleanup()` in message transform pipeline |
-| `index.ts` | Register `mark_block` (and optionally `unmark_block`) tools |
-| `lib/config.ts` | Add `batchCleanup` config with 3 thresholds |
-| `lib/config-validation.ts` | Validate new config fields |
-| `lib/prompts/system.ts` | Document mark_block tool |
-| `lib/state/persistence.ts` | Ensure markedForCleanup set is serialized/deserialized |
+| File                       | Change                                                      |
+| -------------------------- | ----------------------------------------------------------- |
+| `lib/state/types.ts`       | Add `markedForCleanup: Set<number>` to PruneMessagesState   |
+| `lib/gc/truncate.ts`       | Add `mergeMarkedBlocks()` + `runBatchCleanup()` functions   |
+| `lib/hooks.ts`             | Call `runBatchCleanup()` in message transform pipeline      |
+| `index.ts`                 | Register `mark_block` (and optionally `unmark_block`) tools |
+| `lib/config.ts`            | Add `batchCleanup` config with 3 thresholds                 |
+| `lib/config-validation.ts` | Validate new config fields                                  |
+| `lib/prompts/system.ts`    | Document mark_block tool                                    |
+| `lib/state/persistence.ts` | Ensure markedForCleanup set is serialized/deserialized      |
 
 ## Backward compatibility
 

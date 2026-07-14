@@ -88,7 +88,10 @@ function makeConfig(overrides: Partial<PluginConfig> = {}): PluginConfig {
 
 test("deduplicate does nothing when strategy is disabled", () => {
     const config = makeConfig({
-        strategies: { ...makeConfig().strategies, deduplication: { enabled: false, protectedTools: [] } },
+        strategies: {
+            ...makeConfig().strategies,
+            deduplication: { enabled: false, protectedTools: [] },
+        },
     })
     const state = makeState({
         toolIdList: ["t1", "t2"],

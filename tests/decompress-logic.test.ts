@@ -346,9 +346,7 @@ test("buildRestoredContentPreview returns empty string when no messages restored
 
 test("buildRestoredContentPreview returns preview with role and truncated content", () => {
     const ms = makeMessagesState({
-        byMessageId: new Map([
-            ["msg-a", { tokenCount: 50, allBlockIds: [1], activeBlockIds: [] }],
-        ]),
+        byMessageId: new Map([["msg-a", { tokenCount: 50, allBlockIds: [1], activeBlockIds: [] }]]),
     })
     const before = new Map([["msg-a", 50]])
     const messages: WithParts[] = [
@@ -362,9 +360,7 @@ test("buildRestoredContentPreview returns preview with role and truncated conten
 test("buildRestoredContentPreview truncates individual messages at ~200 chars", () => {
     const longText = "A".repeat(300)
     const ms = makeMessagesState({
-        byMessageId: new Map([
-            ["msg-a", { tokenCount: 50, allBlockIds: [1], activeBlockIds: [] }],
-        ]),
+        byMessageId: new Map([["msg-a", { tokenCount: 50, allBlockIds: [1], activeBlockIds: [] }]]),
     })
     const before = new Map([["msg-a", 50]])
     const messages: WithParts[] = [
@@ -401,14 +397,10 @@ test("buildRestoredContentPreview caps total output at approximately 2000 chars"
 
 test("buildRestoredContentPreview handles messages with no parts", () => {
     const ms = makeMessagesState({
-        byMessageId: new Map([
-            ["msg-a", { tokenCount: 50, allBlockIds: [1], activeBlockIds: [] }],
-        ]),
+        byMessageId: new Map([["msg-a", { tokenCount: 50, allBlockIds: [1], activeBlockIds: [] }]]),
     })
     const before = new Map([["msg-a", 50]])
-    const messages: WithParts[] = [
-        { info: { id: "msg-a", role: "user" } as any, parts: [] as any },
-    ]
+    const messages: WithParts[] = [{ info: { id: "msg-a", role: "user" } as any, parts: [] as any }]
     const result = buildRestoredContentPreview(messages, before, ms)
     assert.ok(result.includes("[user]"))
 })

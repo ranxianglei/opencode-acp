@@ -116,14 +116,25 @@ test("prune is a no-op when no compression blocks exist", () => {
     const original = [...messages]
     prune(state, logger, buildConfig(), messages)
     assert.equal(messages.length, original.length)
-    assert.deepEqual(messages.map((m) => m.info.id), ["u1", "a1"])
+    assert.deepEqual(
+        messages.map((m) => m.info.id),
+        ["u1", "a1"],
+    )
 })
 
 test("prune removes messages in active compression ranges", () => {
     const state = createSessionState()
     // Mark messages m2, m3 as pruned by block 1
-    state.prune.messages.byMessageId.set("m2", { tokenCount: 100, allBlockIds: [1], activeBlockIds: [1] })
-    state.prune.messages.byMessageId.set("m3", { tokenCount: 200, allBlockIds: [1], activeBlockIds: [1] })
+    state.prune.messages.byMessageId.set("m2", {
+        tokenCount: 100,
+        allBlockIds: [1],
+        activeBlockIds: [1],
+    })
+    state.prune.messages.byMessageId.set("m3", {
+        tokenCount: 200,
+        allBlockIds: [1],
+        activeBlockIds: [1],
+    })
     // Block 1 anchored at m1
     state.prune.messages.activeByAnchorMessageId.set("m1", 1)
     state.prune.messages.blocksById.set(1, {
@@ -160,16 +171,26 @@ test("prune removes messages in active compression ranges", () => {
     assert.ok(!ids.includes("m3"), "m3 should be pruned")
     assert.ok(ids.includes("m1"), "anchor m1 should survive")
     assert.ok(ids.includes("m4"), "m4 should survive")
-    const recapMsg = messages.find((m) =>
-        m.info.role === "assistant" &&
-        m.parts.some((p: any) => p.type === "tool" && p.tool === "acp_context_recap" && p.state?.output?.includes("Summary of m2-m3")),
+    const recapMsg = messages.find(
+        (m) =>
+            m.info.role === "assistant" &&
+            m.parts.some(
+                (p: any) =>
+                    p.type === "tool" &&
+                    p.tool === "acp_context_recap" &&
+                    p.state?.output?.includes("Summary of m2-m3"),
+            ),
     )
     assert.ok(recapMsg, "summary should be injected as acp_context_recap tool-result")
 })
 
 test("prune injects summary as tool-result regardless of next surviving message role", () => {
     const state = createSessionState()
-    state.prune.messages.byMessageId.set("m2", { tokenCount: 100, allBlockIds: [1], activeBlockIds: [1] })
+    state.prune.messages.byMessageId.set("m2", {
+        tokenCount: 100,
+        allBlockIds: [1],
+        activeBlockIds: [1],
+    })
     state.prune.messages.activeByAnchorMessageId.set("m1", 1)
     state.prune.messages.blocksById.set(1, {
         blockId: 1,
@@ -205,19 +226,32 @@ test("prune injects summary as tool-result regardless of next surviving message 
     const m1 = messages.find((m) => m.info.id === "m1")
     assert.ok(m1, "m1 (anchor) should survive")
     const m1Text = m1!.parts.map((p: any) => p.text ?? "").join("")
-    assert.ok(!m1Text.includes("Merged summary text"), "summary should NOT be merged into anchor m1")
+    assert.ok(
+        !m1Text.includes("Merged summary text"),
+        "summary should NOT be merged into anchor m1",
+    )
     assert.ok(m1Text.includes("first question"), "original m1 text should be preserved")
 
-    const recapMsg = messages.find((m) =>
-        m.info.role === "assistant" &&
-        m.parts.some((p: any) => p.type === "tool" && p.tool === "acp_context_recap" && p.state?.output?.includes("Merged summary text")),
+    const recapMsg = messages.find(
+        (m) =>
+            m.info.role === "assistant" &&
+            m.parts.some(
+                (p: any) =>
+                    p.type === "tool" &&
+                    p.tool === "acp_context_recap" &&
+                    p.state?.output?.includes("Merged summary text"),
+            ),
     )
     assert.ok(recapMsg, "summary should be injected as tool-result recap")
 })
 
 test("prune injects tool-result recap when anchor is assistant and no user follows", () => {
     const state = createSessionState()
-    state.prune.messages.byMessageId.set("m2", { tokenCount: 100, allBlockIds: [1], activeBlockIds: [1] })
+    state.prune.messages.byMessageId.set("m2", {
+        tokenCount: 100,
+        allBlockIds: [1],
+        activeBlockIds: [1],
+    })
     state.prune.messages.activeByAnchorMessageId.set("a1", 1)
     state.prune.messages.blocksById.set(1, {
         blockId: 1,
@@ -247,9 +281,15 @@ test("prune injects tool-result recap when anchor is assistant and no user follo
 
     prune(state, logger, buildConfig(), messages)
 
-    const recapMsg = messages.find((m) =>
-        m.info.role === "assistant" &&
-        m.parts.some((p: any) => p.type === "tool" && p.tool === "acp_context_recap" && p.state?.output?.includes("Standalone summary")),
+    const recapMsg = messages.find(
+        (m) =>
+            m.info.role === "assistant" &&
+            m.parts.some(
+                (p: any) =>
+                    p.type === "tool" &&
+                    p.tool === "acp_context_recap" &&
+                    p.state?.output?.includes("Standalone summary"),
+            ),
     )
     assert.ok(recapMsg, "summary should be injected as tool-result recap regardless of anchor role")
 })
@@ -257,7 +297,11 @@ test("prune injects tool-result recap when anchor is assistant and no user follo
 test("prune skips inactive compression blocks", () => {
     const state = createSessionState()
     // Block is inactive
-    state.prune.messages.byMessageId.set("m2", { tokenCount: 100, allBlockIds: [1], activeBlockIds: [] })
+    state.prune.messages.byMessageId.set("m2", {
+        tokenCount: 100,
+        allBlockIds: [1],
+        activeBlockIds: [],
+    })
     state.prune.messages.activeByAnchorMessageId.set("m1", 1)
     state.prune.messages.blocksById.set(1, {
         blockId: 1,
@@ -278,10 +322,7 @@ test("prune skips inactive compression blocks", () => {
         summary: "Should not appear",
     } as CompressionBlock)
 
-    const messages: WithParts[] = [
-        userMessage("m1", "q", 1),
-        assistantMessage("m2", 2),
-    ]
+    const messages: WithParts[] = [userMessage("m1", "q", 1), assistantMessage("m2", 2)]
 
     prune(state, logger, buildConfig(), messages)
 
@@ -297,7 +338,11 @@ test("prune skips inactive compression blocks", () => {
 
 test("prune strips stale mNNNN refs from summary content (Bug 28 fix)", () => {
     const state = createSessionState()
-    state.prune.messages.byMessageId.set("m2", { tokenCount: 100, allBlockIds: [1], activeBlockIds: [1] })
+    state.prune.messages.byMessageId.set("m2", {
+        tokenCount: 100,
+        allBlockIds: [1],
+        activeBlockIds: [1],
+    })
     state.prune.messages.activeByAnchorMessageId.set("m1", 1)
     state.prune.messages.blocksById.set(1, {
         blockId: 1,
@@ -338,26 +383,54 @@ test("prune strips stale mNNNN refs from summary content (Bug 28 fix)", () => {
 test("prune injects multiple tool-result recaps in a single pass", () => {
     const state = createSessionState()
     // Block 1 at anchor m1, compressing m2
-    state.prune.messages.byMessageId.set("m2", { tokenCount: 100, allBlockIds: [1], activeBlockIds: [1] })
+    state.prune.messages.byMessageId.set("m2", {
+        tokenCount: 100,
+        allBlockIds: [1],
+        activeBlockIds: [1],
+    })
     state.prune.messages.activeByAnchorMessageId.set("m1", 1)
     state.prune.messages.blocksById.set(1, {
-        blockId: 1, runId: 1, active: true, deactivatedByUser: false,
-        compressedTokens: 100, summaryTokens: 50, durationMs: 100,
-        generation: "young", survivedCount: 0,
-        directMessageIds: ["m2"], effectiveMessageIds: ["m2"],
-        directToolIds: [], effectiveToolIds: [],
-        anchorMessageId: "m1", topic: "topic A", summary: "Summary A",
+        blockId: 1,
+        runId: 1,
+        active: true,
+        deactivatedByUser: false,
+        compressedTokens: 100,
+        summaryTokens: 50,
+        durationMs: 100,
+        generation: "young",
+        survivedCount: 0,
+        directMessageIds: ["m2"],
+        effectiveMessageIds: ["m2"],
+        directToolIds: [],
+        effectiveToolIds: [],
+        anchorMessageId: "m1",
+        topic: "topic A",
+        summary: "Summary A",
     } as CompressionBlock)
     // Block 2 at anchor m4, compressing m5
-    state.prune.messages.byMessageId.set("m5", { tokenCount: 200, allBlockIds: [2], activeBlockIds: [2] })
+    state.prune.messages.byMessageId.set("m5", {
+        tokenCount: 200,
+        allBlockIds: [2],
+        activeBlockIds: [2],
+    })
     state.prune.messages.activeByAnchorMessageId.set("m4", 2)
     state.prune.messages.blocksById.set(2, {
-        blockId: 2, runId: 1, active: true, deactivatedByUser: false,
-        compressedTokens: 200, summaryTokens: 60, durationMs: 100,
-        generation: "young", survivedCount: 0,
-        directMessageIds: ["m5"], effectiveMessageIds: ["m5"],
-        directToolIds: [], effectiveToolIds: [],
-        anchorMessageId: "m4", topic: "topic B", summary: "Summary B",
+        blockId: 2,
+        runId: 1,
+        active: true,
+        deactivatedByUser: false,
+        compressedTokens: 200,
+        summaryTokens: 60,
+        durationMs: 100,
+        generation: "young",
+        survivedCount: 0,
+        directMessageIds: ["m5"],
+        effectiveMessageIds: ["m5"],
+        directToolIds: [],
+        effectiveToolIds: [],
+        anchorMessageId: "m4",
+        topic: "topic B",
+        summary: "Summary B",
     } as CompressionBlock)
 
     const messages: WithParts[] = [
@@ -378,11 +451,19 @@ test("prune injects multiple tool-result recaps in a single pass", () => {
 
     // Two separate recap tool-results should be injected
     const recapOutputs = messages
-        .flatMap((m) => m.parts.filter((p: any) => p.type === "tool" && p.tool === "acp_context_recap"))
+        .flatMap((m) =>
+            m.parts.filter((p: any) => p.type === "tool" && p.tool === "acp_context_recap"),
+        )
         .map((p: any) => p.state?.output ?? "")
     assert.equal(recapOutputs.length, 2, "should have exactly 2 recap tool-results")
-    assert.ok(recapOutputs.some((o) => o.includes("Summary A")), "should contain Summary A")
-    assert.ok(recapOutputs.some((o) => o.includes("Summary B")), "should contain Summary B")
+    assert.ok(
+        recapOutputs.some((o) => o.includes("Summary A")),
+        "should contain Summary A",
+    )
+    assert.ok(
+        recapOutputs.some((o) => o.includes("Summary B")),
+        "should contain Summary B",
+    )
 })
 
 // =====================================================================
@@ -402,10 +483,7 @@ test("prune preserves completed tool outputs (prefix cache fix)", () => {
     prune(state, logger, buildConfig(), messages)
 
     const part = messages[0]!.parts[0] as any
-    assert.equal(
-        part.state.output,
-        "long output that should be preserved",
-    )
+    assert.equal(part.state.output, "long output that should be preserved")
 })
 
 test("prune does not replace question/edit/write tool outputs", () => {
@@ -425,7 +503,11 @@ test("prune does not replace question/edit/write tool outputs", () => {
     prune(state, logger, buildConfig(), messages)
 
     const parts = messages[0]!.parts as any[]
-    assert.equal(parts[0]!.state.output, "question output", "question output should NOT be replaced")
+    assert.equal(
+        parts[0]!.state.output,
+        "question output",
+        "question output should NOT be replaced",
+    )
     assert.equal(parts[1]!.state.output, "edit output", "edit output should NOT be replaced")
     assert.equal(parts[2]!.state.output, "write output", "write output should NOT be replaced")
 })
@@ -435,9 +517,7 @@ test("prune does not replace tool outputs for tools not in prune set", () => {
     // call-1 is NOT in prune set
 
     const messages: WithParts[] = [
-        assistantMessage("a1", 1, [
-            toolPart("call-1", "bash", "should remain"),
-        ]),
+        assistantMessage("a1", 1, [toolPart("call-1", "bash", "should remain")]),
     ]
 
     prune(state, logger, buildConfig(), messages)
@@ -451,16 +531,18 @@ test("prune does not replace outputs for error-status tools", () => {
     state.prune.tools.set("call-err", 1)
 
     const messages: WithParts[] = [
-        assistantMessage("a1", 1, [
-            toolPart("call-err", "bash", "error output", "error"),
-        ]),
+        assistantMessage("a1", 1, [toolPart("call-err", "bash", "error output", "error")]),
     ]
 
     prune(state, logger, buildConfig(), messages)
 
     // Error status tools are handled by pruneToolErrors, not pruneToolOutputs
     const part = messages[0]!.parts[0] as any
-    assert.equal(part.state.output, "error output", "error tool output should NOT be replaced by pruneToolOutputs")
+    assert.equal(
+        part.state.output,
+        "error output",
+        "error tool output should NOT be replaced by pruneToolOutputs",
+    )
 })
 
 // =====================================================================
@@ -482,10 +564,7 @@ test("prune preserves question tool inputs (prefix cache fix)", () => {
     prune(state, logger, buildConfig(), messages)
 
     const part = messages[0]!.parts[0] as any
-    assert.equal(
-        part.state.input.questions,
-        "What color do you prefer?",
-    )
+    assert.equal(part.state.input.questions, "What color do you prefer?")
 })
 
 test("prune does not replace question input for non-question tools", () => {
@@ -503,7 +582,11 @@ test("prune does not replace question input for non-question tools", () => {
     prune(state, logger, buildConfig(), messages)
 
     const part = messages[0]!.parts[0] as any
-    assert.equal(part.state.input.command, "ls -la", "non-question tool input should NOT be replaced")
+    assert.equal(
+        part.state.input.command,
+        "ls -la",
+        "non-question tool input should NOT be replaced",
+    )
 })
 
 // =====================================================================
@@ -547,7 +630,11 @@ test("prune does not replace inputs for completed tools in error pruning", () =>
     prune(state, logger, buildConfig(), messages)
 
     const part = messages[0]!.parts[0] as any
-    assert.equal(part.state.input.command, "echo hello", "completed tool input should NOT be replaced by error pruning")
+    assert.equal(
+        part.state.input.command,
+        "echo hello",
+        "completed tool input should NOT be replaced by error pruning",
+    )
 })
 
 // =====================================================================
@@ -557,7 +644,11 @@ test("prune does not replace inputs for completed tools in error pruning", () =>
 test("prune handles mixed scenario: compressed range + tool output pruning", () => {
     const state = createSessionState()
     // Block 1 prunes m2
-    state.prune.messages.byMessageId.set("m2", { tokenCount: 100, allBlockIds: [1], activeBlockIds: [1] })
+    state.prune.messages.byMessageId.set("m2", {
+        tokenCount: 100,
+        allBlockIds: [1],
+        activeBlockIds: [1],
+    })
     state.prune.messages.activeByAnchorMessageId.set("m1", 1)
     state.prune.messages.blocksById.set(1, {
         blockId: 1,
@@ -608,7 +699,11 @@ test("prune handles mixed scenario: compressed range + tool output pruning", () 
 
 test("prune preserves message order for surviving messages", () => {
     const state = createSessionState()
-    state.prune.messages.byMessageId.set("m2", { tokenCount: 100, allBlockIds: [1], activeBlockIds: [1] })
+    state.prune.messages.byMessageId.set("m2", {
+        tokenCount: 100,
+        allBlockIds: [1],
+        activeBlockIds: [1],
+    })
     state.prune.messages.activeByAnchorMessageId.set("m1", 1)
     state.prune.messages.blocksById.set(1, {
         blockId: 1,
@@ -680,9 +775,7 @@ test("stripStepMarkers truncates long step-finish reason to 50 chars", () => {
     const state = createSessionState()
     const longReason = "x".repeat(155)
     const messages: WithParts[] = [
-        assistantMessage("a1", 1, [
-            stepFinishPart("a1", "a1-sf", longReason),
-        ]),
+        assistantMessage("a1", 1, [stepFinishPart("a1", "a1-sf", longReason)]),
     ]
 
     prune(state, logger, buildConfig(), messages)
@@ -696,9 +789,7 @@ test("stripStepMarkers truncates long step-finish reason to 50 chars", () => {
 test("stripStepMarkers preserves short step-finish reason unchanged", () => {
     const state = createSessionState()
     const messages: WithParts[] = [
-        assistantMessage("a1", 1, [
-            stepFinishPart("a1", "a1-sf", "short reason"),
-        ]),
+        assistantMessage("a1", 1, [stepFinishPart("a1", "a1-sf", "short reason")]),
     ]
 
     prune(state, logger, buildConfig(), messages)
@@ -720,7 +811,8 @@ test("stripStepMarkers is idempotent: second run keeps parts reference stable", 
 
     prune(state, logger, buildConfig(), messages)
     const partsRefAfterFirst = messages[0]!.parts
-    const reasonAfterFirst = (partsRefAfterFirst.find((p: any) => p.type === "step-finish") as any).reason
+    const reasonAfterFirst = (partsRefAfterFirst.find((p: any) => p.type === "step-finish") as any)
+        .reason
 
     // Second pass over already-stripped messages
     prune(state, logger, buildConfig(), messages)
@@ -731,7 +823,8 @@ test("stripStepMarkers is idempotent: second run keeps parts reference stable", 
         partsRefAfterFirst,
         "parts array reference must stay stable on idempotent re-run (prefix cache)",
     )
-    const reasonAfterSecond = (messages[0]!.parts.find((p: any) => p.type === "step-finish") as any).reason
+    const reasonAfterSecond = (messages[0]!.parts.find((p: any) => p.type === "step-finish") as any)
+        .reason
     assert.equal(reasonAfterSecond, reasonAfterFirst, "reason must be byte-identical on re-run")
 })
 

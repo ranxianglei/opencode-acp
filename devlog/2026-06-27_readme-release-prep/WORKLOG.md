@@ -17,17 +17,17 @@
 ### Key Files
 
 - `README.md` / `README.zh-CN.md`
-  - "Why ACP": 35 → 37 bug fixes; rewrote the DCP comparison table from 5 rows to 13, highlighting model-driven `decompress`, model-driven `mark_block`/`unmark_block` cleanup, pressure-aware GC, two compression modes, protected-content injection, cache-awareness, auto strategies, and 3-layer config.
-  - Added a new "Deferred Block Cleanup (mark_block)" subsection under "How It Works".
-  - Default Configuration: fixed `$schema` URL; added the full `gc` section with `batchCleanup` thresholds.
-  - Protected Tools: added `decompress`, `mark_block`, `unmark_block` to the default list; added `decompress` to `compress.protectedTools` defaults.
-  - Bug Fixes table: 35 → 37 total; added Bug 36 (compression summary role confusion) and Bug 37 (title-gen corruption).
+    - "Why ACP": 35 → 37 bug fixes; rewrote the DCP comparison table from 5 rows to 13, highlighting model-driven `decompress`, model-driven `mark_block`/`unmark_block` cleanup, pressure-aware GC, two compression modes, protected-content injection, cache-awareness, auto strategies, and 3-layer config.
+    - Added a new "Deferred Block Cleanup (mark_block)" subsection under "How It Works".
+    - Default Configuration: fixed `$schema` URL; added the full `gc` section with `batchCleanup` thresholds.
+    - Protected Tools: added `decompress`, `mark_block`, `unmark_block` to the default list; added `decompress` to `compress.protectedTools` defaults.
+    - Bug Fixes table: 35 → 37 total; added Bug 36 (compression summary role confusion) and Bug 37 (title-gen corruption).
 - `lib/hooks.ts`
-  - Removed the duplicate `import { getLastUserMessage } from "./messages/query"` (line 46). PR #13 and #16 each added this import at different positions; git auto-merge kept both, causing TS2300. Only the import is touched — the single remaining import + `appendToLastTextPart` import are unchanged.
+    - Removed the duplicate `import { getLastUserMessage } from "./messages/query"` (line 46). PR #13 and #16 each added this import at different positions; git auto-merge kept both, causing TS2300. Only the import is touched — the single remaining import + `appendToLastTextPart` import are unchanged.
 - `lib/config.ts`
-  - Default config `$schema` URL: `Opencode-DCP/opencode-dynamic-context-pruning` → `ranxianglei/opencode-acp` (so the URL written to users' config files points at the live schema).
+    - Default config `$schema` URL: `Opencode-DCP/opencode-dynamic-context-pruning` → `ranxianglei/opencode-acp` (so the URL written to users' config files points at the live schema).
 - `dcp.schema.json`
-  - `$id`: same URL correction for consistency with `config.ts` and the READMEs.
+    - `$id`: same URL correction for consistency with `config.ts` and the READMEs.
 
 ## 3. Design & Implementation Notes
 

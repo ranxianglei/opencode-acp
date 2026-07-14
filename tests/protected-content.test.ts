@@ -12,14 +12,26 @@ const SID = "ses-protected-test"
 
 function userMsg(id: string, text: string): WithParts {
     return {
-        info: { id, role: "user", sessionID: SID, agent: "a", time: { created: 1 } } as WithParts["info"],
+        info: {
+            id,
+            role: "user",
+            sessionID: SID,
+            agent: "a",
+            time: { created: 1 },
+        } as WithParts["info"],
         parts: [{ id: `${id}-p`, messageID: id, sessionID: SID, type: "text", text }],
     }
 }
 
 function assistantMsg(id: string): WithParts {
     return {
-        info: { id, role: "assistant", sessionID: SID, agent: "a", time: { created: 2 } } as WithParts["info"],
+        info: {
+            id,
+            role: "assistant",
+            sessionID: SID,
+            agent: "a",
+            time: { created: 2 },
+        } as WithParts["info"],
         parts: [],
     }
 }
@@ -111,7 +123,11 @@ test("appendProtectedUserMessages appends user message text when enabled", () =>
 
 test("appendProtectedUserMessages skips already-compressed messages", () => {
     const state = createSessionState(SID)
-    state.prune.messages.byMessageId.set("m1", { tokenCount: 100, allBlockIds: [1], activeBlockIds: [1] })
+    state.prune.messages.byMessageId.set("m1", {
+        tokenCount: 100,
+        allBlockIds: [1],
+        activeBlockIds: [1],
+    })
     const messages = [userMsg("m1", "should not appear")]
     const ctx = buildSearchContext(messages)
     const result = appendProtectedUserMessages("summary", buildSelection(["m1"]), ctx, state, true)
@@ -158,7 +174,11 @@ test("appendProtectedPromptInfo appends protected content when enabled", () => {
 
 test("appendProtectedPromptInfo skips already-compressed messages", () => {
     const state = createSessionState(SID)
-    state.prune.messages.byMessageId.set("m1", { tokenCount: 100, allBlockIds: [1], activeBlockIds: [1] })
+    state.prune.messages.byMessageId.set("m1", {
+        tokenCount: 100,
+        allBlockIds: [1],
+        activeBlockIds: [1],
+    })
     const messages = [userMsg("m1", "<protect>should not appear</protect>")]
     const ctx = buildSearchContext(messages)
     const result = appendProtectedPromptInfo("summary", buildSelection(["m1"]), ctx, state, true)

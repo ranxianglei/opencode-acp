@@ -16,16 +16,16 @@
 
 ### Commits
 
-| Commit | Description |
-|--------|-------------|
-| `d5f1540` | test: fix 10 failing tests for ACP rebrand and config changes |
-| `d2bc632` | docs: add AGENTS.md with architecture, dev standards, and test status |
-| `04105e2` | test: add TESTING.md + 83 Tier 1 unit tests (178 total, 0 failures) |
-| `7471a1b` | test: add 68 Tier 2 mock-data unit tests (246 total, 0 failures) |
-| `90b8c00` | test: add 77 functional tests for compress pipeline (322 total, 0 failures) |
-| `7268202` | test: add 21 E2E tests for full message-transform pipeline (343 total, 0 failures) |
+| Commit    | Description                                                                         |
+| --------- | ----------------------------------------------------------------------------------- |
+| `d5f1540` | test: fix 10 failing tests for ACP rebrand and config changes                       |
+| `d2bc632` | docs: add AGENTS.md with architecture, dev standards, and test status               |
+| `04105e2` | test: add TESTING.md + 83 Tier 1 unit tests (178 total, 0 failures)                 |
+| `7471a1b` | test: add 68 Tier 2 mock-data unit tests (246 total, 0 failures)                    |
+| `90b8c00` | test: add 77 functional tests for compress pipeline (322 total, 0 failures)         |
+| `7268202` | test: add 21 E2E tests for full message-transform pipeline (343 total, 0 failures)  |
 | `17aa4c1` | fix: resolve 4 critical test review issues + add mandatory test review to AGENTS.md |
-| `b4529f9` | fix: restore purgeErrors.turns positive-number validation lost during extraction |
+| `b4529f9` | fix: restore purgeErrors.turns positive-number validation lost during extraction    |
 
 ### Key Files
 

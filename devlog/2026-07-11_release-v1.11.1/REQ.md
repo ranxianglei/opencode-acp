@@ -18,22 +18,22 @@
 ## 2. Constraints & Non-Goals
 
 - **Constraints**:
-  - Must follow AGENTS.md Section 5.1.1 workflow (feature branch, devlog, PR)
-  - Branch naming: `YYYY-MM-DD_short-title`
-  - Devlog folder name must match branch name
-  - README changelog must be updated in both English and Chinese
+    - Must follow AGENTS.md Section 5.1.1 workflow (feature branch, devlog, PR)
+    - Branch naming: `YYYY-MM-DD_short-title`
+    - Devlog folder name must match branch name
+    - README changelog must be updated in both English and Chinese
 - **Non-Goals**:
-  - No code changes (only version bump + documentation)
-  - No npm republish (v1.11.1 already correct on registry)
+    - No code changes (only version bump + documentation)
+    - No npm republish (v1.11.1 already correct on registry)
 
 ## 3. Acceptance Criteria
 
 - **Correctness**:
-  - [x] `package.json` version is `1.11.1`
-  - [x] `devlog/2026-07-11_release-v1.11.1/REQ.md` exists
-  - [x] `devlog/2026-07-11_release-v1.11.1/WORKLOG.md` exists
-  - [x] README.md has v1.11.1 changelog entry
-  - [x] README.zh-CN.md has v1.11.1 changelog entry
-  - [x] Branch name follows `YYYY-MM-DD_short-title` convention
+    - [x] `package.json` version is `1.11.1`
+    - [x] `devlog/2026-07-11_release-v1.11.1/REQ.md` exists
+    - [x] `devlog/2026-07-11_release-v1.11.1/WORKLOG.md` exists
+    - [x] README.md has v1.11.1 changelog entry
+    - [x] README.zh-CN.md has v1.11.1 changelog entry
+    - [x] Branch name follows `YYYY-MM-DD_short-title` convention
 - **Regression**:
-  - [x] No code changes, no tests affected
+    - [x] No code changes, no tests affected

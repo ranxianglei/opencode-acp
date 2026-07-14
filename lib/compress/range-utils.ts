@@ -204,4 +204,3 @@ export function appendMissingBlockSummaries(
         consumedBlockIds: [...consumedBlockIds],
     }
 }
-

@@ -2,20 +2,20 @@
 
 ## Iteration
 
-| Step | Status | Notes |
-|------|--------|-------|
-| Branch `2026-07-07_empty-suffix-backstop` cut from `master` (`d08ae01`) | ✅ | |
-| Devlog entry created | ✅ | REQ.md + DESIGN.md + WORKLOG.md |
-| Primary fix in `inject.ts` | ⏳ | splice empty suffix at end of `injectCompressNudges` |
-| Backstop utility in `utils.ts` | ⏳ | `dropEmptyUserMessages` |
-| Barrel export in `index.ts` | ⏳ | export new symbol |
-| Pipeline wiring in `hooks.ts` | ⏳ | call backstop after `stripStaleMetadata` |
-| Tests | ⏳ | `tests/drop-empty-user-messages.test.ts` |
-| `npm run typecheck` | ⏳ | |
-| `npm run test` | ⏳ | 407 existing + new tests, 0 failures |
-| `npm run build` | ⏳ | |
-| Commit | ⏳ | atomic: code+test together, devlog separate |
-| Push + GitHub PR | ⏳ | |
+| Step                                                                    | Status | Notes                                                |
+| ----------------------------------------------------------------------- | ------ | ---------------------------------------------------- |
+| Branch `2026-07-07_empty-suffix-backstop` cut from `master` (`d08ae01`) | ✅     |                                                      |
+| Devlog entry created                                                    | ✅     | REQ.md + DESIGN.md + WORKLOG.md                      |
+| Primary fix in `inject.ts`                                              | ⏳     | splice empty suffix at end of `injectCompressNudges` |
+| Backstop utility in `utils.ts`                                          | ⏳     | `dropEmptyUserMessages`                              |
+| Barrel export in `index.ts`                                             | ⏳     | export new symbol                                    |
+| Pipeline wiring in `hooks.ts`                                           | ⏳     | call backstop after `stripStaleMetadata`             |
+| Tests                                                                   | ⏳     | `tests/drop-empty-user-messages.test.ts`             |
+| `npm run typecheck`                                                     | ⏳     |                                                      |
+| `npm run test`                                                          | ⏳     | 407 existing + new tests, 0 failures                 |
+| `npm run build`                                                         | ⏳     |                                                      |
+| Commit                                                                  | ⏳     | atomic: code+test together, devlog separate          |
+| Push + GitHub PR                                                        | ⏳     |                                                      |
 
 ## Key Files
 

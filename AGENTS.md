@@ -576,11 +576,11 @@ Two GitHub Actions workflows enforce AGENTS.md standards and automate releases:
 
 **`pr-checks.yml`** — runs on every PR to master:
 
-| Check | What it validates | Script |
-|-------|------------------|--------|
-| Branch name | Matches `YYYY-MM-DD_short-title` (regex: `^\d{4}-\d{2}-\d{2}_[a-z0-9.-]+$`) | `scripts/ci/check-pr.sh` |
-| Devlog | `devlog/{branch-name}/REQ.md` and `WORKLOG.md` exist | same |
-| Changelog | If `package.json` version changed, `README.md` and `README.zh-CN.md` must be modified and contain `### v{VERSION}` | same |
+| Check       | What it validates                                                                                                  | Script                   |
+| ----------- | ------------------------------------------------------------------------------------------------------------------ | ------------------------ |
+| Branch name | Matches `YYYY-MM-DD_short-title` (regex: `^\d{4}-\d{2}-\d{2}_[a-z0-9.-]+$`)                                        | `scripts/ci/check-pr.sh` |
+| Devlog      | `devlog/{branch-name}/REQ.md` and `WORKLOG.md` exist                                                               | same                     |
+| Changelog   | If `package.json` version changed, `README.md` and `README.zh-CN.md` must be modified and contain `### v{VERSION}` | same                     |
 
 **`release.yml`** — triggers on push to master (PR merge):
 

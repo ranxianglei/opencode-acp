@@ -27,11 +27,7 @@ export function createPruneTool(ctx: ToolContext): ReturnType<typeof tool> {
         },
         async execute(args, toolCtx) {
             const keepLatest = args.keepLatest ?? 3
-            const { rawMessages } = await prepareSession(
-                ctx,
-                toolCtx,
-                `Prune: ${args.toolType}`,
-            )
+            const { rawMessages } = await prepareSession(ctx, toolCtx, `Prune: ${args.toolType}`)
 
             const matchingCalls: Array<{ callId: string; index: number; tokens: number }> = []
             for (let i = 0; i < rawMessages.length; i++) {
@@ -65,13 +61,7 @@ export function createPruneTool(ctx: ToolContext): ReturnType<typeof tool> {
                 totalTokens += item.tokens
             }
 
-            await finalizeSession(
-                ctx,
-                toolCtx,
-                rawMessages,
-                [],
-                `Prune ${args.toolType}`,
-            )
+            await finalizeSession(ctx, toolCtx, rawMessages, [], `Prune ${args.toolType}`)
 
             return `Pruned ${toPrune.length} ${args.toolType} calls (~${totalTokens} tokens). Kept latest ${keepLatest}. Outputs will be stripped on next context refresh.\nIMPORTANT: This was an automatic context pruning. You MUST continue your previous task exactly where you left off. Do NOT ask the user what to do next.`
         },

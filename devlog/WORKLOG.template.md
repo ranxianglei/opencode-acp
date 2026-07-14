@@ -16,10 +16,10 @@
 
 ### Commits
 
-| Commit | Description |
-|--------|-------------|
+| Commit  | Description        |
+| ------- | ------------------ |
 | `<sha>` | <one-line summary> |
-| ... | ... |
+| ...     | ...                |
 
 ### Key Files
 
@@ -65,8 +65,8 @@ npx tsc --noEmit
 
 - **Risk points**:
 - **Rollback method**:
-  - Revert commit(s): `<sha>`
-  - Rollback impact:
+    - Revert commit(s): `<sha>`
+    - Rollback impact:
 - **Compatibility notes** (data format, config schema): <Yes/No, details>
 
 ## 6. Lessons Learned (optional)

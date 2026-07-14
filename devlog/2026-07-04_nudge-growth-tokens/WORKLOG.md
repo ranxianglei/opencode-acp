@@ -16,23 +16,23 @@
 
 ### Commits
 
-| Commit | Description |
-|--------|-------------|
-| `91d82c7` | feat: nudgeGrowthTokens — token-based Tips gating (default 6K) |
-| `2984326` | refactor: extract computeShouldNudge for testability + review fixes |
-| `e5c8b24` | feat(notify): show context before→after level in compress header |
-| `0633049` | fix(notify): drop context limit/percentage from header to avoid model anchoring |
-| `2208f6d` | feat(nudge): adaptive nudgeGrowthTokens — 5% of context limit, clamped [6K, 50K] |
-| `ebbd859` | fix(inject): gate injectContextUsage by shouldNudge — stop every-message spam |
+| Commit    | Description                                                                                     |
+| --------- | ----------------------------------------------------------------------------------------------- |
+| `91d82c7` | feat: nudgeGrowthTokens — token-based Tips gating (default 6K)                                  |
+| `2984326` | refactor: extract computeShouldNudge for testability + review fixes                             |
+| `e5c8b24` | feat(notify): show context before→after level in compress header                                |
+| `0633049` | fix(notify): drop context limit/percentage from header to avoid model anchoring                 |
+| `2208f6d` | feat(nudge): adaptive nudgeGrowthTokens — 5% of context limit, clamped [6K, 50K]                |
+| `ebbd859` | fix(inject): gate injectContextUsage by shouldNudge — stop every-message spam                   |
 | `31ea7c6` | fix(inject): gate ALL suffix content behind shouldNudge — zero compression noise between nudges |
-| `efb0a65` | feat: add acp_status tool + simplify suffix to compact summary |
-| `24bbb1f` | feat: gate system prompt behind nudgeGrowthTokens frequency |
-| `e9fcd20` | fix: nudgeGrowthTokens dead code + duplicate context usage injection |
-| `1d6fbe5` | fix: compress resetting lastNudgeTokens to 0 bypassed growth gate |
-| `8eb0c49` | test: add integration tests for post-compress nudge state transitions |
-| `a3e5410` | feat: add scripts/dev-deploy.sh — one-command build + deploy |
-| `820001c` | fix: remove schema default 6000 + dedup formatAge |
-| `5712103` | fix: review suggestions — sentinel semantics, idWidth, nullglob, acp_status tests |
+| `efb0a65` | feat: add acp_status tool + simplify suffix to compact summary                                  |
+| `24bbb1f` | feat: gate system prompt behind nudgeGrowthTokens frequency                                     |
+| `e9fcd20` | fix: nudgeGrowthTokens dead code + duplicate context usage injection                            |
+| `1d6fbe5` | fix: compress resetting lastNudgeTokens to 0 bypassed growth gate                               |
+| `8eb0c49` | test: add integration tests for post-compress nudge state transitions                           |
+| `a3e5410` | feat: add scripts/dev-deploy.sh — one-command build + deploy                                    |
+| `820001c` | fix: remove schema default 6000 + dedup formatAge                                               |
+| `5712103` | fix: review suggestions — sentinel semantics, idWidth, nullglob, acp_status tests               |
 
 ### Key Files
 

@@ -13,31 +13,31 @@
 ## 2. Goals & Non-Goals
 
 - **Goals**:
-  - Expose `decompress` as a model-accessible tool
-  - Reuse existing decompress logic from `lib/commands/decompress.ts`
-  - Return restored content inline so the model can reason immediately
-  - Update system prompt with decompress usage guidance via conditional extension
-  - Ensure model is aware of context budget before decompressing
-  - Handle GC interaction after context inflation from decompress
-  - Maintain backward compatibility with `/acp decompress` command
+    - Expose `decompress` as a model-accessible tool
+    - Reuse existing decompress logic from `lib/commands/decompress.ts`
+    - Return restored content inline so the model can reason immediately
+    - Update system prompt with decompress usage guidance via conditional extension
+    - Ensure model is aware of context budget before decompressing
+    - Handle GC interaction after context inflation from decompress
+    - Maintain backward compatibility with `/acp decompress` command
 - **Non-Goals**:
-  - Exposing `recompress` to the model (different risk profile, can be a follow-up)
-  - Changing the `/acp decompress` command behavior
-  - Adding new config options (use existing `compress.permission` to control both tools)
-  - Modifying the GC system core — only adding awareness/documentation
+    - Exposing `recompress` to the model (different risk profile, can be a follow-up)
+    - Changing the `/acp decompress` command behavior
+    - Adding new config options (use existing `compress.permission` to control both tools)
+    - Modifying the GC system core — only adding awareness/documentation
 
 ## 3. Current Architecture
 
 - **How it works today**:
-  - `compress` tool: Registered in `index.ts` (L81-88), created by `createCompressRangeTool()` or `createCompressMessageTool()` in `lib/compress/`
-  - `/acp decompress` command: `handleDecompressCommand()` in `lib/commands/decompress.ts` — sets `block.active=false`, `block.deactivatedByUser=true`, syncs, persists
-  - Tool registration pattern: `tool({ description, args, execute })` from `@opencode-ai/plugin`
-  - System prompt: `lib/prompts/system.ts` — mentions only `compress`
-  - Pipeline: `prepareSession()`/`finalizeSession()` in `lib/compress/pipeline.ts` — compression-specific (dedup/purge, manual mode guard, compress notification)
+    - `compress` tool: Registered in `index.ts` (L81-88), created by `createCompressRangeTool()` or `createCompressMessageTool()` in `lib/compress/`
+    - `/acp decompress` command: `handleDecompressCommand()` in `lib/commands/decompress.ts` — sets `block.active=false`, `block.deactivatedByUser=true`, syncs, persists
+    - Tool registration pattern: `tool({ description, args, execute })` from `@opencode-ai/plugin`
+    - System prompt: `lib/prompts/system.ts` — mentions only `compress`
+    - Pipeline: `prepareSession()`/`finalizeSession()` in `lib/compress/pipeline.ts` — compression-specific (dedup/purge, manual mode guard, compress notification)
 
 - **Pain points**:
-  - Model cannot recover compressed content autonomously
-  - User intervention required for every decompress operation
+    - Model cannot recover compressed content autonomously
+    - User intervention required for every decompress operation
 
 ## 4. Proposed Architecture
 
@@ -96,6 +96,7 @@ RESTORED CONTENT (condensed):
 #### 4.2 Decompress-specific prepare/finalize (critical — Review #1+ #2 C1)
 
 **Do NOT reuse `prepareSession()`/`finalizeSession()` from `pipeline.ts`.** These are compression-specific:
+
 - `prepareSession()` runs dedup/purge strategies and has a compress-specific manual mode guard message
 - `finalizeSession()` transitions manual mode state and calls `sendCompressNotification()`
 
@@ -110,7 +111,7 @@ async function prepareDecompressSession(
 ): Promise<{ rawMessages: WithParts[] }> {
     // Permission check (reuse compress.permission)
     await toolCtx.ask({
-        permission: "compress",  // shared permission
+        permission: "compress", // shared permission
         patterns: ["*"],
         always: ["*"],
         metadata: {},
@@ -121,8 +122,12 @@ async function prepareDecompressSession(
     const rawMessages = await fetchSessionMessages(ctx.client, toolCtx.sessionID)
 
     await ensureSessionInitialized(
-        ctx.client, ctx.state, toolCtx.sessionID,
-        ctx.logger, rawMessages, ctx.config.manualMode.enabled,
+        ctx.client,
+        ctx.state,
+        toolCtx.sessionID,
+        ctx.logger,
+        rawMessages,
+        ctx.config.manualMode.enabled,
     )
 
     assignMessageRefs(ctx.state, rawMessages)
@@ -132,10 +137,7 @@ async function prepareDecompressSession(
     return { rawMessages }
 }
 
-async function finalizeDecompressSession(
-    ctx: ToolContext,
-    toolCtx: RunContext,
-): Promise<void> {
+async function finalizeDecompressSession(ctx: ToolContext, toolCtx: RunContext): Promise<void> {
     await saveSessionState(ctx.state, ctx.logger)
     // NOTE: No manual mode state transition
     // NOTE: No compress notification — decompress uses tool return value instead
@@ -146,14 +148,14 @@ async function finalizeDecompressSession(
 
 Extract reusable functions from `lib/commands/decompress.ts` into a shared module `lib/compress/decompress-logic.ts`:
 
-| Function | Source | Used By |
-|----------|--------|---------|
-| `parseBlockIdArg()` | `decompress.ts` L24-37 | Tool + Command |
-| `findActiveParentBlockId()` | `decompress.ts` L39-70 | Tool + Command |
-| `findActiveAncestorBlockId()` | `decompress.ts` L72-84 | Tool + Command |
-| `snapshotActiveMessages()` | `decompress.ts` L86-94 | Tool + Command |
+| Function                        | Source                     | Used By        |
+| ------------------------------- | -------------------------- | -------------- |
+| `parseBlockIdArg()`             | `decompress.ts` L24-37     | Tool + Command |
+| `findActiveParentBlockId()`     | `decompress.ts` L39-70     | Tool + Command |
+| `findActiveAncestorBlockId()`   | `decompress.ts` L72-84     | Tool + Command |
+| `snapshotActiveMessages()`      | `decompress.ts` L86-94     | Tool + Command |
 | `deactivateCompressionTarget()` | Inline in command L232-245 | Tool + Command |
-| `computeRestoredMessages()` | Inline in command L249-258 | Tool + Command |
+| `computeRestoredMessages()`     | Inline in command L249-258 | Tool + Command |
 
 The command and tool both call the same logic functions. The command adds UI formatting (available blocks listing, usage hints), the tool adds permission checks, inline content preview, and model-oriented feedback.
 
@@ -185,11 +187,13 @@ if (config.compress.permission !== "deny" && !config.experimental.allowSubAgents
 **Use a conditional extension in `lib/prompts/extensions/system.ts`**, not base prompt modification (both reviewers).
 
 Modify `lib/prompts/system.ts` base prompt:
+
 ```
 The tools you have for context management are `compress` and `decompress`.
 ```
 
 Add new `DECOMPRESS_SYSTEM_EXTENSION` in `lib/prompts/extensions/system.ts`:
+
 ```
 THE PHILOSOPHY OF DECOMPRESS
 
@@ -248,7 +252,7 @@ const DEFAULT_PROTECTED_TOOLS = [
     "todowrite",
     "todoread",
     "compress",
-    "decompress",   // NEW
+    "decompress", // NEW
     "batch",
     "plan_enter",
     "plan_exit",
@@ -258,11 +262,13 @@ const DEFAULT_PROTECTED_TOOLS = [
 ```
 
 Also add to `COMPRESS_DEFAULT_PROTECTED_TOOLS`:
+
 ```typescript
 const COMPRESS_DEFAULT_PROTECTED_TOOLS = ["task", "skill", "todowrite", "todoread", "decompress"]
 ```
 
 And to `commands.protectedTools` in the default config:
+
 ```typescript
 commands: {
     protectedTools: ["task", "skill", "todowrite", "todoread", "compress", "decompress", "batch", "plan_enter", "plan_exit", "write", "edit"],
@@ -270,6 +276,7 @@ commands: {
 ```
 
 And to `compress.protectedTools`:
+
 ```typescript
 compress: {
     protectedTools: ["task", "skill", "todowrite", "todoread", "decompress"],
@@ -325,23 +332,24 @@ createDecompressTool.execute()
 
 ## 5. Design Decisions & Rationale
 
-| Decision | Options Considered | Chosen | Why |
-|----------|--------------------|--------|-----|
-| Tool parameter | A) Single `blockId` B) Array of block IDs C) Range-like start/end | A) Single `blockId` | Decompress is targeted (one block at a time). Array adds complexity without real benefit. Range doesn't make sense for decompress. |
-| Shared logic location | A) Extract to `decompress-logic.ts` B) Import from command C) Duplicate | A) Extract to shared module | Clean separation, testable, both command and tool use identical logic |
-| Permission model | A) Share `compress.permission` B) New `decompress.permission` config C) Always allow | A) Share existing permission | Compress and decompress are paired operations. If compress is denied, decompress is meaningless. Simpler config. |
-| Prepare/finalize | A) Reuse pipeline.ts B) Decompress-specific | B) Decompress-specific | pipeline.ts is compression-specific (dedup/purge, manual mode guard, compress notification). Reusing would inject wrong behavior. |
-| System prompt | A) Modify base system.ts B) Conditional extension in system.ts C) Extension in tool.ts | B) Conditional extension | Keeps base prompt minimal. Extension is appended only when decompress is enabled. Users can override via prompt store. |
-| Tool description | A) Self-contained in tool definition B) Extension pattern from tool.ts | A) Self-contained | Decompress is simpler than compress (no format schema). Self-contained description is clearer and doesn't need the editable/prompt-store pattern. |
-| Return content | A) Summary only B) Inline restored content | B) Inline restored content | Model won't see restored messages until next turn — "blind decompress" wastes a turn. Condensed preview (~2000 chars) gives immediate reasoning ability. |
-| `deactivatedByUser` semantic | A) Same as command B) New flag for model-initiated | A) Same flag | Model-decompressed blocks should be recompressible via `/acp recompress`. Using the same flag ensures consistent behavior. |
-| GC interaction | A) Suppress GC post-decompress B) Pre-decompress warning only C) Document risk only | B) Pre-decompress context check + document risk | Suppressing GC adds complexity and risk. Instead, the tool includes context usage in return value so the model can self-regulate. GC may deactivate other blocks after inflation — this is documented in the tool description. |
+| Decision                     | Options Considered                                                                     | Chosen                                          | Why                                                                                                                                                                                                                            |
+| ---------------------------- | -------------------------------------------------------------------------------------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Tool parameter               | A) Single `blockId` B) Array of block IDs C) Range-like start/end                      | A) Single `blockId`                             | Decompress is targeted (one block at a time). Array adds complexity without real benefit. Range doesn't make sense for decompress.                                                                                             |
+| Shared logic location        | A) Extract to `decompress-logic.ts` B) Import from command C) Duplicate                | A) Extract to shared module                     | Clean separation, testable, both command and tool use identical logic                                                                                                                                                          |
+| Permission model             | A) Share `compress.permission` B) New `decompress.permission` config C) Always allow   | A) Share existing permission                    | Compress and decompress are paired operations. If compress is denied, decompress is meaningless. Simpler config.                                                                                                               |
+| Prepare/finalize             | A) Reuse pipeline.ts B) Decompress-specific                                            | B) Decompress-specific                          | pipeline.ts is compression-specific (dedup/purge, manual mode guard, compress notification). Reusing would inject wrong behavior.                                                                                              |
+| System prompt                | A) Modify base system.ts B) Conditional extension in system.ts C) Extension in tool.ts | B) Conditional extension                        | Keeps base prompt minimal. Extension is appended only when decompress is enabled. Users can override via prompt store.                                                                                                         |
+| Tool description             | A) Self-contained in tool definition B) Extension pattern from tool.ts                 | A) Self-contained                               | Decompress is simpler than compress (no format schema). Self-contained description is clearer and doesn't need the editable/prompt-store pattern.                                                                              |
+| Return content               | A) Summary only B) Inline restored content                                             | B) Inline restored content                      | Model won't see restored messages until next turn — "blind decompress" wastes a turn. Condensed preview (~2000 chars) gives immediate reasoning ability.                                                                       |
+| `deactivatedByUser` semantic | A) Same as command B) New flag for model-initiated                                     | A) Same flag                                    | Model-decompressed blocks should be recompressible via `/acp recompress`. Using the same flag ensures consistent behavior.                                                                                                     |
+| GC interaction               | A) Suppress GC post-decompress B) Pre-decompress warning only C) Document risk only    | B) Pre-decompress context check + document risk | Suppressing GC adds complexity and risk. Instead, the tool includes context usage in return value so the model can self-regulate. GC may deactivate other blocks after inflation — this is documented in the tool description. |
 
 ## 6. GC Interaction Analysis
 
 **Problem**: Decompress inflates context by restoring original messages. On the next message-transform cycle, GC (`runMajorGC` in `hooks.ts`) may see elevated usage and aggressively deactivate other blocks or truncate old-gen summaries.
 
 **Mitigations**:
+
 1. **Tool returns context usage before/after** — model sees the impact and can decide to recompress
 2. **Tool description warns about high context** — model should avoid decompressing when usage is already high
 3. **Reactivated nested blocks retain stale `survivedCount`/`generation`** — GC may truncate them sooner than expected. This is acceptable because: (a) the model sees restored content inline and can act on it immediately, (b) if GC truncates, the model still had one turn with the information
@@ -354,6 +362,7 @@ createDecompressTool.execute()
 **Current behavior**: `deactivatedByUser=true` prevents blocks from being reactivated by `syncCompressionBlocks()` — they can only be restored via explicit decompress/recompress.
 
 **Model decompress interaction**: When the model calls decompress, `deactivatedByUser=true` is set on the target block and its consumed inner blocks. This means:
+
 - `/acp recompress` CAN restore these blocks (it explicitly re-runs compression on deactivated blocks)
 - `syncCompressionBlocks()` will NOT reactivate them automatically
 - This is the desired behavior — model-decompressed blocks should only be restored via explicit action
@@ -361,11 +370,11 @@ createDecompressTool.execute()
 ## 8. Impact Analysis
 
 - **Backward compatibility**:
-  - ✅ No changes to persisted state format
-  - ✅ `/acp decompress` command unchanged
-  - ✅ Config schema unchanged (reuses `compress.permission`)
-  - ⚠️ System prompt text changes — "ONLY tool" → "tools... are" — users with custom prompt overrides via prompt store won't see the updated text (acceptable, same pattern as compress)
-  - ⚠️ Default `protectedTools` arrays gain `decompress` — existing configs that override this array won't include it (acceptable, same pattern as existing tools)
+    - ✅ No changes to persisted state format
+    - ✅ `/acp decompress` command unchanged
+    - ✅ Config schema unchanged (reuses `compress.permission`)
+    - ⚠️ System prompt text changes — "ONLY tool" → "tools... are" — users with custom prompt overrides via prompt store won't see the updated text (acceptable, same pattern as compress)
+    - ⚠️ Default `protectedTools` arrays gain `decompress` — existing configs that override this array won't include it (acceptable, same pattern as existing tools)
 - **Performance**: Negligible — decompress is synchronous state mutation, same as compress. Inline content preview adds ~2000 chars of string processing.
 - **Security**: No new concerns — same permission gate as compress
 - **Dependencies**: No new packages required
@@ -373,15 +382,15 @@ createDecompressTool.execute()
 ## 9. Migration Plan
 
 - **Steps**:
-  1. Create `lib/compress/decompress-logic.ts` with extracted shared functions
-  2. Refactor `lib/commands/decompress.ts` to use shared functions
-  3. Create `lib/compress/decompress.ts` tool with decompress-specific prepare/finalize + inline content preview
-  4. Register in `index.ts` (tool + primary_tools)
-  5. Update `lib/prompts/system.ts` base prompt text
-  6. Add `DECOMPRESS_SYSTEM_EXTENSION` in `lib/prompts/extensions/system.ts`
-  7. Update `DEFAULT_PROTECTED_TOOLS` + `COMPRESS_DEFAULT_PROTECTED_TOOLS` in `lib/config.ts`
-  8. Update default config `commands.protectedTools` and `compress.protectedTools`
-  9. Add tests
+    1. Create `lib/compress/decompress-logic.ts` with extracted shared functions
+    2. Refactor `lib/commands/decompress.ts` to use shared functions
+    3. Create `lib/compress/decompress.ts` tool with decompress-specific prepare/finalize + inline content preview
+    4. Register in `index.ts` (tool + primary_tools)
+    5. Update `lib/prompts/system.ts` base prompt text
+    6. Add `DECOMPRESS_SYSTEM_EXTENSION` in `lib/prompts/extensions/system.ts`
+    7. Update `DEFAULT_PROTECTED_TOOLS` + `COMPRESS_DEFAULT_PROTECTED_TOOLS` in `lib/config.ts`
+    8. Update default config `commands.protectedTools` and `compress.protectedTools`
+    9. Add tests
 - **Feature flags / gradual rollout**: Uses existing `compress.permission` — setting it to `"deny"` disables both compress and decompress
 
 ## 10. Open Questions
@@ -394,23 +403,23 @@ createDecompressTool.execute()
 
 ## 11. Files Changed
 
-| File | Change Type | Description |
-|------|-------------|-------------|
-| `lib/compress/decompress-logic.ts` | **NEW** | Shared decompress logic extracted from command |
-| `lib/compress/decompress.ts` | **NEW** | Decompress tool implementation with inline content preview |
-| `lib/compress/index.ts` | MODIFY | Export new module |
-| `lib/commands/decompress.ts` | MODIFY | Refactor to use shared logic from decompress-logic.ts |
-| `index.ts` | MODIFY | Register decompress tool + primary_tools |
-| `lib/prompts/system.ts` | MODIFY | Update base prompt: "ONLY tool" → "tools... are" |
-| `lib/prompts/extensions/system.ts` | MODIFY | Add DECOMPRESS_SYSTEM_EXTENSION |
-| `lib/config.ts` | MODIFY | Add `decompress` to DEFAULT_PROTECTED_TOOLS, COMPRESS_DEFAULT_PROTECTED_TOOLS, and default config protectedTools |
-| `tests/decompress-tool.test.ts` | **NEW** | Tests for decompress tool |
+| File                               | Change Type | Description                                                                                                      |
+| ---------------------------------- | ----------- | ---------------------------------------------------------------------------------------------------------------- |
+| `lib/compress/decompress-logic.ts` | **NEW**     | Shared decompress logic extracted from command                                                                   |
+| `lib/compress/decompress.ts`       | **NEW**     | Decompress tool implementation with inline content preview                                                       |
+| `lib/compress/index.ts`            | MODIFY      | Export new module                                                                                                |
+| `lib/commands/decompress.ts`       | MODIFY      | Refactor to use shared logic from decompress-logic.ts                                                            |
+| `index.ts`                         | MODIFY      | Register decompress tool + primary_tools                                                                         |
+| `lib/prompts/system.ts`            | MODIFY      | Update base prompt: "ONLY tool" → "tools... are"                                                                 |
+| `lib/prompts/extensions/system.ts` | MODIFY      | Add DECOMPRESS_SYSTEM_EXTENSION                                                                                  |
+| `lib/config.ts`                    | MODIFY      | Add `decompress` to DEFAULT_PROTECTED_TOOLS, COMPRESS_DEFAULT_PROTECTED_TOOLS, and default config protectedTools |
+| `tests/decompress-tool.test.ts`    | **NEW**     | Tests for decompress tool                                                                                        |
 
 ## 12. Review History
 
-| Date | Reviewer | Verdict | Key Issues |
-|------|----------|---------|------------|
-| 2026-06-07 | Oracle #1 | PASS WITH COMMENTS | pipeline.ts reuse is wrong (1 major), system prompt should use extension (agreed) |
-| 2026-06-07 | Oracle #2 | FAIL | Must return restored content inline (C2), GC interaction (C3), decompress-specific prepare/finalize (C1), DEFAULT_PROTECTED_TOOLS missing (M1) |
+| Date       | Reviewer  | Verdict            | Key Issues                                                                                                                                     |
+| ---------- | --------- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-06-07 | Oracle #1 | PASS WITH COMMENTS | pipeline.ts reuse is wrong (1 major), system prompt should use extension (agreed)                                                              |
+| 2026-06-07 | Oracle #2 | FAIL               | Must return restored content inline (C2), GC interaction (C3), decompress-specific prepare/finalize (C1), DEFAULT_PROTECTED_TOOLS missing (M1) |
 
 All critical and major issues from both reviews are addressed in this revised design.

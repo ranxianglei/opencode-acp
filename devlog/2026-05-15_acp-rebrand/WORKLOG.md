@@ -16,20 +16,20 @@
 
 ### Commits
 
-| Commit | Description |
-|--------|-------------|
-| `1c4bcd5` | fix(Bug 35): suppress aging warnings below 50% context usage |
-| `ca811c9` | rename: /dcp command → /acp (backward compatible, accepts both) |
-| `25cc269` | docs: update README with Bug 35 and /acp command rename |
-| `ba3db52` | rebrand: DCP → ACP in all user-visible injected text |
-| `0ba85fa` | docs: full DCP→ACP rebrand in README + migration guide |
+| Commit    | Description                                                           |
+| --------- | --------------------------------------------------------------------- |
+| `1c4bcd5` | fix(Bug 35): suppress aging warnings below 50% context usage          |
+| `ca811c9` | rename: /dcp command → /acp (backward compatible, accepts both)       |
+| `25cc269` | docs: update README with Bug 35 and /acp command rename               |
+| `ba3db52` | rebrand: DCP → ACP in all user-visible injected text                  |
+| `0ba85fa` | docs: full DCP→ACP rebrand in README + migration guide                |
 | `c5faeb8` | fix: add ACP full name and role definition to context usage injection |
-| `ab72cd5` | feat: isolate storage from DCP - migrate plugin/dcp/ to plugin/acp/ |
-| `a0bf36a` | fix: resolve 3 TS errors blocking npm publish + redesign README |
-| `4fa2155` | feat: auto-migrate config and prompts from dcp to acp naming |
-| `a6752a7` | fix: config migration runs even when dcp.jsonc fallback exists |
-| `d9ed83c` | fix: use logger instead of console.log for storage migration |
-| `9de007f` | chore: bump version to 1.0.1 |
+| `ab72cd5` | feat: isolate storage from DCP - migrate plugin/dcp/ to plugin/acp/   |
+| `a0bf36a` | fix: resolve 3 TS errors blocking npm publish + redesign README       |
+| `4fa2155` | feat: auto-migrate config and prompts from dcp to acp naming          |
+| `a6752a7` | fix: config migration runs even when dcp.jsonc fallback exists        |
+| `d9ed83c` | fix: use logger instead of console.log for storage migration          |
+| `9de007f` | chore: bump version to 1.0.1                                          |
 
 ### Key Files
 

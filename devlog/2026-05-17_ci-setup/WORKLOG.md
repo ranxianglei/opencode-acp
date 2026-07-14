@@ -16,9 +16,9 @@
 
 ### Commits
 
-| Commit | Description |
-|--------|-------------|
-| `6a26a97` | Add CI workflow for testing and building |
+| Commit    | Description                                                  |
+| --------- | ------------------------------------------------------------ |
+| `6a26a97` | Add CI workflow for testing and building                     |
 | `93f4827` | Merge pull request #2 from ranxianglei/ci/add-github-actions |
 
 ### Key Files

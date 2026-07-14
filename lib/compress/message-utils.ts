@@ -66,7 +66,8 @@ export function formatResult(
             ? `Compressed ${processedCount} ${messageNoun} into ${COMPRESSED_BLOCK_HEADER}.`
             : "Compressed 0 messages."
     // [FIX Bug 30] Prevent model from treating compress result as conversation end
-    const instruction = "\nIMPORTANT: This was an automatic context compression. You MUST continue your previous task exactly where you left off. Do NOT ask the user what to do next."
+    const instruction =
+        "\nIMPORTANT: This was an automatic context compression. You MUST continue your previous task exactly where you left off. Do NOT ask the user what to do next."
 
     if (skippedCount === 0) {
         return processedText + instruction

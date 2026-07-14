@@ -33,9 +33,10 @@ export function buildCompressedBlockGuidance(
         totalSummaryTokens >= 1000
             ? `${(totalSummaryTokens / 1000).toFixed(1)}K`
             : String(totalSummaryTokens)
-    const lastBlock = blocksForStats.length > 0
-        ? blocksForStats.reduce((latest, b) => (b.createdAt > latest.createdAt ? b : latest))
-        : null
+    const lastBlock =
+        blocksForStats.length > 0
+            ? blocksForStats.reduce((latest, b) => (b.createdAt > latest.createdAt ? b : latest))
+            : null
     const ageStr = lastBlock ? formatBlockAge(lastBlock.createdAt) : "never"
 
     const lines = [
@@ -56,7 +57,9 @@ export function buildCompressedBlockGuidance(
         const visibleOldBlocks =
             visibleMessageIds === undefined
                 ? allOldBlocks
-                : allOldBlocks.filter((b) => b.anchorMessageId && visibleMessageIds.has(b.anchorMessageId))
+                : allOldBlocks.filter(
+                      (b) => b.anchorMessageId && visibleMessageIds.has(b.anchorMessageId),
+                  )
 
         if (visibleOldBlocks.length > 5) {
             const blocksWithRef = visibleOldBlocks
@@ -80,13 +83,19 @@ export function buildCompressedBlockGuidance(
                 const endRef = chunk[chunk.length - 1].ref
                 const chunkTokens = chunk.reduce((s, x) => s + (x.block.summaryTokens ?? 0), 0)
                 const chunkK = Math.max(1, Math.round(chunkTokens / 1000))
-                targets.push(`  • compress ${startRef}→${endRef}: ${chunk.length} blocks (~${chunkK}K tokens)`)
+                targets.push(
+                    `  • compress ${startRef}→${endRef}: ${chunk.length} blocks (~${chunkK}K tokens)`,
+                )
             }
 
             if (targets.length > 0) {
-                lines.push(`- 🔀 ${blocksWithRef.length} old blocks using ~${totalK}K tokens. Consolidate into ${targets.length}:`)
+                lines.push(
+                    `- 🔀 ${blocksWithRef.length} old blocks using ~${totalK}K tokens. Consolidate into ${targets.length}:`,
+                )
                 lines.push(...targets)
-                lines.push(`  System auto-detects blocks in range — no need to manually list (bN) placeholders. Just write your summary normally.`)
+                lines.push(
+                    `  System auto-detects blocks in range — no need to manually list (bN) placeholders. Just write your summary normally.`,
+                )
             }
         }
     }

@@ -6,8 +6,7 @@
 part format to detect compress tool calls:
 
 ```typescript
-(part as any).type === "tool-invocation" &&
-(part as any).toolInvocation?.toolName === "compress"
+;(part as any).type === "tool-invocation" && (part as any).toolInvocation?.toolName === "compress"
 ```
 
 The actual OpenCode SDK message part format is `part.type === "tool"` +

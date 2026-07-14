@@ -2,19 +2,19 @@
 
 ## Commits
 
-| Commit | Description |
-|--------|-------------|
+| Commit       | Description                                                             |
+| ------------ | ----------------------------------------------------------------------- |
 | `2026-07-14` | fix: correct all 3 broken regexes in lib/messages/utils.ts (issue #123) |
 
 ## Changes
 
 ### `lib/messages/utils.ts` (3 regex fixes)
 
-| Line | Regex | Bug | Fix |
-|------|-------|-----|-----|
-| 11 | `DCP_BLOCK_ID_TAG_REGEX` | `(])` requires literal `]`, never matches real tags | `(<(?:dcp\|acp)-message-id[^>]*>)` correctly captures opening tag |
-| 13 | `DCP_MESSAGE_REF_TAG_REGEX` | Missing opening tag match, leaves fragment | Added `<(?:dcp\|acp)-message-id[^>]*>` prefix |
-| 14 | `DCP_PAIRED_TAG_REGEX` | `]*>` matches any `>`, not opening tags (PR #124 fix) | `<(?:dcp\|acp)[^>]*>` correctly matches opening tags |
+| Line | Regex                       | Bug                                                   | Fix                                                               |
+| ---- | --------------------------- | ----------------------------------------------------- | ----------------------------------------------------------------- |
+| 11   | `DCP_BLOCK_ID_TAG_REGEX`    | `(])` requires literal `]`, never matches real tags   | `(<(?:dcp\|acp)-message-id[^>]*>)` correctly captures opening tag |
+| 13   | `DCP_MESSAGE_REF_TAG_REGEX` | Missing opening tag match, leaves fragment            | Added `<(?:dcp\|acp)-message-id[^>]*>` prefix                     |
+| 14   | `DCP_PAIRED_TAG_REGEX`      | `]*>` matches any `>`, not opening tags (PR #124 fix) | `<(?:dcp\|acp)[^>]*>` correctly matches opening tags              |
 
 ### `tests/regex-tag-leak.test.ts` (NEW, 23 tests)
 
@@ -28,10 +28,12 @@
 - **Nested tag behavior**: Non-greedy matching (`*?`) means innermost pairs are matched first. This is pre-existing behavior, not a regression. Test documents this explicitly.
 
 ## Test Results
+
 - TypeScript: pass
 - Tests: 666 pass, 0 fail (643 existing + 23 new)
 - CI check (`check-pr.sh`): All checks passed
 
 ## Relationship to PR #124
+
 - PR #124 (mengfanbo123): Fixed only line 14 (`DCP_PAIRED_TAG_REGEX`). Correct fix but incomplete.
 - This PR: Fixes all three regexes (lines 11, 13, 14). Supersedes PR #124.

@@ -13,7 +13,7 @@ has a hard precondition:
 
 ```ts
 const real = (m) => m.info.role === "user" && !m.parts.every((p) => "synthetic" in p && p.synthetic)
-if (input.history.filter(real).length !== 1) return   // requires EXACTLY 1 real user message
+if (input.history.filter(real).length !== 1) return // requires EXACTLY 1 real user message
 ```
 
 ACP's message-transform pipeline injects a "Compressed block context" nudge as a

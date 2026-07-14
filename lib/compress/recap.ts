@@ -23,7 +23,9 @@ export function createAcpContextRecapTool(ctx: ToolContext): ReturnType<typeof t
             blockId: tool.schema
                 .number()
                 .optional()
-                .describe("Block number to retrieve (e.g., 5). If omitted, lists all active blocks."),
+                .describe(
+                    "Block number to retrieve (e.g., 5). If omitted, lists all active blocks.",
+                ),
         },
         async execute(args) {
             const msgState = ctx.state.prune.messages
@@ -55,7 +57,9 @@ export function createAcpContextRecapTool(ctx: ToolContext): ReturnType<typeof t
                 lines.push(`\nb${id} | ${range} | "${block.topic || "(none)"}"`)
                 lines.push(`  ${summaryPreview}${block.summary.length > 200 ? "..." : ""}`)
             }
-            lines.push(`\nCall with blockId to get the full summary: acp_context_recap({ blockId: N })`)
+            lines.push(
+                `\nCall with blockId to get the full summary: acp_context_recap({ blockId: N })`,
+            )
             return lines.join("\n")
         },
     })

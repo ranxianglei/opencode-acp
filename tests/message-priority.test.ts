@@ -213,14 +213,8 @@ test("injectMessageIds injects ID into every tool output for assistant messages"
     assert.equal(assistantTextTwo?.type, "text")
     assert.equal(assistantToolTwo?.type, "tool")
     // User messages: still injected into all text parts
-    assert.match(
-        (userTextOne as any).text,
-        /\n\n<dcp-message-id[^>]*>m00001<\/dcp-message-id>/,
-    )
-    assert.match(
-        (userTextTwo as any).text,
-        /\n\n<dcp-message-id[^>]*>m00001<\/dcp-message-id>/,
-    )
+    assert.match((userTextOne as any).text, /\n\n<dcp-message-id[^>]*>m00001<\/dcp-message-id>/)
+    assert.match((userTextTwo as any).text, /\n\n<dcp-message-id[^>]*>m00001<\/dcp-message-id>/)
     // Assistant messages: ID injected into every tool output
     assert.doesNotMatch((assistantTextOne as any).text, /dcp-message-id/)
     assert.match((assistantToolOne as any).state.output, /m00002<\/dcp-message-id>/)
@@ -275,10 +269,7 @@ test("injectMessageIds marks every protected user text part as BLOCKED in messag
     assert.match((userTextTwo as any).text, /\n\n<dcp-message-id[^>]*>BLOCKED<\/dcp-message-id>/)
     assert.doesNotMatch((userTextOne as any).text, /priority=/)
     assert.doesNotMatch((userTextTwo as any).text, /priority=/)
-    assert.match(
-        (assistantText as any).text,
-        /\n\n<dcp-message-id[^>]*>m00002<\/dcp-message-id>/,
-    )
+    assert.match((assistantText as any).text, /\n\n<dcp-message-id[^>]*>m00002<\/dcp-message-id>/)
 })
 
 test("injectMessageIds injects ID into every tool output in range mode", () => {
@@ -414,7 +405,10 @@ test("message-mode nudges append to existing text parts and list only earlier vi
     assert.match((injectedNudge as any).text, /\n\n<dcp-system-reminder>Base context nudge/)
     assert.match((injectedNudge as any).text, /Message priority context:/)
     // m00001 (user, 6000 tokens) and m00002 (assistant, 6000 tokens) are both high priority
-    assert.match((injectedNudge as any).text, /High-priority message IDs before this point: m00001, m00002/)
+    assert.match(
+        (injectedNudge as any).text,
+        /High-priority message IDs before this point: m00001, m00002/,
+    )
     assert.doesNotMatch((injectedNudge as any).text, /m00003/)
     assert.doesNotMatch((injectedNudge as any).text, /m00004/)
 })
@@ -700,7 +694,9 @@ test("message-mode rendered compressed summaries mark block IDs as BLOCKED", () 
 
     prune(state, logger, config, messages)
 
-    const recapTool = messages.flatMap((m) => m.parts).find((p: any) => p.type === "tool" && p.tool === "acp_context_recap")
+    const recapTool = messages
+        .flatMap((m) => m.parts)
+        .find((p: any) => p.type === "tool" && p.tool === "acp_context_recap")
     const summaryText = (recapTool as any)?.state?.output || ""
     assert.match(summaryText, /BLOCKED<\/dcp-message-id>/)
     assert.doesNotMatch(summaryText, /b7<\/dcp-message-id>/)
@@ -751,7 +747,9 @@ test("range-mode rendered compressed summaries keep block IDs", () => {
 
     prune(state, logger, config, messages)
 
-    const recapTool = messages.flatMap((m) => m.parts).find((p: any) => p.type === "tool" && p.tool === "acp_context_recap")
+    const recapTool = messages
+        .flatMap((m) => m.parts)
+        .find((p: any) => p.type === "tool" && p.tool === "acp_context_recap")
     const summaryText = (recapTool as any)?.state?.output || ""
     assert.match(summaryText, /b7<\/dcp-message-id>/)
     assert.doesNotMatch(summaryText, /BLOCKED<\/dcp-message-id>/)
@@ -776,8 +774,14 @@ test("hallucination stripping removes all dcp-prefixed XML tags including varian
 
 test("hallucination stripping removes colon and underscore dcp tag variants", async () => {
     // The regex matches <dcp...> with any suffix (colon, underscore, etc.)
-    assert.equal(stripHallucinationsFromString('before<dcp:block>content</dcp:block>after'), "beforeafter")
-    assert.equal(stripHallucinationsFromString('start<dcp_summary>text</dcp_summary>end'), "startend")
+    assert.equal(
+        stripHallucinationsFromString("before<dcp:block>content</dcp:block>after"),
+        "beforeafter",
+    )
+    assert.equal(
+        stripHallucinationsFromString("start<dcp_summary>text</dcp_summary>end"),
+        "startend",
+    )
 })
 
 test("hallucination stripping removes orphan opening tags", async () => {

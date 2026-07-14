@@ -22,7 +22,10 @@ export interface BatchCleanupResult {
     nudgeText?: string
 }
 
-function collectActiveOldGenBlocks(state: SessionState, maxOldGenSummaryLength: number): CompressionBlock[] {
+function collectActiveOldGenBlocks(
+    state: SessionState,
+    maxOldGenSummaryLength: number,
+): CompressionBlock[] {
     const blocks: CompressionBlock[] = []
     const ids = Array.from(state.prune.messages.activeBlockIds).sort((a, b) => a - b)
     for (const id of ids) {
@@ -53,9 +56,7 @@ function truncateMergedSummary(merged: string, maxLength: number): string {
     if (merged.length <= maxLength) return merged
 
     const blocks = merged.split("\n---\n")
-    const headers = blocks
-        .map((b) => b.split("\n")[0] ?? "")
-        .filter((h) => h.trim().length > 0)
+    const headers = blocks.map((b) => b.split("\n")[0] ?? "").filter((h) => h.trim().length > 0)
 
     const marker = "\n...\n[merged and truncated by batch cleanup]"
     const budget = Math.max(0, maxLength - marker.length)
@@ -72,9 +73,9 @@ export function mergeMarkedBlocks(
     markedIds: number[],
     maxMergedLength: number,
 ): MergeMarkedResult {
-    const sortedIds = [...new Set(markedIds)].filter(
-        (id) => Number.isInteger(id) && id > 0,
-    ).sort((a, b) => a - b)
+    const sortedIds = [...new Set(markedIds)]
+        .filter((id) => Number.isInteger(id) && id > 0)
+        .sort((a, b) => a - b)
 
     const sourceBlocks: CompressionBlock[] = []
     for (const id of sortedIds) {

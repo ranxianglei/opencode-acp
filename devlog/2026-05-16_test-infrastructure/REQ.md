@@ -22,33 +22,33 @@
 ## 3. Constraints & Non-Goals
 
 - **Constraints**:
-  - Test runner: Node.js built-in (`node --import tsx --test`) — no Jest, no Vitest
-  - Flat `tests/` directory structure — no subdirectories
-  - Tests must import from actual source files, not reimplement logic locally
+    - Test runner: Node.js built-in (`node --import tsx --test`) — no Jest, no Vitest
+    - Flat `tests/` directory structure — no subdirectories
+    - Tests must import from actual source files, not reimplement logic locally
 - **Non-Goals**:
-  - 100% line coverage — focus on behavioral coverage
-  - Testing private/internal functions that aren't exported
-  - Performance benchmarks
+    - 100% line coverage — focus on behavioral coverage
+    - Testing private/internal functions that aren't exported
+    - Performance benchmarks
 
 ## 4. Acceptance Criteria (must be testable)
 
 - **Correctness**:
-  - [x] 4 test tiers implemented: Tier 1 (pure), Tier 2 (mock), Functional, E2E
-  - [x] At least 300 tests total (target: 343)
-  - [x] All tests pass with 0 failures
-  - [x] Tests import from source, not local reimplementations
+    - [x] 4 test tiers implemented: Tier 1 (pure), Tier 2 (mock), Functional, E2E
+    - [x] At least 300 tests total (target: 343)
+    - [x] All tests pass with 0 failures
+    - [x] Tests import from source, not local reimplementations
 - **Performance / Stability**:
-  - [x] Full test suite runs in under 30 seconds
+    - [x] Full test suite runs in under 30 seconds
 - **Regression**:
-  - [x] Bug found and fixed: `resetOnCompaction` didn't clear `messageIds`
-  - [x] `config-validation.ts` extracted from `config.ts` for testability
+    - [x] Bug found and fixed: `resetOnCompaction` didn't clear `messageIds`
+    - [x] `config-validation.ts` extracted from `config.ts` for testability
 
 ## 5. Proposed Approach (optional)
 
 - **Affected modules & entry files**:
-  - `lib/config-validation.ts` — Extracted from `config.ts` (new file)
-  - `tests/` — 15 new test files
-  - `AGENTS.md` — Created with architecture documentation and test status
-  - `TESTING.md` — Created with test writing guide
+    - `lib/config-validation.ts` — Extracted from `config.ts` (new file)
+    - `tests/` — 15 new test files
+    - `AGENTS.md` — Created with architecture documentation and test status
+    - `TESTING.md` — Created with test writing guide
 - **Risks**: Extracting `config-validation.ts` could break imports if not done carefully
 - **Rollback strategy**: Remove new test files; revert `config-validation.ts` extraction

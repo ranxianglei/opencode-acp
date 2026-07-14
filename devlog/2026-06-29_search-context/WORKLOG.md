@@ -3,12 +3,14 @@
 ## Changes
 
 ### Commit 82df13c — Initial implementation
+
 - **NEW** `lib/compress/search.ts` (~120 lines): `createSearchContextTool(ctx)` — searches `state.prune.messages.blocksById` by keyword, returns ranked results with block ID, topic, preview, relevance score
 - **MOD** `lib/compress/index.ts`: Added `export { createSearchContextTool }`
 - **MOD** `index.ts`: Registered `search_context: createSearchContextTool(compressToolContext)` in tool section, added to `toolsToAdd`
 - **MOD** `lib/prompts/system.ts`: Added search_context to tool description
 
 ### Commit 38fc2c2 — Improvements
+
 - **MOD** `lib/compress/search.ts`: TF-based scoring (topic match ×0.15, summary match ×0.04, phrase bonus ×2), minimum relevance threshold (0.10), `deep` parameter in schema (L2 DB search deferred)
 - **MOD** `lib/compress/range.ts`: Added search_context reminder to compress output (`💡 Tip: Use search_context('keyword')...`)
 - **MOD** `tests/compress-range.test.ts`: Updated assertions for new compress output format

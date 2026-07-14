@@ -146,7 +146,9 @@ function runMajorGC(
             block.deactivatedAt = now
             block.deactivatedByBlockId = undefined
             state.prune.messages.activeBlockIds.delete(Number(blockId))
-            const anchorMapped = state.prune.messages.activeByAnchorMessageId.get(block.anchorMessageId)
+            const anchorMapped = state.prune.messages.activeByAnchorMessageId.get(
+                block.anchorMessageId,
+            )
             if (anchorMapped === Number(blockId)) {
                 state.prune.messages.activeByAnchorMessageId.delete(block.anchorMessageId)
             }
@@ -179,7 +181,8 @@ function runMajorGC(
         }
     }
 
-    if (!shouldRunMajorGC(currentTokens, state.modelContextLimit, config.gc) && !hasOversizedBlocks) return
+    if (!shouldRunMajorGC(currentTokens, state.modelContextLimit, config.gc) && !hasOversizedBlocks)
+        return
 
     const oldBlocks: import("./state").CompressionBlock[] = []
     for (const [blockId, block] of state.prune.messages.blocksById) {
@@ -235,7 +238,14 @@ export function createChatMessageTransformHandler(
             return
         }
 
-        await checkSession(client, state, logger, output.messages, config.manualMode.enabled, config)
+        await checkSession(
+            client,
+            state,
+            logger,
+            output.messages,
+            config.manualMode.enabled,
+            config,
+        )
 
         syncCompressPermissionState(state, config, hostPermissions, output.messages)
 
@@ -248,7 +258,8 @@ export function createChatMessageTransformHandler(
         assignMessageRefs(state, output.messages)
         const activeBlockCountBefore = state.prune.messages.activeBlockIds.size // [FIX Bug 4]
         syncCompressionBlocks(state, logger, output.messages)
-        if (state.prune.messages.activeBlockIds.size !== activeBlockCountBefore) { // [FIX Bug 4]
+        if (state.prune.messages.activeBlockIds.size !== activeBlockCountBefore) {
+            // [FIX Bug 4]
             saveSessionState(state, logger).catch(() => {}) // [FIX Bug 4] persist deactivations
         }
         syncToolCache(state, config, logger, output.messages)

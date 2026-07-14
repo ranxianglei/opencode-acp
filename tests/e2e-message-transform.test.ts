@@ -18,7 +18,12 @@ import test, { beforeEach } from "node:test"
 import type { PluginConfig } from "../lib/config"
 import { createChatMessageTransformHandler } from "../lib/hooks"
 import { Logger } from "../lib/logger"
-import { createSessionState, saveSessionState, type WithParts, type SessionState } from "../lib/state"
+import {
+    createSessionState,
+    saveSessionState,
+    type WithParts,
+    type SessionState,
+} from "../lib/state"
 import { isSyntheticMessage } from "../lib/messages/query"
 import { mkdtempSync, rmSync } from "node:fs"
 import { join } from "node:path"
@@ -238,10 +243,7 @@ test("message IDs remain stable across sequential pipeline calls", async () => {
 
     // First call with 2 messages
     const output1 = {
-        messages: [
-            makeUserMessage("u1", "Hello"),
-            makeAssistantMessage("a1", "Hi"),
-        ],
+        messages: [makeUserMessage("u1", "Hello"), makeAssistantMessage("a1", "Hi")],
     }
     await handler({}, output1)
 
@@ -276,7 +278,7 @@ test("filterMessagesInPlace: removes messages without valid info", async () => {
 
     const output = {
         messages: [
-            { role: "user", parts: [{ type: "text", text: "no info" }] },  // no .info → filtered
+            { role: "user", parts: [{ type: "text", text: "no info" }] }, // no .info → filtered
             makeUserMessage("u1", "Valid"),
             makeAssistantMessage("a1", "Response"),
         ] as WithParts[],
@@ -331,7 +333,7 @@ test("compression blocks: compressed messages are replaced with summaries", asyn
         batchTopic: "test topic",
         startId: "m00001",
         endId: "m00002",
-        anchorMessageId: "u2",  // summary injected at this anchor
+        anchorMessageId: "u2", // summary injected at this anchor
         compressMessageId: "msg-compress",
         compressCallId: "call-compress",
         includedBlockIds: [],
@@ -409,10 +411,7 @@ test("compression blocks: compressed messages are replaced with summaries", asyn
         !u2Text.includes("Previous conversation about greetings"),
         "recap should NOT be merged into u2 text",
     )
-    assert.ok(
-        u2Text.includes("How are you?"),
-        "u2's original text should be preserved unchanged",
-    )
+    assert.ok(u2Text.includes("How are you?"), "u2's original text should be preserved unchanged")
 })
 
 // ─── Test: Regression — no consecutive user messages after compression ──────
@@ -498,14 +497,19 @@ test("compression summary: never produces two consecutive user turns (Bug 36)", 
         .filter((p) => p.type === "text")
         .map((p) => (p as any).text)
         .join("")
-    assert.ok(!u2Text.includes("The assistant explained the plan"), "recap should NOT be merged into u2")
+    assert.ok(
+        !u2Text.includes("The assistant explained the plan"),
+        "recap should NOT be merged into u2",
+    )
     assert.ok(u2Text.includes("Sounds good, continue."), "u2 original text preserved")
 
     const recapMsg = historical.find(
         (m: any) =>
             m.info.role === "assistant" &&
             m.parts.some(
-                (p: any) => p.type === "tool" && p.tool === "acp_context_recap" &&
+                (p: any) =>
+                    p.type === "tool" &&
+                    p.tool === "acp_context_recap" &&
                     typeof p.state?.output === "string" &&
                     p.state.output.includes("The assistant explained the plan"),
             ),
@@ -671,10 +675,14 @@ test("message IDs remain consistent after compression and pruning", async () => 
     state.prune.messages.activeBlockIds.add(blockId)
     state.prune.messages.activeByAnchorMessageId.set("u3", blockId)
     state.prune.messages.byMessageId.set("u1", {
-        tokenCount: 200, allBlockIds: [blockId], activeBlockIds: [blockId],
+        tokenCount: 200,
+        allBlockIds: [blockId],
+        activeBlockIds: [blockId],
     })
     state.prune.messages.byMessageId.set("a1", {
-        tokenCount: 300, allBlockIds: [blockId], activeBlockIds: [blockId],
+        tokenCount: 300,
+        allBlockIds: [blockId],
+        activeBlockIds: [blockId],
     })
 
     const output = {
@@ -878,12 +886,15 @@ test("summary and compaction agent requests are skipped", async () => {
     const { state, handler } = setupPipeline()
 
     // Seed normal conversation state
-    await handler({}, {
-        messages: [
-            makeUserMessage("seed-u1", "Hello", SID, "build"),
-            makeAssistantMessage("seed-a1", "Hi"),
-        ],
-    })
+    await handler(
+        {},
+        {
+            messages: [
+                makeUserMessage("seed-u1", "Hello", SID, "build"),
+                makeAssistantMessage("seed-a1", "Hi"),
+            ],
+        },
+    )
 
     const nextRefBefore = state.messageIds.nextRef
 
@@ -931,8 +942,5 @@ test("normal agent request (build) is still fully processed", async () => {
     assert.ok(state.messageIds.byRawId.has("u1"), "build: u1 should get a ref")
     assert.ok(state.messageIds.byRawId.has("a1"), "build: a1 should get a ref")
     assert.ok(state.messageIds.nextRef >= 3, "build: nextRef should advance")
-    assert.ok(
-        messages.length >= 2,
-        "build: messages should be processed (suffix may be appended)",
-    )
+    assert.ok(messages.length >= 2, "build: messages should be processed (suffix may be appended)")
 })

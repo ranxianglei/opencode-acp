@@ -168,7 +168,12 @@ function buildMessagesWithSkill(sessionID: string): WithParts[] {
                 time: { created: 4 },
             } as WithParts["info"],
             parts: [
-                textPart("msg-assistant-2", sessionID, "part-4", "Skill is now active. Let's proceed."),
+                textPart(
+                    "msg-assistant-2",
+                    sessionID,
+                    "part-4",
+                    "Skill is now active. Let's proceed.",
+                ),
             ],
         },
         {
@@ -188,7 +193,12 @@ function buildMessagesWithSkill(sessionID: string): WithParts[] {
     ]
 }
 
-function buildRangeToolCtx(config: PluginConfig, rawMessages: WithParts[], state: ReturnType<typeof createSessionState>, sessionID: string) {
+function buildRangeToolCtx(
+    config: PluginConfig,
+    rawMessages: WithParts[],
+    state: ReturnType<typeof createSessionState>,
+    sessionID: string,
+) {
     const logger = new Logger(false)
     return createCompressRangeTool({
         client: {
@@ -209,7 +219,12 @@ function buildRangeToolCtx(config: PluginConfig, rawMessages: WithParts[], state
     } as any)
 }
 
-function buildMessageToolCtx(config: PluginConfig, rawMessages: WithParts[], state: ReturnType<typeof createSessionState>, sessionID: string) {
+function buildMessageToolCtx(
+    config: PluginConfig,
+    rawMessages: WithParts[],
+    state: ReturnType<typeof createSessionState>,
+    sessionID: string,
+) {
     const logger = new Logger(false)
     return createCompressMessageTool({
         client: {
@@ -268,9 +283,7 @@ test("messageContainsProtectedTool returns false for non-protected tools", () =>
             sessionID: "ses-1",
             time: { created: 1 },
         } as WithParts["info"],
-        parts: [
-            toolPart("msg-1", "ses-1", "call-1", "bash", "command output"),
-        ],
+        parts: [toolPart("msg-1", "ses-1", "call-1", "bash", "command output")],
     }
 
     assert.equal(
@@ -372,12 +385,7 @@ test("filterProtectedToolMessages removes protected tool messages from selection
         summaryByBlockId: new Map(),
     }
 
-    const filtered = filterProtectedToolMessages(
-        selection,
-        searchContext,
-        ["skill"],
-        [],
-    )
+    const filtered = filterProtectedToolMessages(selection, searchContext, ["skill"], [])
 
     assert.deepEqual(filtered.messageIds, ["msg-plain"])
     assert.equal(filtered.messageTokenById.has("msg-skill"), false)
@@ -414,7 +422,11 @@ test("filterProtectedToolMessages returns original selection when nothing to fil
 
     const filtered = filterProtectedToolMessages(selection, searchContext, ["skill"], [])
 
-    assert.equal(filtered, selection, "should return the same object reference when nothing filtered")
+    assert.equal(
+        filtered,
+        selection,
+        "should return the same object reference when nothing filtered",
+    )
 })
 
 test("range mode excludes skill message from compression range but compresses the rest", async () => {

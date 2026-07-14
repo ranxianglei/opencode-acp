@@ -26,11 +26,13 @@ nudgeAllowed = emergencyOverride || (growthSinceBaseline >= growthFloor)
 ```
 
 Defaults:
+
 - `minNudgeGrowthRatio`: 0.45 (45% of `nudgeGrowthTokens`)
 - `minNudgeGrowthFloor`: 5000 (absolute floor for small-context models)
 - `emergencyThresholdPercent`: "98%" (near-overflow always fires)
 
 Examples:
+
 - 1M model: `max(5000, 0.45×50000) = 22500` tokens growth required
 - 100K model: `max(5000, 0.45×6000) = 5000` tokens growth required
 

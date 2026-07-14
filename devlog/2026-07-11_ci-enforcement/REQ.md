@@ -18,20 +18,20 @@
 ## 2. Constraints & Non-Goals
 
 - **Constraints**:
-  - Must work with existing GitHub branch protection on master
-  - Must not break existing CI workflow
-  - Auto-publish needs `NPM_TOKEN` secret in GitHub repo settings
+    - Must work with existing GitHub branch protection on master
+    - Must not break existing CI workflow
+    - Auto-publish needs `NPM_TOKEN` secret in GitHub repo settings
 - **Non-Goals**:
-  - No changes to AGENTS.md itself
-  - No changes to source code
+    - No changes to AGENTS.md itself
+    - No changes to source code
 
 ## 3. Acceptance Criteria
 
 - **Correctness**:
-  - [ ] PR check script validates branch name, devlog, changelog
-  - [ ] PR check workflow runs on all PRs to master
-  - [ ] Release workflow triggers on `v*` tag push
-  - [ ] Release workflow builds, tests, and publishes to npm
-  - [ ] Release workflow creates GitHub Release
+    - [ ] PR check script validates branch name, devlog, changelog
+    - [ ] PR check workflow runs on all PRs to master
+    - [ ] Release workflow triggers on `v*` tag push
+    - [ ] Release workflow builds, tests, and publishes to npm
+    - [ ] Release workflow creates GitHub Release
 - **Regression**:
-  - [ ] Existing CI workflow unchanged
+    - [ ] Existing CI workflow unchanged

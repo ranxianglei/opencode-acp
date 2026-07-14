@@ -53,14 +53,14 @@ rebuild is better than none.
 
 ### Files changed
 
-| File | Change |
-|------|--------|
-| `lib/state/rebuild.ts` | **NEW** — rebuild logic (350 lines) |
-| `lib/state/state.ts` | `ensureSessionInitialized` + `checkSession` gain optional `config` param; rebuild call in `persisted === null` branch |
-| `lib/hooks.ts` | Pass `config` to `checkSession` and `ensureSessionInitialized` |
-| `lib/compress/pipeline.ts` | Pass `ctx.config` to `ensureSessionInitialized` |
-| `lib/compress/decompress.ts` | Pass `ctx.config` to `ensureSessionInitialized` |
-| `tests/rebuild.test.ts` | **NEW** — 9 unit tests |
+| File                         | Change                                                                                                                |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `lib/state/rebuild.ts`       | **NEW** — rebuild logic (350 lines)                                                                                   |
+| `lib/state/state.ts`         | `ensureSessionInitialized` + `checkSession` gain optional `config` param; rebuild call in `persisted === null` branch |
+| `lib/hooks.ts`               | Pass `config` to `checkSession` and `ensureSessionInitialized`                                                        |
+| `lib/compress/pipeline.ts`   | Pass `ctx.config` to `ensureSessionInitialized`                                                                       |
+| `lib/compress/decompress.ts` | Pass `ctx.config` to `ensureSessionInitialized`                                                                       |
+| `tests/rebuild.test.ts`      | **NEW** — 9 unit tests                                                                                                |
 
 ### Backward compatibility
 

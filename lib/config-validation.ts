@@ -409,10 +409,7 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
                 })
             }
 
-            if (
-                typeof compress.minCompressRange === "number" &&
-                compress.minCompressRange < 0
-            ) {
+            if (typeof compress.minCompressRange === "number" && compress.minCompressRange < 0) {
                 errors.push({
                     key: "compress.minCompressRange",
                     expected: "non-negative number (>= 0)",
@@ -470,7 +467,7 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
                     if (emergencyThreshold < 0) {
                         errors.push({
                             key: "compress.emergencyThresholdPercent",
-                            expected: "non-negative number or \"${number}%\" (0–100)",
+                            expected: 'non-negative number or "${number}%" (0–100)',
                             actual: `${emergencyThreshold}`,
                         })
                     }
@@ -671,9 +668,7 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
                     actual: typeof gc.maxOldGenSummaryLength,
                 })
             }
-            if (
-                gc.majorGcThresholdPercent !== undefined
-            ) {
+            if (gc.majorGcThresholdPercent !== undefined) {
                 const isValidNumber = typeof gc.majorGcThresholdPercent === "number"
                 const isPercentString =
                     typeof gc.majorGcThresholdPercent === "string" &&
@@ -688,7 +683,10 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
             }
 
             const validateBatchThreshold = (
-                key: "gc.batchCleanup.lowThreshold" | "gc.batchCleanup.highThreshold" | "gc.batchCleanup.forceThreshold",
+                key:
+                    | "gc.batchCleanup.lowThreshold"
+                    | "gc.batchCleanup.highThreshold"
+                    | "gc.batchCleanup.forceThreshold",
                 value: unknown,
             ): void => {
                 const isValidNumber = typeof value === "number"
@@ -715,13 +713,22 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
                     })
                 } else {
                     if (gc.batchCleanup.lowThreshold !== undefined) {
-                        validateBatchThreshold("gc.batchCleanup.lowThreshold", gc.batchCleanup.lowThreshold)
+                        validateBatchThreshold(
+                            "gc.batchCleanup.lowThreshold",
+                            gc.batchCleanup.lowThreshold,
+                        )
                     }
                     if (gc.batchCleanup.highThreshold !== undefined) {
-                        validateBatchThreshold("gc.batchCleanup.highThreshold", gc.batchCleanup.highThreshold)
+                        validateBatchThreshold(
+                            "gc.batchCleanup.highThreshold",
+                            gc.batchCleanup.highThreshold,
+                        )
                     }
                     if (gc.batchCleanup.forceThreshold !== undefined) {
-                        validateBatchThreshold("gc.batchCleanup.forceThreshold", gc.batchCleanup.forceThreshold)
+                        validateBatchThreshold(
+                            "gc.batchCleanup.forceThreshold",
+                            gc.batchCleanup.forceThreshold,
+                        )
                     }
                 }
             }
@@ -753,7 +760,10 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
                             actual: typeof dedup.enabled,
                         })
                     }
-                    if (dedup.protectedTools !== undefined && !Array.isArray(dedup.protectedTools)) {
+                    if (
+                        dedup.protectedTools !== undefined &&
+                        !Array.isArray(dedup.protectedTools)
+                    ) {
                         errors.push({
                             key: "strategies.deduplication.protectedTools",
                             expected: "string[]",
@@ -793,7 +803,10 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
                             actual: `${purge.turns} (will be clamped to 1)`,
                         })
                     }
-                    if (purge.protectedTools !== undefined && !Array.isArray(purge.protectedTools)) {
+                    if (
+                        purge.protectedTools !== undefined &&
+                        !Array.isArray(purge.protectedTools)
+                    ) {
                         errors.push({
                             key: "strategies.purgeErrors.protectedTools",
                             expected: "string[]",

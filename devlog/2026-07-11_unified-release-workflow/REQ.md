@@ -16,6 +16,7 @@ The two-workflow approach (`auto-tag.yml` creates tag → `release.yml` triggere
 ## 2. Solution
 
 Merge `auto-tag.yml` and `release.yml` into a single `release.yml` workflow:
+
 - Triggers on push to master
 - Detects release branch merge → creates tag + builds + tests + publishes — all in one job
 - No chained workflows

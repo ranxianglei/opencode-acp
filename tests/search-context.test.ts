@@ -238,9 +238,7 @@ test("result limit: more than 10 matches return only top 10", async () => {
 })
 
 test("empty results: query matching nothing returns the no-matches message", async () => {
-    const blocks = blocksMap(
-        makeBlock({ blockId: 1, topic: "alpha beta", summary: "gamma delta" }),
-    )
+    const blocks = blocksMap(makeBlock({ blockId: 1, topic: "alpha beta", summary: "gamma delta" }))
 
     const output = await runSearch(blocks, "nonexistent")
 
@@ -300,9 +298,7 @@ test("inactive blocks are skipped during search", async () => {
 test("custom limit parameter is honored", async () => {
     const blockList: CompressionBlock[] = []
     for (let i = 1; i <= 6; i++) {
-        blockList.push(
-            makeBlock({ blockId: i, topic: "match match match", summary: "x" }),
-        )
+        blockList.push(makeBlock({ blockId: i, topic: "match match match", summary: "x" }))
     }
     const blocks = blocksMap(...blockList)
 

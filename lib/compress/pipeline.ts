@@ -25,10 +25,7 @@ export function snapshotCompressionState(state: SessionState): CompressionSnapsh
     }
 }
 
-export function restoreCompressionState(
-    state: SessionState,
-    snapshot: CompressionSnapshot,
-): void {
+export function restoreCompressionState(state: SessionState, snapshot: CompressionSnapshot): void {
     state.prune.messages = structuredClone(snapshot.messages)
     state.stats = { ...snapshot.stats }
     state.manualMode = snapshot.manualMode

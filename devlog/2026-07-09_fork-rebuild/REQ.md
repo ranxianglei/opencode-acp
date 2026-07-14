@@ -7,6 +7,7 @@ When a user forks an ACP-compressed session in OpenCode, the fork session trigge
 
 OpenCode copies all messages (including completed `compress` tool parts) into the fork,
 but regenerates message IDs. ACP's persisted state is keyed off:
+
 1. Session ID (`plugin/acp/{sessionId}.json` — doesn't exist for fork)
 2. Raw message IDs (all internal maps use `msg.info.id` — differ in fork)
 

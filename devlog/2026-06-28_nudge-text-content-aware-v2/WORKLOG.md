@@ -10,7 +10,7 @@
 - **What was done**: Changed compression nudge text from threshold-driven
   ("ample = do not compress") to principle-driven ("Be frugal, compress proactively, extract and
   keep what matters"). Removed visible threshold numbers, made block ID listings summarize when
-  >20 blocks are active, and added the `decompress` safety net to every nudge surface.
+    > 20 blocks are active, and added the `decompress` safety net to every nudge surface.
 - **Why**: Earlier aggressive nudges caused reckless deletion; the conservative "ample" reaction
   overcorrected and wasted tokens by suppressing compression entirely at low pressure. Because
   `decompress` now makes compression reversible, a more proactive stance is safe and lets the
@@ -23,8 +23,8 @@
 
 ### Commits
 
-| Commit | Description |
-|--------|-------------|
+| Commit                                          | Description                                    |
+| ----------------------------------------------- | ---------------------------------------------- |
 | _(pending — 5 files staged, not yet committed)_ | Nudge text: principle-driven, content-aware v2 |
 
 ### Key Files (5 files, +21/-14 lines)
@@ -47,12 +47,12 @@
 ## 3. Design & Implementation Notes
 
 - **Entry point / key function**:
-  - `buildContextUsageGuidance(config, currentTokens, modelContextLimit)` in
-    `lib/messages/inject/utils.ts` — resolves config thresholds to percentages, selects one of
-    three guidance tiers, and emits principle-based text.
-  - `buildCompressedBlockGuidance(state, gcConfig?, context?)` in
-    `lib/prompts/extensions/nudge.ts` — formats the active block ID list with the >20 summary
-    fallback.
+    - `buildContextUsageGuidance(config, currentTokens, modelContextLimit)` in
+      `lib/messages/inject/utils.ts` — resolves config thresholds to percentages, selects one of
+      three guidance tiers, and emits principle-based text.
+    - `buildCompressedBlockGuidance(state, gcConfig?, context?)` in
+      `lib/prompts/extensions/nudge.ts` — formats the active block ID list with the >20 summary
+      fallback.
 - **Key configuration items**: `compress.minContextLimit` and `compress.maxContextLimit`
   (unchanged defaults `45%` / `55%`) still drive tier selection; the values themselves are no
   longer echoed to the model.
@@ -84,12 +84,12 @@ npx tsc --noEmit
 - New/modified test files: `tests/nudge-text.test.ts`
 - Test count: 486 total (full suite), 486 pass, 0 fail (7 new in `nudge-text.test.ts`)
 - Key scenarios verified:
-  - TURN_NUDGE uses conditional ("finished reading") language + decompress safety, no standalone
-    "now" command.
-  - CONTEXT_LIMIT_NUDGE uses "time to compress" + decompress safety, no "MUST"/"CRITICAL".
-  - `buildCompressedBlockGuidance` lists all IDs at ≤20 blocks; summarizes with `+N older` at >20.
-  - `buildContextUsageGuidance` emits "Be frugal" at low pressure (no "threshold" leak),
-    "Context is growing" at moderate, "Context is high" at high.
+    - TURN_NUDGE uses conditional ("finished reading") language + decompress safety, no standalone
+      "now" command.
+    - CONTEXT_LIMIT_NUDGE uses "time to compress" + decompress safety, no "MUST"/"CRITICAL".
+    - `buildCompressedBlockGuidance` lists all IDs at ≤20 blocks; summarizes with `+N older` at >20.
+    - `buildContextUsageGuidance` emits "Be frugal" at low pressure (no "threshold" leak),
+      "Context is growing" at moderate, "Context is high" at high.
 
 ### Results
 
@@ -105,8 +105,8 @@ npx tsc --noEmit
   `decompress` reversibility and the system prompt's "compress selectively / DO NOT RE-COMPRESS"
   guardrails.
 - **Rollback method**:
-  - Revert commit(s): _(pending sha)_
-  - Rollback impact: Restores "ample" low-tier guidance; no data/config migration to undo.
+    - Revert commit(s): _(pending sha)_
+    - Rollback impact: Restores "ample" low-tier guidance; no data/config migration to undo.
 - **Compatibility notes**: No schema or data-format changes. Purely model-visible text.
 
 ## 6. Lessons Learned (optional)
@@ -120,4 +120,4 @@ npx tsc --noEmit
 
 - [ ] Observe real-session token spend after merge to confirm the 3–5× reduction expectation.
 - [ ] Consider whether the block-aging GC warning text also needs a decompress safety mention
-  (currently it points to re-compression only).
+      (currently it points to re-compression only).

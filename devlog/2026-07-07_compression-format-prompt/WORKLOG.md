@@ -21,24 +21,23 @@ with a concise pointer to the new system-prompt rules.
    WHEN-TO bullets was noise. Bullets are now pure triggers.
 
 3. **Added `HOW TO COMPRESS` section** with three prescriptive lists:
+    - **KEEP VERBATIM** (10 concrete items): file paths+line numbers,
+      function/class/type signatures AND critical code lines, error messages+
+      stack traces, report details (numbers+mechanism), decisions+rationale
+      ("chose X over Y because Z"), constraints discovered, exact values,
+      user intent (short messages quoted verbatim), open questions/unresolved
+      TODOs, message refs of key anchors.
+    - **DROP** (6 concrete items): verbose logs after error extraction,
+      duplicate file reads, consumed exploration (search hits, agent results
+      once facts extracted), dead-end exploration (PRESERVE one-line lesson:
+      "tried X, failed because Y"), back-and-forth/self-corrections after
+      final position captured, repeated status checks.
+    - **PRIORITY** (5-level ordering for space-constrained summaries):
+      (1) user intent/acceptance criteria/hard constraints, (2) decisions+
+      rationale, (3) exact technical artifacts, (4) conclusions/findings,
+      (5) lessons learned.
 
-   - **KEEP VERBATIM** (10 concrete items): file paths+line numbers,
-     function/class/type signatures AND critical code lines, error messages+
-     stack traces, report details (numbers+mechanism), decisions+rationale
-     ("chose X over Y because Z"), constraints discovered, exact values,
-     user intent (short messages quoted verbatim), open questions/unresolved
-     TODOs, message refs of key anchors.
-   - **DROP** (6 concrete items): verbose logs after error extraction,
-     duplicate file reads, consumed exploration (search hits, agent results
-     once facts extracted), dead-end exploration (PRESERVE one-line lesson:
-     "tried X, failed because Y"), back-and-forth/self-corrections after
-     final position captured, repeated status checks.
-   - **PRIORITY** (5-level ordering for space-constrained summaries):
-     (1) user intent/acceptance criteria/hard constraints, (2) decisions+
-     rationale, (3) exact technical artifacts, (4) conclusions/findings,
-     (5) lessons learned.
-
-   Closing line: "Write dense, scannable bullets — not narrative prose."
+    Closing line: "Write dense, scannable bullets — not narrative prose."
 
 4. **Preserved escaped backtick pairs** around tag names (e.g.
    `` `dcp-message-id` ``) at L7 and L103 verbatim — these are literal text
@@ -124,7 +123,7 @@ consolidation lost two things:
    rewrite only said "quote short messages verbatim."
 2. **Two missing items**: original had `priorities` and
    `requested outcomes`; the rewrite only kept `scope, constraints,
-   acceptance criteria`.
+acceptance criteria`.
 
 **Fix**: updated system.ts L66 to restore the prohibitive instruction:
 "quote short user messages verbatim. When too long to quote, preserve

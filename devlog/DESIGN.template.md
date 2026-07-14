@@ -12,10 +12,8 @@
 
 ## 2. Goals & Non-Goals
 
-- **Goals**:
-  -
-- **Non-Goals**:
-  -
+- ## **Goals**:
+- ## **Non-Goals**:
 
 ## 3. Current Architecture (if applicable)
 
@@ -25,16 +23,15 @@
 ## 4. Proposed Architecture
 
 - **Overview** (text diagram):
-- **Key components**:
-  -
+- ## **Key components**:
 - **Data flow**:
 - **API / interface changes**:
 
 ## 5. Design Decisions & Rationale
 
 | Decision | Options Considered | Chosen | Why |
-|----------|--------------------|--------|-----|
-| | | | |
+| -------- | ------------------ | ------ | --- |
+|          |                    |        |     |
 
 ## 6. Impact Analysis
 
@@ -46,7 +43,7 @@
 ## 7. Migration Plan (if applicable)
 
 - **Steps**:
-  1)
+    1.
 - **Feature flags / gradual rollout**:
 
 ## 8. Open Questions

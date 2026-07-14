@@ -96,7 +96,16 @@ test("purgeErrors does nothing when strategy is disabled", () => {
     const state = makeState({
         toolIdList: ["t1"],
         toolParameters: new Map([
-            ["t1", { tool: "read", parameters: { filePath: "/a" }, tokenCount: 100, turn: 1, status: "error" }],
+            [
+                "t1",
+                {
+                    tool: "read",
+                    parameters: { filePath: "/a" },
+                    tokenCount: 100,
+                    turn: 1,
+                    status: "error",
+                },
+            ],
         ]),
     })
     purgeErrors(state, mockLogger, config, [])
@@ -116,7 +125,16 @@ test("purgeErrors does nothing when no error tools exist", () => {
     const state = makeState({
         toolIdList: ["t1"],
         toolParameters: new Map([
-            ["t1", { tool: "read", parameters: { filePath: "/a" }, tokenCount: 100, turn: 1, status: "completed" }],
+            [
+                "t1",
+                {
+                    tool: "read",
+                    parameters: { filePath: "/a" },
+                    tokenCount: 100,
+                    turn: 1,
+                    status: "completed",
+                },
+            ],
         ]),
     })
     purgeErrors(state, mockLogger, config, [])
@@ -134,7 +152,16 @@ test("purgeErrors does not prune error tools that are not old enough", () => {
         currentTurn: 6,
         toolIdList: ["t1"],
         toolParameters: new Map([
-            ["t1", { tool: "read", parameters: { filePath: "/a" }, tokenCount: 100, turn: 3, status: "error" }],
+            [
+                "t1",
+                {
+                    tool: "read",
+                    parameters: { filePath: "/a" },
+                    tokenCount: 100,
+                    turn: 3,
+                    status: "error",
+                },
+            ],
         ]),
     })
     purgeErrors(state, mockLogger, config, [])
@@ -152,7 +179,16 @@ test("purgeErrors prunes error tools old enough", () => {
         currentTurn: 10,
         toolIdList: ["t1"],
         toolParameters: new Map([
-            ["t1", { tool: "read", parameters: { filePath: "/a" }, tokenCount: 200, turn: 5, status: "error" }],
+            [
+                "t1",
+                {
+                    tool: "read",
+                    parameters: { filePath: "/a" },
+                    tokenCount: 200,
+                    turn: 5,
+                    status: "error",
+                },
+            ],
         ]),
     })
     purgeErrors(state, mockLogger, config, [])
@@ -172,7 +208,16 @@ test("purgeErrors skips tools in protectedTools list", () => {
         currentTurn: 10,
         toolIdList: ["t1"],
         toolParameters: new Map([
-            ["t1", { tool: "task", parameters: { prompt: "do thing" }, tokenCount: 300, turn: 2, status: "error" }],
+            [
+                "t1",
+                {
+                    tool: "task",
+                    parameters: { prompt: "do thing" },
+                    tokenCount: 300,
+                    turn: 2,
+                    status: "error",
+                },
+            ],
         ]),
     })
     purgeErrors(state, mockLogger, config, [])
@@ -197,7 +242,16 @@ test("purgeErrors skips already-pruned tool IDs", () => {
             tools: pruneTools,
         },
         toolParameters: new Map([
-            ["t1", { tool: "read", parameters: { filePath: "/a" }, tokenCount: 200, turn: 2, status: "error" }],
+            [
+                "t1",
+                {
+                    tool: "read",
+                    parameters: { filePath: "/a" },
+                    tokenCount: 200,
+                    turn: 2,
+                    status: "error",
+                },
+            ],
         ]),
     })
     purgeErrors(state, mockLogger, config, [])
@@ -217,9 +271,36 @@ test("purgeErrors only prunes old errors from mixed status tools", () => {
         currentTurn: 10,
         toolIdList: ["t1", "t2", "t3"],
         toolParameters: new Map([
-            ["t1", { tool: "read", parameters: { filePath: "/a" }, tokenCount: 100, turn: 5, status: "error" }],
-            ["t2", { tool: "read", parameters: { filePath: "/b" }, tokenCount: 100, turn: 5, status: "completed" }],
-            ["t3", { tool: "read", parameters: { filePath: "/c" }, tokenCount: 100, turn: 9, status: "error" }],
+            [
+                "t1",
+                {
+                    tool: "read",
+                    parameters: { filePath: "/a" },
+                    tokenCount: 100,
+                    turn: 5,
+                    status: "error",
+                },
+            ],
+            [
+                "t2",
+                {
+                    tool: "read",
+                    parameters: { filePath: "/b" },
+                    tokenCount: 100,
+                    turn: 5,
+                    status: "completed",
+                },
+            ],
+            [
+                "t3",
+                {
+                    tool: "read",
+                    parameters: { filePath: "/c" },
+                    tokenCount: 100,
+                    turn: 9,
+                    status: "error",
+                },
+            ],
         ]),
     })
     purgeErrors(state, mockLogger, config, [])
@@ -241,7 +322,16 @@ test("purgeErrors handles exact turn boundary correctly", () => {
         currentTurn: 8,
         toolIdList: ["t1"],
         toolParameters: new Map([
-            ["t1", { tool: "read", parameters: { filePath: "/a" }, tokenCount: 100, turn: 4, status: "error" }],
+            [
+                "t1",
+                {
+                    tool: "read",
+                    parameters: { filePath: "/a" },
+                    tokenCount: 100,
+                    turn: 4,
+                    status: "error",
+                },
+            ],
         ]),
     })
     purgeErrors(state, mockLogger, config, [])
@@ -258,7 +348,16 @@ test("purgeErrors does nothing in manual mode without automaticStrategies", () =
         currentTurn: 10,
         toolIdList: ["t1"],
         toolParameters: new Map([
-            ["t1", { tool: "read", parameters: { filePath: "/a" }, tokenCount: 100, turn: 2, status: "error" }],
+            [
+                "t1",
+                {
+                    tool: "read",
+                    parameters: { filePath: "/a" },
+                    tokenCount: 100,
+                    turn: 2,
+                    status: "error",
+                },
+            ],
         ]),
     })
     purgeErrors(state, mockLogger, config, [])
@@ -274,7 +373,16 @@ test("purgeErrors runs in manual mode when automaticStrategies is true", () => {
         currentTurn: 10,
         toolIdList: ["t1"],
         toolParameters: new Map([
-            ["t1", { tool: "read", parameters: { filePath: "/a" }, tokenCount: 100, turn: 2, status: "error" }],
+            [
+                "t1",
+                {
+                    tool: "read",
+                    parameters: { filePath: "/a" },
+                    tokenCount: 100,
+                    turn: 2,
+                    status: "error",
+                },
+            ],
         ]),
     })
     purgeErrors(state, mockLogger, config, [])

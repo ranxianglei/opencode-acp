@@ -8,7 +8,11 @@ import { COMPRESS_MESSAGE as COMPRESS_MESSAGE_PROMPT } from "./compress-message"
 import { CONTEXT_LIMIT_NUDGE } from "./context-limit-nudge"
 import { TURN_NUDGE } from "./turn-nudge"
 import { ITERATION_NUDGE } from "./iteration-nudge"
-import { MANUAL_MODE_SYSTEM_EXTENSION, SUBAGENT_SYSTEM_EXTENSION, DECOMPRESS_SYSTEM_EXTENSION } from "./extensions/system"
+import {
+    MANUAL_MODE_SYSTEM_EXTENSION,
+    SUBAGENT_SYSTEM_EXTENSION,
+    DECOMPRESS_SYSTEM_EXTENSION,
+} from "./extensions/system"
 
 export type PromptKey =
     | "system"

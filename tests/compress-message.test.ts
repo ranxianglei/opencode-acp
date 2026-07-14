@@ -217,7 +217,10 @@ test("compress message mode batches individual message summaries", async () => {
 
     assert.match(result, /^Compressed 1 message into \[Compressed conversation section\]\./)
     assert.match(result, /Skipped 1 issue:/)
-    assert.match(result, /messageId m00003 contains a protected tool output and cannot be compressed\./)
+    assert.match(
+        result,
+        /messageId m00003 contains a protected tool output and cannot be compressed\./,
+    )
     assert.equal(state.prune.messages.blocksById.size, 1)
 
     const blocks = Array.from(state.prune.messages.blocksById.values()).sort(
@@ -622,7 +625,10 @@ test("compress message mode allows messages containing compress tool parts", asy
     )
 
     // [Bug 30 fix] Result now includes IMPORTANT continuation instruction
-    assert.equal(result, "Compressed 1 message into [Compressed conversation section].\nIMPORTANT: This was an automatic context compression. You MUST continue your previous task exactly where you left off. Do NOT ask the user what to do next.")
+    assert.equal(
+        result,
+        "Compressed 1 message into [Compressed conversation section].\nIMPORTANT: This was an automatic context compression. You MUST continue your previous task exactly where you left off. Do NOT ask the user what to do next.",
+    )
     assert.equal(state.prune.messages.blocksById.size, 1)
     const block = Array.from(state.prune.messages.blocksById.values())[0]
     assert.equal(block?.startId, "m00004")

@@ -18,6 +18,7 @@ Fixed broken release pipeline by merging `auto-tag.yml` + `release.yml` into a s
 ## 3. Fix
 
 Single `release.yml` workflow:
+
 - Triggers on push to master
 - Detects release branch merge (`YYYY-MM-DD_release-v*`)
 - In one job: creates tag → npm ci → check:package → test → npm publish → GitHub Release

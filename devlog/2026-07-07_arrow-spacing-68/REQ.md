@@ -19,8 +19,8 @@
 
 - **Environment**: Any compression that triggers a notification.
 - **Minimal reproduction steps**:
-  1. Run a compression that fires a notification.
-  2. Read the rendered `Context X→Y` string — no spaces around `→`.
+    1. Run a compression that fires a notification.
+    2. Read the rendered `Context X→Y` string — no spaces around `→`.
 - **Relevant configuration**: Any config that shows notifications (default).
 
 ## 3. Constraints & Non-Goals
@@ -31,7 +31,7 @@
 ## 4. Acceptance Criteria (must be testable)
 
 - **Correctness**:
-  - [x] `formatContextTransition` returns `Context ${beforeStr} → ${afterStr}` (spaces around `→`).
+    - [x] `formatContextTransition` returns `Context ${beforeStr} → ${afterStr}` (spaces around `→`).
 - **Performance / Stability**: N/A (one-character cosmetic change).
 - **Regression**: N/A (no logic change).
 

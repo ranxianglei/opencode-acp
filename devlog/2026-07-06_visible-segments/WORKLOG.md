@@ -10,14 +10,14 @@ count exceeds a configurable cap.
 
 ## ChangeLog
 
-| Commit | File(s) | Change |
-|--------|---------|--------|
-| (this PR) | lib/config.ts | Add `CompressConfig.maxVisibleSegments` (default 50) + default + merge |
-| (this PR) | lib/config-validation.ts | Allow `compress.maxVisibleSegments` key + type/range validation (>=1) |
-| (this PR) | dcp.schema.json | Add `maxVisibleSegments` property + default |
-| (this PR) | lib/messages/inject/inject.ts | Rewrite `injectVisibleIdRange` → `buildVisibleSegments` + `formatVisibleGuidance` (pure, exported) + thin wrapper |
-| (this PR) | tests/visible-segments.test.ts | NEW — 17 unit tests: segment merge/sort/tool/tokens + format/truncate/order/K-suffix |
-| (this PR) | tests/e2e-blocks-nudges.test.ts | Update visible-tag assertion to new `[Visible: … (N msgs, M segments)]` format |
+| Commit    | File(s)                         | Change                                                                                                            |
+| --------- | ------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| (this PR) | lib/config.ts                   | Add `CompressConfig.maxVisibleSegments` (default 50) + default + merge                                            |
+| (this PR) | lib/config-validation.ts        | Allow `compress.maxVisibleSegments` key + type/range validation (>=1)                                             |
+| (this PR) | dcp.schema.json                 | Add `maxVisibleSegments` property + default                                                                       |
+| (this PR) | lib/messages/inject/inject.ts   | Rewrite `injectVisibleIdRange` → `buildVisibleSegments` + `formatVisibleGuidance` (pure, exported) + thin wrapper |
+| (this PR) | tests/visible-segments.test.ts  | NEW — 17 unit tests: segment merge/sort/tool/tokens + format/truncate/order/K-suffix                              |
+| (this PR) | tests/e2e-blocks-nudges.test.ts | Update visible-tag assertion to new `[Visible: … (N msgs, M segments)]` format                                    |
 
 ## KeyFiles
 
@@ -59,7 +59,7 @@ count exceeds a configurable cap.
 
 ## Lessons
 
-- Ephemeral guidance strings that *describe* state must stay consistent with the *actual*
+- Ephemeral guidance strings that _describe_ state must stay consistent with the _actual_
   state, or the model trusts the description and mis-targets. A single "first–last" span
   was a latent lie once compression introduced holes.
 - Extracting pure functions (`buildVisibleSegments`, `formatVisibleGuidance`) made the

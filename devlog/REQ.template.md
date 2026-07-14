@@ -18,33 +18,32 @@
 ## 2. Reproduction (if applicable)
 
 - **Environment**:
-  - Node: <version>
-  - OS/Arch: <linux-arm64 / darwin-arm64 / ...>
+    - Node: <version>
+    - OS/Arch: <linux-arm64 / darwin-arm64 / ...>
 - **Minimal reproduction steps**:
-  1)
-  2)
+    1.
+    2.
 - **Relevant configuration**:
 
 ## 3. Constraints & Non-Goals
 
 - **Constraints**:
-  - Backward compatibility:
-  - Performance requirements:
-  - Resource limits:
+    - Backward compatibility:
+    - Performance requirements:
+    - Resource limits:
 - **Non-Goals** (explicitly out of scope):
 
 ## 4. Acceptance Criteria (must be testable)
 
 - **Correctness**:
-  - [ ]
+    - [ ]
 - **Performance / Stability**:
-  - [ ]
+    - [ ]
 - **Regression**:
-  - [ ] New/modified test cases added to test suite and passing
+    - [ ] New/modified test cases added to test suite and passing
 
 ## 5. Proposed Approach (optional)
 
-- **Affected modules & entry files**:
-  -
+- ## **Affected modules & entry files**:
 - **Risks**:
 - **Rollback strategy**:

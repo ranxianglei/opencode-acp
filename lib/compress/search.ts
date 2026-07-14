@@ -128,7 +128,7 @@ export function resolveBoundaryIds(
     // but anchor message ordering can differ. Auto-swap prevents compress failures
     // that cause models to give up without compressing.
     if (startReference.rawIndex > endReference.rawIndex) {
-        [startReference, endReference] = [endReference, startReference]
+        ;[startReference, endReference] = [endReference, startReference]
     }
 
     return { startReference, endReference }
@@ -372,9 +372,7 @@ function buildSearchPreview(text: string, firstTerm: string): string {
         const start = Math.max(0, matchIdx - 50)
         const end = Math.min(text.length, matchIdx + 150)
         return (
-            (start > 0 ? "..." : "") +
-            text.substring(start, end) +
-            (end < text.length ? "..." : "")
+            (start > 0 ? "..." : "") + text.substring(start, end) + (end < text.length ? "..." : "")
         )
     }
     return text.substring(0, 200) + (text.length > 200 ? "..." : "")
@@ -386,9 +384,7 @@ export function createSearchContextTool(ctx: ToolContext): ReturnType<typeof too
     return tool({
         description: SEARCH_CONTEXT_TOOL_DESCRIPTION,
         args: {
-            query: tool.schema
-                .string()
-                .describe("Search query — keywords or phrase to find"),
+            query: tool.schema.string().describe("Search query — keywords or phrase to find"),
             limit: tool.schema
                 .number()
                 .optional()
@@ -396,7 +392,9 @@ export function createSearchContextTool(ctx: ToolContext): ReturnType<typeof too
             deep: tool.schema
                 .boolean()
                 .optional()
-                .describe("If true, also search visible (uncompressed) messages. Slower but more thorough (default: false)"),
+                .describe(
+                    "If true, also search visible (uncompressed) messages. Slower but more thorough (default: false)",
+                ),
         },
         async execute(args) {
             const query = (args.query || "").toLowerCase().trim()
@@ -408,7 +406,7 @@ export function createSearchContextTool(ctx: ToolContext): ReturnType<typeof too
 
             const queryTerms = query.split(/\s+/).filter((t) => t.length > 0)
             const results: SearchResult[] = []
-            const MIN_RELEVANCE = 0.10
+            const MIN_RELEVANCE = 0.1
 
             const blocksById = ctx.state.prune.messages.blocksById
             for (const [blockId, block] of blocksById) {
@@ -431,7 +429,7 @@ export function createSearchContextTool(ctx: ToolContext): ReturnType<typeof too
                     // Summary matches (lower weight, compounds with frequency)
                     const summaryCount = countOccurrences(summary, term)
                     if (summaryCount > 0) {
-                        relevance += Math.min(summaryCount * 0.04, 0.20)
+                        relevance += Math.min(summaryCount * 0.04, 0.2)
                         termHit = true
                     }
                     if (termHit) termsHit++

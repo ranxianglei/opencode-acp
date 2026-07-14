@@ -51,35 +51,19 @@ test("isMessageWithInfo returns false for missing parts", () => {
 })
 
 test("isMessageWithInfo returns false for wrong role type", () => {
-    assert.equal(
-        isMessageWithInfo(
-            validMessage({ role: "system" }),
-        ),
-        false,
-    )
+    assert.equal(isMessageWithInfo(validMessage({ role: "system" })), false)
 })
 
 test("isMessageWithInfo returns false for empty id", () => {
-    assert.equal(
-        isMessageWithInfo(validMessage({ id: "" })),
-        false,
-    )
+    assert.equal(isMessageWithInfo(validMessage({ id: "" })), false)
 })
 
 test("isMessageWithInfo returns false for empty sessionID", () => {
-    assert.equal(
-        isMessageWithInfo(validMessage({ sessionID: "" })),
-        false,
-    )
+    assert.equal(isMessageWithInfo(validMessage({ sessionID: "" })), false)
 })
 
 test("isMessageWithInfo returns false for non-number time.created", () => {
-    assert.equal(
-        isMessageWithInfo(
-            validMessage({ time: { created: "not-a-number" } }),
-        ),
-        false,
-    )
+    assert.equal(isMessageWithInfo(validMessage({ time: { created: "not-a-number" } })), false)
 })
 
 test("isMessageWithInfo returns false for missing time object", () => {
@@ -117,11 +101,7 @@ test("filterMessages returns empty array when all invalid", () => {
 })
 
 test("filterMessagesInPlace mutates array in place", () => {
-    const arr = [
-        validMessage({ id: "msg-1" }),
-        { bad: true },
-        validMessage({ id: "msg-2" }),
-    ]
+    const arr = [validMessage({ id: "msg-1" }), { bad: true }, validMessage({ id: "msg-2" })]
     const result = filterMessagesInPlace(arr)
     assert.equal(result, arr)
     assert.equal(arr.length, 2)

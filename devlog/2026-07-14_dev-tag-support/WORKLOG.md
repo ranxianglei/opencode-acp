@@ -17,20 +17,20 @@
 ### Key Files
 
 - `.github/workflows/release.yml` — 3 changes:
-  1. "Read version" step: added `is_prerelease` and `npm_tag` outputs via `grep -q -- '-'` detection
-  2. "Publish to npm" step: changed from `npm publish` to conditional `npm publish --tag "$NPM_TAG"`
-  3. "Create GitHub Release" step: added `prerelease: ${{ steps.version.outputs.is_prerelease }}`
+    1. "Read version" step: added `is_prerelease` and `npm_tag` outputs via `grep -q -- '-'` detection
+    2. "Publish to npm" step: changed from `npm publish` to conditional `npm publish --tag "$NPM_TAG"`
+    3. "Create GitHub Release" step: added `prerelease: ${{ steps.version.outputs.is_prerelease }}`
 
 ## 3. Design & Implementation Notes
 
 - **Detection logic**: Version string containing `-` (e.g., `1.13.0-dev.1`, `1.13.0-beta.2`, `1.13.0-rc.1`) → prerelease → `dev` npm tag. Versions without `-` (e.g., `1.13.0`) → stable → `latest` npm tag.
 - **No branch name change needed**: Release branch naming `YYYY-MM-DD_release-v*` already matches prerelease versions (`release-v1.13.0-dev.1` contains `release-v`).
 - **Workflow**:
-  ```
-  Feature PRs → master (code integration, no npm publish)
-  Release branch (stable) → master merge → npm publish --tag latest
-  Release branch (prerelease) → master merge → npm publish --tag dev
-  ```
+    ```
+    Feature PRs → master (code integration, no npm publish)
+    Release branch (stable) → master merge → npm publish --tag latest
+    Release branch (prerelease) → master merge → npm publish --tag dev
+    ```
 
 ## 4. Testing & Verification
 

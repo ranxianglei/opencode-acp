@@ -8,23 +8,42 @@ import type { ToolContext } from "../lib/compress/types"
 
 function buildConfig(): PluginConfig {
     return {
-        enabled: true, autoUpdate: true, debug: false, pruneNotification: "off", pruneNotificationType: "chat",
+        enabled: true,
+        autoUpdate: true,
+        debug: false,
+        pruneNotification: "off",
+        pruneNotificationType: "chat",
         commands: { enabled: true, protectedTools: [] },
         manualMode: { enabled: false, automaticStrategies: true },
         turnProtection: { enabled: false, turns: 4 },
         experimental: { allowSubAgents: false, customPrompts: false },
         protectedFilePatterns: [],
         compress: {
-            mode: "range", permission: "allow", showCompression: false, summaryBuffer: true,
-            maxContextLimit: 150000, minContextLimit: 50000, nudgeFrequency: 5,
-            iterationNudgeThreshold: 15, nudgeForce: "soft", protectedTools: [],
-            protectTags: false, protectUserMessages: false,
+            mode: "range",
+            permission: "allow",
+            showCompression: false,
+            summaryBuffer: true,
+            maxContextLimit: 150000,
+            minContextLimit: 50000,
+            nudgeFrequency: 5,
+            iterationNudgeThreshold: 15,
+            nudgeForce: "soft",
+            protectedTools: [],
+            protectTags: false,
+            protectUserMessages: false,
         },
         strategies: {
             deduplication: { enabled: true, protectedTools: [] },
             purgeErrors: { enabled: true, turns: 4, protectedTools: [] },
         },
-        gc: { algorithm: "truncate", promotionThreshold: 5, maxBlockAge: 15, maxOldGenSummaryLength: 3000, majorGcThresholdPercent: "100%", batchCleanup: { lowThreshold: "60%", highThreshold: "75%", forceThreshold: "90%" } },
+        gc: {
+            algorithm: "truncate",
+            promotionThreshold: 5,
+            maxBlockAge: 15,
+            maxOldGenSummaryLength: 3000,
+            majorGcThresholdPercent: "100%",
+            batchCleanup: { lowThreshold: "60%", highThreshold: "75%", forceThreshold: "90%" },
+        },
     }
 }
 

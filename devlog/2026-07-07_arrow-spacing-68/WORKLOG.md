@@ -16,8 +16,8 @@
 
 ### Commits
 
-| Commit | Description |
-|--------|-------------|
+| Commit  | Description                                                            |
+| ------- | ---------------------------------------------------------------------- |
 | `<sha>` | fix: add spacing around arrow in context transition notification (#68) |
 
 ### Key Files

@@ -5,7 +5,10 @@ import type { SessionState } from "../lib/state"
 import { buildVisibleSegments, formatVisibleGuidance } from "../lib/messages/inject/inject"
 
 function mkText(id: string, text: string): WithParts {
-    return { info: { id } as any, parts: [{ type: "text", text, id: `${id}-p`, sessionID: "s", messageID: id }] as any }
+    return {
+        info: { id } as any,
+        parts: [{ type: "text", text, id: `${id}-p`, sessionID: "s", messageID: id }] as any,
+    }
 }
 
 function mkTool(id: string, raw: string): WithParts {
@@ -13,7 +16,9 @@ function mkTool(id: string, raw: string): WithParts {
 }
 
 function mkState(pairs: [rawId: string, ref: string][]): SessionState {
-    return { messageIds: { byRawId: new Map(pairs), byRef: new Map(), nextRef: 1 } } as any as SessionState
+    return {
+        messageIds: { byRawId: new Map(pairs), byRef: new Map(), nextRef: 1 },
+    } as any as SessionState
 }
 
 // ---------------- buildVisibleSegments ----------------
@@ -70,16 +75,13 @@ test("buildVisibleSegments: hole with multi-msg segments on both sides", () => {
         ["raw-6", "m00006"],
         ["raw-7", "m00007"],
     ])
-    const segs = buildVisibleSegments(
-        state,
-        [
-            mkText("raw-1", "a"),
-            mkText("raw-2", "b"),
-            mkText("raw-5", "e"),
-            mkText("raw-6", "f"),
-            mkText("raw-7", "g"),
-        ],
-    )
+    const segs = buildVisibleSegments(state, [
+        mkText("raw-1", "a"),
+        mkText("raw-2", "b"),
+        mkText("raw-5", "e"),
+        mkText("raw-6", "f"),
+        mkText("raw-7", "g"),
+    ])
     assert.equal(segs.length, 2)
     assert.equal(segs[0].startRef, "m00001")
     assert.equal(segs[0].endRef, "m00002")
@@ -111,10 +113,7 @@ test("buildVisibleSegments: tokens accumulate across messages in a segment", () 
 
 test("buildVisibleSegments: message without a ref is skipped", () => {
     const state = mkState([["raw-1", "m00001"]])
-    const segs = buildVisibleSegments(state, [
-        mkText("raw-1", "a"),
-        mkText("raw-unmapped", "b"),
-    ])
+    const segs = buildVisibleSegments(state, [mkText("raw-1", "a"), mkText("raw-unmapped", "b")])
     assert.equal(segs.length, 1)
     assert.equal(segs[0].startRef, "m00001")
 })
@@ -143,7 +142,10 @@ test("formatVisibleGuidance: empty segments returns empty string", () => {
 })
 
 test("formatVisibleGuidance: single segment singularizes msg/segment", () => {
-    const out = formatVisibleGuidance([{ startRef: "m00001", endRef: "m00001", count: 1, tokens: 10, hasTool: false }], 50)
+    const out = formatVisibleGuidance(
+        [{ startRef: "m00001", endRef: "m00001", count: 1, tokens: 10, hasTool: false }],
+        50,
+    )
     assert.equal(out, "[Visible: m00001 (1 msg, 1 segment)]")
 })
 
@@ -247,5 +249,8 @@ test("formatVisibleGuidance: omitted note singularizes msg when exactly 1 messag
         { startRef: "m00003", endRef: "m00003", count: 1, tokens: 2, hasTool: false },
     ]
     const out = formatVisibleGuidance(segs, 1)
-    assert.ok(out.includes("+1 smaller segment (~2 tokens, 1 msg) omitted]"), "1 omitted msg should be singular")
+    assert.ok(
+        out.includes("+1 smaller segment (~2 tokens, 1 msg) omitted]"),
+        "1 omitted msg should be singular",
+    )
 })

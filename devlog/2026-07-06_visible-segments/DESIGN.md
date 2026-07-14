@@ -11,11 +11,11 @@ holes; the span hid them. The model selected refs inside holes and `compress` fa
 
 ```ts
 interface VisibleSegment {
-    startRef: string      // "m00003"
-    endRef: string        // "m00007" (== startRef for single-message segments)
-    count: number         // messages in this contiguous run
-    tokens: number        // summed len/4 token estimate across the run
-    hasTool: boolean      // true if any message in the run carries a non-text part
+    startRef: string // "m00003"
+    endRef: string // "m00007" (== startRef for single-message segments)
+    count: number // messages in this contiguous run
+    tokens: number // summed len/4 token estimate across the run
+    hasTool: boolean // true if any message in the run carries a non-text part
 }
 ```
 
@@ -62,6 +62,7 @@ that, timeline order is clearer and avoids confusing the model about causality.
 ### Config
 
 `compress.maxVisibleSegments: number` (default 50). Plumbed through:
+
 - `CompressConfig` interface (config.ts)
 - default config (config.ts)
 - `mergeConfig` (config.ts)
@@ -85,6 +86,6 @@ Net hook cost increase is negligible.
 ### What is NOT changed
 
 - `compress/search.ts` rejection logic — still correctly refuses consumed refs. The fix
-  is purely on the *guidance* side: stop advertising consumed refs as valid.
+  is purely on the _guidance_ side: stop advertising consumed refs as valid.
 - Breakdown line, Top blocks hint, nudge text — untouched.
 - `injectMessageIds` (per-message mNNNNN tagging) — untouched.

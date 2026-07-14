@@ -943,7 +943,10 @@ export function formatCompressibleRanges(
     }
 
     const lines = merged.map((e, i) => {
-        const suffix = i === merged.length - 1 && e.compressibleTokens > 0 ? "  (recent — may still be in active use)" : ""
+        const suffix =
+            i === merged.length - 1 && e.compressibleTokens > 0
+                ? "  (recent — may still be in active use)"
+                : ""
 
         if (e.protectedTokens > 0 && e.compressibleTokens === 0) {
             return `  ${e.startRef}–${e.endRef}  ${e.count} msgs  ${fmt(e.tokens)} [PROTECTED: ${e.protectedTools.join(", ")} — not compressible]${suffix}`

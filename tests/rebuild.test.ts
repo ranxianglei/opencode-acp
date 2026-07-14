@@ -101,10 +101,7 @@ function makeTextPart(text: string): any {
     return { type: "text", text }
 }
 
-function makeCompressPart(
-    callId: string,
-    input: any,
-): any {
+function makeCompressPart(callId: string, input: any): any {
     return {
         type: "tool",
         tool: "compress",
@@ -130,7 +127,6 @@ function freshState(): SessionState {
     msgCounter = 0
     return createSessionState()
 }
-
 
 test("rebuild returns 0 and makes no state changes when no compress parts exist", () => {
     const state = freshState()
@@ -272,7 +268,9 @@ test("rebuild deactivates consumed blocks in nested compression (b1 consumed by 
         makeAssistantMessage(secondCompressId, [
             makeCompressPart("call-2", {
                 topic: "Second batch",
-                content: [{ startId: "b1", endId: "m00007", summary: "Expanded summary covering all." }],
+                content: [
+                    { startId: "b1", endId: "m00007", summary: "Expanded summary covering all." },
+                ],
             }),
         ]),
     ]
@@ -395,9 +393,7 @@ test("rebuild gracefully skips malformed compress invocations", () => {
         makeUserMessage(id1, "message one"),
         makeAssistantMessage(id2, [makeTextPart("message two")]),
         // Malformed: missing content array
-        makeAssistantMessage(malformedCompressId, [
-            makeCompressPart("call-bad", { topic: "Bad" }),
-        ]),
+        makeAssistantMessage(malformedCompressId, [makeCompressPart("call-bad", { topic: "Bad" })]),
         // Valid compress
         makeAssistantMessage(validCompressId, [
             makeCompressPart("call-good", {

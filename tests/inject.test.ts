@@ -25,20 +25,39 @@ function buildConfig(mode: "message" | "range" = "range"): PluginConfig {
         experimental: { allowSubAgents: false, customPrompts: false },
         protectedFilePatterns: [],
         compress: {
-            mode, permission: "allow", showCompression: false, summaryBuffer: true,
-            maxContextLimit: 150000, minContextLimit: 50000,
-            nudgeFrequency: 5, iterationNudgeThreshold: 15, nudgeForce: "soft",
-            protectedTools: [], protectTags: false, protectUserMessages: false,
-            minNudgeContextPercent: 15, maxSummaryLengthHard: 10000,
-            minCompressRange: 5000, minNudgeGrowthRatio: 0.45,
-            minNudgeGrowthFloor: 5000, emergencyThresholdPercent: "98%",
-            maxVisibleSegments: 50, keepEmbedMaxChars: 2000,
+            mode,
+            permission: "allow",
+            showCompression: false,
+            summaryBuffer: true,
+            maxContextLimit: 150000,
+            minContextLimit: 50000,
+            nudgeFrequency: 5,
+            iterationNudgeThreshold: 15,
+            nudgeForce: "soft",
+            protectedTools: [],
+            protectTags: false,
+            protectUserMessages: false,
+            minNudgeContextPercent: 15,
+            maxSummaryLengthHard: 10000,
+            minCompressRange: 5000,
+            minNudgeGrowthRatio: 0.45,
+            minNudgeGrowthFloor: 5000,
+            emergencyThresholdPercent: "98%",
+            maxVisibleSegments: 50,
+            keepEmbedMaxChars: 2000,
         },
         strategies: {
             deduplication: { enabled: true, protectedTools: [] },
             purgeErrors: { enabled: true, turns: 4, protectedTools: [] },
         },
-        gc: { algorithm: "truncate", promotionThreshold: 5, maxBlockAge: 15, maxOldGenSummaryLength: 3000, majorGcThresholdPercent: "100%", batchCleanup: { lowThreshold: "60%", highThreshold: "75%", forceThreshold: "90%" } },
+        gc: {
+            algorithm: "truncate",
+            promotionThreshold: 5,
+            maxBlockAge: 15,
+            maxOldGenSummaryLength: 3000,
+            majorGcThresholdPercent: "100%",
+            batchCleanup: { lowThreshold: "60%", highThreshold: "75%", forceThreshold: "90%" },
+        },
     }
 }
 
@@ -66,7 +85,13 @@ function textPart(msgId: string, text: string) {
 
 function userMsg(id: string, text: string): WithParts {
     return {
-        info: { id, role: "user", sessionID: SID, agent: "a", time: { created: 1 } } as WithParts["info"],
+        info: {
+            id,
+            role: "user",
+            sessionID: SID,
+            agent: "a",
+            time: { created: 1 },
+        } as WithParts["info"],
         parts: [textPart(id, text)],
     }
 }
@@ -74,23 +99,37 @@ function userMsg(id: string, text: string): WithParts {
 function assistantMsg(id: string, text: string, toolParts?: any[]): WithParts {
     const parts = [...(toolParts ?? []), textPart(id, text)]
     return {
-        info: { id, role: "assistant", sessionID: SID, agent: "a", time: { created: 2 } } as WithParts["info"],
+        info: {
+            id,
+            role: "assistant",
+            sessionID: SID,
+            agent: "a",
+            time: { created: 2 },
+        } as WithParts["info"],
         parts,
     }
 }
 
 function toolPart(callID: string, output: string) {
     return {
-        id: `${callID}-part`, messageID: "msg", sessionID: SID,
-        type: "tool" as const, tool: "bash", callID,
+        id: `${callID}-part`,
+        messageID: "msg",
+        sessionID: SID,
+        type: "tool" as const,
+        tool: "bash",
+        callID,
         state: { status: "completed" as const, input: {}, output },
     }
 }
 
 function compressToolPart(callID: string, output: string) {
     return {
-        id: `${callID}-part`, messageID: "msg", sessionID: SID,
-        type: "tool" as const, tool: "compress", callID,
+        id: `${callID}-part`,
+        messageID: "msg",
+        sessionID: SID,
+        type: "tool" as const,
+        tool: "compress",
+        callID,
         state: { status: "completed" as const, input: {}, output },
     }
 }
@@ -104,7 +143,11 @@ function assistantMsgWithTokens(
     const parts = [...(toolParts ?? []), textPart(id, text)]
     return {
         info: {
-            id, role: "assistant", sessionID: SID, agent: "a", time: { created: 2 },
+            id,
+            role: "assistant",
+            sessionID: SID,
+            agent: "a",
+            time: { created: 2 },
             tokens,
         } as WithParts["info"],
         parts,
@@ -157,7 +200,10 @@ test("injectMessageIds adds tag to assistant text when no tool parts exist", () 
     const messages = [assistantMsg("a1", "just text, no tools")]
     injectMessageIds(state, buildConfig(), messages)
     const textPartResult = messages[0]!.parts.find((p: any) => p.type === "text") as any
-    assert.ok(textPartResult.text.includes("m00003"), "assistant text should have ref when no tools")
+    assert.ok(
+        textPartResult.text.includes("m00003"),
+        "assistant text should have ref when no tools",
+    )
 })
 
 test("injectCompressNudges does nothing when permission is deny", () => {
@@ -167,7 +213,11 @@ test("injectCompressNudges does nothing when permission is deny", () => {
     const messages = [userMsg("u1", "hello")]
     const originalLength = messages.length
     injectCompressNudges(state, config, logger, messages, {} as any)
-    assert.equal(messages.length, originalLength, "no messages should be added when permission denied")
+    assert.equal(
+        messages.length,
+        originalLength,
+        "no messages should be added when permission denied",
+    )
 })
 
 test("injectCompressNudges does nothing when manualMode is active", () => {
@@ -187,18 +237,34 @@ test("injectCompressNudges clears anchors when compress tool is detected", () =>
     const messages: WithParts[] = [
         userMsg("u1", "hello"),
         {
-            info: { id: "a1", role: "assistant", sessionID: SID, agent: "a", time: { created: 2 } } as WithParts["info"],
-            parts: [{
-                id: "a1-tool", messageID: "a1", sessionID: SID,
-                type: "tool", tool: "compress", callID: "compress-1",
-                state: { status: "completed", input: {}, output: "done" },
-            }],
+            info: {
+                id: "a1",
+                role: "assistant",
+                sessionID: SID,
+                agent: "a",
+                time: { created: 2 },
+            } as WithParts["info"],
+            parts: [
+                {
+                    id: "a1-tool",
+                    messageID: "a1",
+                    sessionID: SID,
+                    type: "tool",
+                    tool: "compress",
+                    callID: "compress-1",
+                    state: { status: "completed", input: {}, output: "done" },
+                },
+            ],
         },
     ]
     injectCompressNudges(state, buildConfig(), logger, messages, {} as any)
     assert.equal(state.nudges.contextLimitAnchors.size, 0, "contextLimitAnchors should be cleared")
     assert.equal(state.nudges.turnNudgeAnchors.size, 0, "turnNudgeAnchors should be cleared")
-    assert.equal(state.nudges.iterationNudgeAnchors.size, 0, "iterationNudgeAnchors should be cleared")
+    assert.equal(
+        state.nudges.iterationNudgeAnchors.size,
+        0,
+        "iterationNudgeAnchors should be cleared",
+    )
 })
 
 test("stale compress from previous turn does NOT clobber baseline (restart fix)", () => {
@@ -246,7 +312,11 @@ test("compress in current turn sets baseline to compress-calling assistant's cur
         250_000,
         "current-turn compress sets baseline to compress-calling assistant's currentTokens (input+output)",
     )
-    assert.equal(state.nudges.compressBaselineSet, true, "lock must be set to prevent leak from continuation work")
+    assert.equal(
+        state.nudges.compressBaselineSet,
+        true,
+        "lock must be set to prevent leak from continuation work",
+    )
     assert.equal(state.nudges.contextLimitAnchors.size, 0, "anchors must be cleared")
 })
 
@@ -288,17 +358,24 @@ test("formatMessageIdTag produces dcp-message-id tag", () => {
 // never be scheduled. This test locks the contract: the suffix message must be
 // all-synthetic so ensureTitle still sees exactly one real user message.
 const isOpenCodeRealUserMessage = (m: WithParts): boolean =>
-    m.info.role === "user" && !m.parts.every((p) => "synthetic" in p && (p as { synthetic?: unknown }).synthetic === true)
+    m.info.role === "user" &&
+    !m.parts.every((p) => "synthetic" in p && (p as { synthetic?: unknown }).synthetic === true)
 
 test("createSyntheticUserMessage produces an all-synthetic user message that ensureTitle does not count as real", () => {
     const base = userMsg("u1", "hello")
     const synthetic = createSyntheticUserMessage(base, "")
 
     assert.ok(
-        synthetic.parts.every((p) => "synthetic" in p && (p as { synthetic?: unknown }).synthetic === true),
+        synthetic.parts.every(
+            (p) => "synthetic" in p && (p as { synthetic?: unknown }).synthetic === true,
+        ),
         "every part of a createSyntheticUserMessage result must carry synthetic:true",
     )
-    assert.equal(isOpenCodeRealUserMessage(synthetic), false, "synthetic user message must NOT be a 'real' user message")
+    assert.equal(
+        isOpenCodeRealUserMessage(synthetic),
+        false,
+        "synthetic user message must NOT be a 'real' user message",
+    )
     assert.equal(isOpenCodeRealUserMessage(base), true, "a plain user message must still be 'real'")
 
     const conversation = [base, synthetic]
@@ -392,7 +469,11 @@ test("injectCompressNudges: post-compress baseline then large growth DOES nudge"
         true,
         "55K growth from compress baseline (250K→305K, >50K threshold) — should nudge",
     )
-    assert.equal(state.nudges.lastPerMessageNudgeTokens, 250_000, "baseline NOT updated after nudge — only compress resets")
+    assert.equal(
+        state.nudges.lastPerMessageNudgeTokens,
+        250_000,
+        "baseline NOT updated after nudge — only compress resets",
+    )
 })
 
 test("nudge threshold halves after first nudge without compress (issue #23)", () => {
@@ -408,22 +489,38 @@ test("nudge threshold halves after first nudge without compress (issue #23)", ()
         assistantMsgWithTokens("a1", "done", { input: 100_000, output: 50_000 }),
     ]
     injectCompressNudges(state, config, logger, messages1, {} as any)
-    assert.equal(state.nudges.shouldInjectThisTurn, true, "50K growth >= 50K threshold → first nudge")
-    assert.equal(state.nudges.lastNudgeShownTokens, 150_000, "lastNudgeShownTokens set to currentTokens")
+    assert.equal(
+        state.nudges.shouldInjectThisTurn,
+        true,
+        "50K growth >= 50K threshold → first nudge",
+    )
+    assert.equal(
+        state.nudges.lastNudgeShownTokens,
+        150_000,
+        "lastNudgeShownTokens set to currentTokens",
+    )
 
     const messages2: WithParts[] = [
         userMsg("u2", "more"),
         assistantMsgWithTokens("a2", "work", { input: 160_000, output: 5_000 }),
     ]
     injectCompressNudges(state, config, logger, messages2, {} as any)
-    assert.equal(state.nudges.shouldInjectThisTurn, false, "15K growth from lastShown < 25K (halved) → no nudge")
+    assert.equal(
+        state.nudges.shouldInjectThisTurn,
+        false,
+        "15K growth from lastShown < 25K (halved) → no nudge",
+    )
 
     const messages3: WithParts[] = [
         userMsg("u3", "more"),
         assistantMsgWithTokens("a3", "work", { input: 170_000, output: 5_000 }),
     ]
     injectCompressNudges(state, config, logger, messages3, {} as any)
-    assert.equal(state.nudges.shouldInjectThisTurn, true, "25K growth from lastShown >= 25K (halved) → nudge fires")
+    assert.equal(
+        state.nudges.shouldInjectThisTurn,
+        true,
+        "25K growth from lastShown >= 25K (halved) → nudge fires",
+    )
     assert.equal(state.nudges.lastNudgeShownTokens, 175_000)
 })
 
@@ -464,8 +561,16 @@ test("nudge threshold restores to full after compress (issue #23)", () => {
         ]),
     ]
     injectCompressNudges(state, config, logger, messages, {} as any)
-    assert.equal(state.nudges.lastNudgeShownTokens, undefined, "compress resets lastNudgeShownTokens")
-    assert.equal(state.nudges.lastPerMessageNudgeTokens, 150_000, "compress sets baseline to post-compression currentTokens")
+    assert.equal(
+        state.nudges.lastNudgeShownTokens,
+        undefined,
+        "compress resets lastNudgeShownTokens",
+    )
+    assert.equal(
+        state.nudges.lastPerMessageNudgeTokens,
+        150_000,
+        "compress sets baseline to post-compression currentTokens",
+    )
 })
 
 test("injectCompressNudges persists new nudge baseline to disk when a growth nudge fires without anchor changes (#60)", async () => {
@@ -499,8 +604,16 @@ test("injectCompressNudges persists new nudge baseline to disk when a growth nud
 
     injectCompressNudges(state, config, logger, messages, {} as any)
 
-    assert.equal(state.nudges.shouldInjectThisTurn, true, "growth nudge should fire (55K >= 50K adaptive)")
-    assert.equal(state.nudges.lastPerMessageNudgeTokens, 200_000, "baseline NOT updated after nudge — nudges repeat until compress")
+    assert.equal(
+        state.nudges.shouldInjectThisTurn,
+        true,
+        "growth nudge should fire (55K >= 50K adaptive)",
+    )
+    assert.equal(
+        state.nudges.lastPerMessageNudgeTokens,
+        200_000,
+        "baseline NOT updated after nudge — nudges repeat until compress",
+    )
 
     // saveSessionState is fire-and-forget inside injectCompressNudges (.catch(()=>{})); flush before reload.
     await new Promise((resolve) => setTimeout(resolve, 50))
@@ -534,12 +647,20 @@ test("E2E: nudge survives compress → restart → growth (issue #23)", async ()
         ]),
     ]
     injectCompressNudges(state, config, logger, turn1, {} as any)
-    assert.equal(state.nudges.lastPerMessageNudgeTokens, 250_000, "compress sets baseline to post-compression tokens")
+    assert.equal(
+        state.nudges.lastPerMessageNudgeTokens,
+        250_000,
+        "compress sets baseline to post-compression tokens",
+    )
 
     // Simulate restart: load from disk
     await new Promise((resolve) => setTimeout(resolve, 50))
     const loaded1 = await loadSessionState(PERSIST_SESSION, logger)
-    assert.equal(loaded1!.nudges.lastPerMessageNudgeTokens, 250_000, "on-disk baseline must be 250K after compress")
+    assert.equal(
+        loaded1!.nudges.lastPerMessageNudgeTokens,
+        250_000,
+        "on-disk baseline must be 250K after compress",
+    )
 
     const state2 = createSessionState()
     state2.sessionId = PERSIST_SESSION
@@ -554,7 +675,11 @@ test("E2E: nudge survives compress → restart → growth (issue #23)", async ()
     ]
     injectCompressNudges(state2, config, logger, turn2, {} as any)
     // 155K < 250K - 50K = 200K → baseline corrected to 155K
-    assert.equal(state2.nudges.lastPerMessageNudgeTokens, 155_000, "baseline corrected down to actual post-compression level")
+    assert.equal(
+        state2.nudges.lastPerMessageNudgeTokens,
+        155_000,
+        "baseline corrected down to actual post-compression level",
+    )
 
     // Simulate restart AGAIN: baseline must persist
     await new Promise((resolve) => setTimeout(resolve, 50))
@@ -601,13 +726,19 @@ test("E2E: nudge recommendation content includes composition breakdown and compr
     ]
     injectCompressNudges(state, config, logger, messages, {} as any)
 
-    assert.equal(state.nudges.shouldInjectThisTurn, true, "should nudge (55K growth >= 50K threshold)")
+    assert.equal(
+        state.nudges.shouldInjectThisTurn,
+        true,
+        "should nudge (55K growth >= 50K threshold)",
+    )
 
     const injected = suffixText(messages)
     assert.ok(injected.includes("Breakdown:"), "nudge must include composition breakdown")
     assert.ok(injected.includes("tool"), "breakdown must show tool category")
     assert.ok(
-        injected.includes("acp_status") || injected.includes("compress") || injected.includes("review"),
+        injected.includes("acp_status") ||
+            injected.includes("compress") ||
+            injected.includes("review"),
         "nudge must include compress guidance",
     )
 })
@@ -635,13 +766,20 @@ test("growth floor: nudge suppressed when growth below floor (issue #27 anti-thr
     ]
     injectCompressNudges(state, config, logger, messages, {} as any)
 
-    assert.equal(state.nudges.shouldInjectThisTurn, false, "5K growth < 22500 floor → nudge suppressed")
+    assert.equal(
+        state.nudges.shouldInjectThisTurn,
+        false,
+        "5K growth < 22500 floor → nudge suppressed",
+    )
     assert.ok(state.nudges.turnNudgeAnchors.size > 0, "anchors still accumulate")
 
     const injected = suffixText(messages)
     assert.ok(!injected.includes("Breakdown:"), "no breakdown when growth below floor")
     assert.ok(!injected.includes("Compressible ranges"), "no ranges when growth below floor")
-    assert.ok(!injected.includes("Context limit reached"), "no strong alert when growth below floor")
+    assert.ok(
+        !injected.includes("Context limit reached"),
+        "no strong alert when growth below floor",
+    )
     assert.equal(state.nudges.lastNudgeShownTokens, undefined, "lastNudgeShownTokens not updated")
 })
 
@@ -668,7 +806,11 @@ test("growth floor: nudge fires when growth meets nudgeGrowthTokens (not just gr
     ]
     injectCompressNudges(state, config, logger, messages, {} as any)
 
-    assert.equal(state.nudges.shouldInjectThisTurn, false, "25K growth < 50K nudgeGrowthTokens → nudge suppressed")
+    assert.equal(
+        state.nudges.shouldInjectThisTurn,
+        false,
+        "25K growth < 50K nudgeGrowthTokens → nudge suppressed",
+    )
 
     // 55K growth: above nudgeGrowthTokens AND above growthFloor → fires
     const state2 = createSessionState()
@@ -685,7 +827,11 @@ test("growth floor: nudge fires when growth meets nudgeGrowthTokens (not just gr
     ]
     injectCompressNudges(state2, config, logger, messages2, {} as any)
 
-    assert.equal(state2.nudges.shouldInjectThisTurn, true, "55K growth >= 50K nudgeGrowthTokens → nudge fires")
+    assert.equal(
+        state2.nudges.shouldInjectThisTurn,
+        true,
+        "55K growth >= 50K nudgeGrowthTokens → nudge fires",
+    )
 
     const injected = suffixText(messages2)
     assert.ok(injected.includes("Breakdown:"), "breakdown shown when growth meets threshold")
@@ -836,6 +982,80 @@ test("growth floor: applyAnchoredNudges output suppressed when growth below floo
         "anchored turn nudge text MUST appear when nudgeAllowed is true",
     )
 })
+
+test("stale contextLimitAnchors cleared when context drops below maxLimit without compress (issue #27)", () => {
+    const state = createSessionState()
+    state.modelContextLimit = 1_000_000
+    state.nudges.lastPerMessageNudgeTokens = 50_000
+    state.nudges.contextLimitAnchors.add("stale-anchor-1")
+
+    const config = buildConfig()
+    config.compress.maxContextLimit = 200_000
+    config.compress.minContextLimit = 50_000
+
+    const messages: WithParts[] = [
+        userMsg("u1", "hello"),
+        assistantMsgWithTokens("a1", "done", { input: 50_000, output: 60_000 }, [
+            toolPart("c1", "x".repeat(500)),
+        ]),
+    ]
+    injectCompressNudges(state, config, logger, messages, {} as any)
+
+    assert.equal(
+        state.nudges.contextLimitAnchors.size,
+        0,
+        "stale contextLimitAnchors must be cleared when overMaxLimit is false",
+    )
+})
+
+test("stale contextLimitAnchors: contextLimitNudge NOT injected when context below limit (issue #27)", () => {
+    const CTX_LIMIT_MARKER = "CTX_LIMIT_MARKER"
+
+    const makePrompts = () =>
+        ({
+            system: "",
+            compressRange: "",
+            compressMessage: "",
+            contextLimitNudge: CTX_LIMIT_MARKER,
+            turnNudge: "TURN_NUDGE_MARKER",
+            iterationNudge: "ITER_NUDGE_MARKER",
+            manualExtension: "",
+            subagentExtension: "",
+            decompressExtension: "",
+        }) as any
+
+    const state = createSessionState()
+    state.modelContextLimit = 1_000_000
+    state.nudges.lastPerMessageNudgeTokens = 50_000
+    state.nudges.contextLimitAnchors.add("stale-anchor-1")
+    state.messageIds.byRawId.set("u1", "m00001")
+    state.messageIds.byRawId.set("a1", "m00002")
+
+    const config = buildConfig()
+    config.compress.maxContextLimit = 200_000
+    config.compress.minContextLimit = 50_000
+
+    const messages: WithParts[] = [
+        userMsg("u1", "hello"),
+        assistantMsgWithTokens("a1", "done", { input: 50_000, output: 60_000 }, [
+            toolPart("c1", "x".repeat(500)),
+        ]),
+    ]
+    injectCompressNudges(state, config, logger, messages, makePrompts())
+
+    assert.equal(state.nudges.shouldInjectThisTurn, true, "60K growth >= 50K threshold → nudge fires")
+    assert.equal(
+        state.nudges.contextLimitAnchors.size,
+        0,
+        "stale anchors must be cleared before applyAnchoredNudges runs",
+    )
+
+    const text = suffixText(messages)
+    assert.ok(
+        !text.includes(CTX_LIMIT_MARKER),
+        "contextLimitNudge must NOT appear when context is below maxLimit (stale anchors cleared)",
+    )
+})
 // Reminder threshold scales with context (via nudgeGrowthTokens); on a 1M model
 // it is 50K, not the old hardcoded 5000. Tool chars ≈ JSON.stringify(part).length/4.
 
@@ -890,4 +1110,3 @@ test("ensureSessionInitialized restores persisted modelContextLimit after restar
     )
     await cleanupModelLimitSession()
 })
-

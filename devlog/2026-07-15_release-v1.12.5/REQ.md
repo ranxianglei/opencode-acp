@@ -10,6 +10,7 @@ Patch release bundling two bug fixes merged after v1.12.4:
 ## Motivation
 
 v1.12.4 introduced the growth floor gate (PR #134) but had two regressions:
+
 1. The Bug 20 suppression in `isContextOverLimits` used a non-existent SDK part format (`tool-invocation` / `toolInvocation`), so `overMaxLimit` was never suppressed after a compress call → over-compression feedback loop.
 2. The growth floor gate made `growthFloor` the sole condition for `nudgeAllowed`, dropping the `decision.shouldNudge` requirement.
 

@@ -183,13 +183,12 @@ function extractTextContent(msg: WithParts): string {
             if ("text" in part && typeof part.text === "string") {
                 textParts.push(part.text)
             } else if ("type" in part && part.type === "tool") {
-                const toolName = "tool" in part && typeof part.tool === "string" ? part.tool : "tool"
+                const toolName =
+                    "tool" in part && typeof part.tool === "string" ? part.tool : "tool"
                 const state = part.state as Record<string, unknown> | undefined
                 if (state && typeof state.output === "string") {
                     const output =
-                        state.output.length > 80
-                            ? state.output.slice(0, 80) + "..."
-                            : state.output
+                        state.output.length > 80 ? state.output.slice(0, 80) + "..." : state.output
                     textParts.push(`[${toolName}] ${output}`)
                 }
             }

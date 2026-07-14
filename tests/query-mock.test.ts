@@ -1,10 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import {
-    isMessageCompacted,
-    countTurns,
-    findLastCompactionTimestamp,
-} from "../lib/state/utils"
+import { isMessageCompacted, countTurns, findLastCompactionTimestamp } from "../lib/state/utils"
 import {
     isProtectedUserMessage,
     getLastUserMessage,
@@ -271,7 +267,11 @@ test("countTurns counts step-start parts in non-compacted messages", () => {
     const state = makeState({ lastCompaction: 0 })
     const msgs = [
         makeMessage({ role: "assistant", created: 1000, parts: [makeStepStartPart()] }),
-        makeMessage({ role: "assistant", created: 1500, parts: [makeStepStartPart(), makeStepStartPart()] }),
+        makeMessage({
+            role: "assistant",
+            created: 1500,
+            parts: [makeStepStartPart(), makeStepStartPart()],
+        }),
     ]
     assert.equal(countTurns(state, msgs), 3)
 })

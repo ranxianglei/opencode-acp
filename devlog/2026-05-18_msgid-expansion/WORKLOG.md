@@ -16,12 +16,12 @@
 
 ### Commits
 
-| Commit | Description |
-|--------|-------------|
-| `c1e5807` | feat: expand message ref format from 4-digit to 5-digit (9999→99999) |
+| Commit    | Description                                                              |
+| --------- | ------------------------------------------------------------------------ |
+| `c1e5807` | feat: expand message ref format from 4-digit to 5-digit (9999→99999)     |
 | `16355dd` | fix: backward compat migration for 4-digit→5-digit refs + mNNNNN updates |
-| `5e54496` | fix: remove duplicate keys in message-utils.ts ISSUE_TEMPLATES |
-| `e1a9a31` | docs: add dual-agent review requirement for code + tests, PR workflow |
+| `5e54496` | fix: remove duplicate keys in message-utils.ts ISSUE_TEMPLATES           |
+| `e1a9a31` | docs: add dual-agent review requirement for code + tests, PR workflow    |
 
 ### Key Files
 

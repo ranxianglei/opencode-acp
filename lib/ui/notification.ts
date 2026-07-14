@@ -106,11 +106,11 @@ function buildCompressionSummary(
     let shown = 0
     for (let i = 0; i < entries.length; i++) {
         const entry = entries[i]
-        const topic =
-            state.prune.messages.blocksById.get(entry.blockId)?.topic ?? "(unknown topic)"
-        const truncated = entry.summary.length > perEntryMax
-            ? entry.summary.slice(0, perEntryMax - 3) + "..."
-            : entry.summary
+        const topic = state.prune.messages.blocksById.get(entry.blockId)?.topic ?? "(unknown topic)"
+        const truncated =
+            entry.summary.length > perEntryMax
+                ? entry.summary.slice(0, perEntryMax - 3) + "..."
+                : entry.summary
         const section = `### ${topic}\n${truncated}`
         if (result.length + section.length + 2 > NOTIFICATION_SUMMARY_MAX_CHARS) {
             const remaining = entries.length - shown
@@ -222,10 +222,7 @@ export async function sendCompressNotification(
               "(unknown topic)")
             : "(unknown topic)")
 
-    const contextTokensAfter = Math.max(
-        0,
-        contextTokensBefore - compressedTokens + summaryTokens,
-    )
+    const contextTokensAfter = Math.max(0, contextTokensBefore - compressedTokens + summaryTokens)
     const notificationHeader = `▣ ACP | ${formatContextTransition(
         contextTokensBefore,
         contextTokensAfter,

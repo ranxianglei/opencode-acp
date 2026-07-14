@@ -16,14 +16,14 @@
 ## Changes
 
 - `lib/messages/utils.ts`
-  - Added `MERGED_SUMMARY_HEADER` / `MERGED_SUMMARY_FOOTER` constants (block-id-scoped delimiter).
-  - Added `prependCompressionSummary(message, summary, blockId)` — idempotent prepend into the first text part (creates one if absent); returns false if the block's marker is already present.
+    - Added `MERGED_SUMMARY_HEADER` / `MERGED_SUMMARY_FOOTER` constants (block-id-scoped delimiter).
+    - Added `prependCompressionSummary(message, summary, blockId)` — idempotent prepend into the first text part (creates one if absent); returns false if the block's marker is already present.
 - `lib/messages/prune.ts`
-  - Imported `prependCompressionSummary`.
-  - `filterCompressedRanges`: converted to indexed loop; added `findNextSurvivingMessage`. When the next surviving message is `role: "user"`, merge the summary into it; otherwise retain the prior standalone-synthetic-message behavior (including the `[FIX Bug 1]` fallback for no preceding user message).
+    - Imported `prependCompressionSummary`.
+    - `filterCompressedRanges`: converted to indexed loop; added `findNextSurvivingMessage`. When the next surviving message is `role: "user"`, merge the summary into it; otherwise retain the prior standalone-synthetic-message behavior (including the `[FIX Bug 1]` fallback for no preceding user message).
 - `tests/e2e-message-transform.test.ts`
-  - Updated the "compression blocks" test to assert the recap is merged into the following user message (and checks content, not the shared `msg_dcp_summary_` prefix, because the unrelated suffix-guidance nudge reuses that prefix).
-  - Added regression test "compression summary: never produces two consecutive user turns (Bug 36)".
+    - Updated the "compression blocks" test to assert the recap is merged into the following user message (and checks content, not the shared `msg_dcp_summary_` prefix, because the unrelated suffix-guidance nudge reuses that prefix).
+    - Added regression test "compression summary: never produces two consecutive user turns (Bug 36)".
 
 ## Verification
 

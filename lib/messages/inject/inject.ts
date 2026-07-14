@@ -182,42 +182,57 @@ export const injectCompressNudges = (
                 anchorsChanged = true
             }
         }
-    } else if (overMinLimit) {
-        const isLastMessageUser = lastMessage?.message.info.role === "user"
-
-        if (isLastMessageUser && lastAssistantMessage) {
-            const previousSize = state.nudges.turnNudgeAnchors.size
-            state.nudges.turnNudgeAnchors.add(lastMessage.message.info.id)
-            state.nudges.turnNudgeAnchors.add(lastAssistantMessage.info.id)
-            if (state.nudges.turnNudgeAnchors.size !== previousSize) {
-                anchorsChanged = true
-            }
+    } else {
+        // Clear stale context limit anchors when context drops below maxLimit.
+        // Without this, anchors populated during a prior overMaxLimit turn persist
+        // indefinitely (only cleared on currentTurnHasCompress at L104) and keep
+        // injecting "⚠️ Context limit reached" via applyAnchoredNudges even when
+        // context is well below the limit.
+        if (state.nudges.contextLimitAnchors.size > 0) {
+            state.nudges.contextLimitAnchors.clear()
+            anchorsChanged = true
         }
 
-        const lastUserMessage = getLastUserMessage(messages)
-        if (lastUserMessage && lastMessage) {
-            const lastUserMessageIndex = messages.findIndex(
-                (message) => message.info.id === lastUserMessage.info.id,
-            )
-            if (lastUserMessageIndex >= 0) {
-                const messagesSinceUser = countMessagesAfterIndex(messages, lastUserMessageIndex)
-                const iterationThreshold = getIterationNudgeThreshold(config)
+        if (overMinLimit) {
+            const isLastMessageUser = lastMessage?.message.info.role === "user"
 
-                if (
-                    lastMessage.index > lastUserMessageIndex &&
-                    messagesSinceUser >= iterationThreshold
-                ) {
-                    const interval = getNudgeFrequency(config)
-                    const added = addAnchor(
-                        state.nudges.iterationNudgeAnchors,
-                        lastMessage.message.info.id,
-                        lastMessage.index,
+            if (isLastMessageUser && lastAssistantMessage) {
+                const previousSize = state.nudges.turnNudgeAnchors.size
+                state.nudges.turnNudgeAnchors.add(lastMessage.message.info.id)
+                state.nudges.turnNudgeAnchors.add(lastAssistantMessage.info.id)
+                if (state.nudges.turnNudgeAnchors.size !== previousSize) {
+                    anchorsChanged = true
+                }
+            }
+
+            const lastUserMessage = getLastUserMessage(messages)
+            if (lastUserMessage && lastMessage) {
+                const lastUserMessageIndex = messages.findIndex(
+                    (message) => message.info.id === lastUserMessage.info.id,
+                )
+                if (lastUserMessageIndex >= 0) {
+                    const messagesSinceUser = countMessagesAfterIndex(
                         messages,
-                        interval,
+                        lastUserMessageIndex,
                     )
+                    const iterationThreshold = getIterationNudgeThreshold(config)
 
-                    if (added) {
-                        anchorsChanged = true
+                    if (
+                        lastMessage.index > lastUserMessageIndex &&
+                        messagesSinceUser >= iterationThreshold
+                    ) {
+                        const interval = getNudgeFrequency(config)
+                        const added = addAnchor(
+                            state.nudges.iterationNudgeAnchors,
+                            lastMessage.message.info.id,
+                            lastMessage.index,
+                            messages,
+                            interval,
+                        )
+
+                        if (added) {
+                            anchorsChanged = true
+                        }
                     }
                 }
             }
@@ -225,7 +240,6 @@ export const injectCompressNudges = (
     }
 
     const suffixMessage = createSuffixMessage(messages)
-
 
     const nudgeGrowthTokens =
         config.compress?.nudgeGrowthTokens ?? resolveAdaptiveNudgeGrowth(modelContextLimit)
@@ -293,7 +307,16 @@ export const injectCompressNudges = (
     const effectiveTipsVariant = emergencyOverride ? "maxLimit" : decision.tipsVariant
 
     if (nudgeAllowed) {
-        applyAnchoredNudges(state, config, messages, prompts, compressionPriorities, currentTokens, modelContextLimit, suffixMessage)
+        applyAnchoredNudges(
+            state,
+            config,
+            messages,
+            prompts,
+            compressionPriorities,
+            currentTokens,
+            modelContextLimit,
+            suffixMessage,
+        )
     }
 
     if (state.nudges.lastPerMessageNudgeTokens === undefined && currentTokens !== undefined) {
@@ -326,9 +349,10 @@ export const injectCompressNudges = (
             const plainTextTokens = composition.textTokens
             // Soft nudges (growth/min-limit) are efficiency prompts, not overflow
             // warnings — a separate, stronger alert fires at maxLimit (below).
-            const efficiencyNote = effectiveTipsVariant !== "maxLimit"
-                ? `\nThis is an efficiency nudge to compress early and keep context lean — not an overflow warning. A separate, stronger alert will appear if the context is actually full.\n\n${COMPRESS_PHILOSOPHY}`
-                : ""
+            const efficiencyNote =
+                effectiveTipsVariant !== "maxLimit"
+                    ? `\nThis is an efficiency nudge to compress early and keep context lean — not an overflow warning. A separate, stronger alert will appear if the context is actually full.\n\n${COMPRESS_PHILOSOPHY}`
+                    : ""
             let breakdown = `${efficiencyNote}\nBreakdown: ${fmt(composition.toolTokens)} tool (${pct(composition.toolTokens)}%) | ${fmt(composition.summaryTokens)} summaries (${pct(composition.summaryTokens)}%) | ${fmt(composition.codeTokens)} code (${pct(composition.codeTokens)}%) | ${fmt(plainTextTokens)} text (${pct(plainTextTokens)}%)${growthStr}`
 
             const compressibleTokens =
@@ -364,9 +388,7 @@ export const injectCompressNudges = (
         // repeat every turn until the model actually compresses.
         state.nudges.lastNudgeShownTokens = currentTokens
         if (config.compress.mode !== "message") {
-            const visibleMessageIds = new Set<string>(
-                messages.map((message) => message.info.id),
-            )
+            const visibleMessageIds = new Set<string>(messages.map((message) => message.info.id))
             const blockGuidance = buildCompressedBlockGuidance(state, config.gc, {
                 currentTokens,
                 modelContextLimit,

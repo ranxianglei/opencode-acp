@@ -12,10 +12,7 @@ export interface GCParams {
     currentTokens: number
 }
 
-export function runTruncateGC(
-    blocks: CompressionBlock[],
-    params: GCParams,
-): CompactionResult {
+export function runTruncateGC(blocks: CompressionBlock[], params: GCParams): CompactionResult {
     let compactedBlocks = 0
     let savedTokens = 0
 
@@ -24,7 +21,11 @@ export function runTruncateGC(
         if (block.summary.length <= params.maxOldGenSummaryLength) continue
 
         const originalLength = block.summary.length
-        const truncated = truncateSummary(block.summary, params.maxOldGenSummaryLength, block.blockId)
+        const truncated = truncateSummary(
+            block.summary,
+            params.maxOldGenSummaryLength,
+            block.blockId,
+        )
         const savedChars = originalLength - truncated.length
         if (savedChars > 0) {
             block.summary = truncated
@@ -67,7 +68,11 @@ export function shouldRunMajorGC(
     return currentTokens >= threshold
 }
 
-export function getGCParams(gcConfig: GCConfig, modelContextLimit: number, currentTokens: number): GCParams {
+export function getGCParams(
+    gcConfig: GCConfig,
+    modelContextLimit: number,
+    currentTokens: number,
+): GCParams {
     return {
         maxOldGenSummaryLength: gcConfig.maxOldGenSummaryLength,
         modelContextLimit,

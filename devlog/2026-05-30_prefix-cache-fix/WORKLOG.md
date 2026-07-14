@@ -43,11 +43,11 @@ npm run test       # 350 tests, 350 pass, 0 fail
 - Modified test files: `tests/e2e-blocks-nudges.test.ts`, `tests/e2e-message-transform.test.ts`
 - Test count: 350 total, 350 pass, 0 fail
 - Key scenarios verified:
-  - Context usage injected into suffix message (not last user message)
-  - Visible ID range injected into suffix message
-  - Message counts include suffix message
-  - `stripStaleMetadata` works correctly with suffix message present
-  - Synthetic messages are invisible to `getLastUserMessage` and `findLastNonIgnoredMessage`
+    - Context usage injected into suffix message (not last user message)
+    - Visible ID range injected into suffix message
+    - Message counts include suffix message
+    - `stripStaleMetadata` works correctly with suffix message present
+    - Synthetic messages are invisible to `getLastUserMessage` and `findLastNonIgnoredMessage`
 
 ## 5. Risk Assessment & Rollback
 

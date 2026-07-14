@@ -59,9 +59,7 @@ async function prepareDecompressSession(
     return { rawMessages }
 }
 
-async function finalizeDecompressSession(
-    ctx: ToolContext,
-): Promise<void> {
+async function finalizeDecompressSession(ctx: ToolContext): Promise<void> {
     await saveSessionState(ctx.state, ctx.logger)
 }
 
@@ -80,13 +78,13 @@ IMPORTANT:
 
 function buildSchema() {
     return {
-        blockId: tool.schema
-            .string()
-            .describe('Block reference to decompress (e.g., "b0", "b2")'),
+        blockId: tool.schema.string().describe('Block reference to decompress (e.g., "b0", "b2")'),
         toFile: tool.schema
             .string()
             .optional()
-            .describe("If provided, writes restored content to this file path instead of inflating context. Block stays compressed. Use read tool to access specific parts. Example: '/tmp/block52.txt'"),
+            .describe(
+                "If provided, writes restored content to this file path instead of inflating context. Block stays compressed. Use read tool to access specific parts. Example: '/tmp/block52.txt'",
+            ),
     }
 }
 
@@ -99,8 +97,7 @@ export function createDecompressTool(ctx: ToolContext): ReturnType<typeof tool> 
 
             const contextUsageBefore = ctx.state.modelContextLimit
                 ? Math.round(
-                      (getCurrentTokenUsage(ctx.state, rawMessages) /
-                          ctx.state.modelContextLimit) *
+                      (getCurrentTokenUsage(ctx.state, rawMessages) / ctx.state.modelContextLimit) *
                           100,
                   )
                 : undefined
@@ -145,11 +142,17 @@ export function createDecompressTool(ctx: ToolContext): ReturnType<typeof tool> 
                 const block = activeBlocks[0]
                 const msgIds = new Set(block.effectiveMessageIds ?? [])
                 const blockMessages = rawMessages.filter((m) => {
-                    const id = (m as { id?: string }).id ?? (m as { messageId?: string }).messageId ?? ""
+                    const id =
+                        (m as { id?: string }).id ?? (m as { messageId?: string }).messageId ?? ""
                     return msgIds.has(id)
                 })
                 const lines = blockMessages.map((m) => {
-                    const msg = m as { role?: string; type?: string; content?: unknown; text?: string }
+                    const msg = m as {
+                        role?: string
+                        type?: string
+                        content?: unknown
+                        text?: string
+                    }
                     const role = msg.role || msg.type || "unknown"
                     const content =
                         typeof msg.content === "string"
@@ -191,8 +194,7 @@ export function createDecompressTool(ctx: ToolContext): ReturnType<typeof tool> 
 
             const contextUsageAfter = ctx.state.modelContextLimit
                 ? Math.round(
-                      (getCurrentTokenUsage(ctx.state, rawMessages) /
-                          ctx.state.modelContextLimit) *
+                      (getCurrentTokenUsage(ctx.state, rawMessages) / ctx.state.modelContextLimit) *
                           100,
                   )
                 : undefined

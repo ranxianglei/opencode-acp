@@ -25,20 +25,20 @@ PR #18 added a "Proven at scale" section and expanded the DCP comparison table t
 ## 2. Acceptance Criteria
 
 - [x] Sessions anonymized to "Session 1 / Session 2" (会话一/会话二) — no project
-  names anywhere in the READMEs.
+      names anywhere in the READMEs.
 - [x] "Proven at scale" leads with total tokens per session, adds p50/p95/peak
-  context distribution.
+      context distribution.
 - [x] "Why ACP" rewritten to lead with ACP's own features (model-driven lifecycle,
-  cache-aware, pressure-aware GC, two modes, protected content, strategies,
-  config); DCP demoted to a short "hardened fork" subsection with a 4-row table.
+      cache-aware, pressure-aware GC, two modes, protected content, strategies,
+      config); DCP demoted to a short "hardened fork" subsection with a 4-row table.
 - [x] 37 bug fixes mentioned as a secondary one-liner, not the lead.
 - [x] Both EN and ZH READMEs updated consistently.
 
 ## 3. Source data (computed from opencode.db)
 
-| Session | Span | Turns | Total tokens | Cache hit | ctx p50 | ctx p95 | Peak |
-|---------|------|-------|--------------|-----------|---------|---------|------|
-| Session 1 | 6d | 2,694 | 582 M | 86.2% | 1.2K (<1%) | 251K (25%) | 488K (49%) |
-| Session 2 | 2d | 1,536 | 463 M | 89.0% | 1.8K (<1%) | 335K (34%) | 769K (77%) |
+| Session   | Span | Turns | Total tokens | Cache hit | ctx p50    | ctx p95    | Peak       |
+| --------- | ---- | ----- | ------------ | --------- | ---------- | ---------- | ---------- |
+| Session 1 | 6d   | 2,694 | 582 M        | 86.2%     | 1.2K (<1%) | 251K (25%) | 488K (49%) |
+| Session 2 | 2d   | 1,536 | 463 M        | 89.0%     | 1.8K (<1%) | 335K (34%) | 769K (77%) |
 
 Global (1,445 sessions): 6.17B total processed, 828M billable, ~87% cache hit.

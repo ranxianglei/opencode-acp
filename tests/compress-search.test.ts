@@ -7,7 +7,12 @@ import {
     resolveAnchorMessageId,
 } from "../lib/compress/search"
 import type { BoundaryReference, SearchContext } from "../lib/compress/types"
-import type { CompressionBlock, PrunedMessageEntry, SessionState, WithParts } from "../lib/state/types"
+import type {
+    CompressionBlock,
+    PrunedMessageEntry,
+    SessionState,
+    WithParts,
+} from "../lib/state/types"
 
 // --- Factory helpers ---
 
@@ -145,7 +150,10 @@ function makeState(overrides: Partial<SessionState> = {}): SessionState {
     }
 }
 
-function makeContext(rawMessages: WithParts[], blocks: Map<number, CompressionBlock> = new Map()): SearchContext {
+function makeContext(
+    rawMessages: WithParts[],
+    blocks: Map<number, CompressionBlock> = new Map(),
+): SearchContext {
     const rawMessagesById = new Map<string, WithParts>()
     const rawIndexById = new Map<string, number>()
     for (let i = 0; i < rawMessages.length; i++) {
@@ -260,19 +268,13 @@ test("resolveBoundaryIds resolves block IDs correctly", () => {
 test("resolveBoundaryIds throws on invalid startId format", () => {
     const ctx = makeContext([])
     const state = makeState()
-    assert.throws(
-        () => resolveBoundaryIds(ctx, state, "invalid", "m00001"),
-        /startId is invalid/,
-    )
+    assert.throws(() => resolveBoundaryIds(ctx, state, "invalid", "m00001"), /startId is invalid/)
 })
 
 test("resolveBoundaryIds throws on unknown message ref", () => {
     const ctx = makeContext([])
     const state = makeState()
-    assert.throws(
-        () => resolveBoundaryIds(ctx, state, "m00099", "m00100"),
-        /not available/,
-    )
+    assert.throws(() => resolveBoundaryIds(ctx, state, "m00099", "m00100"), /not available/)
 })
 
 test("resolveBoundaryIds failure error includes visible range and acp_status pointer", () => {
@@ -478,10 +480,7 @@ test("resolveSelection throws on empty selection", () => {
     const startRef: BoundaryReference = { kind: "message", rawIndex: 0, messageId: "a" }
     const endRef: BoundaryReference = { kind: "message", rawIndex: 0, messageId: "a" }
 
-    assert.throws(
-        () => resolveSelection(ctx, startRef, endRef),
-        /Failed to map boundary matches/,
-    )
+    assert.throws(() => resolveSelection(ctx, startRef, endRef), /Failed to map boundary matches/)
 })
 
 test("resolveSelection includes messageTokenById for selected messages", () => {
@@ -515,16 +514,10 @@ test("resolveAnchorMessageId returns anchorMessageId for compressed-block kind",
 
 test("resolveAnchorMessageId throws for compressed-block without anchorMessageId", () => {
     const ref: BoundaryReference = { kind: "compressed-block", rawIndex: 5, blockId: 3 }
-    assert.throws(
-        () => resolveAnchorMessageId(ref),
-        /Failed to map boundary matches/,
-    )
+    assert.throws(() => resolveAnchorMessageId(ref), /Failed to map boundary matches/)
 })
 
 test("resolveAnchorMessageId throws for message kind without messageId", () => {
     const ref: BoundaryReference = { kind: "message", rawIndex: 0 }
-    assert.throws(
-        () => resolveAnchorMessageId(ref),
-        /Failed to map boundary matches/,
-    )
+    assert.throws(() => resolveAnchorMessageId(ref), /Failed to map boundary matches/)
 })

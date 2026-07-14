@@ -11,6 +11,7 @@ The core issue: **there is no search mechanism between compression and decompres
 Add a `search_context` tool that searches through all compressed block summaries AND visible messages, returning a ranked hit list with relevance scores, previews, and retrieval instructions.
 
 ### Workflow
+
 ```
 search_context("keyword") → find relevant blocks → decompress the right one
 ```

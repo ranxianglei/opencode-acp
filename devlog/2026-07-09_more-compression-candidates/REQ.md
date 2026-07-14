@@ -24,10 +24,10 @@ messages)", but the candidate list did not back that up.
 Surface more compression candidates so the model can pick larger ranges:
 
 1. `estimateContextComposition()`:
-   - `largestRanges`: 10 → **15**
-   - `largestToolRanges`: 5 → **15**
+    - `largestRanges`: 10 → **15**
+    - `largestToolRanges`: 5 → **15**
 2. `injectCompressNudges()` tool-output reminder:
-   - `topRanges`: 5 → **15**
+    - `topRanges`: 5 → **15**
 
 Code and plain-text candidate lists (`largestCodeRanges`,
 `largestMessageRanges`) stay at 5 — they are informational, not the

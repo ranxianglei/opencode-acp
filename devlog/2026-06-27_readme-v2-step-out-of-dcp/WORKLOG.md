@@ -14,17 +14,17 @@ comparison.
 ## Changes
 
 - `README.md` + `README.zh-CN.md`:
-  - **Why ACP**: rewrote to lead with a "What makes ACP different" feature list
-    (model-driven block lifecycle, cache-aware design, pressure-aware GC, two
-    compression modes, protected content, automatic strategies, production
-    config). DCP comparison table trimmed 13 rows → 4 rows and moved into a
-    short "A hardened fork of DCP" subsection. 37 bug fixes reduced to a
-    secondary one-liner.
-  - **Proven at scale**: anonymized sessions (compute-problem → Session 1,
-    model-editing → Session 2). Reframed the per-session table around **total
-    tokens processed** (582M / 463M) and added a context-distribution breakdown
-    (p50 / p95 / peak). Dropped the standalone "cache hit tokens" row; cache hit
-    stays as a column + supporting sentence.
+    - **Why ACP**: rewrote to lead with a "What makes ACP different" feature list
+      (model-driven block lifecycle, cache-aware design, pressure-aware GC, two
+      compression modes, protected content, automatic strategies, production
+      config). DCP comparison table trimmed 13 rows → 4 rows and moved into a
+      short "A hardened fork of DCP" subsection. 37 bug fixes reduced to a
+      secondary one-liner.
+    - **Proven at scale**: anonymized sessions (compute-problem → Session 1,
+      model-editing → Session 2). Reframed the per-session table around **total
+      tokens processed** (582M / 463M) and added a context-distribution breakdown
+      (p50 / p95 / peak). Dropped the standalone "cache hit tokens" row; cache hit
+      stays as a column + supporting sentence.
 
 ## Verification
 

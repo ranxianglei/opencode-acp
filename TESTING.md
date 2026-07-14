@@ -27,22 +27,22 @@ No CI/CD is configured. Tests run locally.
 
 ## Test Framework
 
-| Layer | Technology | Import |
-|-------|-----------|--------|
-| Test runner | Node.js built-in (`node:test`) | `import test from "node:test"` |
-| Assertions | Node.js built-in (`node:assert/strict`) | `import assert from "node:assert/strict"` |
-| TypeScript | `tsx` (on-the-fly transpilation) | `--import tsx` flag |
+| Layer       | Technology                              | Import                                    |
+| ----------- | --------------------------------------- | ----------------------------------------- |
+| Test runner | Node.js built-in (`node:test`)          | `import test from "node:test"`            |
+| Assertions  | Node.js built-in (`node:assert/strict`) | `import assert from "node:assert/strict"` |
+| TypeScript  | `tsx` (on-the-fly transpilation)        | `--import tsx` flag                       |
 
 No external test libraries (Jest, Vitest, Mocha) are used. Everything is the Node.js built-in test runner.
 
 ### Key Assertion Patterns
 
 ```typescript
-assert.equal(actual, expected)               // Strict equality
-assert.deepEqual(actual, expected)            // Deep structural equality
-assert.match(string, /regex/)                // Regex match
-assert.doesNotMatch(string, /regex/)         // Regex non-match
-assert.rejects(asyncFn, /error pattern/)     // Promise rejection
+assert.equal(actual, expected) // Strict equality
+assert.deepEqual(actual, expected) // Deep structural equality
+assert.match(string, /regex/) // Regex match
+assert.doesNotMatch(string, /regex/) // Regex non-match
+assert.rejects(asyncFn, /error pattern/) // Promise rejection
 ```
 
 ---
@@ -53,30 +53,30 @@ assert.rejects(asyncFn, /error pattern/)     // Promise rejection
 
 Zero external dependencies. Test deterministic logic in isolation.
 
-| Test File | Source Module | What It Tests |
-|-----------|--------------|---------------|
-| `token-counting.test.ts` | `lib/token-utils.ts` | `countAllMessageTokens`, `countToolTokens`, `estimateTokensBatch`, `extractToolContent`, `extractCompletedToolOutput` |
-| `message-ids.test.ts` | `lib/message-ids.ts`, `lib/state/state.ts` | `assignMessageRefs`, `checkSession` (ID reset after native compaction) |
-| `message-utils.test.ts` | `lib/messages/query.ts` | `isIgnoredUserMessage` |
-| `message-priority.test.ts` | `lib/messages/priority.ts`, `lib/messages/inject/inject.ts`, `lib/messages/inject/utils.ts`, `lib/messages/prune.ts`, `lib/messages/utils.ts` | `buildPriorityMap`, `injectMessageIds`, `applyAnchoredNudges`, `prune`, `stripHallucinationsFromString` |
-| `input-budget.test.ts` | `lib/messages/inject/utils.ts` | `computeInputBudget` |
-| `host-permissions.test.ts` | `lib/host-permissions.ts` | `compressDisabledByOpencode`, `hasExplicitToolPermission`, `resolveEffectiveCompressPermission` |
-| `update.test.ts` | `lib/update.ts` | `isVersionNewer`, `isAutoUpdatableSpec`, `updateRemoveDir` |
+| Test File                  | Source Module                                                                                                                                 | What It Tests                                                                                                         |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `token-counting.test.ts`   | `lib/token-utils.ts`                                                                                                                          | `countAllMessageTokens`, `countToolTokens`, `estimateTokensBatch`, `extractToolContent`, `extractCompletedToolOutput` |
+| `message-ids.test.ts`      | `lib/message-ids.ts`, `lib/state/state.ts`                                                                                                    | `assignMessageRefs`, `checkSession` (ID reset after native compaction)                                                |
+| `message-utils.test.ts`    | `lib/messages/query.ts`                                                                                                                       | `isIgnoredUserMessage`                                                                                                |
+| `message-priority.test.ts` | `lib/messages/priority.ts`, `lib/messages/inject/inject.ts`, `lib/messages/inject/utils.ts`, `lib/messages/prune.ts`, `lib/messages/utils.ts` | `buildPriorityMap`, `injectMessageIds`, `applyAnchoredNudges`, `prune`, `stripHallucinationsFromString`               |
+| `input-budget.test.ts`     | `lib/messages/inject/utils.ts`                                                                                                                | `computeInputBudget`                                                                                                  |
+| `host-permissions.test.ts` | `lib/host-permissions.ts`                                                                                                                     | `compressDisabledByOpencode`, `hasExplicitToolPermission`, `resolveEffectiveCompressPermission`                       |
+| `update.test.ts`           | `lib/update.ts`                                                                                                                               | `isVersionNewer`, `isAutoUpdatableSpec`, `updateRemoveDir`                                                            |
 
 ### Functional Tests — Module Behavior with Mock Data
 
 Mocked dependencies (client, filesystem). Test real module logic end-to-end.
 
-| Test File | Source Module | What It Tests |
-|-----------|--------------|---------------|
-| `compress-message.test.ts` | `lib/compress/message.ts` | `createCompressMessageTool` — batch compression, protected content, error handling, notification |
-| `compress-range.test.ts` | `lib/compress/range.ts` | `createCompressRangeTool` — subagent sessions, protected tags, batch notifications, overlap rejection |
-| `compress-range-placeholders.test.ts` | `lib/compress/range-utils.ts`, `lib/compress/state.ts` | `parseBlockPlaceholders`, `injectBlockPlaceholders`, `validateSummaryPlaceholders`, `appendMissingBlockSummaries`, `wrapCompressedSummary` |
-| `compression-groups.test.ts` | `lib/compress/message.ts`, `lib/compress/range.ts`, `lib/commands/decompress.ts`, `lib/commands/recompress.ts` | Grouped run lifecycle: compress → decompress → recompress across both modes |
-| `compression-targets.test.ts` | `lib/commands/compression-targets.ts` | `getActiveCompressionTargets` — grouping by `runId`, duration aggregation |
-| `hooks-permission.test.ts` | `lib/hooks.ts` | `createChatMessageTransformHandler`, `createCommandExecuteHandler`, `createTextCompleteHandler`, `createEventHandler` — permission enforcement, hallucination stripping, event timing |
-| `prompts.test.ts` | `lib/prompts/store.ts`, `lib/prompts/system.ts` | `PromptStore` — defaults, overrides, file-based loading |
-| `token-usage.test.ts` | `lib/messages/inject/utils.ts`, `lib/compress/state.ts`, `lib/token-utils.ts` | `isContextOverLimits`, `wrapCompressedSummary`, `getCurrentTokenUsage` — context threshold calculation |
+| Test File                             | Source Module                                                                                                  | What It Tests                                                                                                                                                                         |
+| ------------------------------------- | -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `compress-message.test.ts`            | `lib/compress/message.ts`                                                                                      | `createCompressMessageTool` — batch compression, protected content, error handling, notification                                                                                      |
+| `compress-range.test.ts`              | `lib/compress/range.ts`                                                                                        | `createCompressRangeTool` — subagent sessions, protected tags, batch notifications, overlap rejection                                                                                 |
+| `compress-range-placeholders.test.ts` | `lib/compress/range-utils.ts`, `lib/compress/state.ts`                                                         | `parseBlockPlaceholders`, `injectBlockPlaceholders`, `validateSummaryPlaceholders`, `appendMissingBlockSummaries`, `wrapCompressedSummary`                                            |
+| `compression-groups.test.ts`          | `lib/compress/message.ts`, `lib/compress/range.ts`, `lib/commands/decompress.ts`, `lib/commands/recompress.ts` | Grouped run lifecycle: compress → decompress → recompress across both modes                                                                                                           |
+| `compression-targets.test.ts`         | `lib/commands/compression-targets.ts`                                                                          | `getActiveCompressionTargets` — grouping by `runId`, duration aggregation                                                                                                             |
+| `hooks-permission.test.ts`            | `lib/hooks.ts`                                                                                                 | `createChatMessageTransformHandler`, `createCommandExecuteHandler`, `createTextCompleteHandler`, `createEventHandler` — permission enforcement, hallucination stripping, event timing |
+| `prompts.test.ts`                     | `lib/prompts/store.ts`, `lib/prompts/system.ts`                                                                | `PromptStore` — defaults, overrides, file-based loading                                                                                                                               |
+| `token-usage.test.ts`                 | `lib/messages/inject/utils.ts`, `lib/compress/state.ts`, `lib/token-utils.ts`                                  | `isContextOverLimits`, `wrapCompressedSummary`, `getCurrentTokenUsage` — context threshold calculation                                                                                |
 
 ### E2E Tests — Full Pipeline
 
@@ -88,52 +88,52 @@ Not yet implemented. Will test the complete message transform pipeline from `hoo
 
 ### Modules WITH Tests
 
-| Source Module | Test File(s) | Key Functions Covered |
-|--------------|-------------|----------------------|
-| `lib/token-utils.ts` | `token-counting.test.ts`, `token-usage.test.ts` | `countAllMessageTokens`, `countToolTokens`, `estimateTokensBatch`, `extractToolContent`, `extractCompletedToolOutput`, `getCurrentTokenUsage` |
-| `lib/message-ids.ts` | `message-ids.test.ts` | `assignMessageRefs` |
-| `lib/state/state.ts` | `message-ids.test.ts` | `checkSession` |
-| `lib/state/utils.ts` | (indirect via other tests) | `isMessageCompacted`, `serializePruneMessagesState` |
-| `lib/messages/query.ts` | `message-utils.test.ts` | `isIgnoredUserMessage` |
-| `lib/messages/shape.ts` | `message-utils.test.ts` | `isMessageWithInfo` (indirect) |
-| `lib/messages/priority.ts` | `message-priority.test.ts` | `buildPriorityMap` |
-| `lib/messages/inject/inject.ts` | `message-priority.test.ts` | `injectMessageIds` |
-| `lib/messages/inject/utils.ts` | `input-budget.test.ts`, `token-usage.test.ts`, `message-priority.test.ts` | `computeInputBudget`, `isContextOverLimits`, `applyAnchoredNudges` |
-| `lib/messages/prune.ts` | `message-priority.test.ts` | `prune` |
-| `lib/messages/utils.ts` | `message-priority.test.ts` | `stripHallucinationsFromString` |
-| `lib/compress/message.ts` | `compress-message.test.ts`, `compression-groups.test.ts` | `createCompressMessageTool` |
-| `lib/compress/range.ts` | `compress-range.test.ts`, `compression-groups.test.ts` | `createCompressRangeTool` |
-| `lib/compress/range-utils.ts` | `compress-range-placeholders.test.ts` | `parseBlockPlaceholders`, `injectBlockPlaceholders`, `validateSummaryPlaceholders`, `appendMissingBlockSummaries` |
-| `lib/compress/state.ts` | `compress-range-placeholders.test.ts`, `token-usage.test.ts` | `wrapCompressedSummary` |
-| `lib/commands/compression-targets.ts` | `compression-targets.test.ts` | `getActiveCompressionTargets` |
-| `lib/commands/decompress.ts` | `compression-groups.test.ts` | `handleDecompressCommand` |
-| `lib/commands/recompress.ts` | `compression-groups.test.ts` | `handleRecompressCommand` |
-| `lib/hooks.ts` | `hooks-permission.test.ts` | `createChatMessageTransformHandler`, `createCommandExecuteHandler`, `createTextCompleteHandler`, `createEventHandler` |
-| `lib/prompts/store.ts` | `prompts.test.ts` | `PromptStore` |
-| `lib/host-permissions.ts` | `host-permissions.test.ts` | `compressDisabledByOpencode`, `resolveEffectiveCompressPermission` |
-| `lib/update.ts` | `update.test.ts` | `isVersionNewer`, `isAutoUpdatableSpec`, `updateRemoveDir` |
+| Source Module                         | Test File(s)                                                              | Key Functions Covered                                                                                                                         |
+| ------------------------------------- | ------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `lib/token-utils.ts`                  | `token-counting.test.ts`, `token-usage.test.ts`                           | `countAllMessageTokens`, `countToolTokens`, `estimateTokensBatch`, `extractToolContent`, `extractCompletedToolOutput`, `getCurrentTokenUsage` |
+| `lib/message-ids.ts`                  | `message-ids.test.ts`                                                     | `assignMessageRefs`                                                                                                                           |
+| `lib/state/state.ts`                  | `message-ids.test.ts`                                                     | `checkSession`                                                                                                                                |
+| `lib/state/utils.ts`                  | (indirect via other tests)                                                | `isMessageCompacted`, `serializePruneMessagesState`                                                                                           |
+| `lib/messages/query.ts`               | `message-utils.test.ts`                                                   | `isIgnoredUserMessage`                                                                                                                        |
+| `lib/messages/shape.ts`               | `message-utils.test.ts`                                                   | `isMessageWithInfo` (indirect)                                                                                                                |
+| `lib/messages/priority.ts`            | `message-priority.test.ts`                                                | `buildPriorityMap`                                                                                                                            |
+| `lib/messages/inject/inject.ts`       | `message-priority.test.ts`                                                | `injectMessageIds`                                                                                                                            |
+| `lib/messages/inject/utils.ts`        | `input-budget.test.ts`, `token-usage.test.ts`, `message-priority.test.ts` | `computeInputBudget`, `isContextOverLimits`, `applyAnchoredNudges`                                                                            |
+| `lib/messages/prune.ts`               | `message-priority.test.ts`                                                | `prune`                                                                                                                                       |
+| `lib/messages/utils.ts`               | `message-priority.test.ts`                                                | `stripHallucinationsFromString`                                                                                                               |
+| `lib/compress/message.ts`             | `compress-message.test.ts`, `compression-groups.test.ts`                  | `createCompressMessageTool`                                                                                                                   |
+| `lib/compress/range.ts`               | `compress-range.test.ts`, `compression-groups.test.ts`                    | `createCompressRangeTool`                                                                                                                     |
+| `lib/compress/range-utils.ts`         | `compress-range-placeholders.test.ts`                                     | `parseBlockPlaceholders`, `injectBlockPlaceholders`, `validateSummaryPlaceholders`, `appendMissingBlockSummaries`                             |
+| `lib/compress/state.ts`               | `compress-range-placeholders.test.ts`, `token-usage.test.ts`              | `wrapCompressedSummary`                                                                                                                       |
+| `lib/commands/compression-targets.ts` | `compression-targets.test.ts`                                             | `getActiveCompressionTargets`                                                                                                                 |
+| `lib/commands/decompress.ts`          | `compression-groups.test.ts`                                              | `handleDecompressCommand`                                                                                                                     |
+| `lib/commands/recompress.ts`          | `compression-groups.test.ts`                                              | `handleRecompressCommand`                                                                                                                     |
+| `lib/hooks.ts`                        | `hooks-permission.test.ts`                                                | `createChatMessageTransformHandler`, `createCommandExecuteHandler`, `createTextCompleteHandler`, `createEventHandler`                         |
+| `lib/prompts/store.ts`                | `prompts.test.ts`                                                         | `PromptStore`                                                                                                                                 |
+| `lib/host-permissions.ts`             | `host-permissions.test.ts`                                                | `compressDisabledByOpencode`, `resolveEffectiveCompressPermission`                                                                            |
+| `lib/update.ts`                       | `update.test.ts`                                                          | `isVersionNewer`, `isAutoUpdatableSpec`, `updateRemoveDir`                                                                                    |
 
 ### Modules WITHOUT Tests
 
-| Source Module | Key Untested Functions | Complexity |
-|-------------|----------------------|------------|
-| `lib/config.ts` | Config merging, defaults, validation, DCP migration | ~1125 lines, largest file |
-| `lib/state/persistence.ts` | `saveSessionState`, `loadSessionState`, `ensureSessionInitialized`, DCP migration | ~295 lines, filesystem I/O |
-| `lib/state/utils.ts` (direct) | `isMessageCompacted`, `serializePruneMessagesState`, `deserializePruneMessagesState`, `getActiveSummaryTokenUsage` | ~358 lines |
-| `lib/messages/prune.ts` | `filterCompressedRanges`, `pruneToolOutputs`, `pruneToolInputs`, `pruneToolErrors` | ~263 lines |
-| `lib/messages/sync.ts` | `syncCompressionBlocks` — deactivate orphaned blocks | ~130 lines |
-| `lib/messages/inject/inject.ts` | `injectCompressNudges`, `injectMessageIds` | ~280 lines |
-| `lib/gc/truncate.ts` | `runTruncateGC`, `truncateSummary` | ~83 lines, pure logic |
-| `lib/strategies/deduplication.ts` | `deduplicate` — same tool + args pruning | ~127 lines |
-| `lib/strategies/purge-errors.ts` | `purgeErrors` — errored tool input pruning | ~88 lines |
-| `lib/compress-permission.ts` | `compressPermission`, `syncCompressPermissionState` | ~25 lines |
-| `lib/protected-patterns.ts` | `matchesGlob`, `isFilePathProtected`, `isToolNameProtected`, `getFilePathsFromParameters` | ~128 lines, pure logic |
-| `lib/commands/context.ts` | Context usage display command | Slash command handler |
-| `lib/commands/stats.ts` | Compression statistics command | Slash command handler |
-| `lib/commands/sweep.ts` | Force full context sweep command | Slash command handler |
-| `lib/commands/manual.ts` | Manual mode toggle command | Slash command handler |
-| `lib/commands/help.ts` | Help display command | Slash command handler |
-| `lib/ui/notification.ts` | `buildMinimalMessage`, `buildDetailedMessage` | ~357 lines |
+| Source Module                     | Key Untested Functions                                                                                             | Complexity                 |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------ | -------------------------- |
+| `lib/config.ts`                   | Config merging, defaults, validation, DCP migration                                                                | ~1125 lines, largest file  |
+| `lib/state/persistence.ts`        | `saveSessionState`, `loadSessionState`, `ensureSessionInitialized`, DCP migration                                  | ~295 lines, filesystem I/O |
+| `lib/state/utils.ts` (direct)     | `isMessageCompacted`, `serializePruneMessagesState`, `deserializePruneMessagesState`, `getActiveSummaryTokenUsage` | ~358 lines                 |
+| `lib/messages/prune.ts`           | `filterCompressedRanges`, `pruneToolOutputs`, `pruneToolInputs`, `pruneToolErrors`                                 | ~263 lines                 |
+| `lib/messages/sync.ts`            | `syncCompressionBlocks` — deactivate orphaned blocks                                                               | ~130 lines                 |
+| `lib/messages/inject/inject.ts`   | `injectCompressNudges`, `injectMessageIds`                                                                         | ~280 lines                 |
+| `lib/gc/truncate.ts`              | `runTruncateGC`, `truncateSummary`                                                                                 | ~83 lines, pure logic      |
+| `lib/strategies/deduplication.ts` | `deduplicate` — same tool + args pruning                                                                           | ~127 lines                 |
+| `lib/strategies/purge-errors.ts`  | `purgeErrors` — errored tool input pruning                                                                         | ~88 lines                  |
+| `lib/compress-permission.ts`      | `compressPermission`, `syncCompressPermissionState`                                                                | ~25 lines                  |
+| `lib/protected-patterns.ts`       | `matchesGlob`, `isFilePathProtected`, `isToolNameProtected`, `getFilePathsFromParameters`                          | ~128 lines, pure logic     |
+| `lib/commands/context.ts`         | Context usage display command                                                                                      | Slash command handler      |
+| `lib/commands/stats.ts`           | Compression statistics command                                                                                     | Slash command handler      |
+| `lib/commands/sweep.ts`           | Force full context sweep command                                                                                   | Slash command handler      |
+| `lib/commands/manual.ts`          | Manual mode toggle command                                                                                         | Slash command handler      |
+| `lib/commands/help.ts`            | Help display command                                                                                               | Slash command handler      |
+| `lib/ui/notification.ts`          | `buildMinimalMessage`, `buildDetailedMessage`                                                                      | ~357 lines                 |
 
 ---
 
@@ -326,7 +326,12 @@ state.prune.messages.blocksById.set(1, {
 Or use the `buildBlock()` helper from `compression-targets.test.ts`:
 
 ```typescript
-function buildBlock(blockId: number, runId: number, mode: "range" | "message", durationMs: number): CompressionBlock {
+function buildBlock(
+    blockId: number,
+    runId: number,
+    mode: "range" | "message",
+    durationMs: number,
+): CompressionBlock {
     return {
         blockId,
         runId,
@@ -517,39 +522,39 @@ Prioritize by ease of testing and impact. Pure functions first, then mock-data t
 
 Quick wins. No mocking needed. Test input → output directly.
 
-| Module | Functions to Test | Why Easy |
-|--------|-------------------|----------|
-| `lib/protected-patterns.ts` | `matchesGlob`, `isFilePathProtected`, `isToolNameProtected`, `getFilePathsFromParameters` | Pure string matching, no I/O |
-| `lib/gc/truncate.ts` | `runTruncateGC`, `truncateSummary` | Pure array transformation, inputs/outputs are plain objects |
-| `lib/compress-permission.ts` | `compressPermission`, `syncCompressPermissionState` | Simple delegation, tiny module |
-| `lib/messages/shape.ts` | `isMessageWithInfo`, `filterMessages` | Pure type guards |
-| `lib/messages/query.ts` | `isIgnoredUserMessage`, `getLastUserMessage`, `messageHasCompress`, `isProtectedUserMessage` | Pure predicates, just need `WithParts` objects |
+| Module                       | Functions to Test                                                                            | Why Easy                                                    |
+| ---------------------------- | -------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| `lib/protected-patterns.ts`  | `matchesGlob`, `isFilePathProtected`, `isToolNameProtected`, `getFilePathsFromParameters`    | Pure string matching, no I/O                                |
+| `lib/gc/truncate.ts`         | `runTruncateGC`, `truncateSummary`                                                           | Pure array transformation, inputs/outputs are plain objects |
+| `lib/compress-permission.ts` | `compressPermission`, `syncCompressPermissionState`                                          | Simple delegation, tiny module                              |
+| `lib/messages/shape.ts`      | `isMessageWithInfo`, `filterMessages`                                                        | Pure type guards                                            |
+| `lib/messages/query.ts`      | `isIgnoredUserMessage`, `getLastUserMessage`, `messageHasCompress`, `isProtectedUserMessage` | Pure predicates, just need `WithParts` objects              |
 
 ### Tier 2 — Mock Data Required
 
 Need `SessionState`, `PluginConfig`, or `WithParts[]` construction. Still no I/O.
 
-| Module | Functions to Test | Mock Data Needed |
-|--------|-------------------|------------------|
-| `lib/strategies/deduplication.ts` | `deduplicate` | `SessionState` + `WithParts[]` with tool parts |
-| `lib/strategies/purge-errors.ts` | `purgeErrors` | `SessionState` + `WithParts[]` with errored tool parts |
-| `lib/messages/prune.ts` | `filterCompressedRanges`, `pruneToolOutputs`, `pruneToolInputs` | `SessionState` with blocks, `WithParts[]`, `Logger` |
-| `lib/messages/sync.ts` | `syncCompressionBlocks` | `SessionState` with blocks, `WithParts[]` (partial message list) |
-| `lib/messages/inject/inject.ts` | `injectCompressNudges` | Full `SessionState` + config + messages + prompts |
-| `lib/state/utils.ts` | `isMessageCompacted`, `serializePruneMessagesState`, `deserializePruneMessagesState` | `SessionState`, plain objects |
-| `lib/messages/priority.ts` | `buildPriorityMap` | Covered, but more edge cases possible |
+| Module                            | Functions to Test                                                                    | Mock Data Needed                                                 |
+| --------------------------------- | ------------------------------------------------------------------------------------ | ---------------------------------------------------------------- |
+| `lib/strategies/deduplication.ts` | `deduplicate`                                                                        | `SessionState` + `WithParts[]` with tool parts                   |
+| `lib/strategies/purge-errors.ts`  | `purgeErrors`                                                                        | `SessionState` + `WithParts[]` with errored tool parts           |
+| `lib/messages/prune.ts`           | `filterCompressedRanges`, `pruneToolOutputs`, `pruneToolInputs`                      | `SessionState` with blocks, `WithParts[]`, `Logger`              |
+| `lib/messages/sync.ts`            | `syncCompressionBlocks`                                                              | `SessionState` with blocks, `WithParts[]` (partial message list) |
+| `lib/messages/inject/inject.ts`   | `injectCompressNudges`                                                               | Full `SessionState` + config + messages + prompts                |
+| `lib/state/utils.ts`              | `isMessageCompacted`, `serializePruneMessagesState`, `deserializePruneMessagesState` | `SessionState`, plain objects                                    |
+| `lib/messages/priority.ts`        | `buildPriorityMap`                                                                   | Covered, but more edge cases possible                            |
 
 ### Tier 3 — Filesystem or Integration
 
 Need temp directories, file I/O, or multi-module orchestration.
 
-| Module | Functions to Test | Why Hard |
-|--------|-------------------|----------|
-| `lib/config.ts` | Config loading, merging, validation, migration | Filesystem reads, JSONC parsing, DCP migration |
-| `lib/state/persistence.ts` | `saveSessionState`, `loadSessionState`, `ensureSessionInitialized` | File I/O, JSON serialization, DCP migration |
-| `lib/commands/*.ts` | Command handlers | Full client mock needed, output formatting |
-| `lib/ui/notification.ts` | `buildMinimalMessage`, `buildDetailedMessage` | Needs full `SessionState` with blocks and stats |
-| `lib/hooks.ts` | Full pipeline integration | Orchestrates all other modules |
+| Module                     | Functions to Test                                                  | Why Hard                                        |
+| -------------------------- | ------------------------------------------------------------------ | ----------------------------------------------- |
+| `lib/config.ts`            | Config loading, merging, validation, migration                     | Filesystem reads, JSONC parsing, DCP migration  |
+| `lib/state/persistence.ts` | `saveSessionState`, `loadSessionState`, `ensureSessionInitialized` | File I/O, JSON serialization, DCP migration     |
+| `lib/commands/*.ts`        | Command handlers                                                   | Full client mock needed, output formatting      |
+| `lib/ui/notification.ts`   | `buildMinimalMessage`, `buildDetailedMessage`                      | Needs full `SessionState` with blocks and stats |
+| `lib/hooks.ts`             | Full pipeline integration                                          | Orchestrates all other modules                  |
 
 ---
 

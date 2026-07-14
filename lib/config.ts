@@ -3,8 +3,12 @@ import { join, dirname } from "path"
 import { homedir } from "os"
 import { parse } from "jsonc-parser/lib/esm/main.js"
 import type { PluginInput } from "@opencode-ai/plugin"
-import { VALID_CONFIG_KEYS, getInvalidConfigKeys, validateConfigTypes, type ValidationError } from "./config-validation"
-
+import {
+    VALID_CONFIG_KEYS,
+    getInvalidConfigKeys,
+    validateConfigTypes,
+    type ValidationError,
+} from "./config-validation"
 
 type Permission = "ask" | "allow" | "deny"
 type CompressMode = "range" | "message"
@@ -119,7 +123,12 @@ const DEFAULT_PROTECTED_TOOLS = [
 
 const COMPRESS_DEFAULT_PROTECTED_TOOLS = ["skill"]
 
-export { VALID_CONFIG_KEYS, getInvalidConfigKeys, validateConfigTypes, type ValidationError } from "./config-validation"
+export {
+    VALID_CONFIG_KEYS,
+    getInvalidConfigKeys,
+    validateConfigTypes,
+    type ValidationError,
+} from "./config-validation"
 
 function showConfigWarnings(
     ctx: PluginInput,
@@ -423,7 +432,8 @@ function mergeCompress(
         minCompressRange: override.minCompressRange ?? base.minCompressRange,
         minNudgeGrowthRatio: override.minNudgeGrowthRatio ?? base.minNudgeGrowthRatio,
         minNudgeGrowthFloor: override.minNudgeGrowthFloor ?? base.minNudgeGrowthFloor,
-        emergencyThresholdPercent: override.emergencyThresholdPercent ?? base.emergencyThresholdPercent,
+        emergencyThresholdPercent:
+            override.emergencyThresholdPercent ?? base.emergencyThresholdPercent,
         maxVisibleSegments: override.maxVisibleSegments ?? base.maxVisibleSegments,
         keepEmbedMaxChars: override.keepEmbedMaxChars ?? base.keepEmbedMaxChars,
     }
@@ -560,7 +570,11 @@ export function getConfig(ctx: PluginInput): PluginConfig {
 
     // Migration: dcp.jsonc → acp.jsonc (must run before createDefaultConfig check)
     if (!existsSync(GLOBAL_CONFIG_PATH_JSONC) && !existsSync(GLOBAL_CONFIG_PATH_JSON)) {
-        if (existsSync(GLOBAL_CONFIG_DIR) || existsSync(LEGACY_GLOBAL_CONFIG_PATH_JSONC) || existsSync(LEGACY_GLOBAL_CONFIG_PATH_JSON)) {
+        if (
+            existsSync(GLOBAL_CONFIG_DIR) ||
+            existsSync(LEGACY_GLOBAL_CONFIG_PATH_JSONC) ||
+            existsSync(LEGACY_GLOBAL_CONFIG_PATH_JSON)
+        ) {
             if (!existsSync(GLOBAL_CONFIG_DIR)) {
                 mkdirSync(GLOBAL_CONFIG_DIR, { recursive: true })
             }

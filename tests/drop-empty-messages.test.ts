@@ -90,7 +90,10 @@ test("removes empty user message but keeps completed tool message", () => {
 })
 
 test("removes empty assistant messages", () => {
-    const messages = [buildAssistantMessage([]), buildAssistantMessage([{ type: "text", text: "" }])]
+    const messages = [
+        buildAssistantMessage([]),
+        buildAssistantMessage([{ type: "text", text: "" }]),
+    ]
     const removed = dropEmptyMessages(messages)
     assert.equal(removed, 2)
     assert.equal(messages.length, 0)

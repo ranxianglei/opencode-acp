@@ -16,8 +16,8 @@
 
 ### Commits
 
-| Commit | Description |
-|--------|-------------|
+| Commit    | Description                              |
+| --------- | ---------------------------------------- |
 | (pending) | feat: expose decompress tool to AI model |
 
 ### Key Files
@@ -40,11 +40,11 @@
 - **Entry point / key function**: `createDecompressTool()` in `lib/compress/decompress.ts`
 - **Key configuration items**: Reuses `compress.permission` for both tools
 - **Key logic explanation**:
-  - Decompress-specific `prepareDecompressSession()` — NO dedup/purge, NO manual mode guard (decompress always allowed)
-  - Decompress-specific `finalizeDecompressSession()` — just saves state, NO compress notification
-  - Tool returns inline restored content preview (~2000 chars) so model can reason immediately without waiting for next turn
-  - Context usage before/after included in return value for model self-regulation
-  - Shared logic extracted to `decompress-logic.ts` — both command and tool use identical functions
+    - Decompress-specific `prepareDecompressSession()` — NO dedup/purge, NO manual mode guard (decompress always allowed)
+    - Decompress-specific `finalizeDecompressSession()` — just saves state, NO compress notification
+    - Tool returns inline restored content preview (~2000 chars) so model can reason immediately without waiting for next turn
+    - Context usage before/after included in return value for model self-regulation
+    - Shared logic extracted to `decompress-logic.ts` — both command and tool use identical functions
 
 ## 4. Testing & Verification
 

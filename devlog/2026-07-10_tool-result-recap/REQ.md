@@ -3,6 +3,7 @@
 ## Problem
 
 Compression summaries were injected into the message stream as either:
+
 - `role: "user"` (Bug 36 merge path) → model treated recaps as user instructions → goal drift (#78)
 - `role: "assistant"` (Bug 37 standalone path) → model treated recaps as own prior output → verbatim echo (#20)
 

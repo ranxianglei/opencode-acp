@@ -7,12 +7,13 @@
 **Lines 184-186**: Fixed Bug 20 suppression format mismatch.
 
 Before:
+
 ```typescript
-(part as any).type === "tool-invocation" &&
-(part as any).toolInvocation?.toolName === "compress"
+;(part as any).type === "tool-invocation" && (part as any).toolInvocation?.toolName === "compress"
 ```
 
 After:
+
 ```typescript
 part.type === "tool" && part.tool === "compress"
 ```

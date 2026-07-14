@@ -5,6 +5,7 @@
 ### Investigation
 
 Read all relevant source files:
+
 - `lib/messages/sync.ts` — syncCompressionBlocks with L60 carve-out
 - `lib/messages/prune.ts` — filterCompressedRanges (actual filtering logic)
 - `lib/compress/range.ts` — range-mode compress tool (no try/catch)
@@ -27,12 +28,14 @@ deleted.
 ### Implementation
 
 **Bug 2 fix** (`lib/messages/sync.ts`):
+
 - Removed the nested `if (!messagesState.byMessageId.has(block.anchorMessageId))`
   check at L59-65
 - Replaced with unconditional deactivation when anchor is missing
 - Added detailed comment explaining why the carve-out was wrong
 
 **Bug 1 fix** (`lib/compress/pipeline.ts`, `range.ts`, `message.ts`):
+
 - Added `CompressionSnapshot` interface, `snapshotCompressionState()`, and
   `restoreCompressionState()` to pipeline.ts
 - Snapshot uses `structuredClone` for `prune.messages` (deep clone, independent
@@ -44,16 +47,16 @@ deleted.
 ### Test Changes
 
 - Updated `tests/sync.test.ts`:
-  - Changed "keeps block active when anchor is in byMessageId" → "deactivates
-    block when anchor is gone even if tracked in byMessageId"
-  - Added "issue #125: external anchor deletion deactivates block and clears
-    byMessageId activeBlockIds"
+    - Changed "keeps block active when anchor is in byMessageId" → "deactivates
+      block when anchor is gone even if tracked in byMessageId"
+    - Added "issue #125: external anchor deletion deactivates block and clears
+      byMessageId activeBlockIds"
 
 - Created `tests/compress-rollback.test.ts`:
-  - snapshotCompressionState captures prune.messages and stats
-  - restoreCompressionState fully restores state after mutations
-  - snapshot is independent from state mutations
-  - restore creates independent Maps/Sets (no shared references)
+    - snapshotCompressionState captures prune.messages and stats
+    - restoreCompressionState fully restores state after mutations
+    - snapshot is independent from state mutations
+    - restore creates independent Maps/Sets (no shared references)
 
 ### Verification
 

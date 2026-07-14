@@ -10,8 +10,8 @@ legacy install shadowed the primary deploy.
 
 ## ChangeLog
 
-| Commit | File | Change |
-|--------|------|--------|
+| Commit    | File                    | Change                                                                                                             |
+| --------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------ |
 | (this PR) | `scripts/dev-deploy.sh` | + `LEGACY_TARGET` var; after primary deploy+verify, copy dist+package.json to legacy path if it exists, log result |
 
 ## KeyFiles

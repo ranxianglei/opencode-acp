@@ -529,6 +529,7 @@ This release fixes two critical compression-injection bugs (#20 echo, #78 drift)
 #### Tool-Result Recap Injection — Fixes #20 & #78 (PR #95)
 
 **Problem**: Compression summaries were injected as text-based `role:assistant` or `role:user` messages. Both roles misled the model:
+
 - `role:assistant` (Bug 37 path) → model treated summaries as its own prior output and echoed them verbatim (#20, GLM-5.2).
 - `role:user` (Bug 36 merge path) → model treated summaries as user instructions and chased old topics (#78, gpt-5.5).
 
@@ -571,6 +572,7 @@ Fixes the over-compression bug reported in issue #18 and GitHub #85, where the `
 Additionally, the `compress.toolOutputNudgeThreshold` config key was **dead** — declared in the type but missing from the config merge, validation list, and JSON schema, so user overrides were silently dropped.
 
 **Fix** (4 coordinated changes):
+
 - `lib/messages/inject/inject.ts`: `toolOutputThreshold` now defaults to `nudgeGrowthTokens` (adaptive) instead of the hardcoded `5000`.
 - `lib/config.ts` `mergeCompress`: `toolOutputNudgeThreshold` override now flows through the config merge.
 - `lib/config-validation.ts`: `compress.toolOutputNudgeThreshold` registered as a valid config key.

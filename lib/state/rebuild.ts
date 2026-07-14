@@ -21,7 +21,12 @@
 import type { GCConfig, PluginConfig } from "../config"
 import type { Logger } from "../logger"
 import { assignMessageRefs } from "../message-ids"
-import { buildSearchContext, resolveAnchorMessageId, resolveBoundaryIds, resolveSelection } from "../compress/search"
+import {
+    buildSearchContext,
+    resolveAnchorMessageId,
+    resolveBoundaryIds,
+    resolveSelection,
+} from "../compress/search"
 import { filterProtectedToolMessages } from "../compress/protected-content"
 import { resolveRanges } from "../compress/range-utils"
 import {
@@ -89,7 +94,11 @@ function extractBoundaryConsumedBlocks(
     const consumed: number[] = []
     const seen = new Set<number>()
     for (const ref of [startReference, endReference]) {
-        if (ref.kind === "compressed-block" && ref.blockId !== undefined && !seen.has(ref.blockId)) {
+        if (
+            ref.kind === "compressed-block" &&
+            ref.blockId !== undefined &&
+            !seen.has(ref.blockId)
+        ) {
             seen.add(ref.blockId)
             consumed.push(ref.blockId)
         }
@@ -213,12 +222,7 @@ function resolveMessageEntry(
     }
 
     try {
-        const { startReference, endReference } = resolveBoundaryIds(
-            searchContext,
-            state,
-            ref,
-            ref,
-        )
+        const { startReference, endReference } = resolveBoundaryIds(searchContext, state, ref, ref)
         const selection = resolveSelection(searchContext, startReference, endReference)
         return {
             selection,

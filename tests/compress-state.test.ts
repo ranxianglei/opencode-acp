@@ -104,7 +104,9 @@ function makeSelection(overrides: Partial<SelectionResolution> = {}): SelectionR
     }
 }
 
-function makeCompressionInput(overrides: Partial<CompressionStateInput> = {}): CompressionStateInput {
+function makeCompressionInput(
+    overrides: Partial<CompressionStateInput> = {},
+): CompressionStateInput {
     return {
         topic: "test topic",
         batchTopic: "batch topic",

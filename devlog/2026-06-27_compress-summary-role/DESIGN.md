@@ -74,11 +74,11 @@ Single user turn. No fake conversational turn is perceived; the self-Q&A loop ha
 
 ## 6. Alternatives considered
 
-| Option | Verdict |
-|---|---|
+| Option                                           | Verdict                                                                                       |
+| ------------------------------------------------ | --------------------------------------------------------------------------------------------- |
 | A. Adaptive role (`assistant` when next is user) | Rejected — requires fabricating full `AssistantMessage` fields; unverifiable downstream risk. |
-| B. Merge into following user msg unconditionally | Subsumed by F (F only merges when next is user, preserving status quo otherwise). |
-| D. Summary role = role of range's first message | Rejected — still collides with the following user in the exact reported pattern. |
+| B. Merge into following user msg unconditionally | Subsumed by F (F only merges when next is user, preserving status quo otherwise).             |
+| D. Summary role = role of range's first message  | Rejected — still collides with the following user in the exact reported pattern.              |
 
 ## 7. Test impact
 

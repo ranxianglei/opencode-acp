@@ -38,11 +38,11 @@ space-constrained. The user judged it insufficient ("写的超级烂").
 ## Acceptance Criteria
 
 1. `system.ts` gains a **HOW TO COMPRESS** section with:
-   - A clear KEEP-VERBATIM list (concrete items: paths, signatures, errors,
-     decisions+rationale, constraints, exact values, user intent quotes).
-   - A clear DROP list (concrete items: logs after extraction, duplicate reads,
-     dead-ends with lesson preserved, back-and-forth, repeated status checks).
-   - A PRIORITY ordering for space-constrained summaries.
+    - A clear KEEP-VERBATIM list (concrete items: paths, signatures, errors,
+      decisions+rationale, constraints, exact values, user intent quotes).
+    - A clear DROP list (concrete items: logs after extraction, duplicate reads,
+      dead-ends with lesson preserved, back-and-forth, repeated status checks).
+    - A PRIORITY ordering for space-constrained summaries.
 2. `compress-range.ts` and `compress-message.ts` have the contradictory
    EXHAUSTIVE/LEAN guidance replaced with a pointer to the HOW TO COMPRESS
    rules, keeping only tool-specific mechanics (boundary IDs, batching,

@@ -167,7 +167,10 @@ export function assignMessageRefs(state: SessionState, messages: WithParts[]): n
             continue
         }
         // [FIX Bug 29] Skip synthetic messages created by DCP
-        if (rawMessageId.startsWith("msg_dcp_summary_") || rawMessageId.startsWith("msg_dcp_text_")) {
+        if (
+            rawMessageId.startsWith("msg_dcp_summary_") ||
+            rawMessageId.startsWith("msg_dcp_text_")
+        ) {
             continue
         }
 

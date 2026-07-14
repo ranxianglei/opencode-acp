@@ -20,12 +20,12 @@
 ## 2. Goals & Non-Goals
 
 - **Goals**:
-  - Align the toolOutput reminder threshold with the adaptive growth threshold.
-  - Make the `toolOutputNudgeThreshold` config override actually work.
-  - Persist `modelContextLimit` so adaptive thresholds survive restart (folded in
-    per user request — without this, fix #1 only works until the session reloads).
+    - Align the toolOutput reminder threshold with the adaptive growth threshold.
+    - Make the `toolOutputNudgeThreshold` config override actually work.
+    - Persist `modelContextLimit` so adaptive thresholds survive restart (folded in
+      per user request — without this, fix #1 only works until the session reloads).
 - **Non-Goals**:
-  - Re-architecting the dual-nudge system.
+    - Re-architecting the dual-nudge system.
 
 ## 3. Current Architecture
 
@@ -62,12 +62,12 @@ injectCompressNudges (inject.ts)
 
 ## 5. Design Decisions & Rationale
 
-| Decision | Options Considered | Chosen | Why |
-|----------|--------------------|--------|-----|
-| Threshold default | (a) keep 5000, (b) `?? nudgeGrowthTokens`, (c) fraction of nudgeGrowthTokens | (b) | Reuses the already-computed adaptive value; minimal change; same 5% semantics as the growth nudge. (c) adds an unneeded second ratio. |
-| Reminder independence | (a) gate behind `shouldNudge`, (b) keep independent | (b) keep independent | The reminder serves a distinct signal (tool-output accumulation). Keeping it independent but context-scaled preserves its purpose without subverting the 5% protection. |
-| Override wiring | (a) leave dead, (b) wire through merge/validation/schema | (b) | A declared config field that silently does nothing is a footgun; wiring it is purely additive. |
-| modelContextLimit persistence | (a) persist in state JSON, (b) derive from messages, (c) leave undefined | (a) | Simplest; the system-prompt hook already sets the live value every turn, so persistence only needs to bridge the first message-transform after restart. Old files lack the field → optional guard handles it. |
+| Decision                      | Options Considered                                                           | Chosen               | Why                                                                                                                                                                                                           |
+| ----------------------------- | ---------------------------------------------------------------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Threshold default             | (a) keep 5000, (b) `?? nudgeGrowthTokens`, (c) fraction of nudgeGrowthTokens | (b)                  | Reuses the already-computed adaptive value; minimal change; same 5% semantics as the growth nudge. (c) adds an unneeded second ratio.                                                                         |
+| Reminder independence         | (a) gate behind `shouldNudge`, (b) keep independent                          | (b) keep independent | The reminder serves a distinct signal (tool-output accumulation). Keeping it independent but context-scaled preserves its purpose without subverting the 5% protection.                                       |
+| Override wiring               | (a) leave dead, (b) wire through merge/validation/schema                     | (b)                  | A declared config field that silently does nothing is a footgun; wiring it is purely additive.                                                                                                                |
+| modelContextLimit persistence | (a) persist in state JSON, (b) derive from messages, (c) leave undefined     | (a)                  | Simplest; the system-prompt hook already sets the live value every turn, so persistence only needs to bridge the first message-transform after restart. Old files lack the field → optional guard handles it. |
 
 ## 6. Impact Analysis
 

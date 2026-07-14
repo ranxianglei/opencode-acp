@@ -1,6 +1,10 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { getInvalidConfigKeys, validateConfigTypes, VALID_CONFIG_KEYS } from "../lib/config-validation"
+import {
+    getInvalidConfigKeys,
+    validateConfigTypes,
+    VALID_CONFIG_KEYS,
+} from "../lib/config-validation"
 
 test("getInvalidConfigKeys returns empty array for valid keys", () => {
     const result = getInvalidConfigKeys({ enabled: true, debug: false })

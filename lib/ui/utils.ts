@@ -293,5 +293,3 @@ export function formatPrunedItemsList(
 
     return lines
 }
-
-

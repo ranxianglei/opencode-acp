@@ -74,8 +74,8 @@ without index bookkeeping.
 
 ## Risk Assessment
 
-| Risk | Mitigation |
-|------|------------|
-| Real user sends empty message → silently dropped | An empty user message has no content to act on; dropping it is strictly better than forwarding it to the LLM. |
+| Risk                                               | Mitigation                                                                                                                                                             |
+| -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Real user sends empty message → silently dropped   | An empty user message has no content to act on; dropping it is strictly better than forwarding it to the LLM.                                                          |
 | Future code path relies on suffix message existing | The suffix is transient (synthetic); nothing downstream indexes into it by position. `injectMessageIds` runs before the sweep and skips messages without a mapped ref. |
-| `hasContent` returns false for tool-only messages | `hasContent` already treats completed tool outputs as content (see `utils.ts:215-225`). Only truly empty messages are dropped. |
+| `hasContent` returns false for tool-only messages  | `hasContent` already treats completed tool outputs as content (see `utils.ts:215-225`). Only truly empty messages are dropped.                                         |

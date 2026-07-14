@@ -118,7 +118,9 @@ test("estimateContextComposition tracks protectedTokens via file patterns only (
     const state = createSessionState()
     const messages = [
         makeMsg("m1", "user", "hello"),
-        makeMsg("m2", "assistant", "reading file", [toolPart("t1", "read", { filePath: "src/secret.ts" })]),
+        makeMsg("m2", "assistant", "reading file", [
+            toolPart("t1", "read", { filePath: "src/secret.ts" }),
+        ]),
         makeMsg("m3", "assistant", "normal text"),
     ]
     setupRefs(state, messages)

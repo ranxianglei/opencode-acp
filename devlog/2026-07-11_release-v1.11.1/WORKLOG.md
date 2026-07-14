@@ -16,9 +16,9 @@
 
 ### Commits
 
-| Commit | Description |
-|--------|-------------|
-| `c39c42d` | chore: bump version to 1.11.1 |
+| Commit        | Description                                |
+| ------------- | ------------------------------------------ |
+| `c39c42d`     | chore: bump version to 1.11.1              |
 | (this commit) | docs: add v1.11.1 changelog + devlog entry |
 
 ### Key Files

@@ -22,29 +22,29 @@
 ## 3. Constraints & Non-Goals
 
 - **Constraints**:
-  - Use GitHub Actions (standard for public GitHub repos)
-  - Test on Node 22 and 24 (matrix strategy)
-  - Steps: typecheck → test → build (in order)
+    - Use GitHub Actions (standard for public GitHub repos)
+    - Test on Node 22 and 24 (matrix strategy)
+    - Steps: typecheck → test → build (in order)
 - **Non-Goals**:
-  - Automatic npm publish on tag
-  - Code coverage reporting
-  - Preview deployments
+    - Automatic npm publish on tag
+    - Code coverage reporting
+    - Preview deployments
 
 ## 4. Acceptance Criteria (must be testable)
 
 - **Correctness**:
-  - [x] CI workflow triggers on push to master and on pull requests
-  - [x] CI runs typecheck, test, and build steps
-  - [x] Node 22 and 24 matrix works
+    - [x] CI workflow triggers on push to master and on pull requests
+    - [x] CI runs typecheck, test, and build steps
+    - [x] Node 22 and 24 matrix works
 - **Performance / Stability**:
-  - [x] CI completes in under 5 minutes
+    - [x] CI completes in under 5 minutes
 - **Regression**:
-  - [x] Existing 343 tests pass in CI environment
-      - [x] PR #2 merged successfully to master
+    - [x] Existing 343 tests pass in CI environment
+        - [x] PR #2 merged successfully to master
 
 ## 5. Proposed Approach (optional)
 
 - **Affected modules & entry files**:
-  - `.github/workflows/ci.yml` — New CI workflow
+    - `.github/workflows/ci.yml` — New CI workflow
 - **Risks**: None — additive change
 - **Rollback strategy**: Delete `.github/workflows/ci.yml`

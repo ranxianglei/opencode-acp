@@ -1,6 +1,10 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { computeShouldNudge, resolveAdaptiveNudgeGrowth, estimateContextComposition } from "../lib/messages/inject/utils"
+import {
+    computeShouldNudge,
+    resolveAdaptiveNudgeGrowth,
+    estimateContextComposition,
+} from "../lib/messages/inject/utils"
 import type { WithParts } from "../lib/state"
 
 const baseParams = {
@@ -213,7 +217,10 @@ test("resolveAdaptiveNudgeGrowth: multi-million capped at 50K", () => {
 })
 
 function mkText(id: string, text: string): WithParts {
-    return { info: { id } as any, parts: [{ type: "text", text, id: `${id}-p`, sessionID: "s", messageID: id }] as any }
+    return {
+        info: { id } as any,
+        parts: [{ type: "text", text, id: `${id}-p`, sessionID: "s", messageID: id }] as any,
+    }
 }
 
 function mkTool(id: string, raw: string): WithParts {
@@ -221,7 +228,10 @@ function mkTool(id: string, raw: string): WithParts {
 }
 
 function mkSummary(id: string, text: string): WithParts {
-    return { info: { id: `msg_dcp_summary_${id}` } as any, parts: [{ type: "text", text: `[Compressed conversation section]\n${text}` }] as any }
+    return {
+        info: { id: `msg_dcp_summary_${id}` } as any,
+        parts: [{ type: "text", text: `[Compressed conversation section]\n${text}` }] as any,
+    }
 }
 
 test("estimateContextComposition: empty messages returns zeros", () => {
@@ -257,7 +267,9 @@ test("estimateContextComposition: summary message counted in summaryTokens not m
     const summaryText = "x".repeat(400)
     const msg = mkSummary("b0", summaryText)
     const c = estimateContextComposition([msg])
-    const expectedSummary = Math.round(("[Compressed conversation section]\n" + summaryText).length / 4)
+    const expectedSummary = Math.round(
+        ("[Compressed conversation section]\n" + summaryText).length / 4,
+    )
     assert.equal(c.summaryTokens, expectedSummary)
     assert.equal(c.messageTokens, 0)
     assert.equal(c.total, c.summaryTokens)
@@ -284,10 +296,7 @@ test("estimateContextComposition: total = tool + summary + message (mutually exc
 })
 
 test("estimateContextComposition: largestRanges excludes summaries", () => {
-    const msgs = [
-        mkText("m1", "x".repeat(2400)),
-        mkSummary("b0", "y".repeat(4000)),
-    ]
+    const msgs = [mkText("m1", "x".repeat(2400)), mkSummary("b0", "y".repeat(4000))]
     const c = estimateContextComposition(msgs)
     assert.equal(c.largestRanges.length, 1)
     assert.equal(c.largestRanges[0].ref, "?")
@@ -311,7 +320,9 @@ test("estimateContextComposition: largestMessageRanges excludes messages with co
 
 test("estimateContextComposition: resolves ref from state.messageIds.byRawId", () => {
     const msg = mkText("raw-id-1", "x".repeat(2400))
-    const state = { messageIds: { byRawId: new Map([["raw-id-1", "m00001"]]), byRef: new Map(), nextRef: 2 } } as any
+    const state = {
+        messageIds: { byRawId: new Map([["raw-id-1", "m00001"]]), byRef: new Map(), nextRef: 2 },
+    } as any
     const c = estimateContextComposition([msg], state)
     assert.equal(c.largestRanges[0].ref, "m00001")
 })

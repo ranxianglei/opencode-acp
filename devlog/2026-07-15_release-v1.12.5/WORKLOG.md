@@ -12,6 +12,7 @@
 ## Contents
 
 This release includes:
+
 - PR #139: Bug 20 suppression format mismatch — `overMaxLimit` never suppressed after compress
 - PR #140: Growth floor gate correction — `nudgeAllowed` requires `decision.shouldNudge`
 

@@ -39,14 +39,14 @@ Not committed — changes left uncommitted for review (per task instructions).
 - **Entry point / key function**: `runBatchCleanup(state, config, logger, messages)` in `lib/gc/merge.ts`, invoked from the message-transform pipeline in `lib/hooks.ts`.
 - **Key configuration items**: `gc.batchCleanup.{lowThreshold,highThreshold,forceThreshold}` (number or `${number}%` of model context window). Defaults 60% / 75% / 90%.
 - **Key logic explanation**:
-  - `runBatchCleanup` computes current usage via `getCurrentTokenUsage`. If `modelContextLimit` is unknown it no-ops. Tier precedence: force(3) > high(2) > low(1) > none(0).
-    - **Tier 3 (>= forceThreshold)**: gathers all active old-gen blocks (same selection as `runMajorGC`: `generation === "old" | undefined` or oversized) and merges them.
-    - **Tier 2 (>= highThreshold)**: gathers active blocks in `markedForCleanup` and merges them.
-    - **Tier 1 (>= lowThreshold)**: returns a `nudgeText` (only when marks exist); hooks.ts appends it to the last user message — cache-safe because the prefix already breaks there each turn.
-  - `mergeMarkedBlocks` requires >= 2 valid active source blocks (a single-block "merge" is a no-op to avoid redundant work already covered by truncate-GC). It concatenates source summary bodies (header/footer stripped) with `\n---\n`, truncates to `maxOldGenSummaryLength` keeping each block's first line, wraps into a new old-gen block, deactivates all sources (`active=false`, `deactivatedByBlockId=newId`), transfers their `effectiveMessageIds`/`effectiveToolIds` union, re-points `activeByAnchorMessageId` to the new block at the oldest source's anchor, rewrites `byMessageId.activeBlockIds`, and clears `markedForCleanup`.
-  - **No infinite loop**: after a tier-3 merge there is only one old-gen block, so the next run's `< 2` guard no-ops; after a tier-2 merge `markedForCleanup` is cleared.
-  - State is **not** persisted inside `mergeMarkedBlocks`; the hooks.ts caller persists once when `mergedCount > 0`.
-  - `resolveBatchCleanup` falls back to a constant default set when `config.gc.batchCleanup` is absent — defensive against partial configs / older test factories.
+    - `runBatchCleanup` computes current usage via `getCurrentTokenUsage`. If `modelContextLimit` is unknown it no-ops. Tier precedence: force(3) > high(2) > low(1) > none(0).
+        - **Tier 3 (>= forceThreshold)**: gathers all active old-gen blocks (same selection as `runMajorGC`: `generation === "old" | undefined` or oversized) and merges them.
+        - **Tier 2 (>= highThreshold)**: gathers active blocks in `markedForCleanup` and merges them.
+        - **Tier 1 (>= lowThreshold)**: returns a `nudgeText` (only when marks exist); hooks.ts appends it to the last user message — cache-safe because the prefix already breaks there each turn.
+    - `mergeMarkedBlocks` requires >= 2 valid active source blocks (a single-block "merge" is a no-op to avoid redundant work already covered by truncate-GC). It concatenates source summary bodies (header/footer stripped) with `\n---\n`, truncates to `maxOldGenSummaryLength` keeping each block's first line, wraps into a new old-gen block, deactivates all sources (`active=false`, `deactivatedByBlockId=newId`), transfers their `effectiveMessageIds`/`effectiveToolIds` union, re-points `activeByAnchorMessageId` to the new block at the oldest source's anchor, rewrites `byMessageId.activeBlockIds`, and clears `markedForCleanup`.
+    - **No infinite loop**: after a tier-3 merge there is only one old-gen block, so the next run's `< 2` guard no-ops; after a tier-2 merge `markedForCleanup` is cleared.
+    - State is **not** persisted inside `mergeMarkedBlocks`; the hooks.ts caller persists once when `mergedCount > 0`.
+    - `resolveBatchCleanup` falls back to a constant default set when `config.gc.batchCleanup` is absent — defensive against partial configs / older test factories.
 - **Persistence / serialization**: Sets are written as arrays (`Array.from`) and read back with integer/existence validation, consistent with the existing `activeBlockIds` handling. Backward compatible: a missing field yields an empty set.
 - **Backward compatibility**: internal `dcp` naming untouched; existing GC untouched; no DB message modification; only ACP state is mutated.
 

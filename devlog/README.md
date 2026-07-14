@@ -18,18 +18,18 @@ Folder name: `YYYY-MM-DD_short-title`
 
 Every devlog entry MUST include at minimum:
 
-| File | Purpose | When to fill |
-|------|---------|--------------|
-| `REQ.md` | Problem statement, acceptance criteria, constraints | **BEFORE** implementation |
-| `WORKLOG.md` | Commits, key files, test results, lessons learned | **DURING/AFTER** implementation |
+| File         | Purpose                                             | When to fill                    |
+| ------------ | --------------------------------------------------- | ------------------------------- |
+| `REQ.md`     | Problem statement, acceptance criteria, constraints | **BEFORE** implementation       |
+| `WORKLOG.md` | Commits, key files, test results, lessons learned   | **DURING/AFTER** implementation |
 
 ## Optional Files
 
-| File | When to include |
-|------|----------------|
+| File        | When to include                                                              |
+| ----------- | ---------------------------------------------------------------------------- |
 | `DESIGN.md` | Required for changes affecting architecture, data flow, or module boundaries |
-| `NOTES.md` | Ad-hoc notes, investigation logs, debugging traces |
-| `REVIEW.md` | Code review findings (if significant enough to preserve) |
+| `NOTES.md`  | Ad-hoc notes, investigation logs, debugging traces                           |
+| `REVIEW.md` | Code review findings (if significant enough to preserve)                     |
 
 ## Rules
 

@@ -16,8 +16,8 @@
 
 ### Commits
 
-| Commit | Description |
-|--------|-------------|
+| Commit  | Description                                                   |
+| ------- | ------------------------------------------------------------- |
 | `<sha>` | fix: route range-utils placeholder diagnostic to logger (#67) |
 
 ### Key Files
@@ -34,10 +34,10 @@
 
 ### Audit of remaining `console.*` sites (kept as-is, documented)
 
-| Site | Decision | Reason |
-|------|----------|--------|
-| `config.ts` (4 sites, dcp→acp migration notices) | Kept `console.log` | Runs at plugin init before `Logger` exists (`getConfig` at `index.ts:29` → `new Logger` at `index.ts:35`). Logger is debug-gated; routing user-facing one-time migration notices through it would silence them in production. |
-| `prompts/store.ts:186/188` (prompt migration) | Kept `console.log`/`console.warn` | Same debug-gating concern; `resolvePromptPaths` is a free function; one-time user-facing migration events should stay visible regardless of the debug flag. |
+| Site                                             | Decision                          | Reason                                                                                                                                                                                                                        |
+| ------------------------------------------------ | --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `config.ts` (4 sites, dcp→acp migration notices) | Kept `console.log`                | Runs at plugin init before `Logger` exists (`getConfig` at `index.ts:29` → `new Logger` at `index.ts:35`). Logger is debug-gated; routing user-facing one-time migration notices through it would silence them in production. |
+| `prompts/store.ts:186/188` (prompt migration)    | Kept `console.log`/`console.warn` | Same debug-gating concern; `resolvePromptPaths` is a free function; one-time user-facing migration events should stay visible regardless of the debug flag.                                                                   |
 
 ## 4. Testing & Verification
 
@@ -72,7 +72,7 @@ npm run build
 
 ## 6. Lessons Learned (optional)
 
-- `Logger` is a debug-only sink (early-returns when `enabled === false`). This makes it correct for internal diagnostics but **wrong** for user-facing one-time notices (migration success/failure), which must remain visible regardless of the debug flag. The two cases warrant different handling — a blanket "convert all console.* to logger" would hide legitimate user notices.
+- `Logger` is a debug-only sink (early-returns when `enabled === false`). This makes it correct for internal diagnostics but **wrong** for user-facing one-time notices (migration success/failure), which must remain visible regardless of the debug flag. The two cases warrant different handling — a blanket "convert all console.\* to logger" would hide legitimate user notices.
 
 ## 7. Follow-ups (optional)
 

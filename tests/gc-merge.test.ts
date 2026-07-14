@@ -61,7 +61,10 @@ function makeState(blocks: CompressionBlock[], opts: MakeStateOptions = {}): Ses
         if (block.active) {
             state.prune.messages.activeBlockIds.add(block.blockId)
             if (block.anchorMessageId) {
-                state.prune.messages.activeByAnchorMessageId.set(block.anchorMessageId, block.blockId)
+                state.prune.messages.activeByAnchorMessageId.set(
+                    block.anchorMessageId,
+                    block.blockId,
+                )
             }
         }
         if (block.blockId > maxId) maxId = block.blockId
@@ -158,9 +161,7 @@ function makeAssistantMessage(id: string, totalTokens: number, sessionId = "s1")
                 cache: { read: 0, write: 0 },
             },
         },
-        parts: [
-            { type: "text", text: "ok", id: `${id}-p1`, sessionID: sessionId, messageID: id },
-        ],
+        parts: [{ type: "text", text: "ok", id: `${id}-p1`, sessionID: sessionId, messageID: id }],
     }
 }
 
@@ -210,24 +211,15 @@ test("mergeMarkedBlocks: merges 2 blocks → creates new block, deactivates sour
     assert.ok(merged!.summary.includes("Body of block one"))
     assert.ok(merged!.summary.includes("Body of block two"))
 
-    assert.deepEqual(
-        [...merged!.effectiveMessageIds].sort(),
-        ["m1", "m2", "m3"],
-    )
-    assert.deepEqual(
-        [...merged!.effectiveToolIds].sort(),
-        ["t1", "t2"],
-    )
+    assert.deepEqual([...merged!.effectiveMessageIds].sort(), ["m1", "m2", "m3"])
+    assert.deepEqual([...merged!.effectiveToolIds].sort(), ["t1", "t2"])
 
     const entryM1 = state.prune.messages.byMessageId.get("m1")!
     assert.ok(!entryM1.activeBlockIds.includes(1))
     assert.ok(entryM1.activeBlockIds.includes(newId))
     assert.ok(entryM1.allBlockIds.includes(newId))
 
-    assert.equal(
-        state.prune.messages.activeByAnchorMessageId.get("anchor-1"),
-        newId,
-    )
+    assert.equal(state.prune.messages.activeByAnchorMessageId.get("anchor-1"), newId)
     assert.equal(state.prune.messages.activeByAnchorMessageId.has("anchor-2"), false)
 
     assert.equal(state.prune.messages.markedForCleanup.size, 0)
@@ -296,9 +288,23 @@ test("mergeMarkedBlocks: inactive block in input → filtered out", () => {
 })
 
 test("mergeMarkedBlocks: markedForCleanup only clears merged IDs (not all)", () => {
-    const block1 = makeBlock({ blockId: 1, anchorMessageId: "a1", summary: wrapCompressedSummary(1, "one") })
-    const block2 = makeBlock({ blockId: 2, runId: 2, anchorMessageId: "a2", summary: wrapCompressedSummary(2, "two") })
-    const block3 = makeBlock({ blockId: 3, runId: 3, anchorMessageId: "a3", summary: wrapCompressedSummary(3, "three") })
+    const block1 = makeBlock({
+        blockId: 1,
+        anchorMessageId: "a1",
+        summary: wrapCompressedSummary(1, "one"),
+    })
+    const block2 = makeBlock({
+        blockId: 2,
+        runId: 2,
+        anchorMessageId: "a2",
+        summary: wrapCompressedSummary(2, "two"),
+    })
+    const block3 = makeBlock({
+        blockId: 3,
+        runId: 3,
+        anchorMessageId: "a3",
+        summary: wrapCompressedSummary(3, "three"),
+    })
     const state = makeState([block1, block2, block3], { marked: [1, 2, 3] })
 
     mergeMarkedBlocks(state, [1, 2], 3000)
@@ -367,8 +373,19 @@ const logger = new Logger(false)
 
 test("runBatchCleanup: below 100% (95%) → noop tier 0", () => {
     const blocks = [
-        makeBlock({ blockId: 1, anchorMessageId: "a1", summary: wrapCompressedSummary(1, "one"), generation: "old" }),
-        makeBlock({ blockId: 2, runId: 2, anchorMessageId: "a2", summary: wrapCompressedSummary(2, "two"), generation: "old" }),
+        makeBlock({
+            blockId: 1,
+            anchorMessageId: "a1",
+            summary: wrapCompressedSummary(1, "one"),
+            generation: "old",
+        }),
+        makeBlock({
+            blockId: 2,
+            runId: 2,
+            anchorMessageId: "a2",
+            summary: wrapCompressedSummary(2, "two"),
+            generation: "old",
+        }),
     ]
     const state = makeState(blocks, { modelContextLimit: 1000 })
     const messages: WithParts[] = [makeAssistantMessage("a1", 950)]
@@ -408,7 +425,12 @@ test("runBatchCleanup: at 100% with >= 2 old-gen blocks → tier 3 force merge",
 
 test("runBatchCleanup: at 100% with < 2 old-gen blocks → noop", () => {
     const blocks = [
-        makeBlock({ blockId: 1, anchorMessageId: "a1", summary: wrapCompressedSummary(1, "one"), generation: "old" }),
+        makeBlock({
+            blockId: 1,
+            anchorMessageId: "a1",
+            summary: wrapCompressedSummary(1, "one"),
+            generation: "old",
+        }),
     ]
     const state = makeState(blocks, { modelContextLimit: 1000 })
     const messages: WithParts[] = [makeAssistantMessage("a1", 1000)]
@@ -423,7 +445,12 @@ test("runBatchCleanup: at 100% with < 2 old-gen blocks → noop", () => {
 test("runBatchCleanup: modelContextLimit undefined → noop", () => {
     const blocks = [
         makeBlock({ blockId: 1, anchorMessageId: "a1", summary: wrapCompressedSummary(1, "one") }),
-        makeBlock({ blockId: 2, runId: 2, anchorMessageId: "a2", summary: wrapCompressedSummary(2, "two") }),
+        makeBlock({
+            blockId: 2,
+            runId: 2,
+            anchorMessageId: "a2",
+            summary: wrapCompressedSummary(2, "two"),
+        }),
     ]
     const state = makeState(blocks, { modelContextLimit: undefined })
     const messages: WithParts[] = [makeAssistantMessage("a1", 999999)]
@@ -436,9 +463,26 @@ test("runBatchCleanup: modelContextLimit undefined → noop", () => {
 
 test("runBatchCleanup: mark tiers removed — marked blocks below 100% → noop (no nudge, no merge)", () => {
     const blocks = [
-        makeBlock({ blockId: 1, anchorMessageId: "a1", summary: wrapCompressedSummary(1, "one"), generation: "old" }),
-        makeBlock({ blockId: 2, runId: 2, anchorMessageId: "a2", summary: wrapCompressedSummary(2, "two"), generation: "old" }),
-        makeBlock({ blockId: 3, runId: 3, anchorMessageId: "a3", summary: wrapCompressedSummary(3, "three"), generation: "old" }),
+        makeBlock({
+            blockId: 1,
+            anchorMessageId: "a1",
+            summary: wrapCompressedSummary(1, "one"),
+            generation: "old",
+        }),
+        makeBlock({
+            blockId: 2,
+            runId: 2,
+            anchorMessageId: "a2",
+            summary: wrapCompressedSummary(2, "two"),
+            generation: "old",
+        }),
+        makeBlock({
+            blockId: 3,
+            runId: 3,
+            anchorMessageId: "a3",
+            summary: wrapCompressedSummary(3, "three"),
+            generation: "old",
+        }),
     ]
     // Legacy marks that would previously have triggered tier 1/2 — now ignored.
     const state = makeState(blocks, { modelContextLimit: 1000, marked: [1, 2, 3] })

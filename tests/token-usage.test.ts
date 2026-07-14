@@ -320,12 +320,7 @@ function buildOutputZeroAssistantMessage(): WithParts {
             },
         } as WithParts["info"],
         parts: [
-            textPart(
-                "msg-assistant-output-zero",
-                sessionID,
-                "msg-assistant-output-zero-part",
-                "",
-            ),
+            textPart("msg-assistant-output-zero", sessionID, "msg-assistant-output-zero-part", ""),
         ],
     }
 }
@@ -415,8 +410,5 @@ test("getCurrentTokenUsage fallback counts tool outputs not just text", () => {
     // Tool output "total 100\ndrwxr-xr-x ..." adds significant tokens
     // that the old text-only fallback would have missed entirely
     const textOnlyTokens = Math.ceil("Short text".length / 4)
-    assert.ok(
-        usage > textOnlyTokens,
-        "fallback should count tool outputs, not just text parts",
-    )
+    assert.ok(usage > textOnlyTokens, "fallback should count tool outputs, not just text parts")
 })

@@ -258,9 +258,7 @@ export function filterProtectedToolMessages(
         return selection
     }
 
-    const filteredMessageIds = selection.messageIds.filter(
-        (id) => !removedMessageIds.has(id),
-    )
+    const filteredMessageIds = selection.messageIds.filter((id) => !removedMessageIds.has(id))
     const filteredMessageTokenById = new Map<string, number>()
     for (const id of filteredMessageIds) {
         const tokens = selection.messageTokenById.get(id)
