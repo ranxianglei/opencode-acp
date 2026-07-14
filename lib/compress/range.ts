@@ -7,6 +7,7 @@ import {
     prepareSession,
     snapshotCompressionState,
     restoreCompressionState,
+    checkLastSegmentSoftBlock,
     type NotificationEntry,
 } from "./pipeline"
 import {
@@ -145,6 +146,13 @@ export function createCompressRangeTool(ctx: ToolContext): ReturnType<typeof too
                     )
                 }
             }
+
+            const softBlockError = await checkLastSegmentSoftBlock(
+                ctx,
+                filteredPlans.map((p) => p.selection.messageIds),
+                rawMessages,
+            )
+            if (softBlockError) throw softBlockError
 
             const notifications: NotificationEntry[] = []
             const preparedPlans: Array<{

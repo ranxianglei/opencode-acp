@@ -8,6 +8,7 @@ import {
     prepareSession,
     snapshotCompressionState,
     restoreCompressionState,
+    checkLastSegmentSoftBlock,
     type NotificationEntry,
 } from "./pipeline"
 import { appendProtectedPromptInfo, appendProtectedTools } from "./protected-content"
@@ -119,6 +120,13 @@ export function createCompressMessageTool(ctx: ToolContext): ReturnType<typeof t
                     )
                 }
             }
+
+            const softBlockError = await checkLastSegmentSoftBlock(
+                ctx,
+                plans.map((p) => p.selection.messageIds),
+                rawMessages,
+            )
+            if (softBlockError) throw softBlockError
 
             const notifications: NotificationEntry[] = []
 

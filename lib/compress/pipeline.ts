@@ -2,7 +2,7 @@ import type { PruneMessagesState, SessionState, SessionStats, WithParts } from "
 import { ensureSessionInitialized } from "../state"
 import { saveSessionState } from "../state/persistence"
 import { assignMessageRefs } from "../message-ids"
-import { isIgnoredUserMessage } from "../messages/query"
+import { isIgnoredUserMessage, isSyntheticMessage } from "../messages/query"
 import { deduplicate, purgeErrors } from "../strategies"
 import { getCurrentParams, getCurrentTokenUsage } from "../token-utils"
 import { sendCompressNotification } from "../ui/notification"
@@ -129,5 +129,62 @@ export async function finalizeSession(
         sessionMessageIds,
         params,
         contextTokensBefore,
+    )
+}
+
+/**
+ * Find the last visible (non-synthetic, non-pruned) message ID.
+ * Returns null if no visible message exists.
+ */
+export function getLastVisibleMessageId(
+    rawMessages: WithParts[],
+    state: SessionState,
+): string | null {
+    for (let i = rawMessages.length - 1; i >= 0; i--) {
+        const msg = rawMessages[i]
+        const id = msg?.info?.id
+        if (!id || typeof id !== "string") continue
+        if (isSyntheticMessage(msg)) continue
+        if (state.prune.messages.byMessageId.has(id)) continue
+        return id
+    }
+    return null
+}
+
+/**
+ * Soft-block check: if any plan covers the most recent visible message,
+ * the first attempt is rejected with a confirmation prompt. The
+ * lastMessageId is persisted so a retry succeeds.
+ *
+ * @param allPlanMessageIds - array of message-id arrays (one per resolved plan)
+ * @returns null if allowed, or an Error to throw if blocked
+ */
+export async function checkLastSegmentSoftBlock(
+    ctx: ToolContext,
+    allPlanMessageIds: string[][],
+    rawMessages: WithParts[],
+): Promise<Error | null> {
+    if (ctx.config.compress.lastSegmentSoftBlock === false) return null
+
+    const lastVisibleId = getLastVisibleMessageId(rawMessages, ctx.state)
+    if (!lastVisibleId) return null
+
+    const coversLast = allPlanMessageIds.some((ids) => ids.includes(lastVisibleId))
+    if (!coversLast) return null
+
+    if (ctx.state.nudges.lastSegmentConfirmAttempts.has(lastVisibleId)) {
+        return null
+    }
+
+    ctx.state.nudges.lastSegmentConfirmAttempts.add(lastVisibleId)
+    await saveSessionState(ctx.state, ctx.logger)
+
+    return new Error(
+        `This range includes the most recent message (${lastVisibleId}), which may still be needed for the current task step.\n\n` +
+            `Before compressing:\n` +
+            `1. Does the main task still need this content?\n` +
+            `2. Is there older context you could compress instead?\n` +
+            `3. If you are certain this content is genuinely consumed, re-issue the same compress call to confirm.\n\n` +
+            `This is a one-time confirmation — retrying will succeed.`,
     )
 }
