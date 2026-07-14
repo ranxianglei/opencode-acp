@@ -675,12 +675,16 @@ test("growth floor: nudge fires when growth meets nudgeGrowthTokens (not just gr
     state2.modelContextLimit = 1_000_000
     state2.nudges.lastPerMessageNudgeTokens = 200_000
     state2.messageIds.byRawId.set("u1", "m00001")
+    state2.messageIds.byRawId.set("a1", "m00002")
     state2.messageIds.byRawId.set("a2", "m00003")
 
     const messages2: WithParts[] = [
         userMsg("u1", "hello"),
-        assistantMsgWithTokens("a2", "done", { input: 200_000, output: 55_000 }, [
-            toolPart("c1", "x".repeat(80_000)),
+        assistantMsgWithTokens("a1", "work", { input: 200_000, output: 30_000 }, [
+            toolPart("c1", "x".repeat(120_000)),
+        ]),
+        assistantMsgWithTokens("a2", "done", { input: 200_000, output: 50_000 }, [
+            toolPart("c2", "x".repeat(120_000)),
         ]),
     ]
     injectCompressNudges(state2, config, logger, messages2, {} as any)

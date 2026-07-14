@@ -52,6 +52,7 @@ function buildConfig(): PluginConfig {
             protectedTools: [],
             protectTags: false,
             protectUserMessages: false,
+            lastSegmentSoftBlock: false,
         },
         strategies: {
             deduplication: {
