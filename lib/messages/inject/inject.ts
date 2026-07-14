@@ -373,7 +373,7 @@ export const injectCompressNudges = (
             const visibleMessageIds = new Set<string>(
                 messages.map((message) => message.info.id),
             )
-            const blockGuidance = buildCompressedBlockGuidance(state, config.gc, {
+            const blockGuidance = buildCompressedBlockGuidance(state, {
                 currentTokens,
                 modelContextLimit,
                 includeHint: tipsText !== null,

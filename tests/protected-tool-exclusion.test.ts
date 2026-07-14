@@ -70,14 +70,6 @@ function buildConfig(overrides: Partial<PluginConfig> = {}): PluginConfig {
                 protectedTools: [],
             },
         },
-        gc: {
-            algorithm: "truncate",
-            promotionThreshold: 5,
-            maxBlockAge: 15,
-            maxOldGenSummaryLength: 3000,
-            majorGcThresholdPercent: "100%",
-            batchCleanup: { lowThreshold: "60%", highThreshold: "75%", forceThreshold: "90%" },
-        },
         ...overrides,
     }
 }

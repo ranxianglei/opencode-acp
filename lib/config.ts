@@ -37,6 +37,8 @@ export interface CompressConfig {
     minNudgeGrowthRatio: number
     minNudgeGrowthFloor: number
     emergencyThresholdPercent: number | `${number}%`
+    emergencyPruneThreshold: number | `${number}%`
+    emergencyPruneTarget: number | `${number}%`
     maxVisibleSegments: number
     keepEmbedMaxChars: number
 }
@@ -67,21 +69,6 @@ export interface ExperimentalConfig {
     customPrompts: boolean
 }
 
-export interface BatchCleanupConfig {
-    lowThreshold: number | `${number}%`
-    highThreshold: number | `${number}%`
-    forceThreshold: number | `${number}%`
-}
-
-export interface GCConfig {
-    algorithm: "truncate"
-    promotionThreshold: number
-    maxBlockAge: number
-    maxOldGenSummaryLength: number
-    majorGcThresholdPercent: number | `${number}%`
-    batchCleanup: BatchCleanupConfig
-}
-
 export interface PluginConfig {
     enabled: boolean
     autoUpdate: boolean
@@ -94,7 +81,6 @@ export interface PluginConfig {
     experimental: ExperimentalConfig
     protectedFilePatterns: string[]
     compress: CompressConfig
-    gc: GCConfig
     strategies: {
         deduplication: Deduplication
         purgeErrors: PurgeErrors
@@ -208,6 +194,8 @@ const defaultConfig: PluginConfig = {
         minNudgeGrowthRatio: 0.45,
         minNudgeGrowthFloor: 5000,
         emergencyThresholdPercent: "98%",
+        emergencyPruneThreshold: "95%",
+        emergencyPruneTarget: "85%",
         maxVisibleSegments: 50,
         keepEmbedMaxChars: 2000,
     },
@@ -220,18 +208,6 @@ const defaultConfig: PluginConfig = {
             enabled: true,
             turns: 4,
             protectedTools: [],
-        },
-    },
-    gc: {
-        algorithm: "truncate",
-        promotionThreshold: 5,
-        maxBlockAge: 15,
-        maxOldGenSummaryLength: 3000,
-        majorGcThresholdPercent: "100%",
-        batchCleanup: {
-            lowThreshold: "55%",
-            highThreshold: "75%",
-            forceThreshold: "90%",
         },
     },
 }
@@ -424,6 +400,8 @@ function mergeCompress(
         minNudgeGrowthRatio: override.minNudgeGrowthRatio ?? base.minNudgeGrowthRatio,
         minNudgeGrowthFloor: override.minNudgeGrowthFloor ?? base.minNudgeGrowthFloor,
         emergencyThresholdPercent: override.emergencyThresholdPercent ?? base.emergencyThresholdPercent,
+        emergencyPruneThreshold: override.emergencyPruneThreshold ?? base.emergencyPruneThreshold,
+        emergencyPruneTarget: override.emergencyPruneTarget ?? base.emergencyPruneTarget,
         maxVisibleSegments: override.maxVisibleSegments ?? base.maxVisibleSegments,
         keepEmbedMaxChars: override.keepEmbedMaxChars ?? base.keepEmbedMaxChars,
     }
@@ -497,22 +475,6 @@ function deepCloneConfig(config: PluginConfig): PluginConfig {
                 protectedTools: [...config.strategies.purgeErrors.protectedTools],
             },
         },
-        gc: {
-            ...config.gc,
-            batchCleanup: { ...config.gc.batchCleanup },
-        },
-    }
-}
-
-function mergeGC(base: GCConfig, override?: Partial<GCConfig>): GCConfig {
-    if (!override) {
-        return base
-    }
-
-    return {
-        ...base,
-        ...override,
-        batchCleanup: { ...base.batchCleanup, ...(override.batchCleanup ?? {}) },
     }
 }
 
@@ -534,7 +496,6 @@ function mergeLayer(config: PluginConfig, data: Record<string, any>): PluginConf
             ...new Set([...config.protectedFilePatterns, ...(data.protectedFilePatterns ?? [])]),
         ],
         compress: mergeCompress(config.compress, data.compress as CompressOverride),
-        gc: mergeGC(config.gc, data.gc as Partial<GCConfig>),
         strategies: mergeStrategies(config.strategies, data.strategies as any),
     }
 }

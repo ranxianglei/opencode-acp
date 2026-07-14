@@ -55,14 +55,6 @@ function buildConfig(overrides: Partial<PluginConfig> = {}): PluginConfig {
             deduplication: { enabled: true, protectedTools: [] },
             purgeErrors: { enabled: true, turns: 4, protectedTools: [] },
         },
-        gc: {
-            algorithm: "truncate",
-            promotionThreshold: 5,
-            maxBlockAge: 15,
-            maxOldGenSummaryLength: 3000,
-            majorGcThresholdPercent: "100%",
-            batchCleanup: { lowThreshold: "60%", highThreshold: "75%", forceThreshold: "90%" },
-        },
     }
     return { ...base, ...overrides }
 }
@@ -243,66 +235,6 @@ test("nudge injection: no context usage tag when permission is denied", async ()
     const textParts = lastUser!.parts.filter((p: any) => p.type === "text" && !p.synthetic)
     const originalText = textParts.map((p: any) => p.text).join("")
     assert.ok(!originalText.includes("Context:"), "should NOT inject context with deny")
-})
-
-// ─── Test: Block deactivation by age (major GC) ─────────────────────────────
-
-test("block aging: old blocks are deactivated by major GC", async () => {
-    const { state, handler } = setupPipeline(SID_A, {
-        gc: { ...buildConfig().gc, maxBlockAge: 2 },
-    })
-
-    const blockId = 1
-    state.prune.messages.blocksById.set(blockId, {
-        blockId,
-        runId: 1,
-        active: true,
-        deactivatedByUser: false,
-        compressedTokens: 500,
-        summaryTokens: 50,
-        durationMs: 0,
-        mode: "message",
-        topic: "test",
-        batchTopic: "test",
-        startId: "m00001",
-        endId: "m00002",
-        anchorMessageId: "u2",
-        compressMessageId: "msg-comp",
-        compressCallId: "call-comp",
-        includedBlockIds: [],
-        consumedBlockIds: [],
-        parentBlockIds: [],
-        directMessageIds: ["u1"],
-        directToolIds: [],
-        effectiveMessageIds: ["u1"],
-        effectiveToolIds: [],
-        createdAt: Date.now() - 1000,
-        summary: "Compressed summary text",
-        survivedCount: 10,
-        generation: "old",
-    })
-    state.prune.messages.activeBlockIds.add(blockId)
-    state.prune.messages.activeByAnchorMessageId.set("u2", blockId)
-    state.prune.messages.byMessageId.set("u1", {
-        tokenCount: 200, allBlockIds: [blockId], activeBlockIds: [blockId],
-    })
-
-    const output = {
-        messages: [
-            makeUserMessage("u1", "Hello"),
-            makeAssistantMessage("a1", "Hi"),
-            makeUserMessage("u2", "Next"),
-            makeAssistantMessage("a2", "Response"),
-        ],
-    }
-
-    await handler({}, output)
-
-    assert.equal(
-        state.prune.messages.blocksById.get(blockId)?.active,
-        false,
-        "block should be deactivated because survivedCount (10) > maxBlockAge (2)",
-    )
 })
 
 // ─── Test: Tool error input pruning ─────────────────────────────────────────
@@ -532,8 +464,10 @@ test("block consumption: newer block deactivates consumed blocks", async () => {
         messages: [
             makeUserMessage("u1", "Hello"),
             makeAssistantMessage("a1", "Hi"),
+            makeAssistantMessage("msg-comp1", "compressing old content"),
             makeUserMessage("u2", "Next"),
             makeAssistantMessage("a2", "Response"),
+            makeAssistantMessage("msg-comp2", "compressing new content"),
             makeUserMessage("u3", "More"),
             makeAssistantMessage("a3", "Done"),
         ],

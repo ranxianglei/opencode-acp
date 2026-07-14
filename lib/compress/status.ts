@@ -325,8 +325,6 @@ function renderCompressedDrilldown(
 
     if (sort === "time") {
         sorted.sort((a, b) => a.createdAt - b.createdAt)
-    } else if (sort === "age") {
-        sorted.sort((a, b) => (b.survivedCount || 0) - (a.survivedCount || 0))
     } else {
         sorted.sort((a, b) => (b.compressedTokens || 0) - (a.compressedTokens || 0))
     }
@@ -337,13 +335,11 @@ function renderCompressedDrilldown(
     lines.push(
         `COMPRESSED — ${sorted.length} blocks | ${formatTokens(totalCompressed)} original → ${formatTokens(totalSummary)} summary`,
     )
-    lines.push(`Sorted by ${sort === "time" ? "time" : sort === "age" ? "age" : "size"}`)
+    lines.push(`Sorted by ${sort === "time" ? "time" : "size"}`)
     lines.push("")
 
     const shown = sorted.slice(0, limit)
     for (const b of shown) {
-        const survived = b.survivedCount ?? 0
-        const gen = b.generation ?? "young"
         const effCount = b.effectiveMessageIds?.length ?? 0
         const consumed =
             b.consumedBlockIds && b.consumedBlockIds.length > 0
@@ -351,7 +347,7 @@ function renderCompressedDrilldown(
                 : ""
         const topic = b.topic || "(no topic)"
         lines.push(
-            `  b${b.blockId}  ${formatTokens(b.compressedTokens)}→${formatTokens(b.summaryTokens)}  ${formatAge(b.createdAt)}  ${formatIdRange(b)}  age=${survived} ${gen} eff=${effCount}${consumed}`,
+            `  b${b.blockId}  ${formatTokens(b.compressedTokens)}→${formatTokens(b.summaryTokens)}  ${formatAge(b.createdAt)}  ${formatIdRange(b)} eff=${effCount}${consumed}`,
         )
         lines.push(`    "${topic}"`)
     }

@@ -6,7 +6,6 @@ import { Logger } from "../lib/logger"
 import { assignMessageRefs } from "../lib/message-ids"
 import { injectMessageIds } from "../lib/messages/inject/inject"
 import { applyAnchoredNudges } from "../lib/messages/inject/utils"
-import { prune } from "../lib/messages/prune"
 import { buildPriorityMap } from "../lib/messages/priority"
 import { stripHallucinationsFromString } from "../lib/messages/utils"
 import { createSessionState, type WithParts } from "../lib/state"
@@ -653,108 +652,6 @@ test("range-mode nudges skip assistant messages with only empty text parts (issu
     // Empty text parts should not receive nudge injection
     assert.equal(messages[1]?.parts.length, 1)
     assert.equal((messages[1]?.parts[0] as any).text, "")
-})
-
-test("message-mode rendered compressed summaries mark block IDs as BLOCKED", () => {
-    const sessionID = "ses_message_blocked_blocks"
-    const messages: WithParts[] = [
-        buildMessage("msg-user-1", "user", sessionID, "Original request", 1),
-        buildMessage("msg-assistant-1", "assistant", sessionID, "Follow-up", 2),
-    ]
-    const state = createSessionState()
-    const config = buildConfig("message")
-    const logger = new Logger(false)
-
-    state.prune.messages.byMessageId.set("msg-user-1", {
-        tokenCount: 20,
-        allBlockIds: [7],
-        activeBlockIds: [7],
-    })
-    state.prune.messages.blocksById.set(7, {
-        blockId: 7,
-        runId: 1,
-        active: true,
-        deactivatedByUser: false,
-        compressedTokens: 0,
-        summaryTokens: 0,
-        mode: "range",
-        topic: "Earlier notes",
-        batchTopic: "Earlier notes",
-        startId: "m00001",
-        endId: "m00001",
-        anchorMessageId: "msg-user-1",
-        compressMessageId: "msg-origin",
-        includedBlockIds: [],
-        consumedBlockIds: [],
-        parentBlockIds: [],
-        directMessageIds: ["msg-user-1"],
-        directToolIds: [],
-        effectiveMessageIds: ["msg-user-1"],
-        effectiveToolIds: [],
-        createdAt: 1,
-        summary:
-            "[Compressed conversation section]\nEarlier summary\n\n<dcp-message-id>b7</dcp-message-id>",
-    })
-    state.prune.messages.activeBlockIds.add(7)
-    state.prune.messages.activeByAnchorMessageId.set("msg-user-1", 7)
-
-    prune(state, logger, config, messages)
-
-    const recapTool = messages.flatMap((m) => m.parts).find((p: any) => p.type === "tool" && p.tool === "acp_context_recap")
-    const summaryText = (recapTool as any)?.state?.output || ""
-    assert.match(summaryText, /BLOCKED<\/dcp-message-id>/)
-    assert.doesNotMatch(summaryText, /b7<\/dcp-message-id>/)
-})
-
-test("range-mode rendered compressed summaries keep block IDs", () => {
-    const sessionID = "ses_range_visible_blocks"
-    const messages: WithParts[] = [
-        buildMessage("msg-user-1", "user", sessionID, "Original request", 1),
-        buildMessage("msg-assistant-1", "assistant", sessionID, "Follow-up", 2),
-    ]
-    const state = createSessionState()
-    const config = buildConfig("range")
-    const logger = new Logger(false)
-
-    state.prune.messages.byMessageId.set("msg-user-1", {
-        tokenCount: 20,
-        allBlockIds: [7],
-        activeBlockIds: [7],
-    })
-    state.prune.messages.blocksById.set(7, {
-        blockId: 7,
-        runId: 1,
-        active: true,
-        deactivatedByUser: false,
-        compressedTokens: 0,
-        summaryTokens: 0,
-        mode: "range",
-        topic: "Earlier notes",
-        batchTopic: "Earlier notes",
-        startId: "m00001",
-        endId: "m00001",
-        anchorMessageId: "msg-user-1",
-        compressMessageId: "msg-origin",
-        includedBlockIds: [],
-        consumedBlockIds: [],
-        parentBlockIds: [],
-        directMessageIds: ["msg-user-1"],
-        directToolIds: [],
-        effectiveMessageIds: ["msg-user-1"],
-        effectiveToolIds: [],
-        createdAt: 1,
-        summary:
-            "[Compressed conversation section]\nEarlier summary\n\n<dcp-message-id>b7</dcp-message-id>",
-    })
-    state.prune.messages.activeBlockIds.add(7)
-    state.prune.messages.activeByAnchorMessageId.set("msg-user-1", 7)
-
-    prune(state, logger, config, messages)
-
-    const recapTool = messages.flatMap((m) => m.parts).find((p: any) => p.type === "tool" && p.tool === "acp_context_recap")
-    const summaryText = (recapTool as any)?.state?.output || ""
-    assert.match(summaryText, /b7<\/dcp-message-id>/)
-    assert.doesNotMatch(summaryText, /BLOCKED<\/dcp-message-id>/)
 })
 
 test("hallucination stripping removes all dcp-prefixed XML tags including variants", async () => {

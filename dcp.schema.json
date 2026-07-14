@@ -313,6 +313,16 @@
                     "type": ["number", "string"],
                     "default": "98%",
                     "description": "Context usage threshold at which the growth floor is bypassed and nudges fire unconditionally (emergency override). Accepts absolute token count or percentage string (e.g. \"98%\")."
+                },
+                "emergencyPruneThreshold": {
+                    "type": ["number", "string"],
+                    "default": "95%",
+                    "description": "Context usage at which emergency pruning begins stubbing old tool outputs to prevent overflow. Accepts absolute token count or percentage string."
+                },
+                "emergencyPruneTarget": {
+                    "type": ["number", "string"],
+                    "default": "85%",
+                    "description": "Target context usage after emergency pruning. Pruning stops when context drops to this level. Accepts absolute token count or percentage string."
                 }
             },
             "default": {
@@ -334,91 +344,9 @@
                 "minCompressRange": 5000,
                 "minNudgeGrowthRatio": 0.45,
                 "minNudgeGrowthFloor": 5000,
-                "emergencyThresholdPercent": "98%"
-            }
-        },
-        "gc": {
-            "type": "object",
-            "description": "Garbage collection and batch cleanup configuration",
-            "additionalProperties": false,
-            "properties": {
-                "algorithm": {
-                    "type": "string",
-                    "enum": [
-                        "truncate"
-                    ],
-                    "default": "truncate"
-                },
-                "promotionThreshold": {
-                    "type": "number",
-                    "default": 5
-                },
-                "maxBlockAge": {
-                    "type": "number",
-                    "default": 15
-                },
-                "maxOldGenSummaryLength": {
-                    "type": "number",
-                    "default": 3000
-                },
-                "majorGcThresholdPercent": {
-                    "default": "100%",
-                    "oneOf": [
-                        {
-                            "type": "number"
-                        },
-                        {
-                            "type": "string",
-                            "pattern": "^\\d+(?:\\.\\d+)?%$"
-                        }
-                    ]
-                },
-                "batchCleanup": {
-                    "type": "object",
-                    "description": "Three-tier batch merge-cleanup thresholds for blocks marked via mark_block. Accepts number or \"X%\" of model context window.",
-                    "additionalProperties": false,
-                    "properties": {
-                        "lowThreshold": {
-                            "default": "60%",
-                            "description": "Nudge tier: at/above this usage, a reminder to merge marked blocks is injected.",
-                            "oneOf": [
-                                {
-                                    "type": "number"
-                                },
-                                {
-                                    "type": "string",
-                                    "pattern": "^\\d+(?:\\.\\d+)?%$"
-                                }
-                            ]
-                        },
-                        "highThreshold": {
-                            "default": "75%",
-                            "description": "Auto merge tier: at/above this usage, all marked blocks are merge-compressed into one.",
-                            "oneOf": [
-                                {
-                                    "type": "number"
-                                },
-                                {
-                                    "type": "string",
-                                    "pattern": "^\\d+(?:\\.\\d+)?%$"
-                                }
-                            ]
-                        },
-                        "forceThreshold": {
-                            "default": "90%",
-                            "description": "Force merge tier: at/above this usage, all old-gen blocks are merged regardless of marks.",
-                            "oneOf": [
-                                {
-                                    "type": "number"
-                                },
-                                {
-                                    "type": "string",
-                                    "pattern": "^\\d+(?:\\.\\d+)?%$"
-                                }
-                            ]
-                        }
-                    }
-                }
+                "emergencyThresholdPercent": "98%",
+                "emergencyPruneThreshold": "95%",
+                "emergencyPruneTarget": "85%"
             }
         },
         "strategies": {

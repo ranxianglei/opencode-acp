@@ -47,18 +47,10 @@ export const VALID_CONFIG_KEYS = new Set([
     "compress.minNudgeGrowthRatio",
     "compress.minNudgeGrowthFloor",
     "compress.emergencyThresholdPercent",
+    "compress.emergencyPruneThreshold",
+    "compress.emergencyPruneTarget",
     "compress.maxVisibleSegments",
     "compress.keepEmbedMaxChars",
-    "gc",
-    "gc.algorithm",
-    "gc.promotionThreshold",
-    "gc.maxBlockAge",
-    "gc.maxOldGenSummaryLength",
-    "gc.majorGcThresholdPercent",
-    "gc.batchCleanup",
-    "gc.batchCleanup.lowThreshold",
-    "gc.batchCleanup.highThreshold",
-    "gc.batchCleanup.forceThreshold",
     "strategies",
     "strategies.deduplication",
     "strategies.deduplication.enabled",
@@ -495,6 +487,68 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
                 }
             }
 
+            const emergencyPruneThreshold = compress.emergencyPruneThreshold
+            if (emergencyPruneThreshold !== undefined) {
+                if (typeof emergencyPruneThreshold === "number") {
+                    if (emergencyPruneThreshold < 0) {
+                        errors.push({
+                            key: "compress.emergencyPruneThreshold",
+                            expected: "non-negative number or \"${number}%\" (0–100)",
+                            actual: `${emergencyPruneThreshold}`,
+                        })
+                    }
+                } else if (
+                    typeof emergencyPruneThreshold === "string" &&
+                    emergencyPruneThreshold.endsWith("%")
+                ) {
+                    const parsed = parseFloat(emergencyPruneThreshold.slice(0, -1))
+                    if (isNaN(parsed) || parsed < 0 || parsed > 100) {
+                        errors.push({
+                            key: "compress.emergencyPruneThreshold",
+                            expected: '"${number}%" with percentage in [0, 100]',
+                            actual: JSON.stringify(emergencyPruneThreshold),
+                        })
+                    }
+                } else {
+                    errors.push({
+                        key: "compress.emergencyPruneThreshold",
+                        expected: 'number | "${number}%"',
+                        actual: JSON.stringify(emergencyPruneThreshold),
+                    })
+                }
+            }
+
+            const emergencyPruneTarget = compress.emergencyPruneTarget
+            if (emergencyPruneTarget !== undefined) {
+                if (typeof emergencyPruneTarget === "number") {
+                    if (emergencyPruneTarget < 0) {
+                        errors.push({
+                            key: "compress.emergencyPruneTarget",
+                            expected: "non-negative number or \"${number}%\" (0–100)",
+                            actual: `${emergencyPruneTarget}`,
+                        })
+                    }
+                } else if (
+                    typeof emergencyPruneTarget === "string" &&
+                    emergencyPruneTarget.endsWith("%")
+                ) {
+                    const parsed = parseFloat(emergencyPruneTarget.slice(0, -1))
+                    if (isNaN(parsed) || parsed < 0 || parsed > 100) {
+                        errors.push({
+                            key: "compress.emergencyPruneTarget",
+                            expected: '"${number}%" with percentage in [0, 100]',
+                            actual: JSON.stringify(emergencyPruneTarget),
+                        })
+                    }
+                } else {
+                    errors.push({
+                        key: "compress.emergencyPruneTarget",
+                        expected: 'number | "${number}%"',
+                        actual: JSON.stringify(emergencyPruneTarget),
+                    })
+                }
+            }
+
             if (
                 compress.maxVisibleSegments !== undefined &&
                 typeof compress.maxVisibleSegments !== "number"
@@ -627,103 +681,6 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
                     expected: "boolean",
                     actual: typeof compress.showCompression,
                 })
-            }
-        }
-    }
-
-    const gc = config.gc
-    if (gc !== undefined) {
-        if (typeof gc !== "object" || gc === null || Array.isArray(gc)) {
-            errors.push({
-                key: "gc",
-                expected: "object",
-                actual: typeof gc,
-            })
-        } else {
-            if (gc.algorithm !== undefined && gc.algorithm !== "truncate") {
-                errors.push({
-                    key: "gc.algorithm",
-                    expected: '"truncate"',
-                    actual: JSON.stringify(gc.algorithm),
-                })
-            }
-            if (gc.promotionThreshold !== undefined && typeof gc.promotionThreshold !== "number") {
-                errors.push({
-                    key: "gc.promotionThreshold",
-                    expected: "number",
-                    actual: typeof gc.promotionThreshold,
-                })
-            }
-            if (gc.maxBlockAge !== undefined && typeof gc.maxBlockAge !== "number") {
-                errors.push({
-                    key: "gc.maxBlockAge",
-                    expected: "number",
-                    actual: typeof gc.maxBlockAge,
-                })
-            }
-            if (
-                gc.maxOldGenSummaryLength !== undefined &&
-                typeof gc.maxOldGenSummaryLength !== "number"
-            ) {
-                errors.push({
-                    key: "gc.maxOldGenSummaryLength",
-                    expected: "number",
-                    actual: typeof gc.maxOldGenSummaryLength,
-                })
-            }
-            if (
-                gc.majorGcThresholdPercent !== undefined
-            ) {
-                const isValidNumber = typeof gc.majorGcThresholdPercent === "number"
-                const isPercentString =
-                    typeof gc.majorGcThresholdPercent === "string" &&
-                    /^\d+(?:\.\d+)?%$/.test(gc.majorGcThresholdPercent)
-                if (!isValidNumber && !isPercentString) {
-                    errors.push({
-                        key: "gc.majorGcThresholdPercent",
-                        expected: 'number | "${number}%"',
-                        actual: JSON.stringify(gc.majorGcThresholdPercent),
-                    })
-                }
-            }
-
-            const validateBatchThreshold = (
-                key: "gc.batchCleanup.lowThreshold" | "gc.batchCleanup.highThreshold" | "gc.batchCleanup.forceThreshold",
-                value: unknown,
-            ): void => {
-                const isValidNumber = typeof value === "number"
-                const isPercentString = typeof value === "string" && /^\d+(?:\.\d+)?%$/.test(value)
-                if (!isValidNumber && !isPercentString) {
-                    errors.push({
-                        key,
-                        expected: 'number | "${number}%"',
-                        actual: JSON.stringify(value),
-                    })
-                }
-            }
-
-            if (gc.batchCleanup !== undefined) {
-                if (
-                    typeof gc.batchCleanup !== "object" ||
-                    gc.batchCleanup === null ||
-                    Array.isArray(gc.batchCleanup)
-                ) {
-                    errors.push({
-                        key: "gc.batchCleanup",
-                        expected: "object",
-                        actual: typeof gc.batchCleanup,
-                    })
-                } else {
-                    if (gc.batchCleanup.lowThreshold !== undefined) {
-                        validateBatchThreshold("gc.batchCleanup.lowThreshold", gc.batchCleanup.lowThreshold)
-                    }
-                    if (gc.batchCleanup.highThreshold !== undefined) {
-                        validateBatchThreshold("gc.batchCleanup.highThreshold", gc.batchCleanup.highThreshold)
-                    }
-                    if (gc.batchCleanup.forceThreshold !== undefined) {
-                        validateBatchThreshold("gc.batchCleanup.forceThreshold", gc.batchCleanup.forceThreshold)
-                    }
-                }
             }
         }
     }

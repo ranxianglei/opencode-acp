@@ -10,12 +10,12 @@ import {
     injectExtendedSubAgentResults,
     injectMessageIds,
     prune,
-    stripStaleCompressCalls,
     stripHallucinations,
     stripHallucinationsFromString,
     stripStaleMetadata,
     syncCompressionBlocks,
     computeInputBudget,
+    runEmergencyPrune,
 } from "./messages"
 import { renderSystemPrompt, type PromptStore } from "./prompts"
 import { buildProtectedToolsExtension } from "./prompts/extensions/system"
@@ -43,8 +43,6 @@ import { compressPermission, syncCompressPermissionState } from "./compress-perm
 import { checkSession, ensureSessionInitialized, saveSessionState, syncToolCache } from "./state"
 import { cacheSystemPromptTokens } from "./ui/utils"
 import { sendIgnoredMessage } from "./ui/notification"
-import { runTruncateGC, shouldRunMajorGC, getGCParams } from "./gc/truncate"
-import { runBatchCleanup } from "./gc/merge"
 import { getCurrentTokenUsage } from "./token-utils"
 
 const INTERNAL_AGENT_SIGNATURES = [
@@ -124,91 +122,6 @@ export function createSystemPromptHandler(
     }
 }
 
-function runMajorGC(
-    state: SessionState,
-    config: PluginConfig,
-    logger: Logger,
-    messages: WithParts[],
-): void {
-    // [FIX Bug 32] Age-based deactivation does NOT depend on modelContextLimit.
-    // modelContextLimit is set in the system prompt hook, which runs AFTER the
-    // messages transform hook. If we guard this with modelContextLimit, age-based
-    // deactivation never runs after restart (modelContextLimit starts as undefined).
-    const maxBlockAge = config.gc.maxBlockAge ?? 15
-    let agedOutCount = 0
-    let agedOutTokens = 0
-    const now = Date.now()
-    for (const [blockId, block] of state.prune.messages.blocksById) {
-        if (!block.active) continue
-        const age = block.survivedCount ?? 0
-        if (age > maxBlockAge) {
-            block.active = false
-            block.deactivatedAt = now
-            block.deactivatedByBlockId = undefined
-            state.prune.messages.activeBlockIds.delete(Number(blockId))
-            const anchorMapped = state.prune.messages.activeByAnchorMessageId.get(block.anchorMessageId)
-            if (anchorMapped === Number(blockId)) {
-                state.prune.messages.activeByAnchorMessageId.delete(block.anchorMessageId)
-            }
-            agedOutCount++
-            agedOutTokens += block.summaryTokens ?? Math.round(block.summary.length / 4)
-        }
-    }
-
-    if (agedOutCount > 0) {
-        logger.info("Major GC: deactivated aged-out blocks", {
-            agedOutCount,
-            agedOutTokens,
-            maxBlockAge,
-        })
-        saveSessionState(state, logger).catch(() => {})
-    }
-
-    if (!state.modelContextLimit) return
-
-    const currentTokens = getCurrentTokenUsage(state, messages)
-
-    // Check if any active block is oversized (summary > 2x maxOldGenSummaryLength)
-    // These should always be truncated regardless of token threshold
-    const oversizedThreshold = config.gc.maxOldGenSummaryLength * 2
-    let hasOversizedBlocks = false
-    for (const [, block] of state.prune.messages.blocksById) {
-        if (block.active && block.summary.length > oversizedThreshold) {
-            hasOversizedBlocks = true
-            break
-        }
-    }
-
-    if (!shouldRunMajorGC(currentTokens, state.modelContextLimit, config.gc) && !hasOversizedBlocks) return
-
-    const oldBlocks: import("./state").CompressionBlock[] = []
-    for (const [blockId, block] of state.prune.messages.blocksById) {
-        if (!block.active) continue
-        if (
-            block.generation === "old" ||
-            block.generation === undefined ||
-            block.summary.length > config.gc.maxOldGenSummaryLength
-        ) {
-            oldBlocks.push(block)
-        }
-    }
-
-    if (oldBlocks.length === 0) return
-
-    const params = getGCParams(config.gc, state.modelContextLimit, currentTokens)
-    const result = runTruncateGC(oldBlocks, params)
-
-    if (result.compactedBlocks > 0) {
-        logger.info("Major GC: truncated old-gen blocks", {
-            compactedBlocks: result.compactedBlocks,
-            savedTokens: result.savedTokens,
-            currentTokens,
-            threshold: config.gc.majorGcThresholdPercent,
-        })
-        saveSessionState(state, logger).catch(() => {})
-    }
-}
-
 export function createChatMessageTransformHandler(
     client: any,
     state: SessionState,
@@ -253,15 +166,18 @@ export function createChatMessageTransformHandler(
         }
         syncToolCache(state, config, logger, output.messages)
         buildToolIdList(state, output.messages)
-        runMajorGC(state, config, logger, output.messages)
-        const batchResult = runBatchCleanup(state, config, logger, output.messages)
-        if (batchResult.mergedCount > 0) {
-            saveSessionState(state, logger).catch(() => {})
-        }
         const prePruneTokens = getCurrentTokenUsage(state, output.messages)
         prune(state, logger, config, output.messages)
-        stripStaleCompressCalls(output.messages)
-        // [FIX Bug 2] assign refs to newly created synthetic messages from prune/filterCompressedRanges
+        if (state.modelContextLimit && prePruneTokens > 0) {
+            runEmergencyPrune(
+                state,
+                config,
+                logger,
+                output.messages,
+                prePruneTokens,
+                state.modelContextLimit,
+            )
+        }
         assignMessageRefs(state, output.messages)
         await injectExtendedSubAgentResults(
             client,

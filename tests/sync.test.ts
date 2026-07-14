@@ -57,7 +57,7 @@ test("syncCompressionBlocks is a no-op when no blocks exist", () => {
 test("syncCompressionBlocks keeps block active when anchor message exists", () => {
     const state = createSessionState()
     state.prune.messages.blocksById.set(1, makeBlock({ blockId: 1, anchorMessageId: "m1" }))
-    const messages = [userMsg("m1"), userMsg("m2")]
+    const messages = [userMsg("m1"), userMsg("compress-1"), userMsg("m2")]
     syncCompressionBlocks(state, logger, messages)
     assert.ok(state.prune.messages.activeBlockIds.has(1), "block should be active")
     assert.equal(state.prune.messages.activeByAnchorMessageId.get("m1"), 1)
@@ -117,7 +117,7 @@ test("syncCompressionBlocks deactivates consumed blocks when parent is active", 
         makeBlock({ blockId: 2, anchorMessageId: "m3", consumedBlockIds: [1], createdAt: 2 }),
     )
     state.prune.messages.activeBlockIds.add(1)
-    const messages = [userMsg("m1"), userMsg("m3")]
+    const messages = [userMsg("m1"), userMsg("compress-1"), userMsg("m3")]
     syncCompressionBlocks(state, logger, messages)
     const block1 = state.prune.messages.blocksById.get(1)!
     const block2 = state.prune.messages.blocksById.get(2)!
@@ -154,7 +154,7 @@ test("syncCompressionBlocks processes blocks in creation order", () => {
         1,
         makeBlock({ blockId: 1, anchorMessageId: "m1", createdAt: 100 }),
     )
-    const messages = [userMsg("m1"), userMsg("m3")]
+    const messages = [userMsg("m1"), userMsg("compress-1"), userMsg("m3")]
     syncCompressionBlocks(state, logger, messages)
     assert.ok(state.prune.messages.activeBlockIds.has(1))
     assert.ok(state.prune.messages.activeBlockIds.has(2))

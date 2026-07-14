@@ -10,7 +10,6 @@ import {
 import type { CompressionStateInput, SelectionResolution } from "../lib/compress/types"
 import type { BoundaryReference } from "../lib/compress/types"
 import type { CompressionBlock, PrunedMessageEntry, SessionState } from "../lib/state/types"
-import type { GCConfig } from "../lib/config"
 
 // --- Factory helpers ---
 
@@ -295,54 +294,6 @@ test("applyCompressionState updates byMessageId entries for selected messages", 
     const entryB = state.prune.messages.byMessageId.get("msg-b")
     assert.ok(entryB)
     assert.equal(entryB!.tokenCount, 60)
-})
-
-test("applyCompressionState promotes old-gen blocks when survivedCount exceeds threshold", () => {
-    const state = makeState()
-    const oldBlock = makeBlock({ blockId: 2, survivedCount: 4 })
-    state.prune.messages.blocksById.set(2, oldBlock)
-    state.prune.messages.activeBlockIds.add(2)
-
-    const input = makeCompressionInput()
-    const selection = makeSelection()
-
-    const gcConfig: GCConfig = {
-        algorithm: "truncate",
-        promotionThreshold: 5,
-        maxBlockAge: 15,
-        maxOldGenSummaryLength: 3000,
-        majorGcThresholdPercent: "100%",
-        batchCleanup: { lowThreshold: "60%", highThreshold: "75%", forceThreshold: "90%" },
-    }
-
-    applyCompressionState(state, input, selection, "msg-a", 1, "summary", [], gcConfig)
-
-    assert.equal(oldBlock.survivedCount, 5)
-    assert.equal(oldBlock.generation, "old")
-})
-
-test("applyCompressionState does not promote blocks below threshold", () => {
-    const state = makeState()
-    const youngBlock = makeBlock({ blockId: 2, survivedCount: 2 })
-    state.prune.messages.blocksById.set(2, youngBlock)
-    state.prune.messages.activeBlockIds.add(2)
-
-    const input = makeCompressionInput()
-    const selection = makeSelection()
-
-    const gcConfig: GCConfig = {
-        algorithm: "truncate",
-        promotionThreshold: 5,
-        maxBlockAge: 15,
-        maxOldGenSummaryLength: 3000,
-        majorGcThresholdPercent: "100%",
-        batchCleanup: { lowThreshold: "60%", highThreshold: "75%", forceThreshold: "90%" },
-    }
-
-    applyCompressionState(state, input, selection, "msg-a", 1, "summary", [], gcConfig)
-
-    assert.equal(youngBlock.survivedCount, 3)
-    assert.equal(youngBlock.generation, "young")
 })
 
 test("applyCompressionState updates stats pruneTokenCounter", () => {

@@ -3,7 +3,6 @@ import type { Logger } from "../logger"
 import type { PluginConfig } from "../config"
 import { isMessageCompacted } from "../state/utils"
 import { isIgnoredUserMessage } from "./query"
-import { createSyntheticToolRecap, replaceBlockIdsWithBlocked, stripStaleMessageRefs } from "./utils"
 
 const PRUNED_TOOL_OUTPUT_REPLACEMENT =
     "[Output removed to save context - information superseded or no longer needed]"
@@ -205,10 +204,7 @@ const filterCompressedRanges = (
     config: PluginConfig,
     messages: WithParts[],
 ): void => {
-    if (
-        state.prune.messages.byMessageId.size === 0 &&
-        state.prune.messages.activeByAnchorMessageId.size === 0
-    ) {
+    if (state.prune.messages.byMessageId.size === 0) {
         return
     }
 
@@ -217,48 +213,6 @@ const filterCompressedRanges = (
     for (let i = 0; i < messages.length; i++) {
         const msg = messages[i]!
         const msgId = msg.info.id
-
-        const blockId = state.prune.messages.activeByAnchorMessageId.get(msgId)
-        const summary =
-            blockId !== undefined ? state.prune.messages.blocksById.get(blockId) : undefined
-        if (summary) {
-            const rawSummaryContent = (summary as { summary?: unknown }).summary
-            if (
-                summary.active !== true ||
-                typeof rawSummaryContent !== "string" ||
-                rawSummaryContent.length === 0
-            ) {
-                logger.warn("Skipping malformed compress summary", {
-                    anchorMessageId: msgId,
-                    blockId: (summary as { blockId?: unknown }).blockId,
-                })
-            } else {
-                const cleaned = stripStaleMessageRefs(rawSummaryContent)
-                const summaryContent =
-                    config.compress.mode === "message"
-                        ? replaceBlockIdsWithBlocked(cleaned)
-                        : cleaned
-
-                const blockRange = computeBlockRange(summary.startId, summary.endId)
-                const summarySeed = `${summary.blockId}:${summary.anchorMessageId}`
-
-                result.push(
-                    createSyntheticToolRecap(
-                        msg,
-                        summaryContent,
-                        summary.blockId,
-                        blockRange,
-                        summarySeed,
-                    ),
-                )
-
-                logger.info("Injected compress summary as tool-result recap", {
-                    anchorMessageId: msgId,
-                    blockId: summary.blockId,
-                    summaryLength: summaryContent.length,
-                })
-            }
-        }
 
         const pruneEntry = state.prune.messages.byMessageId.get(msgId)
         if (pruneEntry && pruneEntry.activeBlockIds.length > 0) {
@@ -270,44 +224,4 @@ const filterCompressedRanges = (
 
     messages.length = 0
     messages.push(...result)
-}
-
-export function stripStaleCompressCalls(messages: WithParts[]): number {
-    const lastUserIdx = messages.findLastIndex(
-        (m) => m.info.role === "user" && !isIgnoredUserMessage(m),
-    )
-    if (lastUserIdx < 0) return 0
-
-    let stripped = 0
-    const result: WithParts[] = []
-
-    for (let i = 0; i < messages.length; i++) {
-        const msg = messages[i]!
-        if (i >= lastUserIdx) {
-            result.push(msg)
-            continue
-        }
-
-        const hasCompress = msg.parts.some(
-            (p) => p.type === "tool" && (p as { tool?: string }).tool === "compress",
-        )
-        if (!hasCompress) {
-            result.push(msg)
-            continue
-        }
-
-        const remaining = msg.parts.filter(
-            (p) => !(p.type === "tool" && (p as { tool?: string }).tool === "compress"),
-        )
-        stripped++
-        if (remaining.length > 0) {
-            result.push({ ...msg, parts: remaining })
-        }
-    }
-
-    if (stripped > 0) {
-        messages.length = 0
-        messages.push(...result)
-    }
-    return stripped
 }
