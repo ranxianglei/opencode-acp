@@ -5,7 +5,7 @@ import { createSessionState, type WithParts } from "../lib/state"
 import type { PluginConfig } from "../lib/config"
 import { Logger } from "../lib/logger"
 
-const testDataHome = `/tmp/opencode-dcp-softblock-${process.pid}`
+const testDataHome = `/tmp/opencode-dcp-dangerous-${process.pid}`
 process.env.XDG_DATA_HOME = testDataHome
 
 import { mkdirSync } from "fs"
@@ -93,128 +93,9 @@ function buildMessages(sessionID: string): WithParts[] {
     ]
 }
 
-function createTool(state: any, rawMessages: WithParts[], sessionID: string) {
+function createTool(state: any, rawMessages: WithParts[], sessionID: string, configOverrides?: Partial<PluginConfig>) {
+    const config = { ...buildConfig(), ...configOverrides }
     return createCompressRangeTool({
-        client: {
-            session: {
-                messages: async () => ({ data: rawMessages }),
-                get: async () => ({ data: { parentID: null } }),
-            },
-        },
-        state,
-        logger: new Logger(false),
-        config: buildConfig(),
-        prompts: {
-            reload() {},
-            getRuntimePrompts() {
-                return { compressRange: "", compressMessage: "" }
-            },
-        },
-    } as any)
-}
-
-const toolCtx = {
-    ask: async () => {},
-    metadata: () => {},
-    messageID: "msg-compress",
-}
-
-test("soft-block: first attempt to compress last segment throws confirmation error", async () => {
-    const sessionID = `ses_softblock_1_${Date.now()}`
-    const rawMessages = buildMessages(sessionID)
-    const state = createSessionState()
-    const tool = createTool(state, rawMessages, sessionID)
-
-    await assert.rejects(
-        () =>
-            tool.execute(
-                {
-                    topic: "Test",
-                    content: [
-                        {
-                            startId: "m00001",
-                            endId: "m00003",
-                            summary: "x".repeat(2000),
-                        },
-                    ],
-                },
-                { ...toolCtx, sessionID },
-            ),
-        (err: Error) => {
-            assert.ok(
-                err.message.includes("most recent message"),
-                `error should mention most recent message, got: ${err.message}`,
-            )
-            return true
-        },
-    )
-    assert.ok(
-        state.nudges.lastSegmentConfirmAttempts.has("msg-user-2"),
-        "lastSegmentConfirmAttempts should contain the last message id after first attempt",
-    )
-})
-
-test("soft-block: second attempt (same last message) succeeds", async () => {
-    const sessionID = `ses_softblock_2_${Date.now()}`
-    const rawMessages = buildMessages(sessionID)
-    const state = createSessionState()
-    const tool = createTool(state, rawMessages, sessionID)
-
-    await assert.rejects(
-        () =>
-            tool.execute(
-                {
-                    topic: "Test",
-                    content: [{ startId: "m00001", endId: "m00003", summary: "x".repeat(2000) }],
-                },
-                { ...toolCtx, sessionID },
-            ),
-    )
-
-    const result = await tool.execute(
-        {
-            topic: "Test",
-            content: [{ startId: "m00001", endId: "m00003", summary: "x".repeat(2000) }],
-        },
-        { ...toolCtx, sessionID },
-    )
-    assert.ok(
-        typeof result === "string" && result.includes("Compressed"),
-        "second attempt should succeed",
-    )
-})
-
-test("soft-block: range not covering last message is not blocked", async () => {
-    const sessionID = `ses_softblock_3_${Date.now()}`
-    const rawMessages = buildMessages(sessionID)
-    const state = createSessionState()
-    const tool = createTool(state, rawMessages, sessionID)
-
-    const result = await tool.execute(
-        {
-            topic: "Test",
-            content: [{ startId: "m00001", endId: "m00002", summary: "x".repeat(2000) }],
-        },
-        { ...toolCtx, sessionID },
-    )
-    assert.ok(
-        typeof result === "string" && result.includes("Compressed"),
-        "range not covering last message should succeed without confirmation",
-    )
-    assert.equal(
-        state.nudges.lastSegmentConfirmAttempts.size,
-        0,
-        "no confirm attempts recorded when last message not in range",
-    )
-})
-
-test("soft-block: disabled via config does not block", async () => {
-    const sessionID = `ses_softblock_4_${Date.now()}`
-    const rawMessages = buildMessages(sessionID)
-    const state = createSessionState()
-    const config = buildConfig()
-    config.compress.lastSegmentSoftBlock = false
-    const tool = createCompressRangeTool({
         client: {
             session: {
                 messages: async () => ({ data: rawMessages }),
@@ -231,6 +112,78 @@ test("soft-block: disabled via config does not block", async () => {
             },
         },
     } as any)
+}
+
+const toolCtx = {
+    ask: async () => {},
+    metadata: () => {},
+    messageID: "msg-compress",
+}
+
+test("dangerous: compressing last segment without dangerous flag fails", async () => {
+    const sessionID = `ses_dangerous_1_${Date.now()}`
+    const rawMessages = buildMessages(sessionID)
+    const state = createSessionState()
+    const tool = createTool(state, rawMessages, sessionID)
+
+    await assert.rejects(
+        () =>
+            tool.execute(
+                {
+                    topic: "Test",
+                    content: [
+                        { startId: "m00001", endId: "m00003", summary: "x".repeat(2000) },
+                    ],
+                },
+                { ...toolCtx, sessionID },
+            ),
+        (err: Error) => {
+            assert.ok(err.message.includes("dangerous"), `error should mention dangerous, got: ${err.message}`)
+            return true
+        },
+    )
+})
+
+test("dangerous: compressing last segment WITH dangerous: true succeeds", async () => {
+    const sessionID = `ses_dangerous_2_${Date.now()}`
+    const rawMessages = buildMessages(sessionID)
+    const state = createSessionState()
+    const tool = createTool(state, rawMessages, sessionID)
+
+    const result = await tool.execute(
+        {
+            topic: "Test",
+            content: [{ startId: "m00001", endId: "m00003", summary: "x".repeat(2000) }],
+            dangerous: true,
+        },
+        { ...toolCtx, sessionID },
+    )
+    assert.ok(typeof result === "string" && result.includes("Compressed"), "dangerous: true should succeed")
+})
+
+test("dangerous: range not covering last message succeeds without dangerous", async () => {
+    const sessionID = `ses_dangerous_3_${Date.now()}`
+    const rawMessages = buildMessages(sessionID)
+    const state = createSessionState()
+    const tool = createTool(state, rawMessages, sessionID)
+
+    const result = await tool.execute(
+        {
+            topic: "Test",
+            content: [{ startId: "m00001", endId: "m00002", summary: "x".repeat(2000) }],
+        },
+        { ...toolCtx, sessionID },
+    )
+    assert.ok(typeof result === "string" && result.includes("Compressed"), "non-tail range should succeed without dangerous")
+})
+
+test("dangerous: lastSegmentSoftBlock disabled bypasses the check entirely", async () => {
+    const sessionID = `ses_dangerous_4_${Date.now()}`
+    const rawMessages = buildMessages(sessionID)
+    const state = createSessionState()
+    const tool = createTool(state, rawMessages, sessionID, {
+        compress: { ...buildConfig().compress, lastSegmentSoftBlock: false },
+    })
 
     const result = await tool.execute(
         {
@@ -239,41 +192,27 @@ test("soft-block: disabled via config does not block", async () => {
         },
         { ...toolCtx, sessionID },
     )
-    assert.ok(
-        typeof result === "string" && result.includes("Compressed"),
-        "soft-block disabled → compress succeeds without confirmation",
-    )
+    assert.ok(typeof result === "string" && result.includes("Compressed"), "disabled check should succeed without dangerous")
 })
 
-test("soft-block: new last message after compression triggers fresh confirmation", async () => {
-    const sessionID = `ses_softblock_5_${Date.now()}`
+test("dangerous: error message mentions the specific last message id", async () => {
+    const sessionID = `ses_dangerous_5_${Date.now()}`
     const rawMessages = buildMessages(sessionID)
     const state = createSessionState()
-
-    const tool1 = createTool(state, rawMessages, sessionID)
+    const tool = createTool(state, rawMessages, sessionID)
 
     await assert.rejects(
         () =>
-            tool1.execute(
+            tool.execute(
                 {
                     topic: "Test",
                     content: [{ startId: "m00001", endId: "m00003", summary: "x".repeat(2000) }],
                 },
                 { ...toolCtx, sessionID },
             ),
-    )
-
-    await tool1.execute(
-        {
-            topic: "Test",
-            content: [{ startId: "m00001", endId: "m00003", summary: "x".repeat(2000) }],
+        (err: Error) => {
+            assert.ok(err.message.includes("msg-user-2"), "error should reference the last message id")
+            return true
         },
-        { ...toolCtx, sessionID },
-    )
-
-    assert.equal(
-        state.nudges.lastSegmentConfirmAttempts.size,
-        1,
-        "confirm set has one entry after successful compression of last segment",
     )
 })

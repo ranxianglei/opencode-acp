@@ -934,7 +934,7 @@ export function formatCompressibleRanges(
     if (!protectedRanges || protectedRanges.length === 0) {
         if (ranges.length === 0) return ""
         const lines = ranges.map((r, i) => {
-            const suffix = i === ranges.length - 1 ? "  (recent — may still be in active use)" : ""
+            const suffix = i === ranges.length - 1 ? "  ⚠️ NOT recommended unless you are certain. If you MUST compress this, pass `dangerous: true`." : ""
             return `  ${r.startRef}–${r.endRef}  ${r.count} msgs  ${fmt(r.tokens)} [tool ${r.toolPct}% | text ${r.textPct}%]${suffix}`
         })
         return `Compressible ranges (oldest first):\n${lines.join("\n")}`
@@ -1000,7 +1000,7 @@ export function formatCompressibleRanges(
     }
 
     const lines = merged.map((e, i) => {
-        const suffix = i === merged.length - 1 && e.compressibleTokens > 0 ? "  (recent — may still be in active use)" : ""
+        const suffix = i === merged.length - 1 && e.compressibleTokens > 0 ? "  ⚠️ NOT recommended unless you are certain. If you MUST compress this, pass `dangerous: true`." : ""
 
         if (e.protectedTokens > 0 && e.compressibleTokens === 0) {
             return `  ${e.startRef}–${e.endRef}  ${e.count} msgs  ${fmt(e.tokens)} [PROTECTED: ${e.protectedTools.join(", ")} — not compressible]${suffix}`

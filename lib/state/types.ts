@@ -108,15 +108,6 @@ export interface Nudges {
      * Reset to false when compress is NOT in the current turn.
      */
     compressBaselineSet: boolean
-    /**
-     * Tracks last-segment compress attempts for soft-block confirmation.
-     *
-     * When the model tries to compress a range that includes the most recent
-     * visible message, the first attempt is rejected with a confirmation
-     * prompt. The lastMessageId is recorded here. On retry (same lastMessageId),
-     * the compression is allowed.
-     */
-    lastSegmentConfirmAttempts: Set<string>
 }
 
 export interface SessionState {

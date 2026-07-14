@@ -8,7 +8,7 @@ import {
     prepareSession,
     snapshotCompressionState,
     restoreCompressionState,
-    checkLastSegmentSoftBlock,
+    checkLastSegmentDangerous,
     type NotificationEntry,
 } from "./pipeline"
 import { appendProtectedPromptInfo, appendProtectedTools } from "./protected-content"
@@ -50,6 +50,12 @@ function buildSchema(maxSummaryLengthHard: number) {
             .optional()
             .describe(
                 `Override max summary length (default max: ${maxSummaryLengthHard} chars). Use when content is important and needs more detail — don't lose critical info just to fit the limit.`,
+            ),
+        dangerous: tool.schema
+            .boolean()
+            .optional()
+            .describe(
+                "Set to true ONLY when you are certain the most recent message(s) must be compressed. Required when a range includes the tail of the conversation.",
             ),
     }
 }
@@ -121,12 +127,16 @@ export function createCompressMessageTool(ctx: ToolContext): ReturnType<typeof t
                 }
             }
 
-            const softBlockError = await checkLastSegmentSoftBlock(
+            const dangerous =
+                (args as { dangerous?: boolean }).dangerous === true
+
+            const lastSegmentError = checkLastSegmentDangerous(
                 ctx,
                 plans.map((p) => p.selection.messageIds),
                 rawMessages,
+                dangerous,
             )
-            if (softBlockError) throw softBlockError
+            if (lastSegmentError) throw lastSegmentError
 
             const notifications: NotificationEntry[] = []
 

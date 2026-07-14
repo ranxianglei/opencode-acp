@@ -88,7 +88,6 @@ export function createSessionState(): SessionState {
             lastToolOutputNudgeTokens: undefined,
             shouldInjectThisTurn: undefined,
             compressBaselineSet: false,
-            lastSegmentConfirmAttempts: new Set<string>(),
         },
         stats: {
             pruneTokenCounter: 0,
@@ -133,7 +132,6 @@ export function resetSessionState(state: SessionState): void {
         lastToolOutputNudgeTokens: undefined,
         shouldInjectThisTurn: undefined,
         compressBaselineSet: false,
-        lastSegmentConfirmAttempts: new Set<string>(),
     }
     state.stats = {
         pruneTokenCounter: 0,
@@ -206,9 +204,6 @@ export async function ensureSessionInitialized(
     state.nudges.lastNudgeShownTokens = persisted.nudges.lastNudgeShownTokens
     state.nudges.lastToolOutputNudgeTokens = persisted.nudges.lastToolOutputNudgeTokens
     state.nudges.compressBaselineSet = persisted.nudges.compressBaselineSet ?? false
-    state.nudges.lastSegmentConfirmAttempts = new Set<string>(
-        (persisted.nudges as any).lastSegmentConfirmAttempts || [],
-    )
     state.stats = {
         pruneTokenCounter: persisted.stats?.pruneTokenCounter || 0,
         totalPruneTokens: persisted.stats?.totalPruneTokens || 0,
