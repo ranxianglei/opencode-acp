@@ -283,7 +283,17 @@ export const injectCompressNudges = (
 
     let tipsText: string | null = null
 
-    if (decision.shouldNudge) {
+    // [FIX] Show breakdown (incl. compressible ranges) whenever any nudge
+    // anchor is active — not just when growth cadence fires. Previously the
+    // model saw "compress now" (from applyAnchoredNudges) but had no ranges
+    // list when growth < nudgeGrowthTokens. Growth cadence still gates the
+    // maxLimit alert, lastNudgeShownTokens, and block aging guidance below.
+    const hasActiveNudgeAnchors =
+        state.nudges.contextLimitAnchors.size > 0 ||
+        state.nudges.turnNudgeAnchors.size > 0 ||
+        state.nudges.iterationNudgeAnchors.size > 0
+
+    if (decision.shouldNudge || hasActiveNudgeAnchors) {
         injectContextUsage(suffixMessage, config, currentTokens, modelContextLimit)
 
         if (suffixMessage && composition.total > 0) {
@@ -329,23 +339,30 @@ export const injectCompressNudges = (
             appendToLastTextPart(suffixMessage, breakdown)
         }
 
-        if (decision.tipsVariant === "maxLimit") {
-            tipsText =
-                '\n\n⚠️ Context limit reached — compress now. Prioritize consumed tool outputs.\n\n{ "topic": "...", "content": [{ "startId": "<ID>", "endId": "<ID>", "summary": "..." }] }\n\nOnly use IDs from visible messages above. Compress older work first.'
-        }
-        // Intentionally do NOT update lastPerMessageNudgeTokens here — nudges
-        // repeat every turn until the model actually compresses.
-        state.nudges.lastNudgeShownTokens = currentTokens
-        if (config.compress.mode !== "message") {
-            const visibleMessageIds = new Set<string>(messages.map((message) => message.info.id))
-            const blockGuidance = buildCompressedBlockGuidance(state, config.gc, {
-                currentTokens,
-                modelContextLimit,
-                includeHint: tipsText !== null,
-                visibleMessageIds,
-            })
-            if (blockGuidance.trim() && suffixMessage) {
-                appendToLastTextPart(suffixMessage, "\n\n" + blockGuidance)
+        // maxLimit strong alert, lastNudgeShownTokens, and block aging
+        // guidance are gated by the growth-based cadence — they should not
+        // fire on every turn just because anchors exist.
+        if (decision.shouldNudge) {
+            if (decision.tipsVariant === "maxLimit") {
+                tipsText =
+                    '\n\n⚠️ Context limit reached — compress now. Prioritize consumed tool outputs.\n\n{ "topic": "...", "content": [{ "startId": "<ID>", "endId": "<ID>", "summary": "..." }] }\n\nOnly use IDs from visible messages above. Compress older work first.'
+            }
+            // Intentionally do NOT update lastPerMessageNudgeTokens here — nudges
+            // repeat every turn until the model actually compresses.
+            state.nudges.lastNudgeShownTokens = currentTokens
+            if (config.compress.mode !== "message") {
+                const visibleMessageIds = new Set<string>(
+                    messages.map((message) => message.info.id),
+                )
+                const blockGuidance = buildCompressedBlockGuidance(state, config.gc, {
+                    currentTokens,
+                    modelContextLimit,
+                    includeHint: tipsText !== null,
+                    visibleMessageIds,
+                })
+                if (blockGuidance.trim() && suffixMessage) {
+                    appendToLastTextPart(suffixMessage, "\n\n" + blockGuidance)
+                }
             }
         }
 
