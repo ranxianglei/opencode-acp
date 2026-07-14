@@ -422,6 +422,14 @@ For the complete list with root cause analysis, see the [bug tracker](https://gi
 
 ## Changelog
 
+### v1.12.6 — Stale contextLimitAnchors Fix (PR #143)
+
+**Problem**: `contextLimitAnchors` were populated when `overMaxLimit=true` but only cleared on a compress tool call in the current turn (`currentTurnHasCompress`). If context dropped below `maxLimit` via another mechanism (OpenCode compaction, external message deletion), the anchors stayed stale → `applyAnchoredNudges` kept injecting the "⚠️ Context limit reached" template at low context levels (as low as 10% usage).
+
+**Fix**: Added `else` branch in `lib/messages/inject/inject.ts` that clears `contextLimitAnchors` whenever `!overMaxLimit`, establishing symmetry with the existing turn/iteration anchor cleanup at `!overMinLimit`. 3 regression tests (state-level clear, integration with prompt markers, sub-minLimit clear path). Dual-agent reviewed (Oracle + independent reviewer, both APPROVE).
+
+Files: `lib/messages/inject/inject.ts`. Tests: `tests/inject.test.ts`. 691 tests pass.
+
 ### v1.12.5 — Bug 20 Suppression Fix + Growth Floor Gate Correction (PRs #139, #140)
 
 **Problem**: Two bugs in the nudge suppression logic introduced after v1.12.4. (1) `isContextOverLimits` Bug 20 suppression checked `(part as any).type === "tool-invocation" && (part as any).toolInvocation?.toolName === "compress"` — a message-part format that does not exist in the SDK (all 18+ other tool-type checks in the codebase use `part.type === "tool" && part.tool === "compress"`). The suppression never matched, so `overMaxLimit` was never set to `false` after a compress call → the max-limit alert fired every turn → over-compression feedback loop. (2) The growth floor gate (PR #134) made `growthFloor` the sole gate for `nudgeAllowed`, dropping the `decision.shouldNudge` requirement — meaning nudges could fire on negative growth as long as the growth floor condition was met.

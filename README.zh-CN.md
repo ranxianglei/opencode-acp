@@ -395,6 +395,14 @@ ACP 在首次启动时自动将配置从 `dcp.jsonc` 迁移到 `acp.jsonc`，将
 
 ## 更新日志
 
+### v1.12.6 — Stale contextLimitAnchors 修复（PR #143）
+
+**问题**：`contextLimitAnchors` 仅在 `overMaxLimit=true` 时添加，但只在当前 turn 有 compress 调用时 (`currentTurnHasCompress`) 才清除。如果上下文通过其他机制（OpenCode compaction、外部消息删除）降到 `maxLimit` 以下，anchors 保持 stale → `applyAnchoredNudges` 持续注入 "⚠️ Context limit reached" 模板，即使实际上下文很低（低至 10%）。
+
+**修复**：在 `lib/messages/inject/inject.ts` 添加 `else` 分支，当 `!overMaxLimit` 时清除 `contextLimitAnchors`，与已有的 `!overMinLimit` 清除 turn/iteration anchors 逻辑对称。3 个回归测试（state 级、prompt marker 集成、sub-minLimit 清除）。双 agent review（Oracle + 独立 reviewer，均 APPROVE）。
+
+文件：`lib/messages/inject/inject.ts`。测试：`tests/inject.test.ts`。691 测试通过。
+
 ### v1.12.5 — Bug 20 抑制修复 + 增长下限门控修正（PR #139, #140）
 
 **问题**：v1.12.4 后引入的两个 nudge 抑制逻辑 bug。（1）`isContextOverLimits` 的 Bug 20 抑制检查 `(part as any).type === "tool-invocation" && (part as any).toolInvocation?.toolName === "compress"` —— 这个消息部件格式在 SDK 中根本不存在（代码库中其他 18+ 处工具类型检查全部使用 `part.type === "tool" && part.tool === "compress"`）。抑制逻辑永不匹配，所以压缩后 `overMaxLimit` 从不置 false → max-limit 告警每轮触发 → 过度压缩正反馈循环。（2）增长下限门控（PR #134）使 `growthFloor` 成为 `nudgeAllowed` 的唯一 gate，丢弃了 `decision.shouldNudge` 要求 —— 意味着即使增长为负，只要满足增长下限条件 nudge 就会触发。
