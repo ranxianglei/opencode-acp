@@ -395,6 +395,14 @@ ACP 在首次启动时自动将配置从 `dcp.jsonc` 迁移到 `acp.jsonc`，将
 
 ## 更新日志
 
+### v1.12.4 — 保护感知统计 + Nudge 范围修复 + 增长下限门控（PR #132, #133, #134）
+
+**问题**：v1.12.3 以来三个问题。（1）`buildCompressibleRanges` 和 `estimateContextComposition` 将所有消息列为可压缩，静默包含受保护工具输出 → 模型看到虚高的范围，压缩后大部分被过滤 → 无效压缩和混乱统计。（2）当 nudge anchors 激活（context 超过 minLimit）但增长低于节奏阈值时，nudge 文本触发但可压缩范围列表被增长节奏门控 → 模型看到"立即压缩"但没有范围。（3）修复 #2 后，模型可能每轮被 nudge（turn anchors 每轮重新添加）→ thrashing 风险。
+
+**修复**：（1）PR #132：`buildCompressibleRanges`、`estimateContextComposition`、`acp_status` 现在跳过受保护工具/文件。逐范围保护详情，混合可压缩+受保护显示。（2）PR #134：放宽 nudge 输出，当 anchors 激活时无论增长节奏都触发。（3）PR #134：新增增长下限门控 — 除非 context 自上次 nudge 增长了 `max(minNudgeGrowthFloor, minNudgeGrowthRatio × nudgeGrowthTokens)` tokens，否则 nudge 被抑制，紧急覆盖在 `emergencyThresholdPercent`（98%）。同时将 `minCompressRange` 默认值 2000→5000。PR #133：`getCurrentTokenUsage` 接受仅输入 token 数据（output=0 修复）。Oracle 审查通过。
+
+文件：`lib/messages/inject/inject.ts`、`lib/messages/inject/utils.ts`、`lib/compress/status.ts`、`lib/config.ts`、`lib/config-validation.ts`、`lib/token-utils.ts`、`dcp.schema.json`。测试：`tests/inject.test.ts`、`tests/config-validation.test.ts`、`tests/protection-aware-stats.test.ts`、`tests/token-counting.test.ts`。688 个测试通过。
+
 ### v1.12.3 — 正则标签碎片泄漏修复（PR #130）
 
 **问题**：`lib/messages/utils.ts` 中三个正则表达式缺少开标签 `<` 和标签名匹配，导致 ACP 内部 XML 标签碎片和过期消息 ID 在多轮压缩后泄漏到用户可见的对话框中（issue #123）。
