@@ -284,7 +284,9 @@ export const injectCompressNudges = (
             : undefined
     const nudgeAllowed =
         emergencyOverride ||
-        (growthSinceBaseline !== undefined && growthSinceBaseline >= growthFloor)
+        (decision.shouldNudge &&
+            growthSinceBaseline !== undefined &&
+            growthSinceBaseline >= growthFloor)
 
     state.nudges.shouldInjectThisTurn = nudgeAllowed
 
