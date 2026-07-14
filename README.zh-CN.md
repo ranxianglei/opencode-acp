@@ -395,6 +395,14 @@ ACP 在首次启动时自动将配置从 `dcp.jsonc` 迁移到 `acp.jsonc`，将
 
 ## 更新日志
 
+### v1.12.5 — Bug 20 抑制修复 + 增长下限门控修正（PR #139, #140）
+
+**问题**：v1.12.4 后引入的两个 nudge 抑制逻辑 bug。（1）`isContextOverLimits` 的 Bug 20 抑制检查 `(part as any).type === "tool-invocation" && (part as any).toolInvocation?.toolName === "compress"` —— 这个消息部件格式在 SDK 中根本不存在（代码库中其他 18+ 处工具类型检查全部使用 `part.type === "tool" && part.tool === "compress"`）。抑制逻辑永不匹配，所以压缩后 `overMaxLimit` 从不置 false → max-limit 告警每轮触发 → 过度压缩正反馈循环。（2）增长下限门控（PR #134）使 `growthFloor` 成为 `nudgeAllowed` 的唯一 gate，丢弃了 `decision.shouldNudge` 要求 —— 意味着即使增长为负，只要满足增长下限条件 nudge 就会触发。
+
+**修复**：（1）PR #139：将格式检查改为 `part.type === "tool" && part.tool === "compress"`，移除了 `(part as any)` 类型断言。抑制现在正确检测最近消息中的 compress 工具调用并重置 `overMaxLimit`。（2）PR #140：`nudgeAllowed` 现在要求 `decision.shouldNudge || emergencyOverride`，恢复预期的双条件门控。
+
+文件：`lib/messages/inject/utils.ts`（Bug 20 修复）、`lib/messages/inject/inject.ts`（增长下限修正）。688 测试通过。
+
 ### v1.12.4 — 保护感知统计 + Nudge 范围修复 + 增长下限门控（PR #132, #133, #134）
 
 **问题**：v1.12.3 以来三个问题。（1）`buildCompressibleRanges` 和 `estimateContextComposition` 将所有消息列为可压缩，静默包含受保护工具输出 → 模型看到虚高的范围，压缩后大部分被过滤 → 无效压缩和混乱统计。（2）当 nudge anchors 激活（context 超过 minLimit）但增长低于节奏阈值时，nudge 文本触发但可压缩范围列表被增长节奏门控 → 模型看到"立即压缩"但没有范围。（3）修复 #2 后，模型可能每轮被 nudge（turn anchors 每轮重新添加）→ thrashing 风险。

@@ -422,6 +422,14 @@ For the complete list with root cause analysis, see the [bug tracker](https://gi
 
 ## Changelog
 
+### v1.12.5 — Bug 20 Suppression Fix + Growth Floor Gate Correction (PRs #139, #140)
+
+**Problem**: Two bugs in the nudge suppression logic introduced after v1.12.4. (1) `isContextOverLimits` Bug 20 suppression checked `(part as any).type === "tool-invocation" && (part as any).toolInvocation?.toolName === "compress"` — a message-part format that does not exist in the SDK (all 18+ other tool-type checks in the codebase use `part.type === "tool" && part.tool === "compress"`). The suppression never matched, so `overMaxLimit` was never set to `false` after a compress call → the max-limit alert fired every turn → over-compression feedback loop. (2) The growth floor gate (PR #134) made `growthFloor` the sole gate for `nudgeAllowed`, dropping the `decision.shouldNudge` requirement — meaning nudges could fire on negative growth as long as the growth floor condition was met.
+
+**Fix**: (1) PR #139: Changed the format check to `part.type === "tool" && part.tool === "compress"` and removed the `(part as any)` casts. Suppression now correctly detects compress tool calls in recent messages and resets `overMaxLimit`. (2) PR #140: `nudgeAllowed` now requires `decision.shouldNudge || emergencyOverride`, restoring the intended two-condition gate.
+
+Files: `lib/messages/inject/utils.ts` (Bug 20 fix), `lib/messages/inject/inject.ts` (growth floor correction). 688 tests pass.
+
 ### v1.12.4 — Protection-Aware Stats + Nudge Ranges Fix + Growth Floor Gate (PRs #132, #133, #134)
 
 **Problem**: Three issues since v1.12.3. (1) `buildCompressibleRanges` and `estimateContextComposition` listed ALL messages as compressible, silently including protected tool output — the model saw inflated ranges, compressed, and most content was filtered out → ineffective compression with confusing stats. (2) When nudge anchors were active (context over minLimit) but growth was below the cadence threshold, the nudge text fired but the compressible ranges list was gated by growth cadence → model saw "compress now" with no ranges. (3) After fixing #2, the model could be nudged every turn (turn anchors re-add every turn) → thrashing risk.
