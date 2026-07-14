@@ -26,84 +26,103 @@ function makeProtected(
 const OPTS_1M = { modelContextLimit: 1_000_000, growthRatio: 0.05 }
 const OPTS_200K = { modelContextLimit: 200_000, growthRatio: 0.05 }
 
-test("filterRecommendedRanges: single-message range filtered when below huge threshold", () => {
-    const ranges = [makeRange("m00001", "m00001", 1, 100_000)]
+test("last segment < 2x growth threshold (10% for 1M) excluded + suppressed", () => {
+    const ranges = [makeRange("m00001", "m00003", 3, 80_000)]
     const result = filterRecommendedRanges(ranges, [], OPTS_1M)
-    assert.equal(result.length, 0)
+    assert.equal(result.length, 0, "80K < 100K floor → excluded, effective=0 < 50K gate")
 })
 
-test("filterRecommendedRanges: single-message range kept when above huge threshold (250K for 1M)", () => {
+test("last segment far above threshold: 300K, effective = 200K shown with dangerous", () => {
     const ranges = [makeRange("m00001", "m00001", 1, 300_000)]
     const result = filterRecommendedRanges(ranges, [], OPTS_1M)
     assert.equal(result.length, 1)
-    assert.equal(result[0].startRef, "m00001")
+    assert.equal(result[0].dangerous, true)
 })
 
-test("filterRecommendedRanges: multi-message range kept when tokens exceed 5%", () => {
-    const ranges = [makeRange("m00001", "m00003", 3, 60_000)]
+test("single range at exactly 3x (150K): floor passes + gate passes", () => {
+    const ranges = [makeRange("m00001", "m00001", 1, 150_000)]
     const result = filterRecommendedRanges(ranges, [], OPTS_1M)
     assert.equal(result.length, 1)
+    assert.equal(result[0].dangerous, true)
 })
 
-test("filterRecommendedRanges: mixed single and multi-message ranges", () => {
+test("single range at 2x boundary (100K): floor passes but gate fails (effective=0)", () => {
+    const ranges = [makeRange("m00001", "m00001", 1, 100_000)]
+    const result = filterRecommendedRanges(ranges, [], OPTS_1M)
+    assert.equal(result.length, 0, "effective = max(0, 100K-100K) = 0 < 50K gate")
+})
+
+test("non-last range never gets dangerous flag, last range does", () => {
     const ranges = [
-        makeRange("m00001", "m00005", 5, 80_000),
-        makeRange("m00006", "m00006", 1, 10_000),
-        makeRange("m00007", "m00007", 1, 300_000),
+        makeRange("m00001", "m00005", 5, 60_000),
+        makeRange("m00010", "m00015", 6, 150_000),
     ]
     const result = filterRecommendedRanges(ranges, [], OPTS_1M)
     assert.equal(result.length, 2)
-    assert.equal(result[0].startRef, "m00001")
-    assert.equal(result[1].startRef, "m00007")
+    assert.equal(result[0].dangerous, undefined)
+    assert.equal(result[1].dangerous, true)
 })
 
-test("filterRecommendedRanges: suppresses all when compressible too small (< 5%)", () => {
+test("gate: single non-last range below growth threshold suppressed", () => {
     const ranges = [makeRange("m00001", "m00005", 5, 30_000)]
     const result = filterRecommendedRanges(ranges, [], OPTS_1M)
     assert.equal(result.length, 0)
 })
 
-test("filterRecommendedRanges: shows ranges when compressible >= 5%", () => {
-    const ranges = [makeRange("m00001", "m00005", 5, 60_000)]
+test("effective compressible: non-last 40K + last 80K (excluded) = 40K < 50K suppressed", () => {
+    const ranges = [
+        makeRange("m00001", "m00005", 5, 40_000),
+        makeRange("m00006", "m00008", 3, 80_000),
+    ]
     const result = filterRecommendedRanges(ranges, [], OPTS_1M)
-    assert.equal(result.length, 1)
-})
-
-test("filterRecommendedRanges: suppresses when only last range compressible + protected exist", () => {
-    const ranges = [makeRange("m00010", "m00012", 3, 60_000)]
-    const protectedRanges = [makeProtected("m00001", "m00009", 9, 200_000)]
-    const result = filterRecommendedRanges(ranges, protectedRanges, OPTS_1M)
     assert.equal(result.length, 0)
 })
 
-test("filterRecommendedRanges: shows when multiple compressible ranges exist alongside protected", () => {
+test("effective compressible: non-last 60K + last 80K (excluded) = 60K >= 50K shown", () => {
     const ranges = [
         makeRange("m00001", "m00005", 5, 60_000),
-        makeRange("m00010", "m00015", 6, 80_000),
+        makeRange("m00006", "m00008", 3, 80_000),
     ]
-    const protectedRanges = [makeProtected("m00006", "m00009", 4, 200_000)]
-    const result = filterRecommendedRanges(ranges, protectedRanges, OPTS_1M)
-    assert.equal(result.length, 2)
+    const result = filterRecommendedRanges(ranges, [], OPTS_1M)
+    assert.equal(result.length, 1)
+    assert.equal(result[0].startRef, "m00001")
+    assert.equal(result[0].dangerous, undefined)
 })
 
-test("filterRecommendedRanges: suppresses when 70%+ protected", () => {
-    const ranges = [makeRange("m00001", "m00005", 5, 60_000)]
-    const protectedRanges = [makeProtected("m00006", "m00020", 15, 200_000)]
-    const total = 60_000 + 200_000
-    assert.ok(200_000 / total >= 0.7, "verify test data is 70%+ protected")
-    const result = filterRecommendedRanges(ranges, protectedRanges, OPTS_1M)
+test("effective compressible: non-last 40K + last 150K = 40K + 50K = 90K >= 50K shown", () => {
+    const ranges = [
+        makeRange("m00001", "m00005", 5, 40_000),
+        makeRange("m00006", "m00010", 5, 150_000),
+    ]
+    const result = filterRecommendedRanges(ranges, [], OPTS_1M)
+    assert.equal(result.length, 2)
+    assert.equal(result[0].dangerous, undefined)
+    assert.equal(result[1].dangerous, true)
+})
+
+test("protected ranges do not affect filtering logic", () => {
+    const ranges = [
+        makeRange("m00001", "m00005", 5, 60_000),
+        makeRange("m00006", "m00010", 5, 150_000),
+    ]
+    const protectedRanges = [makeProtected("m00020", "m00030", 11, 300_000)]
+    const withoutProtected = filterRecommendedRanges(ranges, [], OPTS_1M)
+    const withProtected = filterRecommendedRanges(ranges, protectedRanges, OPTS_1M)
+    assert.deepEqual(withProtected, withoutProtected)
+})
+
+test("single small message as only range suppressed", () => {
+    const ranges = [makeRange("m00001", "m00001", 1, 10_000)]
+    const result = filterRecommendedRanges(ranges, [], OPTS_1M)
     assert.equal(result.length, 0)
 })
 
-test("filterRecommendedRanges: huge single range overrides protected dominance", () => {
-    const ranges = [makeRange("m00010", "m00010", 1, 300_000)]
-    const protectedRanges = [makeProtected("m00001", "m00009", 9, 200_000)]
-    const result = filterRecommendedRanges(ranges, protectedRanges, OPTS_1M)
-    assert.equal(result.length, 1)
-    assert.equal(result[0].startRef, "m00010")
+test("empty input returns empty", () => {
+    const result = filterRecommendedRanges([], [], OPTS_1M)
+    assert.equal(result.length, 0)
 })
 
-test("filterRecommendedRanges: returns all when modelContextLimit unknown", () => {
+test("modelContextLimit unknown: returns all with last marked dangerous", () => {
     const ranges = [
         makeRange("m00001", "m00001", 1, 100),
         makeRange("m00002", "m00005", 4, 200),
@@ -113,27 +132,19 @@ test("filterRecommendedRanges: returns all when modelContextLimit unknown", () =
         growthRatio: 0.05,
     })
     assert.equal(result.length, 2)
+    assert.equal(result[0].dangerous, undefined)
+    assert.equal(result[1].dangerous, true)
 })
 
-test("filterRecommendedRanges: 200K context uses proportionally smaller thresholds", () => {
-    const ranges = [makeRange("m00001", "m00001", 1, 60_000)]
+test("200K context: growth=10K, floor=20K. 35K → effective=15K >= 10K shown", () => {
+    const ranges = [makeRange("m00001", "m00001", 1, 35_000)]
     const result = filterRecommendedRanges(ranges, [], OPTS_200K)
-    assert.equal(result.length, 1, "60K > 50K (5x of 10K growthThreshold for 200K context)")
+    assert.equal(result.length, 1)
+    assert.equal(result[0].dangerous, true)
 })
 
-test("filterRecommendedRanges: suppresses when only compressible range and no protected (single small range)", () => {
-    const ranges = [makeRange("m00001", "m00001", 1, 10_000)]
-    const result = filterRecommendedRanges(ranges, [], OPTS_1M)
-    assert.equal(result.length, 0, "single small range filtered by req 2")
-})
-
-test("filterRecommendedRanges: empty input returns empty", () => {
-    const result = filterRecommendedRanges([], [], OPTS_1M)
+test("200K context: 25K → effective=5K < 10K suppressed", () => {
+    const ranges = [makeRange("m00001", "m00001", 1, 25_000)]
+    const result = filterRecommendedRanges(ranges, [], OPTS_200K)
     assert.equal(result.length, 0)
-})
-
-test("filterRecommendedRanges: multi-message range suppressed when total compressible < 5%", () => {
-    const ranges = [makeRange("m00001", "m00003", 3, 500)]
-    const result = filterRecommendedRanges(ranges, [], OPTS_1M)
-    assert.equal(result.length, 0, "tiny multi-message range still filtered by list-level check")
 })

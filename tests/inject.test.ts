@@ -681,10 +681,10 @@ test("growth floor: nudge fires when growth meets nudgeGrowthTokens (not just gr
     const messages2: WithParts[] = [
         userMsg("u1", "hello"),
         assistantMsgWithTokens("a1", "work", { input: 200_000, output: 30_000 }, [
-            toolPart("c1", "x".repeat(120_000)),
+            toolPart("c1", "x".repeat(320_000)),
         ]),
         assistantMsgWithTokens("a2", "done", { input: 200_000, output: 50_000 }, [
-            toolPart("c2", "x".repeat(120_000)),
+            toolPart("c2", "x".repeat(320_000)),
         ]),
     ]
     injectCompressNudges(state2, config, logger, messages2, {} as any)
