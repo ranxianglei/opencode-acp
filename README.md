@@ -422,6 +422,14 @@ For the complete list with root cause analysis, see the [bug tracker](https://gi
 
 ## Changelog
 
+### v1.12.4 — Protection-Aware Stats + Nudge Ranges Fix + Growth Floor Gate (PRs #132, #133, #134)
+
+**Problem**: Three issues since v1.12.3. (1) `buildCompressibleRanges` and `estimateContextComposition` listed ALL messages as compressible, silently including protected tool output — the model saw inflated ranges, compressed, and most content was filtered out → ineffective compression with confusing stats. (2) When nudge anchors were active (context over minLimit) but growth was below the cadence threshold, the nudge text fired but the compressible ranges list was gated by growth cadence → model saw "compress now" with no ranges. (3) After fixing #2, the model could be nudged every turn (turn anchors re-add every turn) → thrashing risk.
+
+**Fix**: (1) PR #132: `buildCompressibleRanges`, `estimateContextComposition`, and `acp_status` now skip protected tools/files. Per-range protected detail with mixed compressible+protected display. (2) PR #134: Broadened nudge output to fire when anchors active regardless of growth cadence. (3) PR #134: Added growth floor gate — nudges suppressed unless context grew by `max(minNudgeGrowthFloor, minNudgeGrowthRatio × nudgeGrowthTokens)` tokens since last nudge, with emergency override at `emergencyThresholdPercent` (98%). Also raised `minCompressRange` default 2000→5000. PR #133: `getCurrentTokenUsage` accepts input-only token data (output=0 fix). Oracle-reviewed.
+
+Files: `lib/messages/inject/inject.ts`, `lib/messages/inject/utils.ts`, `lib/compress/status.ts`, `lib/config.ts`, `lib/config-validation.ts`, `lib/token-utils.ts`, `dcp.schema.json`. Tests: `tests/inject.test.ts`, `tests/config-validation.test.ts`, `tests/protection-aware-stats.test.ts`, `tests/token-counting.test.ts`. 688 tests pass.
+
 ### v1.12.3 — Regex Tag Fragment Leak Fix (PR #130)
 
 **Problem**: Three regexes in `lib/messages/utils.ts` had missing opening-tag `<` and tag-name matchers, causing ACP internal XML tag fragments and stale message IDs to leak into user-visible chat after multiple compression rounds (issue #123).
