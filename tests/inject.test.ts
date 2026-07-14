@@ -836,6 +836,79 @@ test("growth floor: applyAnchoredNudges output suppressed when growth below floo
         "anchored turn nudge text MUST appear when nudgeAllowed is true",
     )
 })
+
+test("stale contextLimitAnchors cleared when context drops below maxLimit without compress (issue #27)", () => {
+    const state = createSessionState()
+    state.modelContextLimit = 1_000_000
+    state.nudges.lastPerMessageNudgeTokens = 50_000
+    state.nudges.contextLimitAnchors.add("stale-anchor-1")
+
+    const config = buildConfig()
+    config.compress.maxContextLimit = 200_000
+    config.compress.minContextLimit = 50_000
+
+    const messages: WithParts[] = [
+        userMsg("u1", "hello"),
+        assistantMsgWithTokens("a1", "done", { input: 90_000, output: 10_000 }),
+    ]
+    injectCompressNudges(state, config, logger, messages, {} as any)
+
+    assert.equal(
+        state.nudges.contextLimitAnchors.size,
+        0,
+        "stale contextLimitAnchors must be cleared when context drops below maxLimit",
+    )
+})
+
+test("stale contextLimitAnchors: contextLimitNudge NOT injected when context below limit (issue #27)", () => {
+    const CTX_LIMIT_MARKER = "CTX_LIMIT_MARKER"
+    const TURN_NUDGE_MARKER = "TURN_NUDGE_MARKER"
+
+    const makePrompts = () =>
+        ({
+            system: "",
+            compressRange: "",
+            compressMessage: "",
+            contextLimitNudge: CTX_LIMIT_MARKER,
+            turnNudge: TURN_NUDGE_MARKER,
+            iterationNudge: "ITER_NUDGE_MARKER",
+            manualExtension: "",
+            subagentExtension: "",
+            decompressExtension: "",
+        }) as any
+
+    const state = createSessionState()
+    state.modelContextLimit = 1_000_000
+    state.nudges.lastPerMessageNudgeTokens = 50_000
+    state.nudges.contextLimitAnchors.add("stale-anchor-1")
+    state.messageIds.byRawId.set("u1", "m00001")
+    state.messageIds.byRawId.set("a1", "m00002")
+    state.messageIds.byRawId.set("u2", "m00003")
+
+    const config = buildConfig()
+    config.compress.maxContextLimit = 200_000
+    config.compress.minContextLimit = 50_000
+
+    const messages: WithParts[] = [
+        userMsg("u1", "hello"),
+        assistantMsgWithTokens("a1", "done", { input: 90_000, output: 10_000 }),
+        userMsg("u2", "next"),
+    ]
+    injectCompressNudges(state, config, logger, messages, makePrompts())
+
+    assert.equal(state.nudges.shouldInjectThisTurn, true, "nudge fires (50K growth >= 22500 floor)")
+    assert.equal(state.nudges.contextLimitAnchors.size, 0, "stale contextLimitAnchors cleared")
+
+    const injected = suffixText(messages)
+    assert.ok(
+        !injected.includes(CTX_LIMIT_MARKER),
+        "context limit nudge must NOT appear when context below maxLimit",
+    )
+    assert.ok(
+        injected.includes(TURN_NUDGE_MARKER),
+        "turn nudge SHOULD appear (overMinLimit + nudgeAllowed)",
+    )
+})
 // Reminder threshold scales with context (via nudgeGrowthTokens); on a 1M model
 // it is 50K, not the old hardcoded 5000. Tool chars ≈ JSON.stringify(part).length/4.
 
