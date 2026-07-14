@@ -182,42 +182,48 @@ export const injectCompressNudges = (
                 anchorsChanged = true
             }
         }
-    } else if (overMinLimit) {
-        const isLastMessageUser = lastMessage?.message.info.role === "user"
-
-        if (isLastMessageUser && lastAssistantMessage) {
-            const previousSize = state.nudges.turnNudgeAnchors.size
-            state.nudges.turnNudgeAnchors.add(lastMessage.message.info.id)
-            state.nudges.turnNudgeAnchors.add(lastAssistantMessage.info.id)
-            if (state.nudges.turnNudgeAnchors.size !== previousSize) {
-                anchorsChanged = true
-            }
+    } else {
+        if (state.nudges.contextLimitAnchors.size > 0) {
+            state.nudges.contextLimitAnchors.clear()
+            anchorsChanged = true
         }
+        if (overMinLimit) {
+            const isLastMessageUser = lastMessage?.message.info.role === "user"
 
-        const lastUserMessage = getLastUserMessage(messages)
-        if (lastUserMessage && lastMessage) {
-            const lastUserMessageIndex = messages.findIndex(
-                (message) => message.info.id === lastUserMessage.info.id,
-            )
-            if (lastUserMessageIndex >= 0) {
-                const messagesSinceUser = countMessagesAfterIndex(messages, lastUserMessageIndex)
-                const iterationThreshold = getIterationNudgeThreshold(config)
+            if (isLastMessageUser && lastAssistantMessage) {
+                const previousSize = state.nudges.turnNudgeAnchors.size
+                state.nudges.turnNudgeAnchors.add(lastMessage.message.info.id)
+                state.nudges.turnNudgeAnchors.add(lastAssistantMessage.info.id)
+                if (state.nudges.turnNudgeAnchors.size !== previousSize) {
+                    anchorsChanged = true
+                }
+            }
 
-                if (
-                    lastMessage.index > lastUserMessageIndex &&
-                    messagesSinceUser >= iterationThreshold
-                ) {
-                    const interval = getNudgeFrequency(config)
-                    const added = addAnchor(
-                        state.nudges.iterationNudgeAnchors,
-                        lastMessage.message.info.id,
-                        lastMessage.index,
-                        messages,
-                        interval,
-                    )
+            const lastUserMessage = getLastUserMessage(messages)
+            if (lastUserMessage && lastMessage) {
+                const lastUserMessageIndex = messages.findIndex(
+                    (message) => message.info.id === lastUserMessage.info.id,
+                )
+                if (lastUserMessageIndex >= 0) {
+                    const messagesSinceUser = countMessagesAfterIndex(messages, lastUserMessageIndex)
+                    const iterationThreshold = getIterationNudgeThreshold(config)
 
-                    if (added) {
-                        anchorsChanged = true
+                    if (
+                        lastMessage.index > lastUserMessageIndex &&
+                        messagesSinceUser >= iterationThreshold
+                    ) {
+                        const interval = getNudgeFrequency(config)
+                        const added = addAnchor(
+                            state.nudges.iterationNudgeAnchors,
+                            lastMessage.message.info.id,
+                            lastMessage.index,
+                            messages,
+                            interval,
+                        )
+
+                        if (added) {
+                            anchorsChanged = true
+                        }
                     }
                 }
             }
