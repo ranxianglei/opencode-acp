@@ -14,7 +14,18 @@ export function getCurrentTokenUsage(state: SessionState, messages: WithParts[])
         }
 
         const assistantInfo = msg.info as AssistantMessage
-        if ((assistantInfo.tokens?.output || 0) <= 0) {
+        const input = assistantInfo.tokens?.input || 0
+        const output = assistantInfo.tokens?.output || 0
+        const reasoning = assistantInfo.tokens?.reasoning || 0
+        const cacheRead = assistantInfo.tokens?.cache?.read || 0
+        const cacheWrite = assistantInfo.tokens?.cache?.write || 0
+
+        // [FIX output=0 underestimation] Accept input-only token data (output=0
+        // from aborted/hidden requests). input + cacheRead + cacheWrite still
+        // represents the prompt size sent to the model. Previously required
+        // output > 0, which skipped these and fell through to text-only
+        // estimation → massive undercount → no nudge fired → context overflow.
+        if (input <= 0 && output <= 0) {
             continue
         }
 
@@ -26,12 +37,6 @@ export function getCurrentTokenUsage(state: SessionState, messages: WithParts[])
             return 0
         }
 
-        const input = assistantInfo.tokens?.input || 0
-        const output = assistantInfo.tokens?.output || 0
-        const reasoning = assistantInfo.tokens?.reasoning || 0
-        const cacheRead = assistantInfo.tokens?.cache?.read || 0
-        const cacheWrite = assistantInfo.tokens?.cache?.write || 0
-
         // [FIX Bug 17] Universal token estimation
         // opencode session.ts: adjustedInputTokens = inputTokens - cacheRead - cacheWrite
         // So: input + cacheRead + cacheWrite = prompt_tokens (total input)
@@ -39,16 +44,11 @@ export function getCurrentTokenUsage(state: SessionState, messages: WithParts[])
         return input + cacheRead + cacheWrite + output + reasoning
     }
 
-    // [FIX Bug 5] fallback: estimate tokens from message content when no assistant
-    // message has output tokens (first turn or after full compaction)
+    // [FIX Bug 5] fallback: estimate from all content (text + tool outputs)
+    // when no assistant message has token data (first turn or full compaction).
     let estimated = 0
     for (const m of messages) {
-        const parts = Array.isArray(m.parts) ? m.parts : []
-        for (const part of parts) {
-            if (part.type === "text" && typeof part.text === "string") {
-                estimated += countTokens(part.text)
-            }
-        }
+        estimated += countAllMessageTokens(m)
     }
     return estimated
 }
