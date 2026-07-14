@@ -187,7 +187,6 @@ export const injectCompressNudges = (
             state.nudges.contextLimitAnchors.clear()
             anchorsChanged = true
         }
-
         if (overMinLimit) {
             const isLastMessageUser = lastMessage?.message.info.role === "user"
 

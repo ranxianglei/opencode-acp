@@ -860,6 +860,29 @@ test("stale contextLimitAnchors cleared when context drops below maxLimit withou
     )
 })
 
+test("stale contextLimitAnchors cleared even when context below minLimit (Oracle L1)", () => {
+    const state = createSessionState()
+    state.modelContextLimit = 1_000_000
+    state.nudges.lastPerMessageNudgeTokens = 10_000
+    state.nudges.contextLimitAnchors.add("stale-anchor-1")
+
+    const config = buildConfig()
+    config.compress.maxContextLimit = 200_000
+    config.compress.minContextLimit = 50_000
+
+    const messages: WithParts[] = [
+        userMsg("u1", "hello"),
+        assistantMsgWithTokens("a1", "done", { input: 20_000, output: 10_000 }),
+    ]
+    injectCompressNudges(state, config, logger, messages, {} as any)
+
+    assert.equal(
+        state.nudges.contextLimitAnchors.size,
+        0,
+        "stale contextLimitAnchors must be cleared even when context is below minLimit",
+    )
+})
+
 test("stale contextLimitAnchors: contextLimitNudge NOT injected when context below limit (issue #27)", () => {
     const CTX_LIMIT_MARKER = "CTX_LIMIT_MARKER"
     const TURN_NUDGE_MARKER = "TURN_NUDGE_MARKER"
