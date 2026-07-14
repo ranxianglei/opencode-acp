@@ -422,6 +422,14 @@ For the complete list with root cause analysis, see the [bug tracker](https://gi
 
 ## Changelog
 
+### v1.12.3 — Regex Tag Fragment Leak Fix (PR #130)
+
+**Problem**: Three regexes in `lib/messages/utils.ts` had missing opening-tag `<` and tag-name matchers, causing ACP internal XML tag fragments and stale message IDs to leak into user-visible chat after multiple compression rounds (issue #123).
+
+**Fix**: (1) `DCP_PAIRED_TAG_REGEX` (line 14): `]*>` matched any `>` char → fixed to `<(?:dcp|acp)[^>]*>`. (2) `DCP_BLOCK_ID_TAG_REGEX` (line 11): `(])` required literal `]` → `replaceBlockIdsWithBlocked` was a complete no-op → fixed to `(<(?:dcp|acp)-message-id[^>]*>)`. (3) `DCP_MESSAGE_REF_TAG_REGEX` (line 13): matched only `m\d+</closing>` → left `<dcp-message-id ...>` opening tag fragments → fixed to include opening tag. Supersedes PR #124.
+
+Files: `lib/messages/utils.ts`. Tests: `tests/regex-tag-leak.test.ts` (NEW, 23 tests). 666 tests pass.
+
 ### v1.12.2 — Compress Failure Rollback + Sync Carve-out Removal (PR #126)
 
 **Problem**: Two bugs in post-compression-failure handling (issue #125). (1) The compress tool mutated in-memory state incrementally with no try/catch — if anything threw between the first `applyCompressionState` and `finalizeSession`, "ghost blocks" (active blocks never persisted) hid messages on subsequent transforms. (2) `syncCompressionBlocks` had a carve-out that kept blocks active when the anchor was missing from messages but tracked in `byMessageId`. This carve-out was intended for ACP-hidden anchors, but sync runs on the raw message list (before filtering), so it only triggered for externally-deleted anchors → messages hidden without recap injection → empty LLM requests.
