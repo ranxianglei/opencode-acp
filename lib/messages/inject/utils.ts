@@ -855,24 +855,109 @@ export function buildCompressibleRanges(
     }
 }
 
+interface MergedEntry {
+    startRef: string
+    endRef: string
+    startNum: number
+    endNum: number
+    count: number
+    tokens: number
+    toolPct: number
+    textPct: number
+    compressibleTokens: number
+    compressibleCount: number
+    protectedTokens: number
+    protectedCount: number
+    protectedTools: string[]
+}
+
 export function formatCompressibleRanges(
     ranges: CompressibleRange[],
     protectedRanges?: ProtectedRange[],
 ): string {
     const fmt = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n))
-    const lines = ranges.map((r, i) => {
-        const suffix =
-            i === ranges.length - 1 && (!protectedRanges || protectedRanges.length === 0)
-                ? "  (recent — may still be in active use)"
-                : ""
-        return `  ${r.startRef}–${r.endRef}  ${r.count} msgs  ${fmt(r.tokens)} [tool ${r.toolPct}% | text ${r.textPct}%]${suffix}`
-    })
-    if (protectedRanges && protectedRanges.length > 0) {
-        for (const pr of protectedRanges) {
-            lines.push(
-                `  ${pr.startRef}–${pr.endRef}  ${pr.count} msgs  ${fmt(pr.tokens)} [PROTECTED: ${pr.tools.join(", ")} — not compressible]`,
-            )
+
+    if (!protectedRanges || protectedRanges.length === 0) {
+        if (ranges.length === 0) return ""
+        const lines = ranges.map((r, i) => {
+            const suffix = i === ranges.length - 1 ? "  (recent — may still be in active use)" : ""
+            return `  ${r.startRef}–${r.endRef}  ${r.count} msgs  ${fmt(r.tokens)} [tool ${r.toolPct}% | text ${r.textPct}%]${suffix}`
+        })
+        return `Compressible ranges (oldest first):\n${lines.join("\n")}`
+    }
+
+    const entries: MergedEntry[] = []
+
+    for (const r of ranges) {
+        entries.push({
+            startRef: r.startRef,
+            endRef: r.endRef,
+            startNum: refNum(r.startRef),
+            endNum: refNum(r.endRef),
+            count: r.count,
+            tokens: r.tokens,
+            toolPct: r.toolPct,
+            textPct: r.textPct,
+            compressibleTokens: r.tokens,
+            compressibleCount: r.count,
+            protectedTokens: 0,
+            protectedCount: 0,
+            protectedTools: [],
+        })
+    }
+    for (const r of protectedRanges) {
+        entries.push({
+            startRef: r.startRef,
+            endRef: r.endRef,
+            startNum: refNum(r.startRef),
+            endNum: refNum(r.endRef),
+            count: r.count,
+            tokens: r.tokens,
+            toolPct: 0,
+            textPct: 0,
+            compressibleTokens: 0,
+            compressibleCount: 0,
+            protectedTokens: r.tokens,
+            protectedCount: r.count,
+            protectedTools: [...r.tools],
+        })
+    }
+
+    entries.sort((a, b) => a.startNum - b.startNum)
+
+    const merged: MergedEntry[] = []
+    for (const entry of entries) {
+        const last = merged[merged.length - 1]
+        if (last && entry.startNum <= last.endNum + 1) {
+            last.endRef = entry.endRef
+            last.endNum = Math.max(last.endNum, entry.endNum)
+            last.count += entry.count
+            last.tokens += entry.tokens
+            last.compressibleTokens += entry.compressibleTokens
+            last.compressibleCount += entry.compressibleCount
+            last.protectedTokens += entry.protectedTokens
+            last.protectedCount += entry.protectedCount
+            for (const t of entry.protectedTools) {
+                if (!last.protectedTools.includes(t)) last.protectedTools.push(t)
+            }
+        } else {
+            merged.push({ ...entry })
         }
     }
+
+    const lines = merged.map((e, i) => {
+        const suffix = i === merged.length - 1 ? "  (recent — may still be in active use)" : ""
+
+        if (e.protectedTokens > 0 && e.compressibleTokens === 0) {
+            return `  ${e.startRef}–${e.endRef}  ${e.count} msgs  ${fmt(e.tokens)} [PROTECTED: ${e.protectedTools.join(", ")} — not compressible]${suffix}`
+        }
+
+        if (e.protectedTokens > 0 && e.compressibleTokens > 0) {
+            return `  ${e.startRef}–${e.endRef}  ${e.count} msgs  ${fmt(e.tokens)} [${fmt(e.compressibleTokens)} compressible | ${fmt(e.protectedTokens)} protected: ${e.protectedTools.join(", ")}]${suffix}`
+        }
+
+        return `  ${e.startRef}–${e.endRef}  ${e.count} msgs  ${fmt(e.tokens)} [tool ${e.toolPct}% | text ${e.textPct}%]${suffix}`
+    })
+
     return `Compressible ranges (oldest first):\n${lines.join("\n")}`
 }
