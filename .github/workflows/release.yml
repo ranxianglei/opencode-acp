@@ -49,7 +49,17 @@ jobs:
                   TAG="v${VERSION}"
                   echo "version=$VERSION" >> "$GITHUB_OUTPUT"
                   echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-                  echo "Version: $VERSION, Tag: $TAG"
+
+                  # Detect prerelease versions (e.g. 1.13.0-dev.1, 1.13.0-beta.2)
+                  if echo "$VERSION" | grep -q -- '-'; then
+                      echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
+                      echo "npm_tag=dev" >> "$GITHUB_OUTPUT"
+                      echo "Prerelease detected: $VERSION → npm tag: dev"
+                  else
+                      echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
+                      echo "npm_tag=latest" >> "$GITHUB_OUTPUT"
+                      echo "Stable release: $VERSION → npm tag: latest"
+                  fi
 
             - uses: actions/setup-node@v4
               if: steps.check.outputs.is_release == 'true'
@@ -83,7 +93,10 @@ jobs:
 
             - name: Publish to npm
               if: steps.check.outputs.is_release == 'true'
-              run: npm publish
+              run: |
+                  NPM_TAG="${{ steps.version.outputs.npm_tag }}"
+                  echo "Publishing ${{ steps.version.outputs.version }} with tag: $NPM_TAG"
+                  npm publish --tag "$NPM_TAG"
               env:
                   NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
@@ -93,5 +106,6 @@ jobs:
               with:
                   tag_name: ${{ steps.version.outputs.tag }}
                   generate_release_notes: true
+                  prerelease: ${{ steps.version.outputs.is_prerelease }}
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
