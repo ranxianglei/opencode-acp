@@ -36,7 +36,13 @@ function makeBlock(overrides: Partial<CompressionBlock> & { blockId: number }): 
 
 function userMsg(id: string): WithParts {
     return {
-        info: { id, role: "user", sessionID: SID, agent: "a", time: { created: 1 } } as WithParts["info"],
+        info: {
+            id,
+            role: "user",
+            sessionID: SID,
+            agent: "a",
+            time: { created: 1 },
+        } as WithParts["info"],
         parts: [],
     }
 }
@@ -68,18 +74,31 @@ test("syncCompressionBlocks deactivates block when anchor message is deleted", (
     assert.ok(block.deactivatedAt !== undefined)
 })
 
-test("syncCompressionBlocks keeps block active when anchor is in byMessageId but not in messages", () => {
+test("syncCompressionBlocks deactivates block when anchor is gone even if tracked in byMessageId", () => {
     const state = createSessionState()
     state.prune.messages.blocksById.set(1, makeBlock({ blockId: 1, anchorMessageId: "m1" }))
-    state.prune.messages.byMessageId.set("m1", { tokenCount: 100, allBlockIds: [1], activeBlockIds: [1] })
+    state.prune.messages.byMessageId.set("m1", {
+        tokenCount: 100,
+        allBlockIds: [1],
+        activeBlockIds: [1],
+    })
     const messages = [userMsg("m2")]
     syncCompressionBlocks(state, logger, messages)
-    assert.ok(state.prune.messages.activeBlockIds.has(1), "block should stay active when anchor tracked in byMessageId")
+    const block = state.prune.messages.blocksById.get(1)!
+    assert.equal(
+        block.active,
+        false,
+        "block should be deactivated — anchor gone means recap cannot be injected",
+    )
+    assert.ok(!state.prune.messages.activeBlockIds.has(1))
 })
 
 test("syncCompressionBlocks deactivates user-deactivated blocks", () => {
     const state = createSessionState()
-    state.prune.messages.blocksById.set(1, makeBlock({ blockId: 1, anchorMessageId: "m1", deactivatedByUser: true }))
+    state.prune.messages.blocksById.set(
+        1,
+        makeBlock({ blockId: 1, anchorMessageId: "m1", deactivatedByUser: true }),
+    )
     const messages = [userMsg("m1")]
     syncCompressionBlocks(state, logger, messages)
     const block = state.prune.messages.blocksById.get(1)!
@@ -89,8 +108,14 @@ test("syncCompressionBlocks deactivates user-deactivated blocks", () => {
 
 test("syncCompressionBlocks deactivates consumed blocks when parent is active", () => {
     const state = createSessionState()
-    state.prune.messages.blocksById.set(1, makeBlock({ blockId: 1, anchorMessageId: "m1", createdAt: 1 }))
-    state.prune.messages.blocksById.set(2, makeBlock({ blockId: 2, anchorMessageId: "m3", consumedBlockIds: [1], createdAt: 2 }))
+    state.prune.messages.blocksById.set(
+        1,
+        makeBlock({ blockId: 1, anchorMessageId: "m1", createdAt: 1 }),
+    )
+    state.prune.messages.blocksById.set(
+        2,
+        makeBlock({ blockId: 2, anchorMessageId: "m3", consumedBlockIds: [1], createdAt: 2 }),
+    )
     state.prune.messages.activeBlockIds.add(1)
     const messages = [userMsg("m1"), userMsg("m3")]
     syncCompressionBlocks(state, logger, messages)
@@ -104,19 +129,67 @@ test("syncCompressionBlocks deactivates consumed blocks when parent is active", 
 test("syncCompressionBlocks updates byMessageId activeBlockIds after sync", () => {
     const state = createSessionState()
     state.prune.messages.blocksById.set(1, makeBlock({ blockId: 1, anchorMessageId: "m1" }))
-    state.prune.messages.byMessageId.set("m2", { tokenCount: 200, allBlockIds: [1], activeBlockIds: [1] })
+    state.prune.messages.byMessageId.set("m2", {
+        tokenCount: 200,
+        allBlockIds: [1],
+        activeBlockIds: [1],
+    })
     const messages = [userMsg("m2")]
     syncCompressionBlocks(state, logger, messages)
     const entry2 = state.prune.messages.byMessageId.get("m2")!
-    assert.equal(entry2.activeBlockIds.length, 0, "m2 activeBlockIds should be empty after block deactivated (anchor m1 gone)")
+    assert.equal(
+        entry2.activeBlockIds.length,
+        0,
+        "m2 activeBlockIds should be empty after block deactivated (anchor m1 gone)",
+    )
 })
 
 test("syncCompressionBlocks processes blocks in creation order", () => {
     const state = createSessionState()
-    state.prune.messages.blocksById.set(2, makeBlock({ blockId: 2, anchorMessageId: "m3", createdAt: 200 }))
-    state.prune.messages.blocksById.set(1, makeBlock({ blockId: 1, anchorMessageId: "m1", createdAt: 100 }))
+    state.prune.messages.blocksById.set(
+        2,
+        makeBlock({ blockId: 2, anchorMessageId: "m3", createdAt: 200 }),
+    )
+    state.prune.messages.blocksById.set(
+        1,
+        makeBlock({ blockId: 1, anchorMessageId: "m1", createdAt: 100 }),
+    )
     const messages = [userMsg("m1"), userMsg("m3")]
     syncCompressionBlocks(state, logger, messages)
     assert.ok(state.prune.messages.activeBlockIds.has(1))
     assert.ok(state.prune.messages.activeBlockIds.has(2))
+})
+
+test("issue #125: external anchor deletion deactivates block and clears byMessageId activeBlockIds", () => {
+    const state = createSessionState()
+    state.prune.messages.blocksById.set(1, makeBlock({ blockId: 1, anchorMessageId: "anchor-1" }))
+    state.prune.messages.activeBlockIds.add(1)
+    state.prune.messages.activeByAnchorMessageId.set("anchor-1", 1)
+    state.prune.messages.byMessageId.set("anchor-1", {
+        tokenCount: 100,
+        allBlockIds: [1],
+        activeBlockIds: [1],
+    })
+    state.prune.messages.byMessageId.set("surviving-msg", {
+        tokenCount: 200,
+        allBlockIds: [1],
+        activeBlockIds: [1],
+    })
+
+    const messages = [userMsg("surviving-msg")]
+
+    syncCompressionBlocks(state, logger, messages)
+
+    const block = state.prune.messages.blocksById.get(1)!
+    assert.equal(block.active, false, "block deactivated when anchor externally deleted")
+
+    const anchorEntry = state.prune.messages.byMessageId.get("anchor-1")!
+    assert.equal(anchorEntry.activeBlockIds.length, 0, "anchor activeBlockIds cleared")
+
+    const survivingEntry = state.prune.messages.byMessageId.get("surviving-msg")!
+    assert.equal(
+        survivingEntry.activeBlockIds.length,
+        0,
+        "surviving message activeBlockIds cleared — not hidden",
+    )
 })

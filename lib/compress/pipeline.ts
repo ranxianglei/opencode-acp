@@ -1,4 +1,4 @@
-import type { WithParts } from "../state"
+import type { PruneMessagesState, SessionState, SessionStats, WithParts } from "../state"
 import { ensureSessionInitialized } from "../state"
 import { saveSessionState } from "../state/persistence"
 import { assignMessageRefs } from "../message-ids"
@@ -10,6 +10,29 @@ import type { ToolContext } from "./types"
 import { buildSearchContext, fetchSessionMessages } from "./search"
 import type { SearchContext } from "./types"
 import { applyPendingCompressionDurations } from "./timing"
+
+export interface CompressionSnapshot {
+    messages: PruneMessagesState
+    stats: SessionStats
+    manualMode: SessionState["manualMode"]
+}
+
+export function snapshotCompressionState(state: SessionState): CompressionSnapshot {
+    return {
+        messages: structuredClone(state.prune.messages),
+        stats: { ...state.stats },
+        manualMode: state.manualMode,
+    }
+}
+
+export function restoreCompressionState(
+    state: SessionState,
+    snapshot: CompressionSnapshot,
+): void {
+    state.prune.messages = structuredClone(snapshot.messages)
+    state.stats = { ...snapshot.stats }
+    state.manualMode = snapshot.manualMode
+}
 
 interface RunContext {
     ask(input: {
