@@ -1,5 +1,6 @@
 import type { SessionState, WithParts } from "../../state"
 import type { PluginConfig } from "../../config"
+import { messageContainsProtectedTool } from "../../compress/protected-content"
 import {
     appendGuidanceToDcpTag,
     buildCompressedBlockGuidance,
@@ -180,7 +181,10 @@ export function isContextOverLimits(
         for (const msg of recentMessages) {
             if (msg.info.role === "assistant" && msg.parts) {
                 for (const part of msg.parts) {
-                    if ((part as any).type === "tool-invocation" && (part as any).toolInvocation?.toolName === "compress") {
+                    if (
+                        (part as any).type === "tool-invocation" &&
+                        (part as any).toolInvocation?.toolName === "compress"
+                    ) {
                         overMaxLimit = false
                         break
                     }
@@ -472,20 +476,41 @@ export function applyAnchoredNudges(
 
         if (config.compress.mode === "message") {
             if (state.nudges.contextLimitAnchors.size > 0) {
-                for (const { index } of collectAnchoredMessages(state.nudges.contextLimitAnchors, messages)) {
-                    const guidance = buildMessagePriorityGuidance(messages, compressionPriorities, index, MESSAGE_MODE_NUDGE_PRIORITY)
+                for (const { index } of collectAnchoredMessages(
+                    state.nudges.contextLimitAnchors,
+                    messages,
+                )) {
+                    const guidance = buildMessagePriorityGuidance(
+                        messages,
+                        compressionPriorities,
+                        index,
+                        MESSAGE_MODE_NUDGE_PRIORITY,
+                    )
                     nudgeParts.push(appendGuidanceToDcpTag(prompts.contextLimitNudge, guidance))
                 }
             }
             if (turnNudgeAnchors.size > 0) {
                 for (const { index } of collectAnchoredMessages(turnNudgeAnchors, messages)) {
-                    const guidance = buildMessagePriorityGuidance(messages, compressionPriorities, index, MESSAGE_MODE_NUDGE_PRIORITY)
+                    const guidance = buildMessagePriorityGuidance(
+                        messages,
+                        compressionPriorities,
+                        index,
+                        MESSAGE_MODE_NUDGE_PRIORITY,
+                    )
                     nudgeParts.push(appendGuidanceToDcpTag(prompts.turnNudge, guidance))
                 }
             }
             if (state.nudges.iterationNudgeAnchors.size > 0) {
-                for (const { index } of collectAnchoredMessages(state.nudges.iterationNudgeAnchors, messages)) {
-                    const guidance = buildMessagePriorityGuidance(messages, compressionPriorities, index, MESSAGE_MODE_NUDGE_PRIORITY)
+                for (const { index } of collectAnchoredMessages(
+                    state.nudges.iterationNudgeAnchors,
+                    messages,
+                )) {
+                    const guidance = buildMessagePriorityGuidance(
+                        messages,
+                        compressionPriorities,
+                        index,
+                        MESSAGE_MODE_NUDGE_PRIORITY,
+                    )
                     nudgeParts.push(appendGuidanceToDcpTag(prompts.iterationNudge, guidance))
                 }
             }
@@ -536,12 +561,7 @@ export function applyAnchoredNudges(
         prompts.contextLimitNudge,
         "",
     )
-    applyRangeModeAnchoredNudge(
-        turnNudgeAnchors,
-        messages,
-        prompts.turnNudge,
-        "",
-    )
+    applyRangeModeAnchoredNudge(turnNudgeAnchors, messages, prompts.turnNudge, "")
     applyRangeModeAnchoredNudge(
         state.nudges.iterationNudgeAnchors,
         messages,
@@ -556,6 +576,7 @@ export interface ContextComposition {
     summaryTokens: number
     messageTokens: number
     textTokens: number
+    protectedTokens: number
     total: number
     largestRanges: { ref: string; tokens: number }[]
     largestToolRanges: { ref: string; tokens: number; tool?: string }[]
@@ -581,11 +602,14 @@ function estimateCodeTokens(text: string): number {
 export function estimateContextComposition(
     messages: WithParts[],
     state?: SessionState,
+    protectedTools: string[] = [],
+    protectedFilePatterns: string[] = [],
 ): ContextComposition {
     let toolTokens = 0
     let codeTokens = 0
     let summaryTokens = 0
     let messageTokens = 0
+    let protectedTokens = 0
     const perMessage: { ref: string; tokens: number }[] = []
     const perTool: { ref: string; tokens: number; tool?: string }[] = []
     const perCode: { ref: string; tokens: number }[] = []
@@ -598,7 +622,13 @@ export function estimateContextComposition(
             .map((p: any) => p.text || "")
             .join("")
         const msgId = (msg.info as any)?.id || ""
-        const isSummary = msgId.startsWith("msg_dcp_summary") || text.includes("[Compressed conversation section]")
+        const isSummary =
+            msgId.startsWith("msg_dcp_summary") ||
+            text.includes("[Compressed conversation section]")
+
+        const isProtected =
+            protectedTools.length > 0 &&
+            messageContainsProtectedTool(msg, protectedTools, protectedFilePatterns)
 
         let msgTotal = 0
         let msgTool = 0
@@ -634,6 +664,10 @@ export function estimateContextComposition(
             }
         }
 
+        if (isProtected && !isSummary) {
+            protectedTokens += msgTotal
+        }
+
         if (!isSummary) {
             const ref = state?.messageIds?.byRawId?.get(msgId) || "?"
             if (msgTotal > 500) perMessage.push({ ref, tokens: msgTotal })
@@ -658,6 +692,7 @@ export function estimateContextComposition(
         summaryTokens,
         messageTokens,
         textTokens: Math.max(0, messageTokens - codeTokens),
+        protectedTokens,
         total: toolTokens + summaryTokens + messageTokens,
         largestRanges: perMessage.slice(0, 15),
         largestToolRanges: perTool.slice(0, 15),
@@ -684,12 +719,28 @@ function refNum(ref: string): number {
 export function buildCompressibleRanges(
     messages: WithParts[],
     state: SessionState,
+    protectedTools: string[] = [],
+    protectedFilePatterns: string[] = [],
 ): CompressibleRange[] {
-    const msgInfo: { ref: string; refNum: number; tokens: number; isTool: boolean; isUser: boolean }[] = []
+    const msgInfo: {
+        ref: string
+        refNum: number
+        tokens: number
+        isTool: boolean
+        isUser: boolean
+    }[] = []
     for (const msg of messages) {
         if (isSyntheticMessage(msg)) continue
         const ref = state.messageIds.byRawId.get(msg.info.id)
         if (!ref) continue
+
+        if (
+            protectedTools.length > 0 &&
+            messageContainsProtectedTool(msg, protectedTools, protectedFilePatterns)
+        ) {
+            continue
+        }
+
         let tokens = 0
         let isTool = false
         for (const part of msg.parts || []) {
