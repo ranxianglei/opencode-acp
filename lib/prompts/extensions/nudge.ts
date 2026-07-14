@@ -1,5 +1,4 @@
 import type { SessionState, CompressionBlock } from "../../state"
-import type { GCConfig } from "../../config"
 import { formatAge as formatBlockAge } from "../../ui/utils"
 
 export interface BlockGuidanceContext {
@@ -16,7 +15,6 @@ export interface BlockGuidanceContext {
 
 export function buildCompressedBlockGuidance(
     state: SessionState,
-    gcConfig?: GCConfig,
     context?: BlockGuidanceContext,
 ): string {
     const activeBlockIds = Array.from(state.prune.messages.activeBlockIds)
@@ -88,45 +86,6 @@ export function buildCompressedBlockGuidance(
                 lines.push(...targets)
                 lines.push(`  System auto-detects blocks in range — no need to manually list (bN) placeholders. Just write your summary normally.`)
             }
-        }
-    }
-
-    // [FIX Bug 35] Only show aging warnings when context usage is above 50%.
-    // Showing warnings at low usage causes unnecessary compress operations that
-    // waste tokens and attention — the model preemptively re-summarizes blocks
-    // that aren't actually at risk of GC truncation.
-    const usageRatio =
-        context?.currentTokens && context?.modelContextLimit
-            ? context.currentTokens / context.modelContextLimit
-            : 0
-
-    if (gcConfig && usageRatio > 0.5) {
-        const promotionThreshold = gcConfig.promotionThreshold
-        const agingBlocks: string[] = []
-
-        for (const blockId of activeBlockIds) {
-            const block = state.prune.messages.blocksById.get(blockId)
-            if (!block) continue
-
-            const survived = block.survivedCount ?? 0
-            const gen = block.generation ?? "young"
-            const sizeK = (block.summary.length / 1000).toFixed(1)
-            const preview = block.summary.slice(0, 120).replace(/\n/g, " ")
-
-            if (gen === "old" || survived >= promotionThreshold - 2) {
-                agingBlocks.push(
-                    `  b${blockId}: age=${survived}/${promotionThreshold}, gen=${gen}, size=${sizeK}K chars — ${preview}...`,
-                )
-            }
-        }
-
-        if (agingBlocks.length > 0) {
-            lines.push("")
-            lines.push("⚠️ Block aging warning — these blocks may be truncated by GC soon:")
-            lines.push(...agingBlocks)
-            lines.push(
-                "To preserve important content: use the compress tool to re-summarize these blocks into new concise ones. Unhandled blocks will be auto-truncated.",
-            )
         }
     }
 

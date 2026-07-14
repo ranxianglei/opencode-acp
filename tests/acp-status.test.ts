@@ -194,8 +194,6 @@ test("acp_status: scope=compressed shows detailed block info", async () => {
     const blocks = blocksMap(
         makeBlock({
             blockId: 1,
-            survivedCount: 3,
-            generation: "old",
             effectiveMessageIds: ["a", "b", "c", "d"],
             consumedBlockIds: [2, 3],
         }),
@@ -203,8 +201,6 @@ test("acp_status: scope=compressed shows detailed block info", async () => {
     const result = await runStatus([1], blocks, { scope: "compressed" })
 
     assert.match(result, /COMPRESSED/)
-    assert.match(result, /age=3/)
-    assert.match(result, /old/)
     assert.match(result, /eff=4/)
     assert.match(result, /nested=\[b2,b3\]/)
 })
@@ -220,18 +216,6 @@ test("acp_status: scope=compressed sort=size orders largest first", async () => 
     const largePos = result.indexOf("large")
     assert.ok(largePos < smallPos, "largest block should appear first")
     assert.match(result, /Sorted by size/)
-})
-
-test("acp_status: scope=compressed sort=age orders highest survivedCount first", async () => {
-    const blocks = blocksMap(
-        makeBlock({ blockId: 1, survivedCount: 1, topic: "alpha-topic" }),
-        makeBlock({ blockId: 2, survivedCount: 14, topic: "beta-topic" }),
-    )
-    const result = await runStatus([1, 2], blocks, { scope: "compressed", sort: "age" })
-
-    const alphaPos = result.indexOf("alpha-topic")
-    const betaPos = result.indexOf("beta-topic")
-    assert.ok(betaPos < alphaPos, "highest survivedCount block should appear first")
 })
 
 test("acp_status: scope=compressed sort=time orders oldest createdAt first", async () => {

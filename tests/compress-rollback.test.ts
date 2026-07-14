@@ -4,15 +4,6 @@ import { createSessionState } from "../lib/state"
 import { snapshotCompressionState, restoreCompressionState } from "../lib/compress/pipeline"
 import { applyCompressionState, allocateRunId, allocateBlockId } from "../lib/compress/state"
 import type { SelectionResolution, CompressionStateInput } from "../lib/compress/types"
-import type { GCConfig } from "../lib/config"
-
-const defaultGcConfig: GCConfig = {
-    algorithm: "truncate",
-    promotionThreshold: 5,
-    maxBlockAge: 15,
-    maxOldGenSummaryLength: 3000,
-    majorGcThresholdPercent: "100%",
-}
 
 function makeSelection(messageIds: string[], toolIds: string[] = []): SelectionResolution {
     const messageTokenById = new Map<string, number>()
@@ -78,7 +69,6 @@ test("restoreCompressionState fully restores state after mutations", () => {
         blockId,
         "[Compressed conversation section]\ntest summary\n\n<b1>",
         [],
-        defaultGcConfig,
     )
 
     assert.ok(state.prune.messages.blocksById.has(blockId), "block created after apply")

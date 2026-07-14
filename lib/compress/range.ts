@@ -269,7 +269,6 @@ export function createCompressRangeTool(ctx: ToolContext): ReturnType<typeof too
                         blockId,
                         storedSummary,
                         preparedPlan.consumedBlockIds,
-                        ctx.config.gc,
                     )
 
                     totalCompressedMessages += applied.messageIds.length

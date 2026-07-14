@@ -18,7 +18,7 @@
  * acceptable — protected tool outputs survive in visible context anyway, and
  * the primary goal (pruning compressed messages to avoid overflow) is met.
  */
-import type { GCConfig, PluginConfig } from "../config"
+import type { PluginConfig } from "../config"
 import type { Logger } from "../logger"
 import { assignMessageRefs } from "../message-ids"
 import { buildSearchContext, resolveAnchorMessageId, resolveBoundaryIds, resolveSelection } from "../compress/search"
@@ -123,7 +123,6 @@ function rebuildRangeInvocation(
     invocation: CompressInvocation,
     protectedTools: string[],
     protectedFilePatterns: string[],
-    gcConfig: GCConfig | undefined,
     logger: Logger,
 ): number {
     // Resolve ALL entries against the pre-invocation state (mirrors range.ts:
@@ -179,7 +178,6 @@ function rebuildRangeInvocation(
             blockId,
             storedSummary,
             consumedBlockIds,
-            gcConfig,
         )
         created++
     }
@@ -241,7 +239,6 @@ function rebuildMessageInvocation(
     input: CompressMessageToolArgs,
     searchContext: SearchContext,
     invocation: CompressInvocation,
-    gcConfig: GCConfig | undefined,
 ): number {
     const runId = allocateRunId(state)
     let created = 0
@@ -274,7 +271,6 @@ function rebuildMessageInvocation(
             blockId,
             storedSummary,
             [],
-            gcConfig,
         )
         created++
     }
@@ -307,7 +303,6 @@ export function rebuildCompressionState(
 
     const protectedTools = config.compress.protectedTools
     const protectedFilePatterns = config.protectedFilePatterns
-    const gcConfig = config.gc
 
     let rebuilt = 0
 
@@ -325,7 +320,6 @@ export function rebuildCompressionState(
                     invocation,
                     protectedTools,
                     protectedFilePatterns,
-                    gcConfig,
                     logger,
                 )
             } else {
@@ -334,7 +328,6 @@ export function rebuildCompressionState(
                     invocation.input as CompressMessageToolArgs,
                     searchContext,
                     invocation,
-                    gcConfig,
                 )
             }
         } catch (err: any) {
