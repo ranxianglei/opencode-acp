@@ -46,7 +46,7 @@ export interface CompressionBlock {
     startId: string
     endId: string
     anchorMessageId: string
-    compressMessageId: string
+    compressMessageId?: string
     compressCallId?: string
     includedBlockIds: number[]
     consumedBlockIds: number[]

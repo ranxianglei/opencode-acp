@@ -7,10 +7,10 @@
  *
  *   filterMessagesInPlace → checkSession → syncCompressPermission →
  *   stripHallucinations → cacheSystemPromptTokens → assignMessageRefs →
- *   syncCompressionBlocks → syncToolCache → buildToolIdList → runMajorGC →
- *   prune → assignMessageRefs (reassign) → injectExtendedSubAgentResults →
- *   buildPriorityMap → injectCompressNudges → injectMessageIds →
- *   applyPendingManualTrigger → stripStaleMetadata → logger.saveContext
+ *   syncCompressionBlocks → syncToolCache → buildToolIdList →
+ *   prune → runEmergencyPrune → assignMessageRefs (reassign) →
+ *   injectExtendedSubAgentResults → buildPriorityMap → injectCompressNudges →
+ *   injectMessageIds → applyPendingManualTrigger → stripStaleMetadata → logger.saveContext
  */
 
 import assert from "node:assert/strict"

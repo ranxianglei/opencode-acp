@@ -203,10 +203,8 @@ export function createCompressMessageTool(ctx: ToolContext): ReturnType<typeof t
                 throw error
             }
 
-            // Compress input cleanup: handled by stripStaleCompressCalls in
-            // lib/messages/prune.ts, called from hooks.ts during message transform.
-            // Removes compress tool-call parts from previous turns so the API
-            // context doesn't duplicate the summaries already injected as recaps.
+            // Compress tool calls stay visible in context (Phase 2: compress-as-anchor).
+            // The tool input carries the summary; no stripping needed.
 
             return formatResult(plans.length, skippedIssues, skippedCount)
         },

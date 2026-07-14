@@ -39,7 +39,7 @@ export function createAcpContextRecapTool(ctx: ToolContext): ReturnType<typeof t
                     return `Block b${args.blockId} not found. Active blocks: ${activeIds.map((id) => `b${id}`).join(", ")}`
                 }
                 if (!block.active) {
-                    return `Block b${args.blockId} is inactive (deactivated by GC or nested compression).`
+                    return `Block b${args.blockId} is inactive (deactivated by user or nested compression).`
                 }
                 const range = formatRange(block.startId, block.endId)
                 return `[Compressed conversation section]\n${block.summary}\n\n[Block b${args.blockId} | ${range} | topic: "${block.topic || "(none)"}"]`
