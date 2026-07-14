@@ -64,7 +64,7 @@ the growth cadence protection for the `overMinLimit` path.
 
 ## Verification
 - TypeScript: pass.
-- Tests: **670 pass**, 0 fail.
+- Tests: **688 pass**, 0 fail.
 - Build: success.
 
 ## Risk

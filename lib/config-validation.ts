@@ -465,16 +465,34 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
             }
 
             const emergencyThreshold = compress.emergencyThresholdPercent
-            if (
-                emergencyThreshold !== undefined &&
-                typeof emergencyThreshold !== "number" &&
-                !(typeof emergencyThreshold === "string" && emergencyThreshold.endsWith("%"))
-            ) {
-                errors.push({
-                    key: "compress.emergencyThresholdPercent",
-                    expected: 'number | "${number}%"',
-                    actual: JSON.stringify(emergencyThreshold),
-                })
+            if (emergencyThreshold !== undefined) {
+                if (typeof emergencyThreshold === "number") {
+                    if (emergencyThreshold < 0) {
+                        errors.push({
+                            key: "compress.emergencyThresholdPercent",
+                            expected: "non-negative number or \"${number}%\" (0–100)",
+                            actual: `${emergencyThreshold}`,
+                        })
+                    }
+                } else if (
+                    typeof emergencyThreshold === "string" &&
+                    emergencyThreshold.endsWith("%")
+                ) {
+                    const parsed = parseFloat(emergencyThreshold.slice(0, -1))
+                    if (isNaN(parsed) || parsed < 0 || parsed > 100) {
+                        errors.push({
+                            key: "compress.emergencyThresholdPercent",
+                            expected: '"${number}%" with percentage in [0, 100]',
+                            actual: JSON.stringify(emergencyThreshold),
+                        })
+                    }
+                } else {
+                    errors.push({
+                        key: "compress.emergencyThresholdPercent",
+                        expected: 'number | "${number}%"',
+                        actual: JSON.stringify(emergencyThreshold),
+                    })
+                }
             }
 
             if (

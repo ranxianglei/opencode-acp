@@ -37,6 +37,20 @@ Examples:
 Also: `minCompressRange` default 2000 → 5000 (raise the minimum compressible
 content threshold, counting compressible-only as before).
 
+## Behavior Change: `overMaxLimit` no longer forces nudge
+
+**Pre-PR**: `decision.shouldNudge = growthSinceLastNudge >= nudgeGrowthTokens || overMaxLimit`.
+Reaching `maxContextLimit` (default 55%) unconditionally triggered nudge output.
+
+**Post-PR**: The single gate is `nudgeAllowed = emergencyOverride || growthSinceBaseline >= growthFloor`.
+Between `maxContextLimit` (55%) and `emergencyThresholdPercent` (98%), a low-growth
+turn emits zero nudge output. This is the intended anti-thrashing behavior — the
+model still sees compression tools via the always-on system prompt and can compress
+voluntarily, but the explicit "compress now" nudge won't fire until growth accumulates.
+
+The `maxContextLimit` percentage is still used for `tipsVariant` selection
+(efficiency vs. overflow tone) but no longer acts as a growth bypass.
+
 ## Acceptance Criteria
 
 - Growth < floor (and context < 98%) → no nudge output at all (no text, no

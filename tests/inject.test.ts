@@ -746,6 +746,78 @@ test("growth floor: 5000 floor on small-context models", () => {
 
     assert.equal(state2.nudges.shouldInjectThisTurn, true, "6K growth >= 5000 floor on 100K model")
 })
+
+test("growth floor: applyAnchoredNudges output suppressed when growth below floor (Oracle MEDIUM #2)", () => {
+    // Verify that applyAnchoredNudges is gated by nudgeAllowed — not just the
+    // breakdown block. If someone un-gates applyAnchoredNudges, anchored nudge
+    // prompt text would leak into the suffix every turn.
+    const TURN_NUDGE_MARKER = "TURN_NUDGE_TEST_MARKER"
+
+    const makePrompts = () =>
+        ({
+            system: "",
+            compressRange: "",
+            compressMessage: "",
+            contextLimitNudge: "CTX_LIMIT_MARKER",
+            turnNudge: TURN_NUDGE_MARKER,
+            iterationNudge: "ITER_NUDGE_MARKER",
+            manualExtension: "",
+            subagentExtension: "",
+            decompressExtension: "",
+        }) as any
+
+    // --- Suppressed: growth below floor ---
+    const state1 = createSessionState()
+    state1.modelContextLimit = 1_000_000
+    state1.nudges.lastPerMessageNudgeTokens = 205_000
+    state1.messageIds.byRawId.set("u1", "m00001")
+    state1.messageIds.byRawId.set("a1", "m00002")
+    state1.messageIds.byRawId.set("u2", "m00003")
+
+    const config = buildConfig()
+    config.compress.maxContextLimit = 500_000
+    config.compress.minContextLimit = 200_000
+
+    const messages1: WithParts[] = [
+        userMsg("u1", "hello"),
+        assistantMsgWithTokens("a1", "done", { input: 200_000, output: 10_000 }, [
+            toolPart("c1", "x".repeat(40_000)),
+        ]),
+        userMsg("u2", "next"),
+    ]
+    injectCompressNudges(state1, config, logger, messages1, makePrompts())
+
+    assert.equal(state1.nudges.shouldInjectThisTurn, false)
+    const text1 = suffixText(messages1)
+    assert.ok(
+        !text1.includes(TURN_NUDGE_MARKER),
+        "anchored turn nudge text must NOT appear when nudgeAllowed is false",
+    )
+
+    // --- Fires: growth meets floor → anchored nudge text SHOULD appear ---
+    const state2 = createSessionState()
+    state2.modelContextLimit = 1_000_000
+    state2.nudges.lastPerMessageNudgeTokens = 200_000
+    state2.messageIds.byRawId.set("u1", "m00001")
+    state2.messageIds.byRawId.set("a1", "m00002")
+    state2.messageIds.byRawId.set("u2", "m00003")
+
+    const messages2: WithParts[] = [
+        userMsg("u1", "hello"),
+        assistantMsgWithTokens("a1", "done", { input: 200_000, output: 25_000 }, [
+            toolPart("c1", "x".repeat(40_000)),
+        ]),
+        userMsg("u2", "next"),
+    ]
+    injectCompressNudges(state2, config, logger, messages2, makePrompts())
+
+    assert.equal(state2.nudges.shouldInjectThisTurn, true)
+    const text2 = suffixText(messages2)
+    assert.ok(
+        text2.includes(TURN_NUDGE_MARKER),
+        "anchored turn nudge text MUST appear when nudgeAllowed is true",
+    )
+})
 // Reminder threshold scales with context (via nudgeGrowthTokens); on a 1M model
 // it is 50K, not the old hardcoded 5000. Tool chars ≈ JSON.stringify(part).length/4.
 

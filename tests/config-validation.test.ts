@@ -161,3 +161,41 @@ test("validateConfigTypes catches wrong type for compress.maxSummaryLengthHard",
     assert.equal(result[0].key, "compress.maxSummaryLengthHard")
     assert.equal(result[0].actual, "string")
 })
+
+test("validateConfigTypes accepts numeric compress.emergencyThresholdPercent", () => {
+    const result = validateConfigTypes({
+        compress: { emergencyThresholdPercent: 980000 },
+    })
+    assert.deepEqual(result, [])
+})
+
+test("validateConfigTypes accepts percentage string compress.emergencyThresholdPercent", () => {
+    const result = validateConfigTypes({
+        compress: { emergencyThresholdPercent: "95%" },
+    })
+    assert.deepEqual(result, [])
+})
+
+test("validateConfigTypes rejects negative numeric compress.emergencyThresholdPercent", () => {
+    const result = validateConfigTypes({
+        compress: { emergencyThresholdPercent: -1 },
+    })
+    assert.equal(result.length, 1)
+    assert.equal(result[0].key, "compress.emergencyThresholdPercent")
+})
+
+test("validateConfigTypes rejects malformed percentage string in emergencyThresholdPercent", () => {
+    const result = validateConfigTypes({
+        compress: { emergencyThresholdPercent: "abc%" },
+    })
+    assert.equal(result.length, 1)
+    assert.equal(result[0].key, "compress.emergencyThresholdPercent")
+})
+
+test("validateConfigTypes rejects percentage > 100 in emergencyThresholdPercent", () => {
+    const result = validateConfigTypes({
+        compress: { emergencyThresholdPercent: "150%" },
+    })
+    assert.equal(result.length, 1)
+    assert.equal(result[0].key, "compress.emergencyThresholdPercent")
+})
