@@ -311,14 +311,14 @@ export const injectCompressNudges = (
                 breakdown += `\n⚠️ ${fmt(composition.protectedTokens)} tokens are protected (environment-managed tools) — not compressible. Effective compressible: ~${fmt(compressibleTokens)}.`
             }
 
-            const ranges = buildCompressibleRanges(
+            const contextRanges = buildCompressibleRanges(
                 messages,
                 state,
                 config.compress.protectedTools,
                 config.protectedFilePatterns,
             )
-            if (ranges.length > 0) {
-                breakdown += `\n\n${formatCompressibleRanges(ranges)}`
+            if (contextRanges.compressible.length > 0) {
+                breakdown += `\n\n${formatCompressibleRanges(contextRanges.compressible, contextRanges.protected)}`
                 breakdown += `\n💡 Compress all ranges in one call (pass multiple content entries: \`content: [{...}, {...}]\`).`
             }
             breakdown += `\nUse \`acp_status({scope:"uncompressed"})\` to re-fetch compressible ranges after compressing, or \`acp_status\` for compressed block details.`

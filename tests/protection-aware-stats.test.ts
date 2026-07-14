@@ -40,13 +40,15 @@ test("buildCompressibleRanges excludes messages with protected tools", () => {
     ]
     setupRefs(state, messages)
 
-    const ranges = buildCompressibleRanges(messages, state, ["skill"])
-    const allRefs = ranges.flatMap((r) => [r.startRef, r.endRef])
+    const result = buildCompressibleRanges(messages, state, ["skill"])
+    const allRefs = result.compressible.flatMap((r) => [r.startRef, r.endRef])
     assert.ok(
         !allRefs.some((r) => r.includes("m00003")),
-        "protected message m3 excluded from all ranges",
+        "protected message m3 excluded from compressible ranges",
     )
-    assert.ok(ranges.length >= 1, "at least one range remains")
+    assert.ok(result.compressible.length >= 1, "at least one compressible range remains")
+    assert.ok(result.protected.length >= 1, "protected range tracked")
+    assert.ok(result.protected[0].tools.includes("skill"), "protected range lists tool name")
 })
 
 test("buildCompressibleRanges includes all messages when no protected tools configured", () => {
@@ -58,9 +60,10 @@ test("buildCompressibleRanges includes all messages when no protected tools conf
     ]
     setupRefs(state, messages)
 
-    const ranges = buildCompressibleRanges(messages, state, [])
-    assert.ok(ranges.length >= 1)
-    assert.ok(ranges[0].count >= 3, "all messages included")
+    const result = buildCompressibleRanges(messages, state, [])
+    assert.ok(result.compressible.length >= 1)
+    assert.ok(result.compressible[0].count >= 3, "all messages included in compressible")
+    assert.equal(result.protected.length, 0, "no protected ranges when nothing protected")
 })
 
 test("buildCompressibleRanges respects protectedFilePatterns", () => {
@@ -74,11 +77,14 @@ test("buildCompressibleRanges respects protectedFilePatterns", () => {
     ]
     setupRefs(state, messages)
 
-    const ranges = buildCompressibleRanges(messages, state, [], ["src/**/*.ts"])
+    const result = buildCompressibleRanges(messages, state, [], ["src/**/*.ts"])
     assert.ok(
-        !ranges.some((r) => r.startRef.includes("m2") || r.endRef.includes("m2")),
-        "protected file message excluded from ranges",
+        !result.compressible.some(
+            (r) => r.startRef.includes("m00002") || r.endRef.includes("m00002"),
+        ),
+        "protected file message excluded from compressible ranges",
     )
+    assert.ok(result.protected.length >= 1, "protected range tracked")
 })
 
 test("estimateContextComposition tracks protectedTokens", () => {

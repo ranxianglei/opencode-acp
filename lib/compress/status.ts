@@ -195,15 +195,17 @@ function renderOverview(
             const entry = pruneMap.get(msgId)
             return !entry || entry.activeBlockIds.length === 0
         })
-        const ranges = buildCompressibleRanges(
+        const contextRanges = buildCompressibleRanges(
             visibleRaw,
             ctx.state,
             ctx.config?.compress?.protectedTools ?? [],
             ctx.config?.protectedFilePatterns ?? [],
         )
-        if (ranges.length > 0) {
+        if (contextRanges.compressible.length > 0 || contextRanges.protected.length > 0) {
             lines.push("")
-            lines.push(formatCompressibleRanges(ranges))
+            lines.push(
+                formatCompressibleRanges(contextRanges.compressible, contextRanges.protected),
+            )
         }
     }
 
@@ -225,25 +227,26 @@ function renderUncompressedRanges(rawMessages: WithParts[], ctx: ToolContext): s
         return !entry || entry.activeBlockIds.length === 0
     })
 
-    const ranges = buildCompressibleRanges(
+    const contextRanges = buildCompressibleRanges(
         visibleMessages,
         ctx.state,
         ctx.config?.compress?.protectedTools ?? [],
         ctx.config?.protectedFilePatterns ?? [],
     )
-    const totalTokens = ranges.reduce((s, r) => s + r.tokens, 0)
-    const totalMsgs = ranges.reduce((s, r) => s + r.count, 0)
+    const compressible = contextRanges.compressible
+    const totalTokens = compressible.reduce((s, r) => s + r.tokens, 0)
+    const totalMsgs = compressible.reduce((s, r) => s + r.count, 0)
 
     const lines: string[] = []
     lines.push(
-        `UNCOMPRESSED — ${formatTokens(totalTokens)} | ${totalMsgs} msgs in ${ranges.length} ranges`,
+        `UNCOMPRESSED — ${formatTokens(totalTokens)} | ${totalMsgs} msgs in ${compressible.length} ranges`,
     )
     lines.push("")
 
-    if (ranges.length === 0) {
+    if (compressible.length === 0 && contextRanges.protected.length === 0) {
         lines.push("  (no compressible ranges)")
     } else {
-        lines.push(formatCompressibleRanges(ranges))
+        lines.push(formatCompressibleRanges(compressible, contextRanges.protected))
     }
 
     lines.push("")

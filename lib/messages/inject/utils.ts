@@ -711,6 +711,19 @@ export interface CompressibleRange {
     textPct: number
 }
 
+export interface ProtectedRange {
+    startRef: string
+    endRef: string
+    count: number
+    tokens: number
+    tools: string[]
+}
+
+export interface ContextRanges {
+    compressible: CompressibleRange[]
+    protected: ProtectedRange[]
+}
+
 function refNum(ref: string): number {
     const n = parseInt(ref.slice(1), 10)
     return Number.isNaN(n) ? -1 : n
@@ -721,7 +734,7 @@ export function buildCompressibleRanges(
     state: SessionState,
     protectedTools: string[] = [],
     protectedFilePatterns: string[] = [],
-): CompressibleRange[] {
+): ContextRanges {
     const msgInfo: {
         ref: string
         refNum: number
@@ -729,15 +742,35 @@ export function buildCompressibleRanges(
         isTool: boolean
         isUser: boolean
     }[] = []
+    const protectedMsgInfo: {
+        ref: string
+        refNum: number
+        tokens: number
+        tools: string[]
+    }[] = []
     for (const msg of messages) {
         if (isSyntheticMessage(msg)) continue
         const ref = state.messageIds.byRawId.get(msg.info.id)
         if (!ref) continue
 
+        const rn = parseInt(ref.slice(1), 10)
+
         if (
-            protectedTools.length > 0 &&
+            (protectedTools.length > 0 || protectedFilePatterns.length > 0) &&
             messageContainsProtectedTool(msg, protectedTools, protectedFilePatterns)
         ) {
+            let tokens = 0
+            const tools = new Set<string>()
+            for (const part of msg.parts || []) {
+                if (part.type === "text" && typeof (part as any).text === "string") {
+                    tokens += Math.round(((part as any).text as string).length / 4)
+                } else if (part.type !== "text" && part.type !== "reasoning") {
+                    tokens += Math.round(JSON.stringify(part).length / 4)
+                    const toolName = (part as any)?.tool
+                    if (toolName) tools.add(toolName)
+                }
+            }
+            protectedMsgInfo.push({ ref, refNum: rn, tokens, tools: [...tools] })
             continue
         }
 
@@ -751,10 +784,8 @@ export function buildCompressibleRanges(
                 isTool = true
             }
         }
-        const refNum = parseInt(ref.slice(1), 10)
-        msgInfo.push({ ref, refNum, tokens, isTool, isUser: msg.info.role === "user" })
+        msgInfo.push({ ref, refNum: rn, tokens, isTool, isUser: msg.info.role === "user" })
     }
-    if (msgInfo.length === 0) return []
 
     const groups: CompressibleRange[] = []
     let cur: CompressibleRange | null = null
@@ -789,15 +820,59 @@ export function buildCompressibleRanges(
     }
     if (cur) groups.push(cur)
 
-    return groups.filter((g) => g.tokens > 0)
+    const protectedGroups: ProtectedRange[] = []
+    let pcur: ProtectedRange | null = null
+    let pPrevRefNum = -2
+    for (const info of protectedMsgInfo) {
+        const hasGap = info.refNum > pPrevRefNum + 1
+        if (pcur && hasGap) {
+            protectedGroups.push(pcur)
+            pcur = null
+        }
+        pPrevRefNum = info.refNum
+        if (!pcur) {
+            pcur = {
+                startRef: info.ref,
+                endRef: info.ref,
+                count: 1,
+                tokens: info.tokens,
+                tools: [...info.tools],
+            }
+        } else {
+            pcur.endRef = info.ref
+            pcur.count++
+            pcur.tokens += info.tokens
+            for (const t of info.tools) {
+                if (!pcur.tools.includes(t)) pcur.tools.push(t)
+            }
+        }
+    }
+    if (pcur) protectedGroups.push(pcur)
+
+    return {
+        compressible: groups.filter((g) => g.tokens > 0),
+        protected: protectedGroups,
+    }
 }
 
-export function formatCompressibleRanges(ranges: CompressibleRange[]): string {
-    if (ranges.length === 0) return ""
+export function formatCompressibleRanges(
+    ranges: CompressibleRange[],
+    protectedRanges?: ProtectedRange[],
+): string {
     const fmt = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n))
     const lines = ranges.map((r, i) => {
-        const suffix = i === ranges.length - 1 ? "  (recent — may still be in active use)" : ""
+        const suffix =
+            i === ranges.length - 1 && (!protectedRanges || protectedRanges.length === 0)
+                ? "  (recent — may still be in active use)"
+                : ""
         return `  ${r.startRef}–${r.endRef}  ${r.count} msgs  ${fmt(r.tokens)} [tool ${r.toolPct}% | text ${r.textPct}%]${suffix}`
     })
+    if (protectedRanges && protectedRanges.length > 0) {
+        for (const pr of protectedRanges) {
+            lines.push(
+                `  ${pr.startRef}–${pr.endRef}  ${pr.count} msgs  ${fmt(pr.tokens)} [PROTECTED: ${pr.tools.join(", ")} — not compressible]`,
+            )
+        }
+    }
     return `Compressible ranges (oldest first):\n${lines.join("\n")}`
 }

@@ -18,16 +18,31 @@ function buildConfig(): PluginConfig {
         experimental: { allowSubAgents: false, customPrompts: false },
         protectedFilePatterns: [],
         compress: {
-            mode: "range", permission: "allow", showCompression: false, summaryBuffer: true,
-            maxContextLimit: 150000, minContextLimit: 50000,
-            nudgeFrequency: 5, iterationNudgeThreshold: 15, nudgeForce: "soft",
-            protectedTools: [], protectTags: false, protectUserMessages: false,
+            mode: "range",
+            permission: "allow",
+            showCompression: false,
+            summaryBuffer: true,
+            maxContextLimit: 150000,
+            minContextLimit: 50000,
+            nudgeFrequency: 5,
+            iterationNudgeThreshold: 15,
+            nudgeForce: "soft",
+            protectedTools: [],
+            protectTags: false,
+            protectUserMessages: false,
         },
         strategies: {
             deduplication: { enabled: true, protectedTools: [] },
             purgeErrors: { enabled: true, turns: 4, protectedTools: [] },
         },
-        gc: { algorithm: "truncate", promotionThreshold: 5, maxBlockAge: 15, maxOldGenSummaryLength: 3000, majorGcThresholdPercent: "100%", batchCleanup: { lowThreshold: "60%", highThreshold: "75%", forceThreshold: "90%" } },
+        gc: {
+            algorithm: "truncate",
+            promotionThreshold: 5,
+            maxBlockAge: 15,
+            maxOldGenSummaryLength: 3000,
+            majorGcThresholdPercent: "100%",
+            batchCleanup: { lowThreshold: "60%", highThreshold: "75%", forceThreshold: "90%" },
+        },
     }
 }
 
@@ -44,8 +59,12 @@ function textPart(id: string, text: string) {
 
 function toolPart(callID: string, tool: string, output: string, input: any = {}) {
     return {
-        id: `p-${callID}`, messageID: "m", sessionID: "s",
-        type: "tool" as const, tool, callID,
+        id: `p-${callID}`,
+        messageID: "m",
+        sessionID: "s",
+        type: "tool" as const,
+        tool,
+        callID,
         state: { status: "completed" as const, output, input },
     }
 }
@@ -73,9 +92,7 @@ test("resolveKeepMarkers: converts [[REF:mNNNNN|desc]] to compact link", () => {
     const state = createSessionState()
     state.messageIds.byRawId.set("msg1", "m00001")
     const config = buildConfig()
-    const messages: WithParts[] = [
-        mkMsg("msg1", "assistant", [toolPart("c1", "bash", "result")]),
-    ]
+    const messages: WithParts[] = [mkMsg("msg1", "assistant", [toolPart("c1", "bash", "result")])]
     const summary = "See [[REF:m00001|test results]] for details."
     const result = resolveKeepMarkers(summary, messages, state, config)
 
@@ -103,9 +120,7 @@ test("resolveKeepMarkers: truncates long content to keepEmbedMaxChars", () => {
     const config = buildConfig()
     config.compress.keepEmbedMaxChars = 100
     const longOutput = "x".repeat(500)
-    const messages: WithParts[] = [
-        mkMsg("msg1", "assistant", [toolPart("c1", "bash", longOutput)]),
-    ]
+    const messages: WithParts[] = [mkMsg("msg1", "assistant", [toolPart("c1", "bash", longOutput)])]
     const summary = "[[KEEP:m00001]]"
     const result = resolveKeepMarkers(summary, messages, state, config)
 
@@ -132,13 +147,20 @@ test("buildCompressibleRanges: groups by conversation turns", () => {
     }
     const messages: WithParts[] = [
         mkMsg("msg1", "user", [textPart("msg1", "hello")]),
-        mkMsg("msg2", "assistant", [textPart("msg2", "hi"), toolPart("c1", "bash", "x".repeat(100))]),
+        mkMsg("msg2", "assistant", [
+            textPart("msg2", "hi"),
+            toolPart("c1", "bash", "x".repeat(100)),
+        ]),
         mkMsg("msg3", "assistant", [textPart("msg3", "done")]),
         mkMsg("msg4", "user", [textPart("msg4", "next")]),
-        mkMsg("msg5", "assistant", [textPart("msg5", "result"), toolPart("c2", "bash", "y".repeat(100))]),
+        mkMsg("msg5", "assistant", [
+            textPart("msg5", "result"),
+            toolPart("c2", "bash", "y".repeat(100)),
+        ]),
         mkMsg("msg6", "assistant", [textPart("msg6", "finished")]),
     ]
-    const ranges = buildCompressibleRanges(messages, state)
+    const result = buildCompressibleRanges(messages, state)
+    const ranges = result.compressible
     assert.ok(ranges.length >= 1, "should produce at least 1 range")
     assert.ok(ranges[0].count >= 3, "first range should contain multiple messages")
     assert.ok(ranges[0].tokens > 0, "range should have positive token count")
@@ -151,11 +173,14 @@ test("formatCompressibleRanges: produces formatted output", () => {
     state.messageIds.byRawId.set("msg3", "m00003")
     const messages: WithParts[] = [
         mkMsg("msg1", "user", [textPart("msg1", "hello")]),
-        mkMsg("msg2", "assistant", [textPart("msg2", "response"), toolPart("c1", "bash", "x".repeat(200))]),
+        mkMsg("msg2", "assistant", [
+            textPart("msg2", "response"),
+            toolPart("c1", "bash", "x".repeat(200)),
+        ]),
         mkMsg("msg3", "assistant", [textPart("msg3", "done")]),
     ]
-    const ranges = buildCompressibleRanges(messages, state)
-    const formatted = formatCompressibleRanges(ranges)
+    const result = buildCompressibleRanges(messages, state)
+    const formatted = formatCompressibleRanges(result.compressible)
     assert.ok(formatted.includes("Compressible ranges"), "must have header")
     assert.ok(formatted.includes("m00001"), "must show start ref")
 })
