@@ -1,5 +1,6 @@
 import type { SessionState, WithParts } from "../../state"
 import type { PluginConfig } from "../../config"
+import { messageContainsProtectedTool } from "../../compress/protected-content"
 import {
     appendGuidanceToDcpTag,
     buildCompressedBlockGuidance,
@@ -180,7 +181,10 @@ export function isContextOverLimits(
         for (const msg of recentMessages) {
             if (msg.info.role === "assistant" && msg.parts) {
                 for (const part of msg.parts) {
-                    if ((part as any).type === "tool-invocation" && (part as any).toolInvocation?.toolName === "compress") {
+                    if (
+                        (part as any).type === "tool-invocation" &&
+                        (part as any).toolInvocation?.toolName === "compress"
+                    ) {
                         overMaxLimit = false
                         break
                     }
@@ -472,20 +476,41 @@ export function applyAnchoredNudges(
 
         if (config.compress.mode === "message") {
             if (state.nudges.contextLimitAnchors.size > 0) {
-                for (const { index } of collectAnchoredMessages(state.nudges.contextLimitAnchors, messages)) {
-                    const guidance = buildMessagePriorityGuidance(messages, compressionPriorities, index, MESSAGE_MODE_NUDGE_PRIORITY)
+                for (const { index } of collectAnchoredMessages(
+                    state.nudges.contextLimitAnchors,
+                    messages,
+                )) {
+                    const guidance = buildMessagePriorityGuidance(
+                        messages,
+                        compressionPriorities,
+                        index,
+                        MESSAGE_MODE_NUDGE_PRIORITY,
+                    )
                     nudgeParts.push(appendGuidanceToDcpTag(prompts.contextLimitNudge, guidance))
                 }
             }
             if (turnNudgeAnchors.size > 0) {
                 for (const { index } of collectAnchoredMessages(turnNudgeAnchors, messages)) {
-                    const guidance = buildMessagePriorityGuidance(messages, compressionPriorities, index, MESSAGE_MODE_NUDGE_PRIORITY)
+                    const guidance = buildMessagePriorityGuidance(
+                        messages,
+                        compressionPriorities,
+                        index,
+                        MESSAGE_MODE_NUDGE_PRIORITY,
+                    )
                     nudgeParts.push(appendGuidanceToDcpTag(prompts.turnNudge, guidance))
                 }
             }
             if (state.nudges.iterationNudgeAnchors.size > 0) {
-                for (const { index } of collectAnchoredMessages(state.nudges.iterationNudgeAnchors, messages)) {
-                    const guidance = buildMessagePriorityGuidance(messages, compressionPriorities, index, MESSAGE_MODE_NUDGE_PRIORITY)
+                for (const { index } of collectAnchoredMessages(
+                    state.nudges.iterationNudgeAnchors,
+                    messages,
+                )) {
+                    const guidance = buildMessagePriorityGuidance(
+                        messages,
+                        compressionPriorities,
+                        index,
+                        MESSAGE_MODE_NUDGE_PRIORITY,
+                    )
                     nudgeParts.push(appendGuidanceToDcpTag(prompts.iterationNudge, guidance))
                 }
             }
@@ -536,12 +561,7 @@ export function applyAnchoredNudges(
         prompts.contextLimitNudge,
         "",
     )
-    applyRangeModeAnchoredNudge(
-        turnNudgeAnchors,
-        messages,
-        prompts.turnNudge,
-        "",
-    )
+    applyRangeModeAnchoredNudge(turnNudgeAnchors, messages, prompts.turnNudge, "")
     applyRangeModeAnchoredNudge(
         state.nudges.iterationNudgeAnchors,
         messages,
@@ -556,6 +576,7 @@ export interface ContextComposition {
     summaryTokens: number
     messageTokens: number
     textTokens: number
+    protectedTokens: number
     total: number
     largestRanges: { ref: string; tokens: number }[]
     largestToolRanges: { ref: string; tokens: number; tool?: string }[]
@@ -581,11 +602,14 @@ function estimateCodeTokens(text: string): number {
 export function estimateContextComposition(
     messages: WithParts[],
     state?: SessionState,
+    protectedTools: string[] = [],
+    protectedFilePatterns: string[] = [],
 ): ContextComposition {
     let toolTokens = 0
     let codeTokens = 0
     let summaryTokens = 0
     let messageTokens = 0
+    let protectedTokens = 0
     const perMessage: { ref: string; tokens: number }[] = []
     const perTool: { ref: string; tokens: number; tool?: string }[] = []
     const perCode: { ref: string; tokens: number }[] = []
@@ -598,7 +622,13 @@ export function estimateContextComposition(
             .map((p: any) => p.text || "")
             .join("")
         const msgId = (msg.info as any)?.id || ""
-        const isSummary = msgId.startsWith("msg_dcp_summary") || text.includes("[Compressed conversation section]")
+        const isSummary =
+            msgId.startsWith("msg_dcp_summary") ||
+            text.includes("[Compressed conversation section]")
+
+        const isProtected =
+            (protectedTools.length > 0 || protectedFilePatterns.length > 0) &&
+            messageContainsProtectedTool(msg, protectedTools, protectedFilePatterns)
 
         let msgTotal = 0
         let msgTool = 0
@@ -634,6 +664,10 @@ export function estimateContextComposition(
             }
         }
 
+        if (isProtected && !isSummary) {
+            protectedTokens += msgTotal
+        }
+
         if (!isSummary) {
             const ref = state?.messageIds?.byRawId?.get(msgId) || "?"
             if (msgTotal > 500) perMessage.push({ ref, tokens: msgTotal })
@@ -658,6 +692,7 @@ export function estimateContextComposition(
         summaryTokens,
         messageTokens,
         textTokens: Math.max(0, messageTokens - codeTokens),
+        protectedTokens,
         total: toolTokens + summaryTokens + messageTokens,
         largestRanges: perMessage.slice(0, 15),
         largestToolRanges: perTool.slice(0, 15),
@@ -676,6 +711,19 @@ export interface CompressibleRange {
     textPct: number
 }
 
+export interface ProtectedRange {
+    startRef: string
+    endRef: string
+    count: number
+    tokens: number
+    tools: string[]
+}
+
+export interface ContextRanges {
+    compressible: CompressibleRange[]
+    protected: ProtectedRange[]
+}
+
 function refNum(ref: string): number {
     const n = parseInt(ref.slice(1), 10)
     return Number.isNaN(n) ? -1 : n
@@ -684,12 +732,48 @@ function refNum(ref: string): number {
 export function buildCompressibleRanges(
     messages: WithParts[],
     state: SessionState,
-): CompressibleRange[] {
-    const msgInfo: { ref: string; refNum: number; tokens: number; isTool: boolean; isUser: boolean }[] = []
+    protectedTools: string[] = [],
+    protectedFilePatterns: string[] = [],
+): ContextRanges {
+    const msgInfo: {
+        ref: string
+        refNum: number
+        tokens: number
+        isTool: boolean
+        isUser: boolean
+    }[] = []
+    const protectedMsgInfo: {
+        ref: string
+        refNum: number
+        tokens: number
+        tools: string[]
+    }[] = []
     for (const msg of messages) {
         if (isSyntheticMessage(msg)) continue
         const ref = state.messageIds.byRawId.get(msg.info.id)
         if (!ref) continue
+
+        const rn = parseInt(ref.slice(1), 10)
+
+        if (
+            (protectedTools.length > 0 || protectedFilePatterns.length > 0) &&
+            messageContainsProtectedTool(msg, protectedTools, protectedFilePatterns)
+        ) {
+            let tokens = 0
+            const tools = new Set<string>()
+            for (const part of msg.parts || []) {
+                if (part.type === "text" && typeof (part as any).text === "string") {
+                    tokens += Math.round(((part as any).text as string).length / 4)
+                } else if (part.type !== "text" && part.type !== "reasoning") {
+                    tokens += Math.round(JSON.stringify(part).length / 4)
+                    const toolName = (part as any)?.tool
+                    if (toolName) tools.add(toolName)
+                }
+            }
+            protectedMsgInfo.push({ ref, refNum: rn, tokens, tools: [...tools] })
+            continue
+        }
+
         let tokens = 0
         let isTool = false
         for (const part of msg.parts || []) {
@@ -700,10 +784,8 @@ export function buildCompressibleRanges(
                 isTool = true
             }
         }
-        const refNum = parseInt(ref.slice(1), 10)
-        msgInfo.push({ ref, refNum, tokens, isTool, isUser: msg.info.role === "user" })
+        msgInfo.push({ ref, refNum: rn, tokens, isTool, isUser: msg.info.role === "user" })
     }
-    if (msgInfo.length === 0) return []
 
     const groups: CompressibleRange[] = []
     let cur: CompressibleRange | null = null
@@ -738,15 +820,144 @@ export function buildCompressibleRanges(
     }
     if (cur) groups.push(cur)
 
-    return groups.filter((g) => g.tokens > 0)
+    const protectedGroups: ProtectedRange[] = []
+    let pcur: ProtectedRange | null = null
+    let pPrevRefNum = -2
+    for (const info of protectedMsgInfo) {
+        const hasGap = info.refNum > pPrevRefNum + 1
+        if (pcur && hasGap) {
+            protectedGroups.push(pcur)
+            pcur = null
+        }
+        pPrevRefNum = info.refNum
+        if (!pcur) {
+            pcur = {
+                startRef: info.ref,
+                endRef: info.ref,
+                count: 1,
+                tokens: info.tokens,
+                tools: [...info.tools],
+            }
+        } else {
+            pcur.endRef = info.ref
+            pcur.count++
+            pcur.tokens += info.tokens
+            for (const t of info.tools) {
+                if (!pcur.tools.includes(t)) pcur.tools.push(t)
+            }
+        }
+    }
+    if (pcur) protectedGroups.push(pcur)
+
+    return {
+        compressible: groups.filter((g) => g.tokens > 0),
+        protected: protectedGroups,
+    }
 }
 
-export function formatCompressibleRanges(ranges: CompressibleRange[]): string {
-    if (ranges.length === 0) return ""
+interface MergedEntry {
+    startRef: string
+    endRef: string
+    startNum: number
+    endNum: number
+    count: number
+    tokens: number
+    toolPct: number
+    textPct: number
+    compressibleTokens: number
+    compressibleCount: number
+    protectedTokens: number
+    protectedCount: number
+    protectedTools: string[]
+}
+
+export function formatCompressibleRanges(
+    ranges: CompressibleRange[],
+    protectedRanges?: ProtectedRange[],
+): string {
     const fmt = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n))
-    const lines = ranges.map((r, i) => {
-        const suffix = i === ranges.length - 1 ? "  (recent — may still be in active use)" : ""
-        return `  ${r.startRef}–${r.endRef}  ${r.count} msgs  ${fmt(r.tokens)} [tool ${r.toolPct}% | text ${r.textPct}%]${suffix}`
+
+    if (!protectedRanges || protectedRanges.length === 0) {
+        if (ranges.length === 0) return ""
+        const lines = ranges.map((r, i) => {
+            const suffix = i === ranges.length - 1 ? "  (recent — may still be in active use)" : ""
+            return `  ${r.startRef}–${r.endRef}  ${r.count} msgs  ${fmt(r.tokens)} [tool ${r.toolPct}% | text ${r.textPct}%]${suffix}`
+        })
+        return `Compressible ranges (oldest first):\n${lines.join("\n")}`
+    }
+
+    const entries: MergedEntry[] = []
+
+    for (const r of ranges) {
+        entries.push({
+            startRef: r.startRef,
+            endRef: r.endRef,
+            startNum: refNum(r.startRef),
+            endNum: refNum(r.endRef),
+            count: r.count,
+            tokens: r.tokens,
+            toolPct: r.toolPct,
+            textPct: r.textPct,
+            compressibleTokens: r.tokens,
+            compressibleCount: r.count,
+            protectedTokens: 0,
+            protectedCount: 0,
+            protectedTools: [],
+        })
+    }
+    for (const r of protectedRanges) {
+        entries.push({
+            startRef: r.startRef,
+            endRef: r.endRef,
+            startNum: refNum(r.startRef),
+            endNum: refNum(r.endRef),
+            count: r.count,
+            tokens: r.tokens,
+            toolPct: 0,
+            textPct: 0,
+            compressibleTokens: 0,
+            compressibleCount: 0,
+            protectedTokens: r.tokens,
+            protectedCount: r.count,
+            protectedTools: [...r.tools],
+        })
+    }
+
+    entries.sort((a, b) => a.startNum - b.startNum)
+
+    const merged: MergedEntry[] = []
+    for (const entry of entries) {
+        const last = merged[merged.length - 1]
+        if (last && entry.startNum <= last.endNum + 1) {
+            last.endRef = entry.endRef
+            last.endNum = Math.max(last.endNum, entry.endNum)
+            last.count += entry.count
+            last.tokens += entry.tokens
+            last.compressibleTokens += entry.compressibleTokens
+            last.compressibleCount += entry.compressibleCount
+            last.protectedTokens += entry.protectedTokens
+            last.protectedCount += entry.protectedCount
+            for (const t of entry.protectedTools) {
+                if (!last.protectedTools.includes(t)) last.protectedTools.push(t)
+            }
+        } else {
+            merged.push({ ...entry })
+        }
+    }
+
+    const lines = merged.map((e, i) => {
+        const suffix = i === merged.length - 1 && e.compressibleTokens > 0 ? "  (recent — may still be in active use)" : ""
+
+        if (e.protectedTokens > 0 && e.compressibleTokens === 0) {
+            return `  ${e.startRef}–${e.endRef}  ${e.count} msgs  ${fmt(e.tokens)} [PROTECTED: ${e.protectedTools.join(", ")} — not compressible]${suffix}`
+        }
+
+        if (e.protectedTokens > 0 && e.compressibleTokens > 0) {
+            return `  ${e.startRef}–${e.endRef}  ${e.count} msgs  ${fmt(e.tokens)} [${fmt(e.compressibleTokens)} compressible | ${fmt(e.protectedTokens)} protected: ${e.protectedTools.join(", ")}]${suffix}`
+        }
+
+        return `  ${e.startRef}–${e.endRef}  ${e.count} msgs  ${fmt(e.tokens)} [tool ${e.toolPct}% | text ${e.textPct}%]${suffix}`
     })
+
     return `Compressible ranges (oldest first):\n${lines.join("\n")}`
 }

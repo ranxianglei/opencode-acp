@@ -2,7 +2,11 @@ import { tool } from "@opencode-ai/plugin"
 import type { ToolContext } from "./types"
 import { formatAge } from "../ui/utils"
 import type { CompressionBlock, WithParts } from "../state/types"
-import { estimateContextComposition, buildCompressibleRanges, formatCompressibleRanges } from "../messages/inject/utils"
+import {
+    estimateContextComposition,
+    buildCompressibleRanges,
+    formatCompressibleRanges,
+} from "../messages/inject/utils"
 import { fetchSessionMessages } from "./search"
 
 const ACP_STATUS_TOOL_DESCRIPTION = `Show context status — overview includes compressible ranges by default.
@@ -127,8 +131,7 @@ function renderOverview(
     for (const m of visibleMessages) {
         toolTypeMap.set(m.tool, (toolTypeMap.get(m.tool) || 0) + m.tokens)
     }
-    const topToolName = Array.from(toolTypeMap.entries())
-        .sort((a, b) => b[1] - a[1])[0]?.[0]
+    const topToolName = Array.from(toolTypeMap.entries()).sort((a, b) => b[1] - a[1])[0]?.[0]
 
     if (fetchFailed) {
         lines.push("VISIBLE CONTEXT (uncompressed)")
@@ -156,7 +159,9 @@ function renderOverview(
             .sort((a, b) => b.tokens - a.tokens)
             .slice(0, 3)
         if (topTypes.length > 0) {
-            lines.push(`  Top tools: ${topTypes.map((t) => `${t.tool} (${pct(t.tokens, total)}%)`).join(", ")}`)
+            lines.push(
+                `  Top tools: ${topTypes.map((t) => `${t.tool} (${pct(t.tokens, total)}%)`).join(", ")}`,
+            )
         }
     }
 
@@ -177,7 +182,9 @@ function renderOverview(
             const ageStr = formatAge(b.createdAt)
             const range = formatIdRange(b)
             const topic = b.topic || "(no topic)"
-            lines.push(`  b${b.blockId}  ${formatTokens(b.compressedTokens)}→${formatTokens(b.summaryTokens)}  ${ageStr}  ${range}  "${topic}"`)
+            lines.push(
+                `  b${b.blockId}  ${formatTokens(b.compressedTokens)}→${formatTokens(b.summaryTokens)}  ${ageStr}  ${range}  "${topic}"`,
+            )
         }
     }
 
@@ -188,25 +195,31 @@ function renderOverview(
             const entry = pruneMap.get(msgId)
             return !entry || entry.activeBlockIds.length === 0
         })
-        const ranges = buildCompressibleRanges(visibleRaw, ctx.state)
-        if (ranges.length > 0) {
+        const contextRanges = buildCompressibleRanges(
+            visibleRaw,
+            ctx.state,
+            ctx.config?.compress?.protectedTools ?? [],
+            ctx.config?.protectedFilePatterns ?? [],
+        )
+        if (contextRanges.compressible.length > 0 || contextRanges.protected.length > 0) {
             lines.push("")
-            lines.push(formatCompressibleRanges(ranges))
+            lines.push(
+                formatCompressibleRanges(contextRanges.compressible, contextRanges.protected),
+            )
         }
     }
 
     lines.push("")
 
     const hintTool = topToolName || "bash"
-    lines.push(`Tip: acp_status({scope:"uncompressed", view:"messages", tool:"${hintTool}"}) for per-message listing`)
+    lines.push(
+        `Tip: acp_status({scope:"uncompressed", view:"messages", tool:"${hintTool}"}) for per-message listing`,
+    )
 
     return lines
 }
 
-function renderUncompressedRanges(
-    rawMessages: WithParts[],
-    ctx: ToolContext,
-): string[] {
+function renderUncompressedRanges(rawMessages: WithParts[], ctx: ToolContext): string[] {
     const pruneMap = ctx.state.prune.messages.byMessageId
     const visibleMessages = rawMessages.filter((msg) => {
         const msgId = (msg.info as any)?.id || ""
@@ -214,18 +227,26 @@ function renderUncompressedRanges(
         return !entry || entry.activeBlockIds.length === 0
     })
 
-    const ranges = buildCompressibleRanges(visibleMessages, ctx.state)
-    const totalTokens = ranges.reduce((s, r) => s + r.tokens, 0)
-    const totalMsgs = ranges.reduce((s, r) => s + r.count, 0)
+    const contextRanges = buildCompressibleRanges(
+        visibleMessages,
+        ctx.state,
+        ctx.config?.compress?.protectedTools ?? [],
+        ctx.config?.protectedFilePatterns ?? [],
+    )
+    const compressible = contextRanges.compressible
+    const totalTokens = compressible.reduce((s, r) => s + r.tokens, 0)
+    const totalMsgs = compressible.reduce((s, r) => s + r.count, 0)
 
     const lines: string[] = []
-    lines.push(`UNCOMPRESSED — ${formatTokens(totalTokens)} | ${totalMsgs} msgs in ${ranges.length} ranges`)
+    lines.push(
+        `UNCOMPRESSED — ${formatTokens(totalTokens)} | ${totalMsgs} msgs in ${compressible.length} ranges`,
+    )
     lines.push("")
 
-    if (ranges.length === 0) {
+    if (compressible.length === 0 && contextRanges.protected.length === 0) {
         lines.push("  (no compressible ranges)")
     } else {
-        lines.push(formatCompressibleRanges(ranges))
+        lines.push(formatCompressibleRanges(compressible, contextRanges.protected))
     }
 
     lines.push("")
@@ -274,7 +295,9 @@ function renderUncompressedDrilldown(
 
     if (filtered.length > shown.length) {
         lines.push("")
-        lines.push(`${shown.length} of ${filtered.length} shown (${filtered.length - shown.length} hidden).`)
+        lines.push(
+            `${shown.length} of ${filtered.length} shown (${filtered.length - shown.length} hidden).`,
+        )
     }
 
     if (filtered.length > 1 && sort !== "time") {
@@ -311,7 +334,9 @@ function renderCompressedDrilldown(
     const totalSummary = sorted.reduce((s, b) => s + (b.summaryTokens || 0), 0)
     const totalCompressed = sorted.reduce((s, b) => s + (b.compressedTokens || 0), 0)
 
-    lines.push(`COMPRESSED — ${sorted.length} blocks | ${formatTokens(totalCompressed)} original → ${formatTokens(totalSummary)} summary`)
+    lines.push(
+        `COMPRESSED — ${sorted.length} blocks | ${formatTokens(totalCompressed)} original → ${formatTokens(totalSummary)} summary`,
+    )
     lines.push(`Sorted by ${sort === "time" ? "time" : sort === "age" ? "age" : "size"}`)
     lines.push("")
 
@@ -337,15 +362,14 @@ function renderCompressedDrilldown(
     }
 
     lines.push("")
-    lines.push("Use decompress to restore a block's content, or search_context to search within blocks.")
+    lines.push(
+        "Use decompress to restore a block's content, or search_context to search within blocks.",
+    )
 
     return lines
 }
 
-function buildVisibleWithSummaries(
-    rawMessages: WithParts[],
-    ctx: ToolContext,
-): WithParts[] {
+function buildVisibleWithSummaries(rawMessages: WithParts[], ctx: ToolContext): WithParts[] {
     const pruneMap = ctx.state.prune.messages.byMessageId
     const visible = rawMessages.filter((msg) => {
         const msgId = (msg.info as any)?.id || ""
@@ -360,7 +384,9 @@ function buildVisibleWithSummaries(
     for (const block of activeBlocks) {
         visible.push({
             info: { id: `msg_acp_summary_b${block.blockId}` } as any,
-            parts: [{ type: "text", text: block.summary || "[Compressed conversation section]" } as any],
+            parts: [
+                { type: "text", text: block.summary || "[Compressed conversation section]" } as any,
+            ],
         } as any)
     }
 
@@ -380,26 +406,34 @@ export function createAcpStatusTool(ctx: ToolContext): ReturnType<typeof tool> {
             view: tool.schema
                 .string()
                 .optional()
-                .describe('Display format for scope:"uncompressed": "ranges" (default, grouped by turn — matches nudge format) or "messages" (per-message listing with sort/filter)'),
+                .describe(
+                    'Display format for scope:"uncompressed": "ranges" (default, grouped by turn — matches nudge format) or "messages" (per-message listing with sort/filter)',
+                ),
             tool: tool.schema
                 .string()
                 .optional()
-                .describe('Filter by tool type (only with scope:"uncompressed", view:"messages"). e.g., "bash", "todowrite", "write"'),
+                .describe(
+                    'Filter by tool type (only with scope:"uncompressed", view:"messages"). e.g., "bash", "todowrite", "write"',
+                ),
             sort: tool.schema
                 .string()
                 .optional()
                 .describe('Sort order: "size" (default), "time", or "tool"'),
-            limit: tool.schema
-                .number()
-                .optional()
-                .describe("Max items to list (default 30)"),
+            limit: tool.schema.number().optional().describe("Max items to list (default 30)"),
         },
         async execute(args, toolCtx) {
-            const scope = args.scope === "compressed" || args.scope === "uncompressed" ? args.scope : undefined
+            const scope =
+                args.scope === "compressed" || args.scope === "uncompressed"
+                    ? args.scope
+                    : undefined
             const view = args.view === "messages" ? "messages" : "ranges"
             const toolFilter = typeof args.tool === "string" ? args.tool : undefined
-            const sort = args.sort === "time" || args.sort === "tool" || args.sort === "age" ? args.sort : "size"
-            const limit = Number.isFinite(args.limit) && args.limit! > 0 ? Math.min(args.limit!, 200) : 30
+            const sort =
+                args.sort === "time" || args.sort === "tool" || args.sort === "age"
+                    ? args.sort
+                    : "size"
+            const limit =
+                Number.isFinite(args.limit) && args.limit! > 0 ? Math.min(args.limit!, 200) : 30
 
             const msgState = ctx.state.prune.messages
             const activeIds = Array.from(msgState.activeBlockIds).sort((a, b) => a - b)
@@ -436,7 +470,16 @@ export function createAcpStatusTool(ctx: ToolContext): ReturnType<typeof tool> {
                     lines.push(...renderUncompressedRanges(rawMessages, ctx))
                 }
             } else {
-                lines.push(...renderOverview(visibleMsgs, summaryTokens, allBlocks, fetchFailed, rawMessages, ctx))
+                lines.push(
+                    ...renderOverview(
+                        visibleMsgs,
+                        summaryTokens,
+                        allBlocks,
+                        fetchFailed,
+                        rawMessages,
+                        ctx,
+                    ),
+                )
             }
 
             return lines.join("\n")
