@@ -82,7 +82,7 @@ export function getRecompressibleCompressionTargets(
     availableMessageIds: Set<string>,
 ): CompressionTarget[] {
     const allBlocks = Array.from(messagesState.blocksById.values()).filter((block) => {
-        return availableMessageIds.has(block.compressMessageId)
+        return block.compressMessageId !== undefined && availableMessageIds.has(block.compressMessageId)
     })
 
     const messageGroups = new Map<number, CompressionBlock[]>()
