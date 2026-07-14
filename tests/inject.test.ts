@@ -645,9 +645,10 @@ test("growth floor: nudge suppressed when growth below floor (issue #27 anti-thr
     assert.equal(state.nudges.lastNudgeShownTokens, undefined, "lastNudgeShownTokens not updated")
 })
 
-test("growth floor: nudge fires when growth meets floor", () => {
-    // 1M model: growthFloor = max(5000, 0.45×50000) = 22500
-    // Growth of 25K >= 22500 → nudge fires with breakdown + ranges
+test("growth floor: nudge fires when growth meets nudgeGrowthTokens (not just growthFloor)", () => {
+    // 1M model: nudgeGrowthTokens = 50000, growthFloor = max(5000, 0.45×50000) = 22500
+    // Growth of 25K >= growthFloor (22500) but < nudgeGrowthTokens (50000) → suppressed
+    // Growth of 55K >= nudgeGrowthTokens (50000) AND >= growthFloor (22500) → fires
     const state = createSessionState()
     state.modelContextLimit = 1_000_000
     state.nudges.lastPerMessageNudgeTokens = 200_000
@@ -658,6 +659,7 @@ test("growth floor: nudge fires when growth meets floor", () => {
     config.compress.maxContextLimit = 500_000
     config.compress.minContextLimit = 200_000
 
+    // 25K growth: below nudgeGrowthTokens → suppressed
     const messages: WithParts[] = [
         userMsg("u1", "hello"),
         assistantMsgWithTokens("a1", "done", { input: 200_000, output: 25_000 }, [
@@ -666,12 +668,28 @@ test("growth floor: nudge fires when growth meets floor", () => {
     ]
     injectCompressNudges(state, config, logger, messages, {} as any)
 
-    assert.equal(state.nudges.shouldInjectThisTurn, true, "25K growth >= 22500 floor → nudge fires")
+    assert.equal(state.nudges.shouldInjectThisTurn, false, "25K growth < 50K nudgeGrowthTokens → nudge suppressed")
 
-    const injected = suffixText(messages)
-    assert.ok(injected.includes("Breakdown:"), "breakdown shown when growth meets floor")
-    assert.ok(injected.includes("Compressible ranges"), "ranges shown when growth meets floor")
-    assert.equal(state.nudges.lastNudgeShownTokens, 225_000, "lastNudgeShownTokens updated")
+    // 55K growth: above nudgeGrowthTokens AND above growthFloor → fires
+    const state2 = createSessionState()
+    state2.modelContextLimit = 1_000_000
+    state2.nudges.lastPerMessageNudgeTokens = 200_000
+    state2.messageIds.byRawId.set("u1", "m00001")
+    state2.messageIds.byRawId.set("a2", "m00003")
+
+    const messages2: WithParts[] = [
+        userMsg("u1", "hello"),
+        assistantMsgWithTokens("a2", "done", { input: 200_000, output: 55_000 }, [
+            toolPart("c1", "x".repeat(80_000)),
+        ]),
+    ]
+    injectCompressNudges(state2, config, logger, messages2, {} as any)
+
+    assert.equal(state2.nudges.shouldInjectThisTurn, true, "55K growth >= 50K nudgeGrowthTokens → nudge fires")
+
+    const injected = suffixText(messages2)
+    assert.ok(injected.includes("Breakdown:"), "breakdown shown when growth meets threshold")
+    assert.ok(injected.includes("Compressible ranges"), "ranges shown when growth meets threshold")
 })
 
 test("growth floor: 98% emergency override fires regardless of growth", () => {
@@ -794,7 +812,7 @@ test("growth floor: applyAnchoredNudges output suppressed when growth below floo
         "anchored turn nudge text must NOT appear when nudgeAllowed is false",
     )
 
-    // --- Fires: growth meets floor → anchored nudge text SHOULD appear ---
+    // --- Fires: growth meets nudgeGrowthTokens → anchored nudge text SHOULD appear ---
     const state2 = createSessionState()
     state2.modelContextLimit = 1_000_000
     state2.nudges.lastPerMessageNudgeTokens = 200_000
@@ -804,8 +822,8 @@ test("growth floor: applyAnchoredNudges output suppressed when growth below floo
 
     const messages2: WithParts[] = [
         userMsg("u1", "hello"),
-        assistantMsgWithTokens("a1", "done", { input: 200_000, output: 25_000 }, [
-            toolPart("c1", "x".repeat(40_000)),
+        assistantMsgWithTokens("a1", "done", { input: 200_000, output: 55_000 }, [
+            toolPart("c1", "x".repeat(80_000)),
         ]),
         userMsg("u2", "next"),
     ]
