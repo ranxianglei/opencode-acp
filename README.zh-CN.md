@@ -395,6 +395,14 @@ ACP 在首次启动时自动将配置从 `dcp.jsonc` 迁移到 `acp.jsonc`，将
 
 ## 更新日志
 
+### v1.13.0 — 压缩失败回滚 + Sync carve-out 移除（PR #126）
+
+**问题**：压缩失败后的处理存在两个 bug（issue #125）。（1）compress 工具在内存中增量修改状态，没有 try/catch——如果在 `applyCompressionState` 和 `finalizeSession` 之间抛出异常，"幽灵块"（未持久化的活跃块）会在后续 transform 中隐藏消息。（2）`syncCompressionBlocks` 有一个 carve-out：当块的锚点从消息中缺失但在 `byMessageId` 中有记录时，块保持活跃。这个 carve-out 本意是保护 ACP 隐藏的锚点，但 sync 运行在原始消息列表上（在过滤之前），所以它只在外部删除的锚点场景触发 → 块保持活跃但无法注入摘要 → 隐藏消息无替换 → **LLM 请求为空**。
+
+**修复**：（1）在 `lib/compress/pipeline.ts` 中新增 `snapshotCompressionState()` / `restoreCompressionState()`（使用 `structuredClone`）。在 `lib/compress/range.ts` 和 `lib/compress/message.ts` 中用 try/catch 包裹变更阶段。失败时，状态（包括 `manualMode`）恢复到变更前的快照——不会有幽灵块。（2）移除 `lib/messages/sync.ts` 中的 carve-out。锚点从消息中缺失时，总是停用块。经 Oracle 审查。
+
+文件：`lib/messages/sync.ts`、`lib/compress/pipeline.ts`、`lib/compress/range.ts`、`lib/compress/message.ts`。测试：`tests/sync.test.ts`（更新）、`tests/compress-rollback.test.ts`（新增，4 个测试）。643 个测试通过。
+
 ### v1.12.1 — 压缩摘要注入修复 + 历史压缩调用剥离（PR #119）
 
 **问题**：`acp_context_recap` 用于创建合成的 tool-result 摘要消息，但未注册为真实工具——provider 可能剥离/转换未注册的 tool-result，导致模型将压缩摘要视为纯文本或用户消息（回声/漂移 bug）。此外，compress 工具调用的输入与 block recap 内容重复占用上下文。

@@ -422,6 +422,14 @@ For the complete list with root cause analysis, see the [bug tracker](https://gi
 
 ## Changelog
 
+### v1.13.0 — Compress Failure Rollback + Sync Carve-out Removal (PR #126)
+
+**Problem**: Two bugs in post-compression-failure handling (issue #125). (1) The compress tool mutated in-memory state incrementally with no try/catch — if anything threw between the first `applyCompressionState` and `finalizeSession`, "ghost blocks" (active blocks never persisted) hid messages on subsequent transforms. (2) `syncCompressionBlocks` had a carve-out that kept blocks active when the anchor was missing from messages but tracked in `byMessageId`. This carve-out was intended for ACP-hidden anchors, but sync runs on the raw message list (before filtering), so it only triggered for externally-deleted anchors → messages hidden without recap injection → empty LLM requests.
+
+**Fix**: (1) Added `snapshotCompressionState()` / `restoreCompressionState()` to `lib/compress/pipeline.ts` using `structuredClone`. Wrapped the mutation phase in try/catch in both `lib/compress/range.ts` and `lib/compress/message.ts`. On failure, state (including `manualMode`) is restored to the pre-mutation snapshot — no ghost blocks. (2) Removed the carve-out in `lib/messages/sync.ts`. When anchor is gone from messages, always deactivate the block. Oracle-reviewed.
+
+Files: `lib/messages/sync.ts`, `lib/compress/pipeline.ts`, `lib/compress/range.ts`, `lib/compress/message.ts`. Tests: `tests/sync.test.ts` (updated), `tests/compress-rollback.test.ts` (NEW, 4 tests). 643 tests pass.
+
 ### v1.12.1 — Compression Recap Injection Fix + Stale Compress Stripping (PR #119)
 
 **Problem**: `acp_context_recap` was used to create synthetic tool-result recap messages but was NOT registered as a real tool — providers could strip/convert unregistered tool-results, causing the model to see compression summaries as plain text or user messages (echo/drift bugs). Additionally, compress tool-call inputs duplicated block recap content in context.
