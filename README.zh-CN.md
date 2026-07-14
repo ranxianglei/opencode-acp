@@ -395,6 +395,14 @@ ACP 在首次启动时自动将配置从 `dcp.jsonc` 迁移到 `acp.jsonc`，将
 
 ## 更新日志
 
+### v1.12.3 — 正则标签碎片泄漏修复（PR #130）
+
+**问题**：`lib/messages/utils.ts` 中三个正则表达式缺少开标签 `<` 和标签名匹配，导致 ACP 内部 XML 标签碎片和过期消息 ID 在多轮压缩后泄漏到用户可见的对话框中（issue #123）。
+
+**修复**：（1）`DCP_PAIRED_TAG_REGEX`（第 14 行）：`]*>` 匹配任意 `>` 字符 → 修正为 `<(?:dcp|acp)[^>]*>`。（2）`DCP_BLOCK_ID_TAG_REGEX`（第 11 行）：`(])` 要求字面量 `]` → `replaceBlockIdsWithBlocked` 完全失效 → 修正为 `(<(?:dcp|acp)-message-id[^>]*>)`。（3）`DCP_MESSAGE_REF_TAG_REGEX`（第 13 行）：只匹配 `m\d+</closing>` → 残留 `<dcp-message-id ...>` 开标签碎片 → 补上开标签匹配。取代 PR #124。
+
+文件：`lib/messages/utils.ts`。测试：`tests/regex-tag-leak.test.ts`（新增，23 个测试）。666 个测试通过。
+
 ### v1.12.2 — 压缩失败回滚 + Sync carve-out 移除（PR #126）
 
 **问题**：压缩失败后的处理存在两个 bug（issue #125）。（1）compress 工具在内存中增量修改状态，没有 try/catch——如果在 `applyCompressionState` 和 `finalizeSession` 之间抛出异常，"幽灵块"（未持久化的活跃块）会在后续 transform 中隐藏消息。（2）`syncCompressionBlocks` 有一个 carve-out：当块的锚点从消息中缺失但在 `byMessageId` 中有记录时，块保持活跃。这个 carve-out 本意是保护 ACP 隐藏的锚点，但 sync 运行在原始消息列表上（在过滤之前），所以它只在外部删除的锚点场景触发 → 块保持活跃但无法注入摘要 → 隐藏消息无替换 → **LLM 请求为空**。
