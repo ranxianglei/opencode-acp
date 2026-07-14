@@ -226,19 +226,30 @@ export const injectCompressNudges = (
 
     const suffixMessage = createSuffixMessage(messages)
 
-    applyAnchoredNudges(
-        state,
-        config,
-        messages,
-        prompts,
-        compressionPriorities,
-        currentTokens,
-        modelContextLimit,
-        suffixMessage,
-    )
 
     const nudgeGrowthTokens =
         config.compress?.nudgeGrowthTokens ?? resolveAdaptiveNudgeGrowth(modelContextLimit)
+
+    // ── Growth floor gate (anti-thrashing) ──────────────────────────────
+    // Nudge output is suppressed unless context grew by at least growthFloor
+    // tokens since the last nudge baseline. Prevents re-nudging every turn
+    // after a small compress or when anchors accumulate with negligible growth.
+    //
+    //   growthFloor = max(minNudgeGrowthFloor, minNudgeGrowthRatio × nudgeGrowthTokens)
+    //     1M model:   max(5000, 0.45×50000) = 22500
+    //     100K model: max(5000, 0.45×6000)  = 5000
+    //
+    // Only bypassed at emergencyThresholdPercent (default 98%) — near-overflow
+    // always fires regardless of growth.
+    const growthFloor = Math.max(
+        config.compress?.minNudgeGrowthFloor ?? 5000,
+        (config.compress?.minNudgeGrowthRatio ?? 0.45) * nudgeGrowthTokens,
+    )
+    const emergencyThreshold = resolveEmergencyThreshold(config, modelContextLimit)
+    const emergencyOverride =
+        emergencyThreshold !== undefined &&
+        currentTokens !== undefined &&
+        currentTokens >= emergencyThreshold
 
     if (
         currentTokens !== undefined &&
@@ -267,7 +278,21 @@ export const injectCompressNudges = (
         nudgeGrowthTokens: effectiveThreshold,
     })
 
-    state.nudges.shouldInjectThisTurn = decision.shouldNudge
+    const growthSinceBaseline =
+        currentTokens !== undefined && growthReference !== undefined
+            ? currentTokens - growthReference
+            : undefined
+    const nudgeAllowed =
+        emergencyOverride ||
+        (growthSinceBaseline !== undefined && growthSinceBaseline >= growthFloor)
+
+    state.nudges.shouldInjectThisTurn = nudgeAllowed
+
+    const effectiveTipsVariant = emergencyOverride ? "maxLimit" : decision.tipsVariant
+
+    if (nudgeAllowed) {
+        applyAnchoredNudges(state, config, messages, prompts, compressionPriorities, currentTokens, modelContextLimit, suffixMessage)
+    }
 
     if (state.nudges.lastPerMessageNudgeTokens === undefined && currentTokens !== undefined) {
         state.nudges.lastPerMessageNudgeTokens = currentTokens
@@ -283,7 +308,7 @@ export const injectCompressNudges = (
 
     let tipsText: string | null = null
 
-    if (decision.shouldNudge) {
+    if (nudgeAllowed) {
         injectContextUsage(suffixMessage, config, currentTokens, modelContextLimit)
 
         if (suffixMessage && composition.total > 0) {
@@ -299,10 +324,9 @@ export const injectCompressNudges = (
             const plainTextTokens = composition.textTokens
             // Soft nudges (growth/min-limit) are efficiency prompts, not overflow
             // warnings — a separate, stronger alert fires at maxLimit (below).
-            const efficiencyNote =
-                decision.tipsVariant !== "maxLimit"
-                    ? `\nThis is an efficiency nudge to compress early and keep context lean — not an overflow warning. A separate, stronger alert will appear if the context is actually full.\n\n${COMPRESS_PHILOSOPHY}`
-                    : ""
+            const efficiencyNote = effectiveTipsVariant !== "maxLimit"
+                ? `\nThis is an efficiency nudge to compress early and keep context lean — not an overflow warning. A separate, stronger alert will appear if the context is actually full.\n\n${COMPRESS_PHILOSOPHY}`
+                : ""
             let breakdown = `${efficiencyNote}\nBreakdown: ${fmt(composition.toolTokens)} tool (${pct(composition.toolTokens)}%) | ${fmt(composition.summaryTokens)} summaries (${pct(composition.summaryTokens)}%) | ${fmt(composition.codeTokens)} code (${pct(composition.codeTokens)}%) | ${fmt(plainTextTokens)} text (${pct(plainTextTokens)}%)${growthStr}`
 
             const compressibleTokens =
@@ -323,13 +347,14 @@ export const injectCompressNudges = (
             }
             breakdown += `\nUse \`acp_status({scope:"uncompressed"})\` to re-fetch compressible ranges after compressing, or \`acp_status\` for compressed block details.`
 
-            if (decision.tipsVariant !== "maxLimit") {
+            if (effectiveTipsVariant !== "maxLimit") {
                 breakdown += `\n\n${HOW_TO_COMPRESS_RULES}`
             }
             appendToLastTextPart(suffixMessage, breakdown)
         }
 
-        if (decision.tipsVariant === "maxLimit") {
+        // maxLimit strong alert + lastNudgeShownTokens + block aging guidance
+        if (effectiveTipsVariant === "maxLimit") {
             tipsText =
                 '\n\n⚠️ Context limit reached — compress now. Prioritize consumed tool outputs.\n\n{ "topic": "...", "content": [{ "startId": "<ID>", "endId": "<ID>", "summary": "..." }] }\n\nOnly use IDs from visible messages above. Compress older work first.'
         }
@@ -337,7 +362,9 @@ export const injectCompressNudges = (
         // repeat every turn until the model actually compresses.
         state.nudges.lastNudgeShownTokens = currentTokens
         if (config.compress.mode !== "message") {
-            const visibleMessageIds = new Set<string>(messages.map((message) => message.info.id))
+            const visibleMessageIds = new Set<string>(
+                messages.map((message) => message.info.id),
+            )
             const blockGuidance = buildCompressedBlockGuidance(state, config.gc, {
                 currentTokens,
                 modelContextLimit,
@@ -381,9 +408,23 @@ export const injectCompressNudges = (
     // baseline (above) but anchorsChanged stays false when anchor sets are
     // saturated, so the on-disk baseline went stale and the nudge refired every
     // turn after restart.
-    if (anchorsChanged || decision.shouldNudge || baselineReEstablished || baselineCorrected) {
+    if (anchorsChanged || nudgeAllowed || baselineReEstablished || baselineCorrected) {
         saveSessionState(state, logger).catch(() => {})
     }
+}
+
+function resolveEmergencyThreshold(
+    config: PluginConfig,
+    modelContextLimit: number | undefined,
+): number | undefined {
+    const threshold = config.compress?.emergencyThresholdPercent
+    if (threshold === undefined || modelContextLimit === undefined) return undefined
+    if (typeof threshold === "number") return threshold
+    if (!threshold.endsWith("%")) return undefined
+    const parsedPercent = parseFloat(threshold.slice(0, -1))
+    if (isNaN(parsedPercent)) return undefined
+    const clampedPercent = Math.max(0, Math.min(100, Math.round(parsedPercent)))
+    return Math.round((clampedPercent / 100) * modelContextLimit)
 }
 
 function injectContextUsage(

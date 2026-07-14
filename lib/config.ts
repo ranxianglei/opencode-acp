@@ -34,6 +34,9 @@ export interface CompressConfig {
     protectUserMessages: boolean
     maxSummaryLengthHard: number
     minCompressRange: number
+    minNudgeGrowthRatio: number
+    minNudgeGrowthFloor: number
+    emergencyThresholdPercent: number | `${number}%`
     maxVisibleSegments: number
     keepEmbedMaxChars: number
 }
@@ -201,7 +204,10 @@ const defaultConfig: PluginConfig = {
         protectTags: false,
         protectUserMessages: false,
         maxSummaryLengthHard: 10000,
-        minCompressRange: 2000,
+        minCompressRange: 5000,
+        minNudgeGrowthRatio: 0.45,
+        minNudgeGrowthFloor: 5000,
+        emergencyThresholdPercent: "98%",
         maxVisibleSegments: 50,
         keepEmbedMaxChars: 2000,
     },
@@ -415,6 +421,9 @@ function mergeCompress(
         protectUserMessages: override.protectUserMessages ?? base.protectUserMessages,
         maxSummaryLengthHard: override.maxSummaryLengthHard ?? base.maxSummaryLengthHard,
         minCompressRange: override.minCompressRange ?? base.minCompressRange,
+        minNudgeGrowthRatio: override.minNudgeGrowthRatio ?? base.minNudgeGrowthRatio,
+        minNudgeGrowthFloor: override.minNudgeGrowthFloor ?? base.minNudgeGrowthFloor,
+        emergencyThresholdPercent: override.emergencyThresholdPercent ?? base.emergencyThresholdPercent,
         maxVisibleSegments: override.maxVisibleSegments ?? base.maxVisibleSegments,
         keepEmbedMaxChars: override.keepEmbedMaxChars ?? base.keepEmbedMaxChars,
     }

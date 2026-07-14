@@ -29,6 +29,10 @@ function buildConfig(mode: "message" | "range" = "range"): PluginConfig {
             maxContextLimit: 150000, minContextLimit: 50000,
             nudgeFrequency: 5, iterationNudgeThreshold: 15, nudgeForce: "soft",
             protectedTools: [], protectTags: false, protectUserMessages: false,
+            minNudgeContextPercent: 15, maxSummaryLengthHard: 10000,
+            minCompressRange: 5000, minNudgeGrowthRatio: 0.45,
+            minNudgeGrowthFloor: 5000, emergencyThresholdPercent: "98%",
+            maxVisibleSegments: 50, keepEmbedMaxChars: 2000,
         },
         strategies: {
             deduplication: { enabled: true, protectedTools: [] },
@@ -605,6 +609,213 @@ test("E2E: nudge recommendation content includes composition breakdown and compr
     assert.ok(
         injected.includes("acp_status") || injected.includes("compress") || injected.includes("review"),
         "nudge must include compress guidance",
+    )
+})
+
+test("growth floor: nudge suppressed when growth below floor (issue #27 anti-thrashing)", () => {
+    // 1M model: growthFloor = max(5000, 0.45×50000) = 22500
+    // Growth of 5K < 22500 → no nudge output at all
+    const state = createSessionState()
+    state.modelContextLimit = 1_000_000
+    state.nudges.lastPerMessageNudgeTokens = 205_000
+    state.messageIds.byRawId.set("u1", "m00001")
+    state.messageIds.byRawId.set("a1", "m00002")
+    state.messageIds.byRawId.set("u2", "m00003")
+
+    const config = buildConfig()
+    config.compress.maxContextLimit = 500_000
+    config.compress.minContextLimit = 200_000
+
+    const messages: WithParts[] = [
+        userMsg("u1", "hello"),
+        assistantMsgWithTokens("a1", "done", { input: 200_000, output: 10_000 }, [
+            toolPart("c1", "x".repeat(40_000)),
+        ]),
+        userMsg("u2", "next"),
+    ]
+    injectCompressNudges(state, config, logger, messages, {} as any)
+
+    assert.equal(state.nudges.shouldInjectThisTurn, false, "5K growth < 22500 floor → nudge suppressed")
+    assert.ok(state.nudges.turnNudgeAnchors.size > 0, "anchors still accumulate")
+
+    const injected = suffixText(messages)
+    assert.ok(!injected.includes("Breakdown:"), "no breakdown when growth below floor")
+    assert.ok(!injected.includes("Compressible ranges"), "no ranges when growth below floor")
+    assert.ok(!injected.includes("Context limit reached"), "no strong alert when growth below floor")
+    assert.equal(state.nudges.lastNudgeShownTokens, undefined, "lastNudgeShownTokens not updated")
+})
+
+test("growth floor: nudge fires when growth meets floor", () => {
+    // 1M model: growthFloor = max(5000, 0.45×50000) = 22500
+    // Growth of 25K >= 22500 → nudge fires with breakdown + ranges
+    const state = createSessionState()
+    state.modelContextLimit = 1_000_000
+    state.nudges.lastPerMessageNudgeTokens = 200_000
+    state.messageIds.byRawId.set("u1", "m00001")
+    state.messageIds.byRawId.set("a1", "m00002")
+
+    const config = buildConfig()
+    config.compress.maxContextLimit = 500_000
+    config.compress.minContextLimit = 200_000
+
+    const messages: WithParts[] = [
+        userMsg("u1", "hello"),
+        assistantMsgWithTokens("a1", "done", { input: 200_000, output: 25_000 }, [
+            toolPart("c1", "x".repeat(40_000)),
+        ]),
+    ]
+    injectCompressNudges(state, config, logger, messages, {} as any)
+
+    assert.equal(state.nudges.shouldInjectThisTurn, true, "25K growth >= 22500 floor → nudge fires")
+
+    const injected = suffixText(messages)
+    assert.ok(injected.includes("Breakdown:"), "breakdown shown when growth meets floor")
+    assert.ok(injected.includes("Compressible ranges"), "ranges shown when growth meets floor")
+    assert.equal(state.nudges.lastNudgeShownTokens, 225_000, "lastNudgeShownTokens updated")
+})
+
+test("growth floor: 98% emergency override fires regardless of growth", () => {
+    // Context at 98%+ but growth is 0 → emergency override fires
+    const state = createSessionState()
+    state.modelContextLimit = 1_000_000
+    state.nudges.lastPerMessageNudgeTokens = 980_000
+    state.nudges.lastNudgeShownTokens = 980_000
+    state.messageIds.byRawId.set("u1", "m00001")
+    state.messageIds.byRawId.set("a1", "m00002")
+
+    const config = buildConfig()
+    config.compress.maxContextLimit = 500_000
+    config.compress.minContextLimit = 200_000
+
+    const messages: WithParts[] = [
+        userMsg("u1", "hello"),
+        assistantMsgWithTokens("a1", "done", { input: 970_000, output: 10_000 }, [
+            toolPart("c1", "x".repeat(40_000)),
+        ]),
+    ]
+    injectCompressNudges(state, config, logger, messages, {} as any)
+
+    assert.equal(state.nudges.shouldInjectThisTurn, true, "98% context → emergency override fires")
+
+    const injected = suffixText(messages)
+    assert.ok(injected.includes("Breakdown:"), "breakdown shown at emergency")
+    assert.ok(
+        injected.includes("Context limit reached — compress now"),
+        "strong maxLimit alert at emergency",
+    )
+})
+
+test("growth floor: 5000 floor on small-context models", () => {
+    // 100K model: nudgeGrowthTokens = max(6000, 100K×5%) = 6000
+    // growthFloor = max(5000, 0.45×6000) = max(5000, 2700) = 5000
+    // Growth of 4K < 5000 → suppressed. Growth of 6K >= 5000 → fires.
+    const state = createSessionState()
+    state.modelContextLimit = 100_000
+    state.nudges.lastPerMessageNudgeTokens = 20_000
+    state.messageIds.byRawId.set("u1", "m00001")
+    state.messageIds.byRawId.set("a1", "m00002")
+
+    const config = buildConfig()
+    config.compress.maxContextLimit = 60_000
+    config.compress.minContextLimit = 20_000
+
+    const messages: WithParts[] = [
+        userMsg("u1", "hello"),
+        assistantMsgWithTokens("a1", "done", { input: 20_000, output: 4_000 }, [
+            toolPart("c1", "x".repeat(8_000)),
+        ]),
+    ]
+    injectCompressNudges(state, config, logger, messages, {} as any)
+
+    assert.equal(state.nudges.shouldInjectThisTurn, false, "4K growth < 5000 floor on 100K model")
+
+    // Now with 6K growth → should fire
+    const state2 = createSessionState()
+    state2.modelContextLimit = 100_000
+    state2.nudges.lastPerMessageNudgeTokens = 20_000
+    state2.messageIds.byRawId.set("u1", "m00001")
+    state2.messageIds.byRawId.set("a1", "m00002")
+
+    const messages2: WithParts[] = [
+        userMsg("u1", "hello"),
+        assistantMsgWithTokens("a1", "done", { input: 20_000, output: 6_000 }, [
+            toolPart("c1", "x".repeat(8_000)),
+        ]),
+    ]
+    injectCompressNudges(state2, config, logger, messages2, {} as any)
+
+    assert.equal(state2.nudges.shouldInjectThisTurn, true, "6K growth >= 5000 floor on 100K model")
+})
+
+test("growth floor: applyAnchoredNudges output suppressed when growth below floor (Oracle MEDIUM #2)", () => {
+    // Verify that applyAnchoredNudges is gated by nudgeAllowed — not just the
+    // breakdown block. If someone un-gates applyAnchoredNudges, anchored nudge
+    // prompt text would leak into the suffix every turn.
+    const TURN_NUDGE_MARKER = "TURN_NUDGE_TEST_MARKER"
+
+    const makePrompts = () =>
+        ({
+            system: "",
+            compressRange: "",
+            compressMessage: "",
+            contextLimitNudge: "CTX_LIMIT_MARKER",
+            turnNudge: TURN_NUDGE_MARKER,
+            iterationNudge: "ITER_NUDGE_MARKER",
+            manualExtension: "",
+            subagentExtension: "",
+            decompressExtension: "",
+        }) as any
+
+    // --- Suppressed: growth below floor ---
+    const state1 = createSessionState()
+    state1.modelContextLimit = 1_000_000
+    state1.nudges.lastPerMessageNudgeTokens = 205_000
+    state1.messageIds.byRawId.set("u1", "m00001")
+    state1.messageIds.byRawId.set("a1", "m00002")
+    state1.messageIds.byRawId.set("u2", "m00003")
+
+    const config = buildConfig()
+    config.compress.maxContextLimit = 500_000
+    config.compress.minContextLimit = 200_000
+
+    const messages1: WithParts[] = [
+        userMsg("u1", "hello"),
+        assistantMsgWithTokens("a1", "done", { input: 200_000, output: 10_000 }, [
+            toolPart("c1", "x".repeat(40_000)),
+        ]),
+        userMsg("u2", "next"),
+    ]
+    injectCompressNudges(state1, config, logger, messages1, makePrompts())
+
+    assert.equal(state1.nudges.shouldInjectThisTurn, false)
+    const text1 = suffixText(messages1)
+    assert.ok(
+        !text1.includes(TURN_NUDGE_MARKER),
+        "anchored turn nudge text must NOT appear when nudgeAllowed is false",
+    )
+
+    // --- Fires: growth meets floor → anchored nudge text SHOULD appear ---
+    const state2 = createSessionState()
+    state2.modelContextLimit = 1_000_000
+    state2.nudges.lastPerMessageNudgeTokens = 200_000
+    state2.messageIds.byRawId.set("u1", "m00001")
+    state2.messageIds.byRawId.set("a1", "m00002")
+    state2.messageIds.byRawId.set("u2", "m00003")
+
+    const messages2: WithParts[] = [
+        userMsg("u1", "hello"),
+        assistantMsgWithTokens("a1", "done", { input: 200_000, output: 25_000 }, [
+            toolPart("c1", "x".repeat(40_000)),
+        ]),
+        userMsg("u2", "next"),
+    ]
+    injectCompressNudges(state2, config, logger, messages2, makePrompts())
+
+    assert.equal(state2.nudges.shouldInjectThisTurn, true)
+    const text2 = suffixText(messages2)
+    assert.ok(
+        text2.includes(TURN_NUDGE_MARKER),
+        "anchored turn nudge text MUST appear when nudgeAllowed is true",
     )
 })
 // Reminder threshold scales with context (via nudgeGrowthTokens); on a 1M model

@@ -44,6 +44,9 @@ export const VALID_CONFIG_KEYS = new Set([
     "compress.protectUserMessages",
     "compress.maxSummaryLengthHard",
     "compress.minCompressRange",
+    "compress.minNudgeGrowthRatio",
+    "compress.minNudgeGrowthFloor",
+    "compress.emergencyThresholdPercent",
     "compress.maxVisibleSegments",
     "compress.keepEmbedMaxChars",
     "gc",
@@ -415,6 +418,81 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
                     expected: "non-negative number (>= 0)",
                     actual: `${compress.minCompressRange}`,
                 })
+            }
+
+            if (
+                compress.minNudgeGrowthRatio !== undefined &&
+                typeof compress.minNudgeGrowthRatio !== "number"
+            ) {
+                errors.push({
+                    key: "compress.minNudgeGrowthRatio",
+                    expected: "number",
+                    actual: typeof compress.minNudgeGrowthRatio,
+                })
+            }
+
+            if (
+                typeof compress.minNudgeGrowthRatio === "number" &&
+                (compress.minNudgeGrowthRatio < 0 || compress.minNudgeGrowthRatio > 1)
+            ) {
+                errors.push({
+                    key: "compress.minNudgeGrowthRatio",
+                    expected: "number in range [0, 1]",
+                    actual: `${compress.minNudgeGrowthRatio}`,
+                })
+            }
+
+            if (
+                compress.minNudgeGrowthFloor !== undefined &&
+                typeof compress.minNudgeGrowthFloor !== "number"
+            ) {
+                errors.push({
+                    key: "compress.minNudgeGrowthFloor",
+                    expected: "number",
+                    actual: typeof compress.minNudgeGrowthFloor,
+                })
+            }
+
+            if (
+                typeof compress.minNudgeGrowthFloor === "number" &&
+                compress.minNudgeGrowthFloor < 0
+            ) {
+                errors.push({
+                    key: "compress.minNudgeGrowthFloor",
+                    expected: "non-negative number (>= 0)",
+                    actual: `${compress.minNudgeGrowthFloor}`,
+                })
+            }
+
+            const emergencyThreshold = compress.emergencyThresholdPercent
+            if (emergencyThreshold !== undefined) {
+                if (typeof emergencyThreshold === "number") {
+                    if (emergencyThreshold < 0) {
+                        errors.push({
+                            key: "compress.emergencyThresholdPercent",
+                            expected: "non-negative number or \"${number}%\" (0–100)",
+                            actual: `${emergencyThreshold}`,
+                        })
+                    }
+                } else if (
+                    typeof emergencyThreshold === "string" &&
+                    emergencyThreshold.endsWith("%")
+                ) {
+                    const parsed = parseFloat(emergencyThreshold.slice(0, -1))
+                    if (isNaN(parsed) || parsed < 0 || parsed > 100) {
+                        errors.push({
+                            key: "compress.emergencyThresholdPercent",
+                            expected: '"${number}%" with percentage in [0, 100]',
+                            actual: JSON.stringify(emergencyThreshold),
+                        })
+                    }
+                } else {
+                    errors.push({
+                        key: "compress.emergencyThresholdPercent",
+                        expected: 'number | "${number}%"',
+                        actual: JSON.stringify(emergencyThreshold),
+                    })
+                }
             }
 
             if (
