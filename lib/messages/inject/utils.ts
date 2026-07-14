@@ -852,6 +852,63 @@ export function buildCompressibleRanges(
     }
 }
 
+export interface RangeFilterOptions {
+    modelContextLimit: number | undefined
+    growthRatio: number
+}
+
+/**
+ * Filter compressible ranges for the recommendation list.
+ *
+ * Rule 1 (per-range): single-message ranges are excluded unless their tokens
+ *   exceed 5× the growth threshold (e.g., 25% of model context at 5% config).
+ *
+ * Rule 2 (list-level): suppress all recommendations when protected content
+ *   dominates — unless a huge single segment (> 5× growth) overrides:
+ *   - Besides the last range, all others are protected (only 1 compressible)
+ *   - 70%+ of total (compressible + protected) tokens are protected
+ *   - Remaining compressible tokens < growth% of model context
+ */
+export function filterRecommendedRanges(
+    compressible: CompressibleRange[],
+    protectedRanges: ProtectedRange[],
+    options: RangeFilterOptions,
+): CompressibleRange[] {
+    const { modelContextLimit, growthRatio } = options
+
+    if (!modelContextLimit || modelContextLimit <= 0) {
+        return compressible
+    }
+
+    const growthThreshold = modelContextLimit * growthRatio
+    const hugeThreshold = growthThreshold * 5
+
+    const filtered = compressible.filter(
+        (r) => r.count > 1 || r.tokens > hugeThreshold,
+    )
+
+    if (filtered.length === 0) return []
+
+    const hasHugeRange = compressible.some((r) => r.tokens > hugeThreshold)
+
+    if (hasHugeRange) return filtered
+
+    const totalCompressible = compressible.reduce((s, r) => s + r.tokens, 0)
+    const totalProtected = protectedRanges.reduce((s, r) => s + r.tokens, 0)
+    const total = totalCompressible + totalProtected
+
+    const onlyLastCompressible =
+        filtered.length === 1 && protectedRanges.length > 0
+    const mostlyProtected = total > 0 && totalProtected / total >= 0.7
+    const compressibleTooSmall = totalCompressible < growthThreshold
+
+    if (onlyLastCompressible || mostlyProtected || compressibleTooSmall) {
+        return []
+    }
+
+    return filtered
+}
+
 interface MergedEntry {
     startRef: string
     endRef: string

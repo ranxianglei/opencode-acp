@@ -29,6 +29,7 @@ import {
     computeShouldNudge,
     countMessagesAfterIndex,
     estimateContextComposition,
+    filterRecommendedRanges,
     findLastNonIgnoredMessage,
     formatCompressibleRanges,
     getIterationNudgeThreshold,
@@ -343,8 +344,13 @@ export const injectCompressNudges = (
                 config.compress.protectedTools,
                 config.protectedFilePatterns,
             )
-            if (contextRanges.compressible.length > 0) {
-                breakdown += `\n\n${formatCompressibleRanges(contextRanges.compressible, contextRanges.protected)}`
+            const recommendedRanges = filterRecommendedRanges(
+                contextRanges.compressible,
+                contextRanges.protected,
+                { modelContextLimit, growthRatio: 0.05 },
+            )
+            if (recommendedRanges.length > 0) {
+                breakdown += `\n\n${formatCompressibleRanges(recommendedRanges, contextRanges.protected)}`
                 breakdown += `\n💡 Compress all ranges in one call (pass multiple content entries: \`content: [{...}, {...}]\`).`
             }
             breakdown += `\nUse \`acp_status({scope:"uncompressed"})\` to re-fetch compressible ranges after compressing, or \`acp_status\` for compressed block details.`
