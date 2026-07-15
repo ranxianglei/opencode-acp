@@ -422,6 +422,14 @@ For the complete list with root cause analysis, see the [bug tracker](https://gi
 
 ## Changelog
 
+### v1.12.7-dev.1 — Smart Recommendation Filter + Dangerous Parameter + Deploy Version Guard (PR #142, dev)
+
+**Problem**: The recommendation filter had three issues. (1) It used a hardcoded 5× growth threshold for single-message ranges, which was too large (25% of context) and could leak context. (2) The filter showed tiny ranges (71 tokens) alongside meaningful ones. (3) The last segment was always shown with a position-based "recent" annotation, but compressing it requires explicit opt-in — a contradiction between recommending and blocking. Additionally, `dev-deploy.sh` deploys were silently overwritten by npm on opencode restart when the npm version was newer than the local version.
+
+**Fix**: (1) Rewrote `filterRecommendedRanges` with a single coherent design: last segment excluded if < 2× growth threshold; included with `dangerous: true` flag if ≥ 2×. Gate: "effective compressible" = non-last-segment tokens + max(0, last-segment − 2× floor); suppress all if < growth threshold. (2) Protected ranges no longer affect filtering logic. (3) Replaced state-tracking soft-block with stateless `dangerous?: boolean` parameter on the compress tool schema — model must explicitly opt-in to compress the tail. Net −70 lines. (4) Added debug filter decision logging via `sendIgnoredMessage` (model-invisible, user-visible when `debug: true`). (5) `dev-deploy.sh` now queries `npm view` and auto-bumps the deployed version above npm's latest to prevent overwrite on restart.
+
+Files: `lib/messages/inject/utils.ts`, `lib/messages/inject/inject.ts`, `lib/compress/pipeline.ts`, `lib/compress/range.ts`, `lib/compress/message.ts`, `scripts/dev-deploy.sh`. Tests: `tests/smart-nudge-gating.test.ts` (rewritten, 17 tests), `tests/soft-block.test.ts` (5 tests), `tests/inject.test.ts` (updated). 711 tests pass.
+
 ### v1.12.6 — Stale contextLimitAnchors Fix (PR #143)
 
 **Problem**: `contextLimitAnchors` were populated when `overMaxLimit=true` but only cleared on a compress tool call in the current turn (`currentTurnHasCompress`). If context dropped below `maxLimit` via another mechanism (OpenCode compaction, external message deletion), the anchors stayed stale → `applyAnchoredNudges` kept injecting the "⚠️ Context limit reached" template at low context levels (as low as 10% usage).

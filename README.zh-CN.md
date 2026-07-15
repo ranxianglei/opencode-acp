@@ -395,6 +395,14 @@ ACP 在首次启动时自动将配置从 `dcp.jsonc` 迁移到 `acp.jsonc`，将
 
 ## 更新日志
 
+### v1.12.7-dev.1 — 智能推荐过滤 + Dangerous 参数 + 部署版本守卫（PR #142, dev）
+
+**问题**：推荐过滤器有三个问题。（1）使用硬编码的 5× 增长阈值（上下文的 25%），太大且容易泄露上下文。（2）过滤器会显示极小的 range（71 tokens）。（3）最后一段总是显示位置标注 "recent"，但压缩它需要显式确认——推荐和阻止矛盾。此外，`dev-deploy.sh` 的部署在 opencode 重启时被 npm 静默覆盖（当 npm 版本比本地新时）。
+
+**修复**：（1）重写 `filterRecommendedRanges`：最后一段 < 2× 增长阈值 → 剔除；≥ 2× → 保留并标记 `dangerous: true`。门槛："有效可压缩" = 非最后段 + max(0, 最后段 − 2× 阈值)；< 增长阈值则全部抑制。（2）受保护内容不再影响过滤逻辑。（3）用无状态的 `dangerous?: boolean` 参数替换状态追踪 soft-block——模型必须显式 opt-in 才能压缩尾部。净减 70 行。（4）通过 `sendIgnoredMessage` 注入过滤决策调试信息（模型不可见，`debug: true` 时用户可见）。（5）`dev-deploy.sh` 查询 `npm view` 并自动将部署版本 bump 到 npm 最新版之上，防止重启覆盖。
+
+文件：`lib/messages/inject/utils.ts`、`lib/messages/inject/inject.ts`、`lib/compress/pipeline.ts`、`lib/compress/range.ts`、`lib/compress/message.ts`、`scripts/dev-deploy.sh`。测试：`tests/smart-nudge-gating.test.ts`（重写，17 测试）、`tests/soft-block.test.ts`（5 测试）、`tests/inject.test.ts`（更新）。711 测试通过。
+
 ### v1.12.6 — Stale contextLimitAnchors 修复（PR #143）
 
 **问题**：`contextLimitAnchors` 仅在 `overMaxLimit=true` 时添加，但只在当前 turn 有 compress 调用时 (`currentTurnHasCompress`) 才清除。如果上下文通过其他机制（OpenCode compaction、外部消息删除）降到 `maxLimit` 以下，anchors 保持 stale → `applyAnchoredNudges` 持续注入 "⚠️ Context limit reached" 模板，即使实际上下文很低（低至 10%）。
