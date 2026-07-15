@@ -178,7 +178,7 @@ test("acp_status: coverage shows single message count", async () => {
     )
     const result = await runStatus([1], blocks)
 
-    assert.match(result, /1 msgs/)
+    assert.match(result, /1 msg\b/)
 })
 
 test("acp_status: overview includes drill-down hint", async () => {

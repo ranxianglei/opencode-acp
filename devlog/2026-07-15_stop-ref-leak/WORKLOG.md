@@ -25,14 +25,26 @@ Replaced all model-visible block range displays with message counts. Three leak 
 ### Leak #3: `acp_status` compressed view (`lib/compress/status.ts`)
 - `formatIdRange(block)` returns `${count} msgs` instead of `${startId}–${endId}`
 
+### Leak #4: Compression notification (`lib/ui/notification.ts`) — review-driven
+- `formatEntryRanges` was still using `block.startId`/`block.endId` directly
+- Changed to use `block.effectiveMessageIds?.length` (same pattern as other 3 sites)
+
+### Grammar + stale prompt fixes — review-driven
+- Singular/plural: `1 msgs` → `1 msg`, `1 messages` → `1 message`
+- `system.ts:68`: "message-ID ranges" → "message counts" (stale after count change)
+
 ## Files changed
 1. `lib/messages/prune.ts` — `computeBlockRange` → `computeBlockCoverage`, call site updated
 2. `lib/messages/utils.ts` — `createSyntheticToolRecap` signature + input field
-3. `lib/compress/recap.ts` — `formatRange` → `formatCoverage`, import CompressionBlock, 2 call sites
-4. `lib/compress/status.ts` — `formatIdRange` body changed to count
-5. `tests/acp-status.test.ts` — 2 tests rewritten for count format
-6. `devlog/2026-07-15_stop-ref-leak/` — REQ + WORKLOG
+3. `lib/compress/recap.ts` — `formatRange` → `formatCoverage`, import CompressionBlock, 2 call sites, singular grammar
+4. `lib/compress/status.ts` — `formatIdRange` body changed to count, singular grammar
+5. `lib/ui/notification.ts` — `formatEntryRanges` changed to use effectiveMessageIds length (4th leak site)
+6. `lib/prompts/system.ts` — stale "message-ID ranges" → "message counts"
+7. `tests/acp-status.test.ts` — 2 tests rewritten for count format, singular assertion
+8. `tests/prune.test.ts` — 3 new tests: input.messages assertion, empty effectiveMessageIds, no mNNNNN refs negative test
+9. `tests/recap.test.ts` — 9 new tests: full recap tool coverage (list/single/empty/inactive/truncation, singular grammar, no-ref assertion)
+10. `devlog/2026-07-15_stop-ref-leak/` — REQ + WORKLOG
 
 ## Verification
 - TypeScript: 0 errors
-- Tests: 713/713 pass
+- Tests: 725/725 pass (713 original + 12 new)
