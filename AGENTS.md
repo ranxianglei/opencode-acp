@@ -697,6 +697,66 @@ npm view opencode-acp version
 
 Only use this as a fallback. The automated workflow (Section 5.4.2) is the standard release process.
 
+#### 5.4.5 Dev / Prerelease Publishing
+
+For testing changes before a stable release, publish a **dev prerelease** to npm's `dev` tag (not `latest`). This lets users opt in via `opencode-acp@dev` without affecting stable users on `@latest`.
+
+**How CI detects prereleases**: The `release.yml` workflow checks if the version string contains `-` (e.g., `1.13.0-dev.1`, `1.12.7-beta.2`). If it does, it publishes with `--tag dev` and marks the GitHub Release as `prerelease: true`. If not, it publishes with `--tag latest` (normal stable release).
+
+**Step-by-step**:
+
+```bash
+# 1. Create a release branch (same naming convention as stable releases)
+git checkout master && git pull origin master
+git checkout -b YYYY-MM-DD_release-v{VERSION}-dev
+
+# 2. Set a prerelease version in package.json (MUST contain a hyphen)
+#    e.g., "1.12.7-dev.1", "1.13.0-beta.1", "2.0.0-rc.1"
+
+# 3. Add changelog entries to README.md and README.zh-CN.md
+#    (header must contain ### v{VERSION} including the suffix, e.g. ### v1.12.7-dev.1)
+
+# 4. Create devlog entry
+
+# 5. Verify, commit, push, create PR
+./scripts/ci/check-pr.sh YYYY-MM-DD_release-v{VERSION}-dev origin/master
+git add -A && git commit -m "release: v{VERSION}-dev.1 — title"
+git push origin YYYY-MM-DD_release-v{VERSION}-dev
+gh pr create --title "release: v{VERSION}-dev.1 — title" --body "..."
+
+# 6. Merge PR (requires human confirmation)
+
+# 7. CI auto-publishes to npm dev tag + creates prerelease GitHub Release
+```
+
+**Installing a dev prerelease**:
+
+```json
+{
+    "plugin": {
+        "opencode-acp": "dev"
+    }
+}
+```
+
+Or via CLI:
+
+```bash
+opencode plugin opencode-acp@dev --global
+```
+
+**Key differences from stable releases**:
+
+| Aspect               | Stable                          | Dev/Prerelease                   |
+| -------------------- | ------------------------------- | -------------------------------- |
+| Version format       | `1.12.7`                        | `1.12.7-dev.1` (contains `-`)    |
+| npm tag              | `latest`                        | `dev`                            |
+| GitHub Release       | stable                          | prerelease                       |
+| Install              | `opencode-acp@latest`           | `opencode-acp@dev`               |
+| Branch naming        | `YYYY-MM-DD_release-v{VERSION}` | same convention                  |
+
+**Promoting dev → stable**: When ready, create a new release branch with the stable version (remove the `-suffix`), e.g., `1.12.7-dev.1` → `1.12.7`. CI will publish to `latest`.
+
 ### 5.5 Commit Convention
 
 Use descriptive commit messages. Historical examples:
