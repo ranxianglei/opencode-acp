@@ -1,12 +1,10 @@
 import { tool } from "@opencode-ai/plugin"
+import type { CompressionBlock } from "../state/types"
 import type { ToolContext } from "./types"
 
-function formatRange(startId: string, endId: string): string {
-    const start = (startId || "").trim()
-    const end = (endId || "").trim()
-    if (!start || !end) return "—"
-    if (start === end) return start
-    return `${start}–${end}`
+function formatCoverage(block: CompressionBlock): string {
+    const count = block.effectiveMessageIds?.length || 0
+    return count > 0 ? `${count} messages` : "—"
 }
 
 const RECAP_TOOL_DESCRIPTION = `Read-only retrieval of compression block summaries.
@@ -41,7 +39,7 @@ export function createAcpContextRecapTool(ctx: ToolContext): ReturnType<typeof t
                 if (!block.active) {
                     return `Block b${args.blockId} is inactive (deactivated by GC or nested compression).`
                 }
-                const range = formatRange(block.startId, block.endId)
+                const range = formatCoverage(block)
                 return `[Compressed conversation section]\n${block.summary}\n\n[Block b${args.blockId} | ${range} | topic: "${block.topic || "(none)"}"]`
             }
 
@@ -50,7 +48,7 @@ export function createAcpContextRecapTool(ctx: ToolContext): ReturnType<typeof t
             for (const id of activeIds) {
                 const block = msgState.blocksById.get(id)
                 if (!block || !block.active) continue
-                const range = formatRange(block.startId, block.endId)
+                const range = formatCoverage(block)
                 const summaryPreview = block.summary.slice(0, 200)
                 lines.push(`\nb${id} | ${range} | "${block.topic || "(none)"}"`)
                 lines.push(`  ${summaryPreview}${block.summary.length > 200 ? "..." : ""}`)
