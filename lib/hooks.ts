@@ -42,7 +42,6 @@ import { type HostPermissionSnapshot } from "./host-permissions"
 import { compressPermission, syncCompressPermissionState } from "./compress-permission"
 import { checkSession, ensureSessionInitialized, saveSessionState, syncToolCache } from "./state"
 import { cacheSystemPromptTokens } from "./ui/utils"
-import { sendIgnoredMessage } from "./ui/notification"
 import { runTruncateGC, shouldRunMajorGC, getGCParams } from "./gc/truncate"
 import { runBatchCleanup } from "./gc/merge"
 import { getCurrentTokenUsage } from "./token-utils"
@@ -279,15 +278,9 @@ export function createChatMessageTransformHandler(
             output.messages,
             prompts.getRuntimePrompts(),
             compressionPriorities,
-            config.debug && state.sessionId
+            config.debug
                 ? (text: string) => {
-                      sendIgnoredMessage(
-                          client,
-                          state.sessionId!,
-                          `[ACP Debug] Nudge injected:\n${text}`,
-                          {},
-                          logger,
-                      ).catch(() => {})
+                      logger.debug(`[ACP Debug] Nudge injected:\n${text}`)
                   }
                 : undefined,
             prePruneTokens,
