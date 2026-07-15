@@ -33,7 +33,7 @@ function pct(n: number, total: number): number {
 
 function formatIdRange(block: CompressionBlock): string {
     const count = block.effectiveMessageIds?.length || 0
-    return count > 0 ? `${count} msgs` : "—"
+    return count > 0 ? `${count} msg${count !== 1 ? "s" : ""}` : "—"
 }
 
 function describeToolMessage(msg: WithParts): string {

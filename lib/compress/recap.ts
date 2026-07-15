@@ -4,7 +4,7 @@ import type { ToolContext } from "./types"
 
 function formatCoverage(block: CompressionBlock): string {
     const count = block.effectiveMessageIds?.length || 0
-    return count > 0 ? `${count} messages` : "—"
+    return count > 0 ? `${count} message${count !== 1 ? "s" : ""}` : "—"
 }
 
 const RECAP_TOOL_DESCRIPTION = `Read-only retrieval of compression block summaries.

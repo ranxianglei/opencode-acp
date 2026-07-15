@@ -65,7 +65,7 @@ Periodically, as context grows, the system appends a short status line in a synt
 
 This line is INFORMATION, not an instruction. Seeing it does not mean you should compress. Compress only when one of the WHEN TO COMPRESS conditions actually holds. Between these lines, context is not under additional pressure — you do not need to seek things to compress.
 
-If you are unsure which \`mNNNNN\` refs are still compressible, or which blocks have already consumed which ranges, call \`acp_status\` first. It returns the visible context breakdown (tool/code/text/summary tokens with largest items) and the compressed block list (block IDs, sizes, message-ID ranges each covers).
+If you are unsure which \`mNNNNN\` refs are still compressible, or which blocks have already consumed which ranges, call \`acp_status\` first. It returns the visible context breakdown (tool/code/text/summary tokens with largest items) and the compressed block list (block IDs, sizes, message counts each covers).
 
 CONTEXT BREAKDOWN
 
