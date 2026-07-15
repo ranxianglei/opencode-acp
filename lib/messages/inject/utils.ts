@@ -706,6 +706,7 @@ export interface CompressibleRange {
     tokens: number
     toolPct: number
     textPct: number
+    dangerous?: boolean
 }
 
 export interface ProtectedRange {
@@ -852,6 +853,96 @@ export function buildCompressibleRanges(
     }
 }
 
+export interface RangeFilterOptions {
+    modelContextLimit: number | undefined
+    growthRatio: number
+    logger?: { debug: (msg: string, data?: any) => void }
+}
+
+/**
+ * Filter compressible ranges for the recommendation list.
+ *
+ * Last segment: excluded if < 2× growth threshold; included with
+ * `dangerous: true` flag if >= 2× growth threshold.
+ *
+ * Gate: "effective compressible" = non-last-segment tokens + max(0,
+ * last-segment tokens − 2× growth threshold). If effective compressible
+ * < growth threshold, suppress all recommendations.
+ */
+export function filterRecommendedRanges(
+    compressible: CompressibleRange[],
+    _protectedRanges: ProtectedRange[],
+    options: RangeFilterOptions,
+): CompressibleRange[] {
+    const { modelContextLimit, growthRatio, logger } = options
+    const log = logger?.debug.bind(logger)
+
+    if (!modelContextLimit || modelContextLimit <= 0) {
+        log?.("filterRecommendedRanges: modelContextLimit unknown, passthrough", {
+            inputCount: compressible.length,
+        })
+        if (compressible.length === 0) return []
+        const passthrough = [...compressible]
+        passthrough[passthrough.length - 1] = {
+            ...passthrough[passthrough.length - 1],
+            dangerous: true,
+        }
+        return passthrough
+    }
+
+    if (compressible.length === 0) {
+        log?.("filterRecommendedRanges: no compressible ranges, returning empty")
+        return []
+    }
+
+    const growthThreshold = modelContextLimit * growthRatio
+    const lastSegmentFloor = growthThreshold * 2
+
+    const lastIndex = compressible.length - 1
+    const lastRange = compressible[lastIndex]
+    const lastSegmentIncluded = lastRange.tokens >= lastSegmentFloor
+
+    let effectiveCompressible = 0
+    const result: CompressibleRange[] = []
+
+    for (let i = 0; i < compressible.length; i++) {
+        const r = compressible[i]
+        if (i === lastIndex) {
+            const excess = Math.max(0, r.tokens - lastSegmentFloor)
+            effectiveCompressible += excess
+            if (lastSegmentIncluded) {
+                result.push({ ...r, dangerous: true })
+            }
+        } else {
+            effectiveCompressible += r.tokens
+            result.push(r)
+        }
+    }
+
+    const suppressed = effectiveCompressible < growthThreshold
+
+    log?.("filterRecommendedRanges: decision", {
+        inputRanges: compressible.length,
+        inputTokens: compressible.reduce((s, r) => s + r.tokens, 0),
+        growthThreshold,
+        lastSegmentFloor,
+        lastSegment: {
+            ref: `${lastRange.startRef}–${lastRange.endRef}`,
+            tokens: lastRange.tokens,
+            included: lastSegmentIncluded,
+        },
+        effectiveCompressible,
+        suppressed,
+        outputRanges: suppressed ? 0 : result.length,
+    })
+
+    if (suppressed) {
+        return []
+    }
+
+    return result
+}
+
 interface MergedEntry {
     startRef: string
     endRef: string
@@ -866,6 +957,7 @@ interface MergedEntry {
     protectedTokens: number
     protectedCount: number
     protectedTools: string[]
+    dangerous: boolean
 }
 
 export function formatCompressibleRanges(
@@ -876,8 +968,8 @@ export function formatCompressibleRanges(
 
     if (!protectedRanges || protectedRanges.length === 0) {
         if (ranges.length === 0) return ""
-        const lines = ranges.map((r, i) => {
-            const suffix = i === ranges.length - 1 ? "  (recent — may still be in active use)" : ""
+        const lines = ranges.map((r) => {
+            const suffix = r.dangerous ? "  ⚠️ NOT recommended unless you are certain. If you MUST compress this, pass `dangerous: true`." : ""
             return `  ${r.startRef}–${r.endRef}  ${r.count} msgs  ${fmt(r.tokens)} [tool ${r.toolPct}% | text ${r.textPct}%]${suffix}`
         })
         return `Compressible ranges (oldest first):\n${lines.join("\n")}`
@@ -900,6 +992,7 @@ export function formatCompressibleRanges(
             protectedTokens: 0,
             protectedCount: 0,
             protectedTools: [],
+            dangerous: r.dangerous ?? false,
         })
     }
     for (const r of protectedRanges) {
@@ -917,6 +1010,7 @@ export function formatCompressibleRanges(
             protectedTokens: r.tokens,
             protectedCount: r.count,
             protectedTools: [...r.tools],
+            dangerous: false,
         })
     }
 
@@ -934,6 +1028,7 @@ export function formatCompressibleRanges(
             last.compressibleCount += entry.compressibleCount
             last.protectedTokens += entry.protectedTokens
             last.protectedCount += entry.protectedCount
+            if (entry.dangerous) last.dangerous = true
             for (const t of entry.protectedTools) {
                 if (!last.protectedTools.includes(t)) last.protectedTools.push(t)
             }
@@ -942,8 +1037,8 @@ export function formatCompressibleRanges(
         }
     }
 
-    const lines = merged.map((e, i) => {
-        const suffix = i === merged.length - 1 && e.compressibleTokens > 0 ? "  (recent — may still be in active use)" : ""
+    const lines = merged.map((e) => {
+        const suffix = e.dangerous && e.compressibleTokens > 0 ? "  ⚠️ NOT recommended unless you are certain. If you MUST compress this, pass `dangerous: true`." : ""
 
         if (e.protectedTokens > 0 && e.compressibleTokens === 0) {
             return `  ${e.startRef}–${e.endRef}  ${e.count} msgs  ${fmt(e.tokens)} [PROTECTED: ${e.protectedTools.join(", ")} — not compressible]${suffix}`

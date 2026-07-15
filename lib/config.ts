@@ -39,6 +39,7 @@ export interface CompressConfig {
     emergencyThresholdPercent: number | `${number}%`
     maxVisibleSegments: number
     keepEmbedMaxChars: number
+    lastSegmentSoftBlock?: boolean
 }
 
 export interface Commands {
@@ -210,6 +211,7 @@ const defaultConfig: PluginConfig = {
         emergencyThresholdPercent: "98%",
         maxVisibleSegments: 50,
         keepEmbedMaxChars: 2000,
+        lastSegmentSoftBlock: true,
     },
     strategies: {
         deduplication: {
@@ -420,12 +422,13 @@ function mergeCompress(
         protectTags: override.protectTags ?? base.protectTags,
         protectUserMessages: override.protectUserMessages ?? base.protectUserMessages,
         maxSummaryLengthHard: override.maxSummaryLengthHard ?? base.maxSummaryLengthHard,
-        minCompressRange: override.minCompressRange ?? base.minCompressRange,
-        minNudgeGrowthRatio: override.minNudgeGrowthRatio ?? base.minNudgeGrowthRatio,
-        minNudgeGrowthFloor: override.minNudgeGrowthFloor ?? base.minNudgeGrowthFloor,
-        emergencyThresholdPercent: override.emergencyThresholdPercent ?? base.emergencyThresholdPercent,
-        maxVisibleSegments: override.maxVisibleSegments ?? base.maxVisibleSegments,
-        keepEmbedMaxChars: override.keepEmbedMaxChars ?? base.keepEmbedMaxChars,
+    minCompressRange: override.minCompressRange ?? base.minCompressRange,
+    minNudgeGrowthRatio: override.minNudgeGrowthRatio ?? base.minNudgeGrowthRatio,
+    minNudgeGrowthFloor: override.minNudgeGrowthFloor ?? base.minNudgeGrowthFloor,
+    emergencyThresholdPercent: override.emergencyThresholdPercent ?? base.emergencyThresholdPercent,
+    maxVisibleSegments: override.maxVisibleSegments ?? base.maxVisibleSegments,
+    keepEmbedMaxChars: override.keepEmbedMaxChars ?? base.keepEmbedMaxChars,
+    lastSegmentSoftBlock: override.lastSegmentSoftBlock ?? base.lastSegmentSoftBlock,
     }
 }
 

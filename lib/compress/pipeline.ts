@@ -2,7 +2,7 @@ import type { PruneMessagesState, SessionState, SessionStats, WithParts } from "
 import { ensureSessionInitialized } from "../state"
 import { saveSessionState } from "../state/persistence"
 import { assignMessageRefs } from "../message-ids"
-import { isIgnoredUserMessage } from "../messages/query"
+import { isIgnoredUserMessage, isSyntheticMessage } from "../messages/query"
 import { deduplicate, purgeErrors } from "../strategies"
 import { getCurrentParams, getCurrentTokenUsage } from "../token-utils"
 import { sendCompressNotification } from "../ui/notification"
@@ -129,5 +129,52 @@ export async function finalizeSession(
         sessionMessageIds,
         params,
         contextTokensBefore,
+    )
+}
+
+/**
+ * Find the last visible (non-synthetic, non-pruned) message ID.
+ * Returns null if no visible message exists.
+ */
+export function getLastVisibleMessageId(
+    rawMessages: WithParts[],
+    state: SessionState,
+): string | null {
+    for (let i = rawMessages.length - 1; i >= 0; i--) {
+        const msg = rawMessages[i]
+        const id = msg?.info?.id
+        if (!id || typeof id !== "string") continue
+        if (isSyntheticMessage(msg)) continue
+        if (state.prune.messages.byMessageId.has(id)) continue
+        return id
+    }
+    return null
+}
+
+/**
+ * Stateless check: if any plan covers the most recent visible message,
+ * the caller must pass `dangerous: true` to proceed. Returns an Error
+ * to throw if the caller did not opt in.
+ */
+export function checkLastSegmentDangerous(
+    ctx: ToolContext,
+    allPlanMessageIds: string[][],
+    rawMessages: WithParts[],
+    dangerous: boolean,
+): Error | null {
+    if (ctx.config.compress.lastSegmentSoftBlock === false) return null
+
+    const lastVisibleId = getLastVisibleMessageId(rawMessages, ctx.state)
+    if (!lastVisibleId) return null
+
+    const coversLast = allPlanMessageIds.some((ids) => ids.includes(lastVisibleId))
+    if (!coversLast) return null
+
+    if (dangerous) return null
+
+    return new Error(
+        `This range includes the most recent message (${lastVisibleId}), which is likely still needed for the current task step.\n\n` +
+            `If you are certain this content is genuinely consumed and must be compressed, re-issue the call with \`dangerous: true\`.\n` +
+            `Otherwise, compress older ranges that do not include the tail of the conversation.`,
     )
 }

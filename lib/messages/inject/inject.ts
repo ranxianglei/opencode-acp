@@ -29,6 +29,7 @@ import {
     computeShouldNudge,
     countMessagesAfterIndex,
     estimateContextComposition,
+    filterRecommendedRanges,
     findLastNonIgnoredMessage,
     formatCompressibleRanges,
     getIterationNudgeThreshold,
@@ -349,8 +350,34 @@ export const injectCompressNudges = (
                 config.compress.protectedTools,
                 config.protectedFilePatterns,
             )
-            if (contextRanges.compressible.length > 0) {
-                breakdown += `\n\n${formatCompressibleRanges(contextRanges.compressible, contextRanges.protected)}`
+            const recommendedRanges = filterRecommendedRanges(
+                contextRanges.compressible,
+                contextRanges.protected,
+                { modelContextLimit, growthRatio: 0.05, logger },
+            )
+            if (debugNotify && contextRanges.compressible.length > 0 && modelContextLimit) {
+                const growthThreshold = modelContextLimit * 0.05
+                const lastSegmentFloor = growthThreshold * 2
+                const compressible = contextRanges.compressible
+                const lastRange = compressible[compressible.length - 1]
+                const lastIncluded = lastRange.tokens >= lastSegmentFloor
+                const nonLastTokens = compressible
+                    .slice(0, -1)
+                    .reduce((s, r) => s + r.tokens, 0)
+                const effective = nonLastTokens + Math.max(0, lastRange.tokens - lastSegmentFloor)
+                const suppressed = effective < growthThreshold
+                const fmt = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n))
+                const lines = [
+                    `[ACP Debug] Recommendation filter decision:`,
+                    `  Input: ${compressible.length} range(s), ${fmt(compressible.reduce((s, r) => s + r.tokens, 0))} tokens`,
+                    `  Thresholds: growth=${fmt(growthThreshold)}, lastSegmentFloor=${fmt(lastSegmentFloor)}`,
+                    `  Last segment: ${lastRange.startRef}–${lastRange.endRef} ${fmt(lastRange.tokens)} tokens → ${lastIncluded ? "included (dangerous)" : "excluded (< floor)"}`,
+                    `  Effective compressible: ${fmt(effective)} → ${suppressed ? "SUPPRESSED (< growth threshold)" : `${recommendedRanges.length} range(s) recommended`}`,
+                ]
+                debugNotify(lines.join("\n"))
+            }
+            if (recommendedRanges.length > 0) {
+                breakdown += `\n\n${formatCompressibleRanges(recommendedRanges, contextRanges.protected)}`
                 breakdown += `\n💡 Compress all ranges in one call (pass multiple content entries: \`content: [{...}, {...}]\`).`
             }
             breakdown += `\nUse \`acp_status({scope:"uncompressed"})\` to re-fetch compressible ranges after compressing, or \`acp_status\` for compressed block details.`

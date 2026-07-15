@@ -424,7 +424,9 @@ test("compressible ranges injected into suffix message when shouldNudge fires", 
     const output = {
         messages: [
             makeUserMessage("u1", "First"),
-            makeAssistantMessage("a1", "Response 1", [], SID_A, { input: 100000, output: 50000 }),
+            makeAssistantMessage("a1", "Response 1", [
+                makeToolPart("c1", "bash", "completed", "x".repeat(50_000)),
+            ], SID_A, { input: 100000, output: 50000 }),
             makeUserMessage("u2", "Second"),
             makeAssistantMessage("a2", "Response 2", [], SID_A, { input: 100000, output: 50000 }),
             makeUserMessage("u3", "Third"),

@@ -112,7 +112,40 @@ else
         || error "dist/ not found — run without --no-build first"
 fi
 
-# ── Step 4: Deploy ────────────────────────────────────────────────────────
+# ── Step 4: Version guard ─────────────────────────────────────────────────
+# Prevent npm from overwriting local deploys on restart. opencode resolves
+# @latest against the npm registry; if the local cache version is older than
+# npm's latest, opencode re-downloads and overwrites the deploy.
+
+step "Checking version against npm registry..."
+
+LOCAL_VER=$(node -p "require('$PROJECT_ROOT/package.json').version" 2>/dev/null || echo "?")
+NPM_VER=$(npm view opencode-acp version 2>/dev/null || echo "")
+
+if [[ -z "$NPM_VER" ]]; then
+    warn "Could not reach npm registry — skipping version guard"
+    DEPLOY_VER="$LOCAL_VER"
+else
+    DEPLOY_VER=$(node -e "
+        const local = '$LOCAL_VER'.split('.').map(Number);
+        const npm = '$NPM_VER'.split('.').map(Number);
+        const localOlder = local[0] < npm[0]
+            || (local[0] === npm[0] && local[1] < npm[1])
+            || (local[0] === npm[0] && local[1] === npm[1] && local[2] <= npm[2]);
+        if (localOlder) {
+            console.log(npm[0] + '.' + npm[1] + '.' + (npm[2] + 1));
+        } else {
+            console.log('$LOCAL_VER');
+        }
+    ")
+    if [[ "$DEPLOY_VER" != "$LOCAL_VER" ]]; then
+        warn "Local v$LOCAL_VER <= npm v$NPM_VER → bumping deployed version to v$DEPLOY_VER"
+    else
+        info "Local v$LOCAL_VER > npm v$NPM_VER — no bump needed"
+    fi
+fi
+
+# ── Step 5: Deploy ────────────────────────────────────────────────────────
 
 step "Deploying to: $DEPLOY_TARGET"
 
@@ -121,32 +154,46 @@ if [[ ! -d "$DEPLOY_TARGET" ]]; then
     mkdir -p "$DEPLOY_TARGET/dist"
 fi
 
-# Show version change
-if [[ -f "$DEPLOY_TARGET/package.json" ]]; then
-    OLD_VER=$(node -p "require('$DEPLOY_TARGET/package.json').version" 2>/dev/null || echo "?")
-    info "Current deployed version: v$OLD_VER"
-fi
-
-NEW_VER=$(node -p "require('$PROJECT_ROOT/package.json').version" 2>/dev/null || echo "?")
-info "Deploying version: v$NEW_VER"
+info "Deploying version: v$DEPLOY_VER"
 
 # Copy dist/ and package.json
 cp -r "$PROJECT_ROOT/dist/"* "$DEPLOY_TARGET/dist/"
 cp "$PROJECT_ROOT/package.json" "$DEPLOY_TARGET/package.json"
 
+# Patch version in deployed package.json if bumped (don't touch source tree)
+if [[ "$DEPLOY_VER" != "$LOCAL_VER" ]]; then
+    node -e "
+        const fs = require('fs');
+        const p = '$DEPLOY_TARGET/package.json';
+        const pkg = JSON.parse(fs.readFileSync(p, 'utf8'));
+        pkg.version = '$DEPLOY_VER';
+        fs.writeFileSync(p, JSON.stringify(pkg, null, 4) + '\n');
+    "
+    info "Patched deployed version to v$DEPLOY_VER"
+fi
+
 # Verify
 DEPLOYED_VER=$(node -p "require('$DEPLOY_TARGET/package.json').version" 2>/dev/null || echo "?")
-[[ "$DEPLOYED_VER" == "$NEW_VER" ]] \
-    || error "Version mismatch after deploy (expected $NEW_VER, got $DEPLOYED_VER)"
+[[ "$DEPLOYED_VER" == "$DEPLOY_VER" ]] \
+    || error "Version mismatch after deploy (expected $DEPLOY_VER, got $DEPLOYED_VER)"
 
 # Sync the legacy resolution path if it exists (see comment on LEGACY_TARGET).
 if [[ -d "$LEGACY_TARGET/dist" ]]; then
     cp -r "$PROJECT_ROOT/dist/"* "$LEGACY_TARGET/dist/"
     cp "$PROJECT_ROOT/package.json" "$LEGACY_TARGET/package.json"
+    if [[ "$DEPLOY_VER" != "$LOCAL_VER" ]]; then
+        node -e "
+            const fs = require('fs');
+            const p = '$LEGACY_TARGET/package.json';
+            const pkg = JSON.parse(fs.readFileSync(p, 'utf8'));
+            pkg.version = '$DEPLOY_VER';
+            fs.writeFileSync(p, JSON.stringify(pkg, null, 4) + '\n');
+        "
+    fi
     LEGACY_VER=$(node -p "require('$LEGACY_TARGET/package.json').version" 2>/dev/null || echo "?")
-    [[ "$LEGACY_VER" == "$NEW_VER" ]] \
-        || warn "Legacy path synced but version mismatch (expected $NEW_VER, got $LEGACY_VER)"
-    info "Legacy path also synced: $LEGACY_TARGET"
+    [[ "$LEGACY_VER" == "$DEPLOY_VER" ]] \
+        || warn "Legacy path synced but version mismatch (expected $DEPLOY_VER, got $LEGACY_VER)"
+    info "Legacy path also synced: v$LEGACY_VER"
 else
     info "No legacy install at $LEGACY_TARGET — skipping sync"
 fi
