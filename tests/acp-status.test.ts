@@ -163,23 +163,22 @@ test("acp_status: overview shows compressed→summary size pair", async () => {
     assert.match(result, /15\.0K→2\.0K/)
 })
 
-test("acp_status: overview shows mNNNNN–mNNNNN range from startId/endId", async () => {
+test("acp_status: overview shows message count for block coverage", async () => {
     const blocks = blocksMap(
-        makeBlock({ blockId: 1, startId: "m00010", endId: "m00025" }),
+        makeBlock({ blockId: 1, effectiveMessageIds: ["a", "b", "c", "d", "e"] }),
     )
     const result = await runStatus([1], blocks)
 
-    assert.match(result, /m00010–m00025/)
+    assert.match(result, /5 msgs/)
 })
 
-test("acp_status: range shows single ID when startId === endId", async () => {
+test("acp_status: coverage shows single message count", async () => {
     const blocks = blocksMap(
-        makeBlock({ blockId: 1, startId: "m00005", endId: "m00005" }),
+        makeBlock({ blockId: 1, effectiveMessageIds: ["a"] }),
     )
     const result = await runStatus([1], blocks)
 
-    assert.match(result, /m00005/)
-    assert.doesNotMatch(result, /m00005–m00005/)
+    assert.match(result, /1 msgs/)
 })
 
 test("acp_status: overview includes drill-down hint", async () => {
