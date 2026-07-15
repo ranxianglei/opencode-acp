@@ -152,6 +152,57 @@ export function getLastVisibleMessageId(
 }
 
 /**
+ * Stateless check: reject compression plans that would produce phantom blocks
+ * (0 new direct messages, 0 compressed tokens). A phantom block occurs when
+ * every message in the effective range is already active under an existing
+ * compression block. Returns an Error to throw if any plan is phantom.
+ *
+ * Fix for issue #93: empty compression blocks waste context (summary overhead
+ * with no token savings) and cause compression loops — the model sees 0 tokens
+ * removed, retries the same range, creates another phantom, endlessly.
+ *
+ * A message is "new" (will be newly compressed) if it is NOT currently active
+ * under any block. Messages active under consumed blocks are still "already
+ * compressed" — re-labeling them under a new block does not newly hide them
+ * (matches applyCompressionState's newlyCompressedMessageIds computation).
+ */
+export function checkPhantomBlock(
+    state: SessionState,
+    plans: Array<{ messageIds: string[]; consumedBlockIds: number[] }>,
+): Error | null {
+    for (let i = 0; i < plans.length; i++) {
+        const plan = plans[i]
+
+        // Build effective message set: selection messages + inherited from
+        // consumed blocks (mirrors applyCompressionState lines 79-93).
+        const effective = new Set(plan.messageIds)
+        for (const consumedId of plan.consumedBlockIds) {
+            const block = state.prune.messages.blocksById.get(consumedId)
+            if (block) {
+                for (const mid of block.effectiveMessageIds) {
+                    effective.add(mid)
+                }
+            }
+        }
+
+        const hasNew = [...effective].some((mid) => {
+            const entry = state.prune.messages.byMessageId.get(mid)
+            return !entry || entry.activeBlockIds.length === 0
+        })
+
+        if (!hasNew) {
+            return new Error(
+                `Compression range ${i + 1} contains only already-compressed messages ` +
+                    "(0 new direct messages, 0 tokens saved). Nothing to compress — " +
+                    'pick a range with visible, uncompressed content. Use `acp_status({scope:"uncompressed"})` ' +
+                    "to see which ranges are still compressible.",
+            )
+        }
+    }
+    return null
+}
+
+/**
  * Stateless check: if any plan covers the most recent visible message,
  * the caller must pass `dangerous: true` to proceed. Returns an Error
  * to throw if the caller did not opt in.
