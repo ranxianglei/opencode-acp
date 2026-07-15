@@ -856,6 +856,7 @@ export function buildCompressibleRanges(
 export interface RangeFilterOptions {
     modelContextLimit: number | undefined
     growthRatio: number
+    logger?: { debug: (msg: string, data?: any) => void }
 }
 
 /**
@@ -873,9 +874,13 @@ export function filterRecommendedRanges(
     _protectedRanges: ProtectedRange[],
     options: RangeFilterOptions,
 ): CompressibleRange[] {
-    const { modelContextLimit, growthRatio } = options
+    const { modelContextLimit, growthRatio, logger } = options
+    const log = logger?.debug.bind(logger)
 
     if (!modelContextLimit || modelContextLimit <= 0) {
+        log?.("filterRecommendedRanges: modelContextLimit unknown, passthrough", {
+            inputCount: compressible.length,
+        })
         if (compressible.length === 0) return []
         const passthrough = [...compressible]
         passthrough[passthrough.length - 1] = {
@@ -885,7 +890,10 @@ export function filterRecommendedRanges(
         return passthrough
     }
 
-    if (compressible.length === 0) return []
+    if (compressible.length === 0) {
+        log?.("filterRecommendedRanges: no compressible ranges, returning empty")
+        return []
+    }
 
     const growthThreshold = modelContextLimit * growthRatio
     const lastSegmentFloor = growthThreshold * 2
@@ -900,7 +908,8 @@ export function filterRecommendedRanges(
     for (let i = 0; i < compressible.length; i++) {
         const r = compressible[i]
         if (i === lastIndex) {
-            effectiveCompressible += Math.max(0, r.tokens - lastSegmentFloor)
+            const excess = Math.max(0, r.tokens - lastSegmentFloor)
+            effectiveCompressible += excess
             if (lastSegmentIncluded) {
                 result.push({ ...r, dangerous: true })
             }
@@ -910,7 +919,24 @@ export function filterRecommendedRanges(
         }
     }
 
-    if (effectiveCompressible < growthThreshold) {
+    const suppressed = effectiveCompressible < growthThreshold
+
+    log?.("filterRecommendedRanges: decision", {
+        inputRanges: compressible.length,
+        inputTokens: compressible.reduce((s, r) => s + r.tokens, 0),
+        growthThreshold,
+        lastSegmentFloor,
+        lastSegment: {
+            ref: `${lastRange.startRef}–${lastRange.endRef}`,
+            tokens: lastRange.tokens,
+            included: lastSegmentIncluded,
+        },
+        effectiveCompressible,
+        suppressed,
+        outputRanges: suppressed ? 0 : result.length,
+    })
+
+    if (suppressed) {
         return []
     }
 

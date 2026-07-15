@@ -353,7 +353,7 @@ export const injectCompressNudges = (
             const recommendedRanges = filterRecommendedRanges(
                 contextRanges.compressible,
                 contextRanges.protected,
-                { modelContextLimit, growthRatio: 0.05 },
+                { modelContextLimit, growthRatio: 0.05, logger },
             )
             if (recommendedRanges.length > 0) {
                 breakdown += `\n\n${formatCompressibleRanges(recommendedRanges, contextRanges.protected)}`
