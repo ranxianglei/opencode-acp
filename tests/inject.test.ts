@@ -727,6 +727,76 @@ test("growth floor: 98% emergency override fires regardless of growth", () => {
     )
 })
 
+test("nudge suppressed when filter has no recommendations (all ranges below last-segment floor)", () => {
+    // 1M model: growthThreshold=50K, lastSegmentFloor=100K
+    // Growth of 55K > 50K threshold → nudgeAllowed = true
+    // But tool output is 80K chars (~20K tokens) < 100K floor → filtered out
+    // shouldInjectThisTurn = false (no ranges to recommend, not emergency)
+    const state = createSessionState()
+    state.modelContextLimit = 1_000_000
+    state.nudges.lastPerMessageNudgeTokens = 200_000
+    state.messageIds.byRawId.set("u1", "m00001")
+    state.messageIds.byRawId.set("a1", "m00002")
+
+    const config = buildConfig()
+    config.compress.maxContextLimit = 500_000
+    config.compress.minContextLimit = 200_000
+
+    const messages: WithParts[] = [
+        userMsg("u1", "hello"),
+        assistantMsgWithTokens("a1", "done", { input: 200_000, output: 55_000 }, [
+            toolPart("c1", "x".repeat(80_000)),
+        ]),
+    ]
+    injectCompressNudges(state, config, logger, messages, {} as any)
+
+    assert.equal(
+        state.nudges.shouldInjectThisTurn,
+        false,
+        "55K growth triggers nudgeAllowed but 20K tool output < 100K floor → no recommendations → nudge suppressed",
+    )
+
+    const injected = suffixText(messages)
+    assert.ok(!injected.includes("Breakdown:"), "no breakdown when no recommendations")
+    assert.ok(!injected.includes("efficiency nudge"), "no efficiency nudge text")
+    assert.ok(!injected.includes("Context limit reached"), "no emergency alert")
+})
+
+test("emergency override fires even when filter has no recommendations", () => {
+    // Context at 98%+ with small tool output (< floor) → emergency bypasses filter
+    const state = createSessionState()
+    state.modelContextLimit = 1_000_000
+    state.nudges.lastPerMessageNudgeTokens = 980_000
+    state.nudges.lastNudgeShownTokens = 980_000
+    state.messageIds.byRawId.set("u1", "m00001")
+    state.messageIds.byRawId.set("a1", "m00002")
+
+    const config = buildConfig()
+    config.compress.maxContextLimit = 500_000
+    config.compress.minContextLimit = 200_000
+
+    const messages: WithParts[] = [
+        userMsg("u1", "hello"),
+        assistantMsgWithTokens("a1", "done", { input: 970_000, output: 10_000 }, [
+            toolPart("c1", "x".repeat(40_000)),
+        ]),
+    ]
+    injectCompressNudges(state, config, logger, messages, {} as any)
+
+    assert.equal(
+        state.nudges.shouldInjectThisTurn,
+        true,
+        "98% emergency override fires even when filter has no recommendations",
+    )
+
+    const injected = suffixText(messages)
+    assert.ok(injected.includes("Breakdown:"), "breakdown shown at emergency even without recommendations")
+    assert.ok(
+        injected.includes("Context limit reached — compress now"),
+        "strong maxLimit alert at emergency",
+    )
+})
+
 test("growth floor: 5000 floor on small-context models", () => {
     // 100K model: nudgeGrowthTokens = max(6000, 100K×5%) = 6000
     // growthFloor = max(5000, 0.45×6000) = max(5000, 2700) = 5000
@@ -761,7 +831,7 @@ test("growth floor: 5000 floor on small-context models", () => {
     const messages2: WithParts[] = [
         userMsg("u1", "hello"),
         assistantMsgWithTokens("a1", "done", { input: 20_000, output: 6_000 }, [
-            toolPart("c1", "x".repeat(8_000)),
+            toolPart("c1", "x".repeat(60_000)),
         ]),
     ]
     injectCompressNudges(state2, config, logger, messages2, {} as any)
@@ -827,7 +897,7 @@ test("growth floor: applyAnchoredNudges output suppressed when growth below floo
     const messages2: WithParts[] = [
         userMsg("u1", "hello"),
         assistantMsgWithTokens("a1", "done", { input: 200_000, output: 55_000 }, [
-            toolPart("c1", "x".repeat(80_000)),
+            toolPart("c1", "x".repeat(620_000)),
         ]),
         userMsg("u2", "next"),
     ]
@@ -918,7 +988,9 @@ test("stale contextLimitAnchors: contextLimitNudge NOT injected when context bel
 
     const messages: WithParts[] = [
         userMsg("u1", "hello"),
-        assistantMsgWithTokens("a1", "done", { input: 90_000, output: 10_000 }),
+        assistantMsgWithTokens("a1", "done", { input: 90_000, output: 10_000 }, [
+            toolPart("c1", "x".repeat(620_000)),
+        ]),
         userMsg("u2", "next"),
     ]
     injectCompressNudges(state, config, logger, messages, makePrompts())

@@ -202,7 +202,9 @@ test("nudge injection: context usage tag injected when modelContextLimit is set"
     const output = {
         messages: [
             makeUserMessage("u1", "Hello"),
-            makeAssistantMessage("a1", "Hi", [], SID_A, { input: 100000, output: 50000 }),
+            makeAssistantMessage("a1", "Hi", [
+                makeToolPart("c1", "bash", "completed", "x".repeat(120_000)),
+            ], SID_A, { input: 100000, output: 50000 }),
             makeUserMessage("u2", "Tell me more"),
         ],
     }

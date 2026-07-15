@@ -295,8 +295,6 @@ export const injectCompressNudges = (
             growthSinceBaseline !== undefined &&
             growthSinceBaseline >= growthFloor)
 
-    state.nudges.shouldInjectThisTurn = nudgeAllowed
-
     const effectiveTipsVariant = emergencyOverride ? "maxLimit" : decision.tipsVariant
 
     if (nudgeAllowed) {
@@ -315,9 +313,55 @@ export const injectCompressNudges = (
         config.protectedFilePatterns,
     )
 
+    // Compute recommendation filter early — the result gates the nudge below.
+    const contextRanges = buildCompressibleRanges(
+        messages,
+        state,
+        config.compress.protectedTools,
+        config.protectedFilePatterns,
+    )
+    const recommendedRanges = filterRecommendedRanges(
+        contextRanges.compressible,
+        contextRanges.protected,
+        { modelContextLimit, growthRatio: 0.05, logger },
+    )
+    const hasRecommendations = recommendedRanges.length > 0
+
+    if (debugNotify && contextRanges.compressible.length > 0 && modelContextLimit) {
+        const growthThreshold = modelContextLimit * 0.05
+        const lastSegmentFloor = growthThreshold * 2
+        const compressible = contextRanges.compressible
+        const lastRange = compressible[compressible.length - 1]
+        const lastIncluded = lastRange.tokens >= lastSegmentFloor
+        const nonLastTokens = compressible
+            .slice(0, -1)
+            .reduce((s, r) => s + r.tokens, 0)
+        const effective = nonLastTokens + Math.max(0, lastRange.tokens - lastSegmentFloor)
+        const suppressed = effective < growthThreshold
+        const fmt = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n))
+        const lines = [
+            `[ACP Debug] Recommendation filter decision:`,
+            `  Input: ${compressible.length} range(s), ${fmt(compressible.reduce((s, r) => s + r.tokens, 0))} tokens`,
+            `  Thresholds: growth=${fmt(growthThreshold)}, lastSegmentFloor=${fmt(lastSegmentFloor)}`,
+            `  Last segment: ${lastRange.startRef}–${lastRange.endRef} ${fmt(lastRange.tokens)} tokens → ${lastIncluded ? "included (dangerous)" : "excluded (< floor)"}`,
+            `  Effective compressible: ${fmt(effective)} → ${suppressed ? "SUPPRESSED (< growth threshold)" : `${recommendedRanges.length} range(s) recommended`}`,
+        ]
+        debugNotify(lines.join("\n"))
+    }
+
+    // Skip soft nudges when the filter suppressed all ranges — injecting
+    // "go compress" with an empty recommendation list wastes context and
+    // confuses the model. Emergency overrides (maxLimit) always inject.
+    // When there are no compressible ranges at all (e.g. no refs assigned yet),
+    // don't suppress — that's an edge case, not a filter decision.
+    const filterSuppressed = contextRanges.compressible.length > 0 && !hasRecommendations
+    const shouldInject = nudgeAllowed && (!filterSuppressed || emergencyOverride)
+
+    state.nudges.shouldInjectThisTurn = shouldInject
+
     let tipsText: string | null = null
 
-    if (nudgeAllowed) {
+    if (shouldInject) {
         injectContextUsage(suffixMessage, config, currentTokens, modelContextLimit)
 
         if (suffixMessage && composition.total > 0) {
@@ -344,38 +388,6 @@ export const injectCompressNudges = (
                 breakdown += `\n⚠️ ${fmt(composition.protectedTokens)} tokens are protected (environment-managed tools) — not compressible. Effective compressible: ~${fmt(compressibleTokens)}.`
             }
 
-            const contextRanges = buildCompressibleRanges(
-                messages,
-                state,
-                config.compress.protectedTools,
-                config.protectedFilePatterns,
-            )
-            const recommendedRanges = filterRecommendedRanges(
-                contextRanges.compressible,
-                contextRanges.protected,
-                { modelContextLimit, growthRatio: 0.05, logger },
-            )
-            if (debugNotify && contextRanges.compressible.length > 0 && modelContextLimit) {
-                const growthThreshold = modelContextLimit * 0.05
-                const lastSegmentFloor = growthThreshold * 2
-                const compressible = contextRanges.compressible
-                const lastRange = compressible[compressible.length - 1]
-                const lastIncluded = lastRange.tokens >= lastSegmentFloor
-                const nonLastTokens = compressible
-                    .slice(0, -1)
-                    .reduce((s, r) => s + r.tokens, 0)
-                const effective = nonLastTokens + Math.max(0, lastRange.tokens - lastSegmentFloor)
-                const suppressed = effective < growthThreshold
-                const fmt = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n))
-                const lines = [
-                    `[ACP Debug] Recommendation filter decision:`,
-                    `  Input: ${compressible.length} range(s), ${fmt(compressible.reduce((s, r) => s + r.tokens, 0))} tokens`,
-                    `  Thresholds: growth=${fmt(growthThreshold)}, lastSegmentFloor=${fmt(lastSegmentFloor)}`,
-                    `  Last segment: ${lastRange.startRef}–${lastRange.endRef} ${fmt(lastRange.tokens)} tokens → ${lastIncluded ? "included (dangerous)" : "excluded (< floor)"}`,
-                    `  Effective compressible: ${fmt(effective)} → ${suppressed ? "SUPPRESSED (< growth threshold)" : `${recommendedRanges.length} range(s) recommended`}`,
-                ]
-                debugNotify(lines.join("\n"))
-            }
             if (recommendedRanges.length > 0) {
                 breakdown += `\n\n${formatCompressibleRanges(recommendedRanges, contextRanges.protected)}`
                 breakdown += `\n💡 Compress all ranges in one call (pass multiple content entries: \`content: [{...}, {...}]\`).`
