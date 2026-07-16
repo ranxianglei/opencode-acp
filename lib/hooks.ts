@@ -280,7 +280,16 @@ export function createChatMessageTransformHandler(
             compressionPriorities,
             config.debug
                 ? (text: string) => {
-                      logger.debug(`[ACP Debug] Nudge injected:\n${text}`)
+                      client.tui
+                          .showToast({
+                              body: {
+                                  title: "ACP: Nudge Injected",
+                                  message: text.slice(0, 500),
+                                  variant: "info",
+                                  duration: 5000,
+                              },
+                          })
+                          .catch(() => {})
                   }
                 : undefined,
             prePruneTokens,
