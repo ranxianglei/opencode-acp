@@ -280,6 +280,7 @@ export function createChatMessageTransformHandler(
             compressionPriorities,
             config.debug
                 ? (text: string) => {
+                      logger.debug(`[ACP Debug] Nudge injected:\n${text}`)
                       client.tui
                           .showToast({
                               body: {
