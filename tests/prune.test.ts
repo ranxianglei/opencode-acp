@@ -339,8 +339,55 @@ test("prune hides multiple compressed ranges in a single pass", () => {
     assert.ok(!hasRecap, "no synthetic recap should be injected (compress-as-anchor)")
 })
 
-// =====================================================================
-// pruneToolOutputs — completed tool output replacement
+test("prune keeps compress tool call visible with summary intact (compress-as-anchor)", () => {
+    const state = createSessionState()
+    state.prune.messages.byMessageId.set("m2", { tokenCount: 100, allBlockIds: [1], activeBlockIds: [1] })
+    state.prune.messages.activeByAnchorMessageId.set("m1", 1)
+    state.prune.messages.blocksById.set(1, {
+        blockId: 1, runId: 1, active: true, deactivatedByUser: false,
+        compressedTokens: 100, summaryTokens: 50, durationMs: 100,
+        generation: "young", survivedCount: 0,
+        directMessageIds: ["m2"], effectiveMessageIds: ["m2"],
+        directToolIds: [], effectiveToolIds: [],
+        anchorMessageId: "m1", topic: "anchor test", summary: "Summary text from compress call",
+    } as CompressionBlock)
+
+    const compressToolPart = {
+        id: "call-compress-part",
+        messageID: "c1",
+        sessionID: SID,
+        type: "tool" as const,
+        tool: "compress",
+        callID: "call-compress",
+        state: {
+            status: "completed" as const,
+            input: { topic: "anchor test", content: [{ startId: "m1", endId: "m2", summary: "Summary text from compress call" }] },
+            output: "Compressed 1 message into block b1.",
+        },
+    }
+
+    const messages: WithParts[] = [
+        userMessage("m1", "q", 1),
+        assistantMessage("m2", 2),
+        { info: { id: "c1", role: "assistant", sessionID: SID, agent: "assistant", time: { created: 3 } } as WithParts["info"], parts: [compressToolPart] },
+        userMessage("m3", "follow", 4),
+    ]
+
+    prune(state, logger, buildConfig(), messages)
+
+    const ids = messages.map((m) => m.info.id)
+    assert.ok(!ids.includes("m2"), "m2 should be pruned")
+    assert.ok(ids.includes("c1"), "compress tool call c1 should survive as anchor")
+    assert.ok(ids.includes("m1"), "anchor m1 should survive")
+
+    const compressMsg = messages.find((m) => m.info.id === "c1")
+    assert.ok(compressMsg, "compress call message should survive")
+    const toolPart = compressMsg!.parts.find((p: any) => p.type === "tool" && p.tool === "compress") as any
+    assert.ok(toolPart, "compress tool part should survive intact")
+    const inputContent = toolPart.state.input.content?.[0]?.summary
+    assert.equal(inputContent, "Summary text from compress call", "compress summary should be preserved in tool input")
+})
+
 // =====================================================================
 // pruneToolOutputs — completed tool output replacement
 // =====================================================================
