@@ -9,7 +9,7 @@ function formatCoverage(block: CompressionBlock): string {
 
 const RECAP_TOOL_DESCRIPTION = `Read-only retrieval of compression block summaries.
 
-This tool is primarily system-managed: ACP automatically injects compression summaries into context via this tool's result format. You can also call it directly to re-fetch a specific block's summary without decompressing the full original content.
+Call this tool to re-fetch a specific block's summary without decompressing the full original content. Useful when a past compress tool call's summary has scrolled out of context or was truncated by the provider.
 
 Args:
 - blockId: optional block number (e.g., 5). If omitted, lists all active blocks with brief info.`
