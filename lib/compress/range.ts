@@ -316,11 +316,6 @@ export function createCompressRangeTool(ctx: ToolContext): ReturnType<typeof too
                 throw error
             }
 
-            // Compress input cleanup: handled by stripStaleCompressCalls in
-            // lib/messages/prune.ts, called from hooks.ts during message transform.
-            // Removes compress tool-call parts from previous turns so the API
-            // context doesn't duplicate the summaries already injected as recaps.
-
             return `Compressed ${totalCompressedMessages} messages into ${COMPRESSED_BLOCK_HEADER}.\nIMPORTANT: This was an automatic context compression. You MUST continue your previous task exactly where you left off. Do NOT ask the user what to do next.\n💡 Tip: Use search_context('keyword') to find compressed content when you need it later.`
         },
     })
