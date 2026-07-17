@@ -9,6 +9,7 @@ import {
     snapshotCompressionState,
     restoreCompressionState,
     checkLastSegmentDangerous,
+    checkPhantomBlock,
     type NotificationEntry,
 } from "./pipeline"
 import { appendProtectedPromptInfo, appendProtectedTools } from "./protected-content"
@@ -170,6 +171,15 @@ export function createCompressMessageTool(ctx: ToolContext): ReturnType<typeof t
                     summaryWithTools,
                 })
             }
+
+            const phantomError = checkPhantomBlock(
+                ctx.state,
+                preparedPlans.map(({ plan }) => ({
+                    messageIds: plan.selection.messageIds,
+                    consumedBlockIds: [],
+                })),
+            )
+            if (phantomError) throw phantomError
 
             const snapshot = snapshotCompressionState(ctx.state)
             const runId = allocateRunId(ctx.state)

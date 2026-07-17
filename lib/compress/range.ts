@@ -8,6 +8,7 @@ import {
     snapshotCompressionState,
     restoreCompressionState,
     checkLastSegmentDangerous,
+    checkPhantomBlock,
     type NotificationEntry,
 } from "./pipeline"
 import {
@@ -252,6 +253,15 @@ export function createCompressRangeTool(ctx: ToolContext): ReturnType<typeof too
                     consumedBlockIds: mergeConsumedBlockIds,
                 })
             }
+
+            const phantomError = checkPhantomBlock(
+                ctx.state,
+                preparedPlans.map((p) => ({
+                    messageIds: p.selection.messageIds,
+                    consumedBlockIds: p.consumedBlockIds,
+                })),
+            )
+            if (phantomError) throw phantomError
 
             const snapshot = snapshotCompressionState(ctx.state)
             const runId = allocateRunId(ctx.state)
