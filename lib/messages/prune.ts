@@ -10,11 +10,10 @@ const PRUNED_TOOL_OUTPUT_REPLACEMENT =
 const PRUNED_TOOL_ERROR_INPUT_REPLACEMENT = "[input removed due to failed tool call]"
 const PRUNED_QUESTION_INPUT_REPLACEMENT = "[questions removed - see output for user's answers]"
 
-/** Format a block's message-ID range for display, e.g. "(m00150\u2013m00200)" or "(m00150)". */
-const computeBlockRange = (startId?: string, endId?: string): string | undefined => {
-    if (!startId || !endId) return undefined
-    if (startId === endId) return `(${startId})`
-    return `(${startId}\u2013${endId})`
+/** Count how many effective messages a block covers (for recap metadata). */
+const computeBlockCoverage = (effectiveMessageIds?: string[]): number | undefined => {
+    if (!effectiveMessageIds || effectiveMessageIds.length === 0) return undefined
+    return effectiveMessageIds.length
 }
 
 export const prune = (
@@ -239,7 +238,7 @@ const filterCompressedRanges = (
                         ? replaceBlockIdsWithBlocked(cleaned)
                         : cleaned
 
-                const blockRange = computeBlockRange(summary.startId, summary.endId)
+                const blockCoverage = computeBlockCoverage(summary.effectiveMessageIds)
                 const summarySeed = `${summary.blockId}:${summary.anchorMessageId}`
 
                 result.push(
@@ -247,7 +246,7 @@ const filterCompressedRanges = (
                         msg,
                         summaryContent,
                         summary.blockId,
-                        blockRange,
+                        blockCoverage,
                         summarySeed,
                     ),
                 )

@@ -327,7 +327,7 @@ export const injectCompressNudges = (
     )
     const hasRecommendations = recommendedRanges.length > 0
 
-    if (debugNotify && contextRanges.compressible.length > 0 && modelContextLimit) {
+    if (config.debug && contextRanges.compressible.length > 0 && modelContextLimit) {
         const growthThreshold = modelContextLimit * 0.05
         const lastSegmentFloor = growthThreshold * 2
         const compressible = contextRanges.compressible
@@ -346,7 +346,7 @@ export const injectCompressNudges = (
             `  Last segment: ${lastRange.startRef}–${lastRange.endRef} ${fmt(lastRange.tokens)} tokens → ${lastIncluded ? "included (dangerous)" : "excluded (< floor)"}`,
             `  Effective compressible: ${fmt(effective)} → ${suppressed ? "SUPPRESSED (< growth threshold)" : `${recommendedRanges.length} range(s) recommended`}`,
         ]
-        debugNotify(lines.join("\n"))
+        logger.debug(lines.join("\n"))
     }
 
     // Skip soft nudges when the filter suppressed all ranges — injecting

@@ -64,14 +64,9 @@ function formatEntryRanges(
     for (const entry of entries) {
         const block = state.prune.messages.blocksById.get(entry.blockId)
         if (!block) continue
-        const startRef = block.startId
-        const endRef = block.endId
-        if (!startRef || !endRef) continue
-        if (startRef === endRef) {
-            parts.push(`b${entry.blockId}: ${startRef}`)
-        } else {
-            parts.push(`b${entry.blockId}: ${startRef}–${endRef}`)
-        }
+        const count = block.effectiveMessageIds?.length || 0
+        if (count === 0) continue
+        parts.push(`b${entry.blockId}: ${count} msg${count !== 1 ? "s" : ""}`)
     }
     return parts.length > 0 ? parts.join(", ") : null
 }

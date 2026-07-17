@@ -32,11 +32,8 @@ function pct(n: number, total: number): number {
 }
 
 function formatIdRange(block: CompressionBlock): string {
-    const start = (block.startId || "").trim()
-    const end = (block.endId || "").trim()
-    if (!start || !end) return "—"
-    if (start === end) return start
-    return `${start}–${end}`
+    const count = block.effectiveMessageIds?.length || 0
+    return count > 0 ? `${count} msg${count !== 1 ? "s" : ""}` : "—"
 }
 
 function describeToolMessage(msg: WithParts): string {

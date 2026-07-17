@@ -85,7 +85,7 @@ export const createSyntheticToolRecap = (
     baseMessage: WithParts,
     summary: string,
     blockId: number | string,
-    range: string | undefined,
+    messageCount: number | undefined,
     stableSeed: string,
 ): WithParts => {
     const baseInfo = baseMessage.info
@@ -105,7 +105,7 @@ export const createSyntheticToolRecap = (
             status: "completed" as const,
             input: {
                 blockId,
-                ...(range ? { range } : {}),
+                ...(messageCount !== undefined ? { messages: messageCount } : {}),
             },
             output: summary,
             title: `ACP Context Recap (block ${blockId})`,

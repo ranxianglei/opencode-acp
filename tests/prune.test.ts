@@ -385,6 +385,99 @@ test("prune injects multiple tool-result recaps in a single pass", () => {
     assert.ok(recapOutputs.some((o) => o.includes("Summary B")), "should contain Summary B")
 })
 
+test("prune sets input.messages count on synthetic recap tool part", () => {
+    const state = createSessionState()
+    state.prune.messages.byMessageId.set("m2", { tokenCount: 100, allBlockIds: [1], activeBlockIds: [1] })
+    state.prune.messages.byMessageId.set("m3", { tokenCount: 200, allBlockIds: [1], activeBlockIds: [1] })
+    state.prune.messages.activeByAnchorMessageId.set("m1", 1)
+    state.prune.messages.blocksById.set(1, {
+        blockId: 1, runId: 1, active: true, deactivatedByUser: false,
+        compressedTokens: 300, summaryTokens: 50, durationMs: 100,
+        generation: "young", survivedCount: 0,
+        directMessageIds: ["m2", "m3"], effectiveMessageIds: ["m2", "m3"],
+        directToolIds: [], effectiveToolIds: [],
+        anchorMessageId: "m1", topic: "coverage test", summary: "Coverage test summary",
+    } as CompressionBlock)
+
+    const messages: WithParts[] = [
+        userMessage("m1", "q", 1),
+        assistantMessage("m2", 2),
+        assistantMessage("m3", 3),
+        userMessage("m4", "end", 4),
+    ]
+
+    prune(state, logger, buildConfig(), messages)
+
+    const recapPart = messages
+        .flatMap((m) => m.parts.filter((p: any) => p.type === "tool" && p.tool === "acp_context_recap"))
+        .pop() as any
+    assert.ok(recapPart, "recap tool part should exist")
+    assert.equal(recapPart.state.input.messages, 2, "input.messages should be effective message count")
+})
+
+test("prune omits input.messages when effectiveMessageIds is empty", () => {
+    const state = createSessionState()
+    state.prune.messages.byMessageId.set("m2", { tokenCount: 100, allBlockIds: [1], activeBlockIds: [1] })
+    state.prune.messages.activeByAnchorMessageId.set("m1", 1)
+    state.prune.messages.blocksById.set(1, {
+        blockId: 1, runId: 1, active: true, deactivatedByUser: false,
+        compressedTokens: 300, summaryTokens: 50, durationMs: 100,
+        generation: "young", survivedCount: 0,
+        directMessageIds: ["m2"], effectiveMessageIds: [],
+        directToolIds: [], effectiveToolIds: [],
+        anchorMessageId: "m1", topic: "empty effective", summary: "Empty effective ids",
+    } as CompressionBlock)
+
+    const messages: WithParts[] = [
+        userMessage("m1", "q", 1),
+        assistantMessage("m2", 2),
+        userMessage("m3", "end", 3),
+    ]
+
+    prune(state, logger, buildConfig(), messages)
+
+    const recapPart = messages
+        .flatMap((m) => m.parts.filter((p: any) => p.type === "tool" && p.tool === "acp_context_recap"))
+        .pop() as any
+    assert.ok(recapPart, "recap tool part should exist")
+    assert.equal(recapPart.state.input.messages, undefined, "input.messages should be undefined when effectiveMessageIds is empty")
+    assert.ok(!("range" in recapPart.state.input), "no range field should be present (ref leak prevention)")
+})
+
+test("prune synthetic recap contains no mNNNNN message refs (ref-leak prevention)", () => {
+    const state = createSessionState()
+    state.prune.messages.byMessageId.set("m2", { tokenCount: 100, allBlockIds: [1], activeBlockIds: [1] })
+    state.prune.messages.activeByAnchorMessageId.set("m1", 1)
+    state.prune.messages.blocksById.set(1, {
+        blockId: 1, runId: 1, active: true, deactivatedByUser: false,
+        compressedTokens: 300, summaryTokens: 50, durationMs: 100,
+        generation: "young", survivedCount: 0,
+        directMessageIds: ["m2"], effectiveMessageIds: ["m2"],
+        directToolIds: [], effectiveToolIds: [],
+        anchorMessageId: "m1", topic: "no refs", summary: "Clean summary text",
+        startId: "m00010", endId: "m00020",
+    } as CompressionBlock)
+
+    const messages: WithParts[] = [
+        userMessage("m1", "q", 1),
+        assistantMessage("m2", 2),
+        userMessage("m3", "end", 3),
+    ]
+
+    prune(state, logger, buildConfig(), messages)
+
+    const recapPart = messages
+        .flatMap((m) => m.parts.filter((p: any) => p.type === "tool" && p.tool === "acp_context_recap"))
+        .pop() as any
+    assert.ok(recapPart, "recap tool part should exist")
+
+    const inputJson = JSON.stringify(recapPart.state.input)
+    assert.ok(!/\bm\d{5}\b/.test(inputJson), `input should not contain mNNNNN refs, got: ${inputJson}`)
+
+    const output = recapPart.state.output ?? ""
+    assert.ok(!/\bm\d{5}\b/.test(output), "output should not contain mNNNNN refs in block metadata")
+})
+
 // =====================================================================
 // pruneToolOutputs — completed tool output replacement
 // =====================================================================
