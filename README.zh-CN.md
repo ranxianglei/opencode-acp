@@ -395,6 +395,14 @@ ACP 在首次启动时自动将配置从 `dcp.jsonc` 迁移到 `acp.jsonc`，将
 
 ## 更新日志
 
+### v1.12.8 — 幽灵块拒绝（PR #148）
+
+**问题**：当模型对已被活跃压缩块覆盖的范围调用 `compress` 时，`applyCompressionState` 仍然创建新块，`directMessageIds: []`、`compressedTokens: 0`、`effectiveMessageIds` 从被消费的块继承。模型在通知中看到"移除 0 tokens"，重试同一范围，进入死亡循环：每个幽灵块增加约 1K 摘要开销却什么都不压缩，导致上下文随每次压缩调用*增长*（issues #93, #135）。用户会话显示同一范围连续 9 次幽灵压缩（b12–b20），直到用户手动干预。
+
+**修复**：新增 `checkPhantomBlock()` —— `lib/compress/pipeline.ts` 中的无状态前置检查，镜像 `applyCompressionState` 的 `newlyCompressedMessageIds` 计算。对每个计划，构建有效消息集（计划消息 + 被消费块的有效消息），检查是否有任何消息是"新的"（即变异前没有活跃块覆盖它）。如果没有新消息，该计划是幽灵的，整个 compress 调用在任何状态变异前以清晰错误被拒绝。接入 range 模式（`compress/range.ts`）和 message 模式（`compress/message.ts`）的计划准备之后、快照之前。12 个测试覆盖：空计划、全新消息、被消费块继承、GC'd 消息（已停用块算新）、以及与 `applyCompressionState` 的精确镜像。
+
+文件：`lib/compress/pipeline.ts`、`lib/compress/range.ts`、`lib/compress/message.ts`。测试：`tests/phantom-block.test.ts`（新增，12 个测试）。725 测试通过。
+
 ### v1.12.7 — 智能推荐过滤 + Dangerous 参数 + Ref 泄漏修复 + Phantom Turn 修复（PR #142, #147, #150）
 
 **问题**：四个问题。（1）推荐过滤器使用硬编码的 5× 增长阈值（上下文的 25%），太大且容易泄露上下文；推荐最后一段的同时又阻止它，自相矛盾。（2）过滤器抑制所有 range 后仍然注入 nudge 文本——用空推荐列表浪费上下文。（3）压缩块元数据通过 `acp_context_recap` 工具输入、`acp_status` 输出和 `recap` 工具输出泄漏消息 ref（`m01309–m02150`）——模型复制这些 ref 到已压缩范围的 compress 调用中，产生幽灵块（#93, #135）。（4）`sendIgnoredMessage` 在 transform hook 中持久化 ignored 用户消息，异步在模型回复后完成——loop 的 `lastUser` 检测拾取它 → 无新输入的 phantom LLM 调用 → 困惑 → 幻觉 → 反馈循环（"待命" 刷屏）。
