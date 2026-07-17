@@ -422,6 +422,14 @@ For the complete list with root cause analysis, see the [bug tracker](https://gi
 
 ## Changelog
 
+### v1.12.8 — Phantom Block Rejection (PR #148)
+
+**Problem**: When the model called `compress` on a range that was already covered by an active compression block, `applyCompressionState` still created a new block with `directMessageIds: []`, `compressedTokens: 0`, and `effectiveMessageIds` inherited from the consumed block. The model saw "0 tokens removed" in the notification, retried the same range, and entered a death loop: each phantom block added ~1K of summary overhead while compressing nothing, causing context to *grow* with every compression call (issues #93, #135). User sessions showed 9 consecutive phantom compressions (b12–b20) on the same range before the user manually intervened.
+
+**Fix**: Added `checkPhantomBlock()` — a stateless pre-check in `lib/compress/pipeline.ts` that mirrors `applyCompressionState`'s `newlyCompressedMessageIds` computation. For each plan, it builds the effective message set (plan messages + consumed blocks' effective messages) and checks whether ANY message is "new" (i.e., has no active block covering it BEFORE mutation). If no message is new, the plan is a phantom and the entire compress call is rejected with a clear error before any state mutation occurs. Wired into both range-mode (`compress/range.ts`) and message-mode (`compress/message.ts`) after plan preparation, before snapshot. 12 tests cover: empty plans, all-new messages, consumed-block inheritance, GC'd messages (deactivated blocks count as new), and the exact `applyCompressionState` mirroring.
+
+Files: `lib/compress/pipeline.ts`, `lib/compress/range.ts`, `lib/compress/message.ts`. Tests: `tests/phantom-block.test.ts` (NEW, 12 tests). 725 tests pass.
+
 ### v1.12.7 — Smart Recommendation Filter + Dangerous Parameter + Ref-Leak Fix + Phantom Turn Fix (PRs #142, #147, #150)
 
 **Problem**: Four issues. (1) The recommendation filter used a hardcoded 5× growth threshold for single-message ranges (25% of context), leaked context, showed tiny ranges, and contradicted itself by recommending the last segment while blocking it. (2) Nudge text was injected even when the filter suppressed all ranges — wasting context with an empty recommendation list. (3) Compression block metadata leaked message refs (`m01309–m02150`) via `acp_context_recap` tool input, `acp_status` output, and `recap` tool output — the model copied these into compress calls on already-compressed ranges, creating phantom blocks (#93, #135). (4) `sendIgnoredMessage` during the transform hook persisted an ignored user message that resolved async after the model's response — the loop's `lastUser` detection picked it up → phantom LLM call with no new input → confusion → hallucination → feedback loop ("待命" spam).
