@@ -395,13 +395,13 @@ ACP 在首次启动时自动将配置从 `dcp.jsonc` 迁移到 `acp.jsonc`，将
 
 ## 更新日志
 
-### v1.12.7-dev.1 — 智能推荐过滤 + Dangerous 参数 + 部署版本守卫（PR #142, dev）
+### v1.12.7 — 智能推荐过滤 + Dangerous 参数 + Ref 泄漏修复 + Phantom Turn 修复（PR #142, #147, #150）
 
-**问题**：推荐过滤器有三个问题。（1）使用硬编码的 5× 增长阈值（上下文的 25%），太大且容易泄露上下文。（2）过滤器会显示极小的 range（71 tokens）。（3）最后一段总是显示位置标注 "recent"，但压缩它需要显式确认——推荐和阻止矛盾。此外，`dev-deploy.sh` 的部署在 opencode 重启时被 npm 静默覆盖（当 npm 版本比本地新时）。
+**问题**：四个问题。（1）推荐过滤器使用硬编码的 5× 增长阈值（上下文的 25%），太大且容易泄露上下文；推荐最后一段的同时又阻止它，自相矛盾。（2）过滤器抑制所有 range 后仍然注入 nudge 文本——用空推荐列表浪费上下文。（3）压缩块元数据通过 `acp_context_recap` 工具输入、`acp_status` 输出和 `recap` 工具输出泄漏消息 ref（`m01309–m02150`）——模型复制这些 ref 到已压缩范围的 compress 调用中，产生幽灵块（#93, #135）。（4）`sendIgnoredMessage` 在 transform hook 中持久化 ignored 用户消息，异步在模型回复后完成——loop 的 `lastUser` 检测拾取它 → 无新输入的 phantom LLM 调用 → 困惑 → 幻觉 → 反馈循环（"待命" 刷屏）。
 
-**修复**：（1）重写 `filterRecommendedRanges`：最后一段 < 2× 增长阈值 → 剔除；≥ 2× → 保留并标记 `dangerous: true`。门槛："有效可压缩" = 非最后段 + max(0, 最后段 − 2× 阈值)；< 增长阈值则全部抑制。（2）受保护内容不再影响过滤逻辑。（3）用无状态的 `dangerous?: boolean` 参数替换状态追踪 soft-block——模型必须显式 opt-in 才能压缩尾部。净减 70 行。（4）通过 `sendIgnoredMessage` 注入过滤决策调试信息（模型不可见，`debug: true` 时用户可见）。（5）`dev-deploy.sh` 查询 `npm view` 并自动将部署版本 bump 到 npm 最新版之上，防止重启覆盖。
+**修复**：（1）重写 `filterRecommendedRanges`：最后一段 < 2× 增长阈值 → 剔除；≥ 2× → 保留并标记 `dangerous: true`。无状态 `dangerous?: boolean` 参数替代状态追踪 soft-block。净减 70 行。（2）过滤器无推荐时抑制 nudge 文本注入。（3）停止泄漏消息 ref：`acp_context_recap` 工具输入改为 `messages: <数量>`；`acp_status` 和 `recap` 工具输出改为 `N msgs`。（4）Debug nudge 通知改用 `client.tui.showToast()`（瞬态，不持久化）+ `logger.debug()`（文件日志），彻底打破 phantom-turn 反馈循环。`dev-deploy.sh` 自动 bump 版本到 npm 最新之上防止重启覆盖。
 
-文件：`lib/messages/inject/utils.ts`、`lib/messages/inject/inject.ts`、`lib/compress/pipeline.ts`、`lib/compress/range.ts`、`lib/compress/message.ts`、`scripts/dev-deploy.sh`。测试：`tests/smart-nudge-gating.test.ts`（重写，17 测试）、`tests/soft-block.test.ts`（5 测试）、`tests/inject.test.ts`（更新）。711 测试通过。
+文件：`lib/messages/inject/utils.ts`、`lib/messages/inject/inject.ts`、`lib/compress/pipeline.ts`、`lib/compress/range.ts`、`lib/compress/message.ts`、`lib/messages/prune.ts`、`lib/messages/utils.ts`、`lib/compress/recap.ts`、`lib/compress/status.ts`、`lib/ui/notification.ts`、`lib/prompts/system.ts`、`lib/hooks.ts`、`scripts/dev-deploy.sh`。测试：725 通过。
 
 ### v1.12.6 — Stale contextLimitAnchors 修复（PR #143）
 
