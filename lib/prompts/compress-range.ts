@@ -35,6 +35,16 @@ Rules:
 BATCHING
 When multiple independent ranges are ready and their boundaries do not overlap, include all of them as separate entries in the \`content\` array of a single tool call. Each entry should have its own \`startId\`, \`endId\`, and \`summary\`.
 
+When the ranges cover unrelated topics, give each entry its own \`topic\` for better summary quality — do not force unrelated content under a single shared topic. Omit the top-level \`topic\` when every entry has its own. Use the top-level \`topic\` only as a fallback when entries don't specify one.
+
+\`\`\`
+compress({ content: [
+  { topic: "Auth System Exploration", startId: "m00010", endId: "m00050", summary: "..." },
+  { topic: "Bug Hunt", startId: "m00060", endId: "m00080", summary: "..." },
+  { topic: "Deployment", startId: "m00090", endId: "m00110", summary: "..." },
+]})
+\`\`\`
+
 KEEP AND REF MARKERS
 When writing a summary, you may embed markers that reference specific messages in the compressed range. The system resolves them automatically:
 

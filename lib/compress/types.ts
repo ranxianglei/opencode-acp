@@ -12,13 +12,16 @@ export interface ToolContext {
 }
 
 export interface CompressRangeEntry {
+    /** Per-entry topic for batch compression. Falls back to top-level `topic`. */
+    topic?: string
     startId: string
     endId: string
     summary: string
 }
 
 export interface CompressRangeToolArgs {
-    topic: string
+    /** Fallback topic for entries without their own. Optional if every entry has one. */
+    topic?: string
     content: CompressRangeEntry[]
 }
 
@@ -97,7 +100,7 @@ export interface AppliedCompressionResult {
 
 export interface CompressionStateInput {
     topic: string
-    batchTopic: string
+    batchTopic: string | undefined
     startId: string
     endId: string
     mode: CompressionMode

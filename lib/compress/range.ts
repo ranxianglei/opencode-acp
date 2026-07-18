@@ -40,10 +40,19 @@ function buildSchema(maxSummaryLengthHard: number) {
     return {
         topic: tool.schema
             .string()
-            .describe("Short label (3-5 words) for display - e.g., 'Auth System Exploration'"),
+            .optional()
+            .describe(
+                "Fallback topic for entries without their own. Omit when each content entry specifies its own topic.",
+            ),
         content: tool.schema
             .array(
                 tool.schema.object({
+                    topic: tool.schema
+                        .string()
+                        .optional()
+                        .describe(
+                            "Short label (3-5 words) for THIS range, e.g. 'Auth System Exploration'. Omit to use top-level topic. When compressing multiple unrelated ranges, give each its own topic for better quality.",
+                        ),
                     startId: tool.schema
                         .string()
                         .describe(
@@ -60,7 +69,7 @@ function buildSchema(maxSummaryLengthHard: number) {
                 }),
             )
             .describe(
-                "One or more ranges to compress, each with start/end boundaries and a summary",
+                "One or more ranges to compress, each with start/end boundaries and a summary. When compressing multiple unrelated ranges in one call, give each its own topic.",
             ),
         summaryMaxChars: tool.schema
             .number()
@@ -107,7 +116,7 @@ export function createCompressRangeTool(ctx: ToolContext): ReturnType<typeof too
             const { rawMessages, searchContext } = await prepareSession(
                 ctx,
                 toolCtx,
-                `Compress Range: ${input.topic}`,
+                `Compress Range: ${input.topic ?? "(batch)"}`,
             )
             const resolvedPlans = resolveRanges(input, searchContext, ctx.state)
             validateNonOverlapping(resolvedPlans)
@@ -282,7 +291,7 @@ export function createCompressRangeTool(ctx: ToolContext): ReturnType<typeof too
                     const applied = applyCompressionState(
                         ctx.state,
                         {
-                            topic: input.topic,
+                            topic: preparedPlan.entry.topic ?? input.topic ?? "",
                             batchTopic: input.topic,
                             startId: preparedPlan.entry.startId,
                             endId: preparedPlan.entry.endId,
@@ -310,7 +319,13 @@ export function createCompressRangeTool(ctx: ToolContext): ReturnType<typeof too
                     })
                 }
 
-                await finalizeSession(ctx, toolCtx, rawMessages, notifications, input.topic)
+                await finalizeSession(
+                    ctx,
+                    toolCtx,
+                    rawMessages,
+                    notifications,
+                    input.topic,
+                )
             } catch (error) {
                 restoreCompressionState(ctx.state, snapshot)
                 throw error

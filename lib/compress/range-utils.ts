@@ -13,9 +13,8 @@ import type {
 const BLOCK_PLACEHOLDER_REGEX = /\(b(\d+)\)|\{block_(\d+)\}/gi
 
 export function validateArgs(args: CompressRangeToolArgs): void {
-    if (typeof args.topic !== "string" || args.topic.trim().length === 0) {
-        throw new Error("topic is required and must be a non-empty string")
-    }
+    const hasTopLevelTopic =
+        typeof args.topic === "string" && args.topic.trim().length > 0
 
     if (!Array.isArray(args.content) || args.content.length === 0) {
         throw new Error("content is required and must be a non-empty array")
@@ -36,6 +35,14 @@ export function validateArgs(args: CompressRangeToolArgs): void {
         if (typeof entry?.summary !== "string" || entry.summary.trim().length === 0) {
             throw new Error(`${prefix}.summary is required and must be a non-empty string`)
         }
+
+        const hasEntryTopic =
+            typeof entry?.topic === "string" && entry.topic.trim().length > 0
+        if (!hasEntryTopic && !hasTopLevelTopic) {
+            throw new Error(
+                `${prefix} needs a topic — provide ${prefix}.topic or the top-level topic`,
+            )
+        }
     }
 }
 
@@ -46,6 +53,10 @@ export function resolveRanges(
 ): ResolvedRangeCompression[] {
     return args.content.map((entry, index) => {
         const normalizedEntry = {
+            topic:
+                typeof entry.topic === "string" && entry.topic.trim().length > 0
+                    ? entry.topic.trim()
+                    : undefined,
             startId: entry.startId.trim(),
             endId: entry.endId.trim(),
             summary: entry.summary,
