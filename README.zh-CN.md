@@ -395,6 +395,14 @@ ACP 在首次启动时自动将配置从 `dcp.jsonc` 迁移到 `acp.jsonc`，将
 
 ## 更新日志
 
+### v1.12.10-dev.1 — Protected 标签精确性 + Nudge 抑制 + 离散检查间隔（PR #157, #158, #159）
+
+**问题**：三个 nudge/推荐质量问题。（1）`[PROTECTED: ...]` 标签列出受保护消息中的所有工具（例如 `[PROTECTED: grep, skill]`），让模型误以为 `grep` 等非保护工具也是保护原因。（2）当所有可见内容都是受保护内容时，nudge 仍然以空推荐列表注入 —— 浪费上下文且让模型困惑。（3）当 nudge 被抑制（过滤器移除所有推荐）时，下一轮检查每轮都重新评估，因为 baseline 从不前进，导致重复浪费计算。
+
+**修复**：（1）`buildCompressibleRanges` 现在只添加通过 `isToolNameProtected` 或 `isFilePathProtected` 实际触发保护的工具，与 `messageContainsProtectedTool` 逻辑完全一致 —— 标签现在只显示 `[PROTECTED: skill]`。（2）新增 `allProtected = compressible.length === 0 && protected.length > 0` 检查；`nothingToCompress = filterSuppressed || allProtected` 门控 nudge 注入，当确实没有可压缩内容时抑制软 nudge（`protected.length > 0` 判别式保留了"尚未分配 ref"的边缘情况）。（3）当 nudge 被抑制时，将 `lastPerMessageNudgeTokens` 前进到 `currentTokens` 并清除 `lastNudgeShownTokens`，创建离散 5% 检查间隔而非每轮重新评估。
+
+文件：`lib/messages/inject/utils.ts`、`lib/messages/inject/inject.ts`。测试：757 通过（4 个 "all protected" 测试修复为真正触发 `allProtected` 分支，+1 个 Scenario A 测试覆盖抑制后压缩）。
+
 ### v1.12.9 — Compress-as-Anchor（PR #153）
 
 **问题**：自 v1.12.1 起，压缩摘要通过注册的 `acp_context_recap` 工具以 synthetic tool-result 消息注入，同时 `stripStaleCompressCalls` 从 API 上下文中移除历史 `compress` 工具调用以避免重复。这导致摘要开销翻倍：每个块的摘要同时存在于 synthetic recap 消息和原始（已移除的）compress 调用的 `summary` 参数中。对于压缩频繁的会话，这个 "recap 开销" 占用 10–20% 上下文却没有额外信息价值。`acp_context_recap` 工具描述也声称它"自动注入"摘要，具有误导性。
