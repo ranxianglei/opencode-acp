@@ -372,33 +372,22 @@ test("compression blocks: compressed messages are replaced with summaries", asyn
 
     await handler({}, output)
 
-    // u1 and a1 should be pruned (replaced by tool-result recap)
-    // u2 gets a tool-result recap injected before it, then u2 and a2 remain
     const remainingIds = output.messages.map((m: any) => m.info.id)
 
-    // The original u1 and a1 are gone (compressed)
     assert.ok(!remainingIds.includes("u1"), "u1 should be pruned")
     assert.ok(!remainingIds.includes("a1"), "a1 should be pruned")
 
-    // u2 and a2 survive
     assert.ok(remainingIds.includes("u2"), "u2 should survive")
     assert.ok(remainingIds.includes("a2"), "a2 should survive")
 
-    // The summary should be injected as a tool-result recap (acp_context_recap)
-    const recapMsg = output.messages.find(
+    const hasRecap = output.messages.some(
         (m: any) =>
-            m.info.role === "assistant" &&
             m.parts.some(
-                (p: any) =>
-                    p.type === "tool" &&
-                    p.tool === "acp_context_recap" &&
-                    typeof p.state?.output === "string" &&
-                    p.state.output.includes("Previous conversation about greetings"),
+                (p: any) => p.type === "tool" && p.tool === "acp_context_recap",
             ),
     )
-    assert.ok(recapMsg, "recap should be injected as acp_context_recap tool-result")
+    assert.ok(!hasRecap, "no synthetic recap should be injected (compress-as-anchor)")
 
-    // u2's text should NOT be modified (no merge into user message)
     const u2Msg = output.messages.find((m: any) => m.info.id === "u2")
     assert.ok(u2Msg, "u2 should survive")
     const u2Text = u2Msg!.parts
@@ -407,7 +396,7 @@ test("compression blocks: compressed messages are replaced with summaries", asyn
         .join("")
     assert.ok(
         !u2Text.includes("Previous conversation about greetings"),
-        "recap should NOT be merged into u2 text",
+        "summary should NOT be merged into u2 text",
     )
     assert.ok(
         u2Text.includes("How are you?"),
@@ -473,14 +462,11 @@ test("compression summary: never produces two consecutive user turns (Bug 36)", 
 
     await handler({}, output)
 
-    // Exclude ONLY the trailing suffix-guidance nudge (the last message, when
-    // synthetic).
     const lastIdx = output.messages.length - 1
     const historical = output.messages.filter(
         (m: any, idx: number) => !(idx === lastIdx && isSyntheticMessage(m)),
     )
 
-    // No two adjacent messages may both be role "user"
     for (let i = 1; i < historical.length; i++) {
         const prev = historical[i - 1]!
         const curr = historical[i]!
@@ -491,26 +477,22 @@ test("compression summary: never produces two consecutive user turns (Bug 36)", 
         )
     }
 
-    // The recap should be injected as a tool-result, not merged into u2
     const u2 = historical.find((m: WithParts) => m.info.id === "u2")
     assert.ok(u2, "u2 should survive")
     const u2Text = u2!.parts
         .filter((p) => p.type === "text")
         .map((p) => (p as any).text)
         .join("")
-    assert.ok(!u2Text.includes("The assistant explained the plan"), "recap should NOT be merged into u2")
+    assert.ok(!u2Text.includes("The assistant explained the plan"), "summary should NOT be merged into u2")
     assert.ok(u2Text.includes("Sounds good, continue."), "u2 original text preserved")
 
-    const recapMsg = historical.find(
+    const hasRecap = historical.some(
         (m: any) =>
-            m.info.role === "assistant" &&
             m.parts.some(
-                (p: any) => p.type === "tool" && p.tool === "acp_context_recap" &&
-                    typeof p.state?.output === "string" &&
-                    p.state.output.includes("The assistant explained the plan"),
+                (p: any) => p.type === "tool" && p.tool === "acp_context_recap",
             ),
     )
-    assert.ok(recapMsg, "recap should be injected as acp_context_recap tool-result")
+    assert.ok(!hasRecap, "no synthetic recap should be injected (compress-as-anchor)")
 })
 
 // ─── Test: Fallback — standalone summary when no following user turn (Bug 36) ──
@@ -575,21 +557,14 @@ test("compression summary: emits standalone summary when range is last (no user 
     assert.ok(!remainingIds.includes("u2"), "u2 (covered by block) should be pruned")
     assert.ok(!remainingIds.includes("a2"), "a2 (covered by block) should be pruned")
 
-    // Recap should be injected as a tool-result
-    const recapMsg = output.messages.find(
+    const hasRecap = output.messages.some(
         (m: any) =>
-            m.info.role === "assistant" &&
             m.parts.some(
-                (p: any) =>
-                    p.type === "tool" &&
-                    p.tool === "acp_context_recap" &&
-                    typeof p.state?.output === "string" &&
-                    p.state.output.includes("Final wrap-up of the task."),
+                (p: any) => p.type === "tool" && p.tool === "acp_context_recap",
             ),
     )
-    assert.ok(recapMsg, "recap should be injected as acp_context_recap tool-result")
+    assert.ok(!hasRecap, "no synthetic recap should be injected (compress-as-anchor)")
 
-    // No adjacent user turns
     const lastIdx = output.messages.length - 1
     const checkMessages = output.messages.filter(
         (m: any, idx: number) => !(idx === lastIdx && isSyntheticMessage(m)),

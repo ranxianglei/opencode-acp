@@ -88,7 +88,7 @@ test("syncCompressionBlocks deactivates block when anchor is gone even if tracke
     assert.equal(
         block.active,
         false,
-        "block should be deactivated — anchor gone means recap cannot be injected",
+        "block should be deactivated — anchor message is gone",
     )
     assert.ok(!state.prune.messages.activeBlockIds.has(1))
 })

@@ -5,9 +5,6 @@ import type { AssistantMessage, Message, UserMessage } from "@opencode-ai/sdk/v2
 
 const SUMMARY_ID_HASH_LENGTH = 16
 
-/** Tool name used for synthetic compression-recap injection. */
-export const ACP_RECAP_TOOL_NAME = "acp_context_recap"
-
 const DCP_BLOCK_ID_TAG_REGEX = /(<(?:dcp|acp)-message-id[^>]*>)b\d+(<\/(?:dcp|acp)-message-id>)/g
 // [FIX Bug 28] Regex to strip stale mNNNN refs from compressed summaries
 const DCP_MESSAGE_REF_TAG_REGEX = /<(?:dcp|acp)-message-id[^>]*>m\d+<\/(?:dcp|acp)-message-id>/g
@@ -80,61 +77,6 @@ export const createSyntheticUserMessage = (
     content: string,
     stableSeed?: string,
 ): WithParts => createSyntheticMessage(baseMessage, content, stableSeed, "user")
-
-export const createSyntheticToolRecap = (
-    baseMessage: WithParts,
-    summary: string,
-    blockId: number | string,
-    messageCount: number | undefined,
-    stableSeed: string,
-): WithParts => {
-    const baseInfo = baseMessage.info
-    const now = Date.now()
-    const messageId = generateStableId("msg_acp_recap", stableSeed)
-    const partId = generateStableId("prt_acp_recap", stableSeed)
-    const callId = generateStableId("call_acp_recap", stableSeed)
-
-    const toolPart = {
-        id: partId,
-        sessionID: baseInfo.sessionID,
-        messageID: messageId,
-        type: "tool" as const,
-        callID: callId,
-        tool: ACP_RECAP_TOOL_NAME,
-        state: {
-            status: "completed" as const,
-            input: {
-                blockId,
-                ...(messageCount !== undefined ? { messages: messageCount } : {}),
-            },
-            output: summary,
-            title: `ACP Context Recap (block ${blockId})`,
-            metadata: {},
-            time: { start: now, end: now },
-        },
-    }
-
-    const isAssistant = baseInfo.role === "assistant"
-    const assistantBase = isAssistant ? (baseInfo as AssistantMessage) : undefined
-    const userModel = !isAssistant ? (baseInfo as UserMessage).model : undefined
-
-    const info: AssistantMessage = {
-        id: messageId,
-        sessionID: baseInfo.sessionID,
-        role: "assistant",
-        time: { created: now },
-        parentID: assistantBase?.parentID ?? "",
-        modelID: assistantBase?.modelID ?? userModel?.modelID ?? "",
-        providerID: assistantBase?.providerID ?? userModel?.providerID ?? "",
-        mode: assistantBase?.mode ?? "code",
-        agent: baseInfo.agent ?? "code",
-        path: assistantBase?.path ?? { cwd: "", root: "" },
-        cost: 0,
-        tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
-    }
-
-    return { info, parts: [toolPart] }
-}
 
 export const createSyntheticTextPart = (
     baseMessage: WithParts,
