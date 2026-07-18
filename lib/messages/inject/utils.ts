@@ -653,10 +653,27 @@ export function estimateContextComposition(
                 const raw = JSON.stringify(part)
                 const tokens = Math.round(raw.length / 4)
                 msgTotal += tokens
-                toolTokens += tokens
-                msgTool += tokens
                 const toolName = (part as any)?.tool || "unknown"
-                toolTypeMap.set(toolName, (toolTypeMap.get(toolName) || 0) + tokens)
+
+                // Compress-as-anchor (v1.12.9+): classify summary content as
+                // summaryTokens, not toolTokens. The summary text lives in
+                // part.state.input.content[].summary.
+                let summaryPartTokens = 0
+                if (toolName === "compress") {
+                    const input = (part as any)?.state?.input
+                    if (input?.content && Array.isArray(input.content)) {
+                        for (const entry of input.content) {
+                            if (typeof entry?.summary === "string") {
+                                summaryPartTokens += Math.round(entry.summary.length / 4)
+                            }
+                        }
+                    }
+                }
+                const toolPartTokens = Math.max(0, tokens - summaryPartTokens)
+                toolTokens += toolPartTokens
+                msgTool += toolPartTokens
+                summaryTokens += summaryPartTokens
+                toolTypeMap.set(toolName, (toolTypeMap.get(toolName) || 0) + toolPartTokens)
                 if (!msgToolName) msgToolName = toolName
             }
         }
