@@ -22,6 +22,7 @@ mkdirSync(testConfigHome, { recursive: true })
 function buildConfig(): PluginConfig {
     return {
         enabled: true,
+        autoUpdate: true,
         debug: false,
         pruneNotification: "off",
         pruneNotificationType: "chat",
@@ -132,36 +133,39 @@ function buildToolCtx(sessionID: string, state: ReturnType<typeof createSessionS
 test("validateArgs: per-entry topics, no top-level topic — valid", () => {
     const args: CompressRangeToolArgs = {
         content: [
-            { topic: "Exploration", startId: "m1", endId: "m3", summary: "..." },
-            { topic: "Bug Hunt", startId: "m4", endId: "m6", summary: "..." },
+            { topic: "Exploration", startId: "m00001", endId: "m00003", summary: "..." },
+            { topic: "Bug Hunt", startId: "m00004", endId: "m00006", summary: "..." },
         ],
     }
+    assert.doesNotThrow(() => validateArgs(args))
 })
 
 test("validateArgs: top-level topic only, no per-entry topics — valid (backward compat)", () => {
     const args: CompressRangeToolArgs = {
         topic: "Shared topic",
         content: [
-            { startId: "m1", endId: "m3", summary: "..." },
-            { startId: "m4", endId: "m6", summary: "..." },
+            { startId: "m00001", endId: "m00003", summary: "..." },
+            { startId: "m00004", endId: "m00006", summary: "..." },
         ],
     }
+    assert.doesNotThrow(() => validateArgs(args))
 })
 
 test("validateArgs: mixed — some entries have topic, others use fallback", () => {
     const args: CompressRangeToolArgs = {
         topic: "Fallback topic",
         content: [
-            { topic: "Specific", startId: "m1", endId: "m3", summary: "..." },
-            { startId: "m4", endId: "m6", summary: "..." },
+            { topic: "Specific", startId: "m00001", endId: "m00003", summary: "..." },
+            { startId: "m00004", endId: "m00006", summary: "..." },
         ],
     }
+    assert.doesNotThrow(() => validateArgs(args))
 })
 
 test("validateArgs: no topic at all — entry without topic and no fallback", () => {
     const args = {
         content: [
-            { startId: "m1", endId: "m3", summary: "..." },
+            { startId: "m00001", endId: "m00003", summary: "..." },
         ],
     }
     assert.throws(
@@ -173,8 +177,8 @@ test("validateArgs: no topic at all — entry without topic and no fallback", ()
 test("validateArgs: one entry without topic in a no-topical batch", () => {
     const args = {
         content: [
-            { topic: "First", startId: "m1", endId: "m3", summary: "..." },
-            { startId: "m4", endId: "m6", summary: "..." },
+            { topic: "First", startId: "m00001", endId: "m00003", summary: "..." },
+            { startId: "m00004", endId: "m00006", summary: "..." },
         ],
     }
     assert.throws(
@@ -186,7 +190,7 @@ test("validateArgs: one entry without topic in a no-topical batch", () => {
 test("validateArgs: empty top-level topic with entry lacking topic", () => {
     const args = {
         topic: "   ",
-        content: [{ startId: "m1", endId: "m3", summary: "..." }],
+        content: [{ startId: "m00001", endId: "m00003", summary: "..." }],
     }
     assert.throws(
         () => validateArgs(args as CompressRangeToolArgs),
