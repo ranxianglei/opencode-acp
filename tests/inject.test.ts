@@ -825,6 +825,124 @@ test("emergency override fires even when all content is protected", () => {
     )
 })
 
+test("baseline advances when nudge suppressed — discrete 5% intervals (all protected)", () => {
+    const state = createSessionState()
+    state.modelContextLimit = 1_000_000
+    state.messageIds.byRawId.set("u1", "m00001")
+    state.messageIds.byRawId.set("a1", "m00002")
+
+    const config = buildConfig()
+    config.compress.protectedTools = ["skill"]
+    config.compress.maxContextLimit = 500_000
+    config.compress.minContextLimit = 200_000
+
+    const turn1: WithParts[] = [
+        userMsg("u1", "hello"),
+        assistantMsgWithTokens("a1", "done", { input: 200_000, output: 55_000 }, [
+            {
+                id: "skill-part", messageID: "a1", sessionID: SID,
+                type: "tool" as const, tool: "skill", callID: "skill-call",
+                state: { status: "completed" as const, input: {}, output: "x".repeat(80_000) },
+            },
+        ]),
+    ]
+    state.nudges.lastPerMessageNudgeTokens = 200_000
+    injectCompressNudges(state, config, logger, turn1, {} as any)
+    assert.equal(state.nudges.shouldInjectThisTurn, false, "55K growth but all protected → suppressed")
+    assert.equal(
+        state.nudges.lastPerMessageNudgeTokens,
+        255_000,
+        "baseline advanced to currentTokens (200K input + 55K output)",
+    )
+
+    state.messageIds.byRawId.set("u2", "m00003")
+    state.messageIds.byRawId.set("a2", "m00004")
+    const turn2: WithParts[] = [
+        userMsg("u2", "next"),
+        assistantMsgWithTokens("a2", "response", { input: 253_000, output: 7_000 }, [
+            {
+                id: "skill-part2", messageID: "a2", sessionID: SID,
+                type: "tool" as const, tool: "skill", callID: "skill-call2",
+                state: { status: "completed" as const, input: {}, output: "x".repeat(10_000) },
+            },
+        ]),
+    ]
+    injectCompressNudges(state, config, logger, turn2, {} as any)
+    assert.equal(
+        state.nudges.shouldInjectThisTurn,
+        false,
+        "5K growth from advanced baseline (260K - 255K) < 50K threshold → no nudge",
+    )
+    assert.equal(
+        state.nudges.lastPerMessageNudgeTokens,
+        255_000,
+        "baseline NOT advanced when nudgeAllowed is false (growth below threshold)",
+    )
+})
+
+test("baseline advances when filter suppressed — compressible too small", () => {
+    const state = createSessionState()
+    state.modelContextLimit = 1_000_000
+    state.messageIds.byRawId.set("u1", "m00001")
+    state.messageIds.byRawId.set("a1", "m00002")
+
+    const config = buildConfig()
+    config.compress.maxContextLimit = 500_000
+    config.compress.minContextLimit = 200_000
+
+    state.nudges.lastPerMessageNudgeTokens = 200_000
+    const turn1: WithParts[] = [
+        userMsg("u1", "hello"),
+        assistantMsgWithTokens("a1", "done", { input: 200_000, output: 55_000 }, [
+            toolPart("c1", "x".repeat(80_000)),
+        ]),
+    ]
+    injectCompressNudges(state, config, logger, turn1, {} as any)
+    assert.equal(state.nudges.shouldInjectThisTurn, false, "55K growth but 20K compressible < 100K floor → suppressed")
+    assert.equal(
+        state.nudges.lastPerMessageNudgeTokens,
+        255_000,
+        "baseline advanced when filter suppressed (too small to recommend)",
+    )
+})
+
+test("pending nudge cleared when suppressed — threshold resets to full", () => {
+    const state = createSessionState()
+    state.modelContextLimit = 1_000_000
+    state.messageIds.byRawId.set("u1", "m00001")
+    state.messageIds.byRawId.set("a1", "m00002")
+
+    const config = buildConfig()
+    config.compress.protectedTools = ["skill"]
+    config.compress.maxContextLimit = 500_000
+    config.compress.minContextLimit = 200_000
+
+    state.nudges.lastPerMessageNudgeTokens = 200_000
+    state.nudges.lastNudgeShownTokens = 200_000
+    const turn1: WithParts[] = [
+        userMsg("u1", "hello"),
+        assistantMsgWithTokens("a1", "done", { input: 225_000, output: 30_000 }, [
+            {
+                id: "skill-part", messageID: "a1", sessionID: SID,
+                type: "tool" as const, tool: "skill", callID: "skill-call",
+                state: { status: "completed" as const, input: {}, output: "x".repeat(80_000) },
+            },
+        ]),
+    ]
+    injectCompressNudges(state, config, logger, turn1, {} as any)
+    assert.equal(state.nudges.shouldInjectThisTurn, false, "nudge suppressed — all protected")
+    assert.equal(
+        state.nudges.lastNudgeShownTokens,
+        undefined,
+        "pending nudge cleared — threshold resets to full (not halved) for next check",
+    )
+    assert.equal(
+        state.nudges.lastPerMessageNudgeTokens,
+        255_000,
+        "baseline advanced to currentTokens",
+    )
+})
+
 test("emergency override fires even when filter has no recommendations", () => {
     // Context at 98%+ with small tool output (< floor) → emergency bypasses filter
     const state = createSessionState()

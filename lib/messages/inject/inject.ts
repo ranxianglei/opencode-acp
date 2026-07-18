@@ -354,6 +354,11 @@ export const injectCompressNudges = (
     const nothingToCompress = filterSuppressed || allProtected
     const shouldInject = nudgeAllowed && (!nothingToCompress || emergencyOverride)
 
+    if (nudgeAllowed && nothingToCompress && !emergencyOverride && currentTokens !== undefined) {
+        state.nudges.lastPerMessageNudgeTokens = currentTokens
+        state.nudges.lastNudgeShownTokens = undefined
+    }
+
     state.nudges.shouldInjectThisTurn = shouldInject
 
     let tipsText: string | null = null
