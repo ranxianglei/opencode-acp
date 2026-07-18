@@ -349,13 +349,10 @@ export const injectCompressNudges = (
         logger.debug(lines.join("\n"))
     }
 
-    // Skip soft nudges when the filter suppressed all ranges — injecting
-    // "go compress" with an empty recommendation list wastes context and
-    // confuses the model. Emergency overrides (maxLimit) always inject.
-    // When there are no compressible ranges at all (e.g. no refs assigned yet),
-    // don't suppress — that's an edge case, not a filter decision.
     const filterSuppressed = contextRanges.compressible.length > 0 && !hasRecommendations
-    const shouldInject = nudgeAllowed && (!filterSuppressed || emergencyOverride)
+    const allProtected = contextRanges.compressible.length === 0 && contextRanges.protected.length > 0
+    const nothingToCompress = filterSuppressed || allProtected
+    const shouldInject = nudgeAllowed && (!nothingToCompress || emergencyOverride)
 
     state.nudges.shouldInjectThisTurn = shouldInject
 

@@ -762,6 +762,69 @@ test("nudge suppressed when filter has no recommendations (all ranges below last
     assert.ok(!injected.includes("Context limit reached"), "no emergency alert")
 })
 
+test("nudge suppressed when all content is protected (nothing to compress)", () => {
+    const state = createSessionState()
+    state.modelContextLimit = 1_000_000
+    state.nudges.lastPerMessageNudgeTokens = 200_000
+    state.messageIds.byRawId.set("u1", "m00001")
+    state.messageIds.byRawId.set("a1", "m00002")
+
+    const config = buildConfig()
+    config.compress.protectedTools = ["skill"]
+    config.compress.maxContextLimit = 500_000
+    config.compress.minContextLimit = 200_000
+
+    const messages: WithParts[] = [
+        userMsg("u1", "hello"),
+        assistantMsgWithTokens("a1", "done", { input: 200_000, output: 55_000 }, [
+            {
+                id: "skill-part", messageID: "a1", sessionID: SID,
+                type: "tool" as const, tool: "skill", callID: "skill-call",
+                state: { status: "completed" as const, input: {}, output: "x".repeat(80_000) },
+            },
+        ]),
+    ]
+    injectCompressNudges(state, config, logger, messages, {} as any)
+
+    assert.equal(
+        state.nudges.shouldInjectThisTurn,
+        false,
+        "55K growth triggers nudgeAllowed but ALL tool output is protected (skill) → nothing to compress → nudge suppressed",
+    )
+})
+
+test("emergency override fires even when all content is protected", () => {
+    const state = createSessionState()
+    state.modelContextLimit = 1_000_000
+    state.nudges.lastPerMessageNudgeTokens = 980_000
+    state.nudges.lastNudgeShownTokens = 980_000
+    state.messageIds.byRawId.set("u1", "m00001")
+    state.messageIds.byRawId.set("a1", "m00002")
+
+    const config = buildConfig()
+    config.compress.protectedTools = ["skill"]
+    config.compress.maxContextLimit = 500_000
+    config.compress.minContextLimit = 200_000
+
+    const messages: WithParts[] = [
+        userMsg("u1", "hello"),
+        assistantMsgWithTokens("a1", "done", { input: 970_000, output: 10_000 }, [
+            {
+                id: "skill-part", messageID: "a1", sessionID: SID,
+                type: "tool" as const, tool: "skill", callID: "skill-call",
+                state: { status: "completed" as const, input: {}, output: "x".repeat(40_000) },
+            },
+        ]),
+    ]
+    injectCompressNudges(state, config, logger, messages, {} as any)
+
+    assert.equal(
+        state.nudges.shouldInjectThisTurn,
+        true,
+        "98% emergency override fires even when all content is protected",
+    )
+})
+
 test("emergency override fires even when filter has no recommendations", () => {
     // Context at 98%+ with small tool output (< floor) → emergency bypasses filter
     const state = createSessionState()
