@@ -17,6 +17,7 @@ import {
 import { resolveCompressionTarget } from "../commands/compression-targets"
 import {
     parseBlockIdArg,
+    resolveDecompressMode,
     findActiveAncestorBlockId,
     findActiveBlocksOverlappingMessages,
     snapshotActiveMessages,
@@ -82,26 +83,14 @@ function resolveTargets(
     rawMessages: WithParts[],
     logger: { info: (msg: string, meta?: Record<string, unknown>) => void },
 ): ResolveResult {
-    const hasBlockId = typeof args.blockId === "string" && args.blockId.trim() !== ""
-    const hasStartId = typeof args.startId === "string" && args.startId.trim() !== ""
-    const hasEndId = typeof args.endId === "string" && args.endId.trim() !== ""
-
-    if (hasBlockId && (hasStartId || hasEndId)) {
-        return {
-            ok: false,
-            error: "Error: Cannot specify both blockId and startId/endId. Choose one mode.",
-        }
-    }
-    if (!hasBlockId && !(hasStartId && hasEndId)) {
-        return {
-            ok: false,
-            error: "Error: Must specify either blockId, or both startId and endId.",
-        }
+    const mode = resolveDecompressMode(args)
+    if (!mode.ok) {
+        return { ok: false, error: `Error: ${mode.error}` }
     }
 
     const messagesState = state.prune.messages
 
-    if (hasBlockId) {
+    if (mode.mode === "block") {
         return resolveSingleBlockTarget(messagesState, args.blockId as string)
     }
 
@@ -165,7 +154,12 @@ function resolveRangeTarget(
         return { ok: false, error: `Error: ${(err as Error).message}` }
     }
 
-    const selection = resolveSelection(searchContext, startReference, endReference)
+    let selection
+    try {
+        selection = resolveSelection(searchContext, startReference, endReference)
+    } catch (err) {
+        return { ok: false, error: `Error: ${(err as Error).message}` }
+    }
     if (selection.messageIds.length === 0) {
         return {
             ok: false,

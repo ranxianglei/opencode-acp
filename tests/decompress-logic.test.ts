@@ -2,6 +2,7 @@ import assert from "node:assert/strict"
 import test from "node:test"
 import {
     parseBlockIdArg,
+    resolveDecompressMode,
     findActiveParentBlockId,
     findActiveAncestorBlockId,
     findActiveBlocksOverlappingMessages,
@@ -522,4 +523,60 @@ test("findActiveBlocksOverlappingMessages returns both ancestor and child when r
     })
     const result = findActiveBlocksOverlappingMessages(ms, new Set(["msg-a"]))
     assert.deepEqual(result.map((b) => b.blockId), [1, 2])
+})
+
+// --- resolveDecompressMode dispatch tests ---
+
+test("resolveDecompressMode: blockId only → block mode", () => {
+    const result = resolveDecompressMode({ blockId: "b3" })
+    assert.equal(result.ok, true)
+    if (result.ok) assert.equal(result.mode, "block")
+})
+
+test("resolveDecompressMode: startId + endId → range mode", () => {
+    const result = resolveDecompressMode({ startId: "m001", endId: "m005" })
+    assert.equal(result.ok, true)
+    if (result.ok) assert.equal(result.mode, "range")
+})
+
+test("resolveDecompressMode: mixed blockId + startId → error", () => {
+    const result = resolveDecompressMode({ blockId: "b3", startId: "m001", endId: "m005" })
+    assert.equal(result.ok, false)
+    if (!result.ok) assert.match(result.error, /Cannot specify both/)
+})
+
+test("resolveDecompressMode: mixed blockId + endId only → error", () => {
+    const result = resolveDecompressMode({ blockId: "b3", endId: "m005" })
+    assert.equal(result.ok, false)
+    if (!result.ok) assert.match(result.error, /Cannot specify both/)
+})
+
+test("resolveDecompressMode: only startId (missing endId) → error", () => {
+    const result = resolveDecompressMode({ startId: "m001" })
+    assert.equal(result.ok, false)
+    if (!result.ok) assert.match(result.error, /Must specify either/)
+})
+
+test("resolveDecompressMode: only endId (missing startId) → error", () => {
+    const result = resolveDecompressMode({ endId: "m005" })
+    assert.equal(result.ok, false)
+    if (!result.ok) assert.match(result.error, /Must specify either/)
+})
+
+test("resolveDecompressMode: no args → error", () => {
+    const result = resolveDecompressMode({})
+    assert.equal(result.ok, false)
+    if (!result.ok) assert.match(result.error, /Must specify either/)
+})
+
+test("resolveDecompressMode: empty string blockId → error (treated as missing)", () => {
+    const result = resolveDecompressMode({ blockId: "  " })
+    assert.equal(result.ok, false)
+    if (!result.ok) assert.match(result.error, /Must specify either/)
+})
+
+test("resolveDecompressMode: empty string startId/endId → error (treated as missing)", () => {
+    const result = resolveDecompressMode({ startId: "", endId: "" })
+    assert.equal(result.ok, false)
+    if (!result.ok) assert.match(result.error, /Must specify either/)
 })
