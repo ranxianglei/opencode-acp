@@ -395,6 +395,14 @@ ACP 在首次启动时自动将配置从 `dcp.jsonc` 迁移到 `acp.jsonc`，将
 
 ## 更新日志
 
+### v1.12.9 — Compress-as-Anchor（PR #153）
+
+**问题**：自 v1.12.1 起，压缩摘要通过注册的 `acp_context_recap` 工具以 synthetic tool-result 消息注入，同时 `stripStaleCompressCalls` 从 API 上下文中移除历史 `compress` 工具调用以避免重复。这导致摘要开销翻倍：每个块的摘要同时存在于 synthetic recap 消息和原始（已移除的）compress 调用的 `summary` 参数中。对于压缩频繁的会话，这个 "recap 开销" 占用 10–20% 上下文却没有额外信息价值。`acp_context_recap` 工具描述也声称它"自动注入"摘要，具有误导性。
+
+**修复**：完全移除 synthetic recap 注入。压缩摘要现在保留在**模型自己的历史 `compress` 工具调用中** —— 每个历史 `compress({ summary: "..." })` 调用的 `summary` 参数作为锚点，像其他工具调用一样对模型可见。删除了 `createSyntheticToolRecap`（prune.ts）、`stripStaleCompressCalls`（prune.ts）和自动 recap 注入路径。`acp_context_recap` 工具改为手动调用（模型可调用以重新获取滚动出上下文的摘要）。更新 `system.ts` 提示描述 compress-as-anchor 行为，警告不要不经 `acp_status` 验证就重用历史 `startId`/`endId`。更新 `RECAP_TOOL_DESCRIPTION` 反映手动调用语义。净效果：压缩频繁会话的摘要开销减少约 50%。
+
+文件：`lib/messages/prune.ts`、`lib/messages/utils.ts`、`lib/compress/recap.ts`、`lib/prompts/system.ts`。测试：更新为 compress-anchor 行为；725 通过。
+
 ### v1.12.8 — 幽灵块拒绝（PR #148）
 
 **问题**：当模型对已被活跃压缩块覆盖的范围调用 `compress` 时，`applyCompressionState` 仍然创建新块，`directMessageIds: []`、`compressedTokens: 0`、`effectiveMessageIds` 从被消费的块继承。模型在通知中看到"移除 0 tokens"，重试同一范围，进入死亡循环：每个幽灵块增加约 1K 摘要开销却什么都不压缩，导致上下文随每次压缩调用*增长*（issues #93, #135）。用户会话显示同一范围连续 9 次幽灵压缩（b12–b20），直到用户手动干预。

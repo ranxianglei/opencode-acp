@@ -422,6 +422,14 @@ For the complete list with root cause analysis, see the [bug tracker](https://gi
 
 ## Changelog
 
+### v1.12.9 — Compress-as-Anchor (PR #153)
+
+**Problem**: Since v1.12.1, compression summaries were injected as synthetic tool-result messages via a registered `acp_context_recap` tool, while `stripStaleCompressCalls` removed past `compress` tool calls from the API context to avoid duplication. This doubled summary overhead: each block's summary existed both as a synthetic recap message AND in the original (now-stripped) compress call's `summary` parameter. For sessions with many compressions, this "recap overhead" consumed 10–20% of context with no additional information value. The `acp_context_recap` tool description also claimed it "automatically injects" summaries, which was misleading.
+
+**Fix**: Removed the synthetic recap injection entirely. Compression summaries now live **inside the model's own past `compress` tool calls** — the `summary` parameter of each historical `compress({ summary: "..." })` call serves as the anchor, visible to the model like any other tool call. Deleted `createSyntheticToolRecap` (prune.ts), `stripStaleCompressCalls` (prune.ts), and the automatic recap injection path. The `acp_context_recap` tool is now manual-only (model-callable for re-fetching summaries that scrolled out of context). Updated `system.ts` prompt to describe compress-as-anchor behavior and warn against reusing historical `startId`/`endId` without `acp_status` verification. Updated `RECAP_TOOL_DESCRIPTION` to reflect manual-only usage. Net effect: ~50% reduction in summary overhead for compression-heavy sessions.
+
+Files: `lib/messages/prune.ts`, `lib/messages/utils.ts`, `lib/compress/recap.ts`, `lib/prompts/system.ts`. Tests: updated for compress-anchor behavior; 725 pass.
+
 ### v1.12.8 — Phantom Block Rejection (PR #148)
 
 **Problem**: When the model called `compress` on a range that was already covered by an active compression block, `applyCompressionState` still created a new block with `directMessageIds: []`, `compressedTokens: 0`, and `effectiveMessageIds` inherited from the consumed block. The model saw "0 tokens removed" in the notification, retried the same range, and entered a death loop: each phantom block added ~1K of summary overhead while compressing nothing, causing context to *grow* with every compression call (issues #93, #135). User sessions showed 9 consecutive phantom compressions (b12–b20) on the same range before the user manually intervened.
