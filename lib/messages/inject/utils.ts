@@ -1,6 +1,7 @@
 import type { SessionState, WithParts } from "../../state"
 import type { PluginConfig } from "../../config"
 import { messageContainsProtectedTool } from "../../compress/protected-content"
+import { isToolNameProtected, getFilePathsFromParameters, isFilePathProtected } from "../../protected-patterns"
 import {
     appendGuidanceToDcpTag,
     buildCompressedBlockGuidance,
@@ -782,7 +783,20 @@ export function buildCompressibleRanges(
                 } else if (part.type !== "text" && part.type !== "reasoning") {
                     tokens += Math.round(JSON.stringify(part).length / 4)
                     const toolName = (part as any)?.tool
-                    if (toolName) tools.add(toolName)
+                    const callID = (part as any)?.callID
+                    if (toolName && callID) {
+                        if (isToolNameProtected(toolName, protectedTools)) {
+                            tools.add(toolName)
+                        } else if (protectedFilePatterns.length > 0) {
+                            const filePaths = getFilePathsFromParameters(
+                                toolName,
+                                (part as any)?.state?.input,
+                            )
+                            if (isFilePathProtected(filePaths, protectedFilePatterns)) {
+                                tools.add(toolName)
+                            }
+                        }
+                    }
                 }
             }
             protectedMsgInfo.push({ ref, refNum: rn, tokens, tools: [...tools] })

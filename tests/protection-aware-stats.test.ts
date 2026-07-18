@@ -55,6 +55,27 @@ test("buildCompressibleRanges excludes messages with protected tools", () => {
     assert.ok(result.protected[0].tools.includes("skill"), "protected range lists tool name")
 })
 
+test("buildCompressibleRanges only lists tools that trigger protection, not all tools in message", () => {
+    const state = createSessionState()
+    const messages = [
+        makeMsg("m1", "user", "hello"),
+        makeMsg("m2", "assistant", "mixed tools", [
+            toolPart("t1", "skill"),
+            toolPart("t2", "grep", { pattern: "foo" }),
+            toolPart("t3", "read", { filePath: "src/file.ts" }),
+        ]),
+        makeMsg("m3", "assistant", "normal text"),
+    ]
+    setupRefs(state, messages)
+
+    const result = buildCompressibleRanges(messages, state, ["skill"])
+    assert.ok(result.protected.length >= 1, "message protected by skill")
+    const tools = result.protected[0].tools
+    assert.ok(tools.includes("skill"), "protected range lists the triggering tool")
+    assert.ok(!tools.includes("grep"), "non-protected grep not listed")
+    assert.ok(!tools.includes("read"), "non-protected read not listed")
+})
+
 test("buildCompressibleRanges includes all messages when no protected tools configured", () => {
     const state = createSessionState()
     const messages = [
