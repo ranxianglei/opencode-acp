@@ -315,3 +315,88 @@ test("estimateContextComposition: resolves ref from state.messageIds.byRawId", (
     const c = estimateContextComposition([msg], state)
     assert.equal(c.largestRanges[0].ref, "m00001")
 })
+
+function mkCompress(id: string, summary: string): WithParts {
+    return {
+        info: { id } as any,
+        parts: [
+            {
+                type: "tool",
+                tool: "compress",
+                callID: "call-1",
+                state: {
+                    status: "completed",
+                    input: { topic: "test topic", content: [{ startId: "m001", endId: "m002", summary }] },
+                },
+            } as any,
+        ] as any,
+    }
+}
+
+test("estimateContextComposition: compress tool summary counted in summaryTokens not toolTokens", () => {
+    const summaryText = "x".repeat(4000)
+    const msg = mkCompress("m1", summaryText)
+    const c = estimateContextComposition([msg])
+    const expectedSummary = Math.round(summaryText.length / 4)
+    assert.ok(c.summaryTokens >= expectedSummary, `summaryTokens ${c.summaryTokens} should include summary text (${expectedSummary})`)
+    assert.ok(c.toolTokens < expectedSummary, `toolTokens ${c.toolTokens} should be less than summary text`)
+    assert.equal(c.total, c.toolTokens + c.summaryTokens + c.messageTokens)
+})
+
+test("estimateContextComposition: compress tool structural overhead counted in toolTokens", () => {
+    const summaryText = "x".repeat(4000)
+    const msg = mkCompress("m1", summaryText)
+    const c = estimateContextComposition([msg])
+    assert.ok(c.toolTokens > 0, "compress tool structural overhead should be counted as toolTokens")
+    const toolBreakdown = c.toolTypeBreakdown.find((t) => t.tool === "compress")
+    assert.ok(toolBreakdown, "compress should appear in toolTypeBreakdown")
+    assert.ok(toolBreakdown!.tokens > 0, "compress breakdown should have tokens")
+})
+
+test("estimateContextComposition: compress with multiple content entries sums all summaries", () => {
+    const summary1 = "a".repeat(2000)
+    const summary2 = "b".repeat(3000)
+    const msg = {
+        info: { id: "m1" } as any,
+        parts: [
+            {
+                type: "tool",
+                tool: "compress",
+                callID: "call-1",
+                state: {
+                    status: "completed",
+                    input: {
+                        topic: "multi",
+                        content: [
+                            { startId: "m001", endId: "m002", summary: summary1 },
+                            { startId: "m003", endId: "m004", summary: summary2 },
+                        ],
+                    },
+                },
+            } as any,
+        ] as any,
+    } as WithParts
+    const c = estimateContextComposition([msg])
+    const expectedSummary = Math.round((summary1.length + summary2.length) / 4)
+    assert.ok(c.summaryTokens >= expectedSummary, `summaryTokens ${c.summaryTokens} should include both summaries (${expectedSummary})`)
+})
+
+test("estimateContextComposition: compress tool without state.input falls back to toolTokens", () => {
+    const msg = {
+        info: { id: "m1" } as any,
+        parts: [{ type: "tool", tool: "compress", callID: "call-1" } as any] as any,
+    } as WithParts
+    const c = estimateContextComposition([msg])
+    assert.equal(c.summaryTokens, 0)
+    assert.ok(c.toolTokens > 0, "compress without input should be all toolTokens")
+    assert.equal(c.total, c.toolTokens)
+})
+
+test("estimateContextComposition: non-compress tools unaffected by summary classification", () => {
+    const msg = mkTool("m1", '{"data":"' + "x".repeat(4000) + '"}')
+    const c = estimateContextComposition([msg])
+    assert.equal(c.summaryTokens, 0, "non-compress tools should not produce summaryTokens")
+    const expectedTool = Math.round(JSON.stringify({ type: "tool", tool: { data: "x".repeat(4000) } }).length / 4)
+    assert.ok(c.toolTokens > 0)
+    assert.equal(c.total, c.toolTokens)
+})
