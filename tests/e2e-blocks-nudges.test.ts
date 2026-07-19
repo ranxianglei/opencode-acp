@@ -249,12 +249,15 @@ test("nudge injection: no context usage tag when permission is denied", async ()
 
 // ─── Test: Age-based deactivation removed (memory-loss fix) ────────────────
 
-test("block aging: old blocks are NOT deactivated (age-based GC disabled)", async () => {
+test("block aging: old blocks are NOT deactivated even with modelContextLimit set (age-based GC disabled)", async () => {
     const { state, handler } = setupPipeline(SID_A, {
         gc: { ...buildConfig().gc, maxBlockAge: 2 },
+    }, {
+        modelContextLimit: 200000,
     })
 
     const blockId = 1
+    const originalSummary = "Compressed summary text that should be preserved"
     state.prune.messages.blocksById.set(blockId, {
         blockId,
         runId: 1,
@@ -279,7 +282,7 @@ test("block aging: old blocks are NOT deactivated (age-based GC disabled)", asyn
         effectiveMessageIds: ["u1"],
         effectiveToolIds: [],
         createdAt: Date.now() - 1000,
-        summary: "Compressed summary text",
+        summary: originalSummary,
         survivedCount: 10,
         generation: "old",
     })
@@ -292,7 +295,7 @@ test("block aging: old blocks are NOT deactivated (age-based GC disabled)", asyn
     const output = {
         messages: [
             makeUserMessage("u1", "Hello"),
-            makeAssistantMessage("a1", "Hi"),
+            makeAssistantMessage("a1", "Hi", [], SID_A, { input: 50000, output: 20000 }),
             makeUserMessage("u2", "Next"),
             makeAssistantMessage("a2", "Response"),
         ],
@@ -300,10 +303,75 @@ test("block aging: old blocks are NOT deactivated (age-based GC disabled)", asyn
 
     await handler({}, output)
 
+    const block = state.prune.messages.blocksById.get(blockId)
+    assert.equal(block?.active, true, "block must remain active — age-based deactivation was removed")
+    assert.equal(block?.summary, originalSummary, "summary must be unchanged — no truncation below 100% context")
+})
+
+// ─── Test: Oversized-block override removed (memory-loss fix) ──────────────
+
+test("oversized block: summary > 6000 chars is NOT truncated below 100% context", async () => {
+    const { state, handler } = setupPipeline(SID_A, {}, {
+        modelContextLimit: 200000,
+    })
+
+    const blockId = 1
+    const largeSummary = "# Large Summary\n" + "x".repeat(9000)
+    state.prune.messages.blocksById.set(blockId, {
+        blockId,
+        runId: 1,
+        active: true,
+        deactivatedByUser: false,
+        compressedTokens: 5000,
+        summaryTokens: 2500,
+        durationMs: 0,
+        mode: "message",
+        topic: "large-test",
+        batchTopic: "large-test",
+        startId: "m00001",
+        endId: "m00002",
+        anchorMessageId: "u2",
+        compressMessageId: "msg-comp",
+        compressCallId: "call-comp",
+        includedBlockIds: [],
+        consumedBlockIds: [],
+        parentBlockIds: [],
+        directMessageIds: ["u1"],
+        directToolIds: [],
+        effectiveMessageIds: ["u1"],
+        effectiveToolIds: [],
+        createdAt: Date.now() - 1000,
+        summary: largeSummary,
+        survivedCount: 0,
+        generation: "young",
+    })
+    state.prune.messages.activeBlockIds.add(blockId)
+    state.prune.messages.activeByAnchorMessageId.set("u2", blockId)
+    state.prune.messages.byMessageId.set("u1", {
+        tokenCount: 200, allBlockIds: [blockId], activeBlockIds: [blockId],
+    })
+
+    const output = {
+        messages: [
+            makeUserMessage("u1", "Hello"),
+            makeAssistantMessage("a1", "Hi", [], SID_A, { input: 50000, output: 20000 }),
+            makeUserMessage("u2", "Next"),
+            makeAssistantMessage("a2", "Response"),
+        ],
+    }
+
+    await handler({}, output)
+
+    const block = state.prune.messages.blocksById.get(blockId)
+    assert.equal(block?.active, true, "block must remain active")
     assert.equal(
-        state.prune.messages.blocksById.get(blockId)?.active,
-        true,
-        "block must remain active — age-based deactivation was removed to prevent memory loss",
+        block?.summary,
+        largeSummary,
+        "oversized summary (>6000 chars) must be preserved below 100% context — oversized override removed",
+    )
+    assert.ok(
+        !block?.summary.includes("[GC truncated]"),
+        "summary must not contain GC truncation marker",
     )
 })
 
