@@ -396,6 +396,14 @@ ACP 在首次启动时自动将配置从 `dcp.jsonc` 迁移到 `acp.jsonc`，将
 
 ## 更新日志
 
+### v1.12.11 — README 文档刷新（PR #164）
+
+**问题**：README 文档与代码实际脱节。tagline 没有突出 ACP 的核心能力。英文版的 "Deletion strategy" 章节描述了一个已不存在的功能，且与中文版不一致。缓存命中率和上下文使用率数据过期（87%、~30%）。`compress.protectedTools` 默认值文档列出了 5 个工具（`task, skill, todowrite, todoread, decompress`），但代码实际默认值只有 `skill`。
+
+**修复**：（1）新增 `<strong>20 万 token 足矣。</strong>` tagline。（2）"Proven at scale" 表格更新为 6 个活跃会话的真实 API 级数据（运行时长、消息数、API 调用数、累计 token、缓存命中率、P50/P90/P95），离群值标注。（3）英文版 "Deletion strategy" 替换为 "GC safety net"，与中文版 "GC 兜底" 一致。（4）"工作原理" 列出 `acp_status` 和 `search_context` 为辅助工具。（5）缓存统计更新：87% → 91%，上下文 ~30% → ~10–15%（1M 窗口的 p50 10 万、p90 15 万）。（6）`compress.protectedTools` 默认值文档更正为仅 `skill`（匹配 `lib/config.ts:121` 的 `COMPRESS_DEFAULT_PROTECTED_TOOLS`）。
+
+文件：`README.md`、`README.zh-CN.md`。无代码改动。测试：768 通过（不变）。
+
 ### v1.12.10 — 批量压缩 + Decompress 范围模式 + GC 记忆丢失修复 + Token 分类 + Nudge 质量（PR #73, #155, #156, #157, #158, #159, #161）
 
 **问题**：七个问题，涉及压缩 UX、token 统计、GC 安全和 nudge 质量。（1）`decompress` 需要先 `acp_status` 再逐块 decompress 的循环才能恢复多个压缩块。（2）自 v1.12.9 起，compress 工具的 `summary` 内容被错误分类为 `toolTokens` 而非 `summaryTokens`，导致上下文分布中 tool% 虚高、summary% 虚低。（3）`compress` 工具每次调用只能压缩一个范围 —— 模型需要多次调用才能压缩不相关的范围，浪费轮次。（4）`[PROTECTED: ...]` 标签列出受保护消息中的所有工具而非仅触发保护的工具。（5）当所有可见内容都是受保护内容时，nudge 仍然以空推荐列表注入。（6）当 nudge 被抑制时，下一轮检查每轮都重新评估。（7）**GC 系统在静默销毁模型编写的 summary**：任何 `summary.length > 6000` 字符的块在零上下文压力下被强制截断到 3000，且 `survivedCount` 过高的块被自动 deactivate —— 导致数百个会话的不可恢复记忆丢失。

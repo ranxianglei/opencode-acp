@@ -427,6 +427,14 @@ For the complete list with root cause analysis, see the [bug tracker](https://gi
 
 ## Changelog
 
+### v1.12.11 — README Refresh (PR #164)
+
+**Problem**: README documentation had drifted from code reality. The tagline under-emphasized ACP's core capability. The "Deletion strategy" section in the English README described a feature that no longer exists and contradicted the Chinese version. Cache hit rate and context usage statistics were stale (87%, ~30%). The `compress.protectedTools` default was documented as 5 tools (`task, skill, todowrite, todoread, decompress`) when the actual code default is only `skill`.
+
+**Fix**: (1) Added `<strong>200K tokens is enough.</strong>` tagline alongside the existing one-liner. (2) Refreshed "Proven at scale" table with real API-level data from 6 active sessions (Duration, Messages, API calls, Cumulative tokens, Cache hit %, P50/P90/P95 context), with outlier annotated. Aggregate cache hit ~91%. (3) Replaced "Deletion strategy" section (EN) with "GC safety net" matching the Chinese version. (4) Updated "How It Works" to list `acp_status` and `search_context` as supporting tools. (5) Updated cache stats: 87% → 91%, context ~30% → ~10–15% (p50 100K, p90 150K of 1M window). (6) Corrected `compress.protectedTools` default documentation to `skill` only (matches `COMPRESS_DEFAULT_PROTECTED_TOOLS` at `lib/config.ts:121`).
+
+Files: `README.md`, `README.zh-CN.md`. No code changes. Tests: 768 pass (unchanged).
+
 ### v1.12.10 — Batch Compress + Decompress Range Mode + GC Memory-Loss Fix + Token Classification + Nudge Quality (PRs #73, #155, #156, #157, #158, #159, #161)
 
 **Problem**: Seven issues across compression UX, token accounting, GC safety, and nudge quality. (1) `decompress` required a per-block `acp_status` → decompress-per-block loop to restore multiple compressed blocks. (2) Since v1.12.9 (compress-as-anchor), compress tool `summary` content was misclassified as `toolTokens` instead of `summaryTokens`, inflating tool% and deflating summary% in the context breakdown. (3) The `compress` tool only accepted a single range per call — the model had to issue multiple calls to compress unrelated ranges, wasting turns. (4) The `[PROTECTED: ...]` label listed every tool in a protected message instead of only the triggering tools. (5) When all visible content was protected, the nudge still fired with an empty recommendation list. (6) When a nudge was suppressed, the next-turn check re-evaluated every turn. (7) **The GC system was silently destroying model-written summaries**: any block with `summary.length > 6000` chars was force-truncated to 3000 regardless of context pressure (0% pressure triggered truncation), and blocks with high `survivedCount` were auto-deactivated — causing irrecoverable memory loss across hundreds of sessions.
