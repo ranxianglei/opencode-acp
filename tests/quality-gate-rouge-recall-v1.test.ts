@@ -143,25 +143,38 @@ test("Layer 2: fails when BOTH rougeF1 AND top20Recall are below thresholds (b27
 })
 
 test("Layer 2: passes when rougeF1 low but top20Recall high (b22 pattern)", () => {
-    const originalWords = [
-        "VQ-VAE","direction","approved","experiment","launched",
-        "discontinuity","gradient","blocking","STE","straight-through",
-        "user","confirmed","batch","results","divergence","epoch",
-    ]
-    const original = originalWords.join(" ") + " " + originalWords.join(" ")
-    const summary = "VQ-VAE direction approved, experiment launched, discontinuity gradient blocking, STE straight-through, user confirmed batch"
+    // 20 unique keywords in original; summary covers 4 of them + 200 distractor words.
+    // Yields: rougeF1 ~0.036 (low), top20Recall = 0.20 (at threshold).
+    // Verifies the AND-combine: low rougeF1 alone does NOT trigger failure when top20Recall is high.
+    // An `&&` -> `||` regression in rouge-recall-v1.ts:114 would still pass this test, but
+    // paired with the next test (high rougeF1 + low top20Recall) the two together catch it.
+    const originalKeywords = Array.from({ length: 20 }, (_, i) => `keyword${String(i + 1).padStart(2, "0")}`)
+    const original = originalKeywords.join(" ")
+    const distractors = Array.from({ length: 200 }, (_, i) => `distractor${String(i + 1).padStart(3, "0")}`)
+    const summary = originalKeywords.slice(0, 4).join(" ") + " " + distractors.join(" ")
     const ctx = makeCtx(summary, original, 20000)
     const result = rougeRecallV1.evaluate(ctx, TEST_CONFIG)
     const metrics = Object.fromEntries(result.metrics.map((m) => [m.name, m.value]))
+    assert.ok(metrics.rougeF1 < 0.05, `rougeF1=${metrics.rougeF1} should be < 0.05`)
     assert.ok(metrics.top20Recall >= 0.20, `top20Recall=${metrics.top20Recall} should be >= 0.20`)
     assert.equal(result.passed, true)
 })
 
-test("Layer 2: AND-combine — only one signal low does NOT trigger failure", () => {
-    const original = "compression algorithm pipeline quality gate threshold detection mechanism framework module architecture"
-    const summary = "compression algorithm pipeline quality gate threshold detection mechanism framework"
+test("Layer 2: AND-combine — high rougeF1 + low top20Recall does NOT trigger failure", () => {
+    // 200 unique tokens in original (all freq=1, so top-20 is alphabetical first 20).
+    // Summary covers 30 tokens: only 3 from the top-20 (alphabetically early) + 27 from the tail.
+    // Yields: rougeF1 ~0.26 (high, > 0.05), top20Recall = 0.15 (low, < 0.20).
+    // An `&&` -> `||` regression in rouge-recall-v1.ts:114 would fail this test (OR would
+    // trigger failure on the low top20Recall alone).
+    const allTokens = Array.from({ length: 200 }, (_, i) => `token${String(i + 1).padStart(3, "0")}`)
+    const original = allTokens.join(" ")
+    const summaryTokens = [...allTokens.slice(0, 3), ...allTokens.slice(50, 77)]
+    const summary = summaryTokens.join(" ")
     const ctx = makeCtx(summary, original, 100)
     const result = rougeRecallV1.evaluate(ctx, TEST_CONFIG)
+    const metrics = Object.fromEntries(result.metrics.map((m) => [m.name, m.value]))
+    assert.ok(metrics.rougeF1 >= 0.05, `rougeF1=${metrics.rougeF1} should be >= 0.05`)
+    assert.ok(metrics.top20Recall < 0.20, `top20Recall=${metrics.top20Recall} should be < 0.20`)
     assert.equal(result.passed, true)
 })
 
@@ -246,7 +259,7 @@ test("Mixed EN+ZH content evaluates without error", () => {
     assert.ok(typeof result.passed === "boolean")
 })
 
-test("Reproduces b27 case from issue #20 (0.05% retention)", () => {
+test("Reproduces b27 case from issue #20 (catastrophic retention)", () => {
     const original = "VQ-VAE direction approved ".repeat(2000)
     const summary = "## VQ-VAE direction approved, experiment launched"
     const ctx = makeCtx(summary, original, 72000)
