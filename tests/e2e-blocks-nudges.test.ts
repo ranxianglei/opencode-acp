@@ -247,9 +247,9 @@ test("nudge injection: no context usage tag when permission is denied", async ()
     assert.ok(!originalText.includes("Context:"), "should NOT inject context with deny")
 })
 
-// ─── Test: Block deactivation by age (major GC) ─────────────────────────────
+// ─── Test: Age-based deactivation removed (memory-loss fix) ────────────────
 
-test("block aging: old blocks are deactivated by major GC", async () => {
+test("block aging: old blocks are NOT deactivated (age-based GC disabled)", async () => {
     const { state, handler } = setupPipeline(SID_A, {
         gc: { ...buildConfig().gc, maxBlockAge: 2 },
     })
@@ -302,8 +302,8 @@ test("block aging: old blocks are deactivated by major GC", async () => {
 
     assert.equal(
         state.prune.messages.blocksById.get(blockId)?.active,
-        false,
-        "block should be deactivated because survivedCount (10) > maxBlockAge (2)",
+        true,
+        "block must remain active — age-based deactivation was removed to prevent memory loss",
     )
 })
 
