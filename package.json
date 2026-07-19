@@ -1,7 +1,7 @@
 {
     "$schema": "https://json.schemastore.org/package.json",
     "name": "opencode-acp",
-    "version": "1.13.0",
+    "version": "1.13.1",
     "type": "module",
     "description": "Active Context Pruning — model-driven context management for OpenCode (hardened fork of DCP with 35 bug fixes)",
     "main": "./dist/index.js",

@@ -115,7 +115,7 @@ Data flow:
 - No state migration needed — this is a code-only change
 - Users on `pruneNotificationType: "chat"` see behavior change (no chat-side notification) but compress tool call still shows in chat
 - Users on `pruneNotificationType: "toast"` (already the safe path) see no change
-- Version bump: v1.12.12 (patch — bug fix)
+- Version bump: v1.13.1 (patch — bug fix; master is at unpublished v1.13.0 from #166 merge without release)
 
 ## 7. Risks & Mitigations
 

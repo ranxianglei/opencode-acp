@@ -72,10 +72,10 @@ Compress tool output already returns a minimal one-line header (`lib/compress/ra
 | `lib/config.ts` | Default `pruneNotificationType`: `"chat"` → `"toast"` |
 | `tests/drop-empty-messages.test.ts` | +4 regression tests for ignored-only message drop |
 | `AGENTS.md` | §2.4 default config sync |
-| `README.md` | Default value sync + v1.12.12 changelog entry |
-| `README.zh-CN.md` | Default value sync + v1.12.12 changelog entry |
+| `README.md` | Default value sync + v1.13.1 changelog entry |
+| `README.zh-CN.md` | Default value sync + v1.13.1 changelog entry |
 | `TESTING.md` | Test factory `pruneNotificationType` sync |
-| `package.json` | Version bump `1.12.11` → `1.12.12` |
+| `package.json` | Version bump `1.13.0` → `1.13.1` (master post-#166 is at unpublished v1.13.0) |
 | `devlog/2026-07-20_compress-notification-fix/REQ.md` | Requirement (pre-implementation) |
 | `devlog/2026-07-20_compress-notification-fix/DESIGN.md` | Architecture design |
 | `devlog/2026-07-20_compress-notification-fix/WORKLOG.md` | This file |

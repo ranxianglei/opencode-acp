@@ -236,8 +236,8 @@ Each level overrides the previous, so project settings take priority over global
     "debug": false,
     // Notification display: "off", "minimal", or "detailed"
     "pruneNotification": "detailed",
-    // Notification type: "chat" (in-conversation) or "toast" (system toast)
-    "pruneNotificationType": "chat",
+    // Notification type: "chat" (deprecated, falls back to toast) or "toast" (system toast)
+    "pruneNotificationType": "toast",
     // Slash commands configuration
     "commands": {
         "enabled": true,
@@ -470,6 +470,12 @@ For the complete list with root cause analysis, see the [bug tracker](https://gi
 ---
 
 ## Changelog
+
+### v1.13.1 — Compress Notification Freeze Fix (PR #167, issue #20)
+
+**Problem**: After every successful `compress` tool call, ACP injected a user-role notification message with a single `ignored: true` text part. opencode strips `ignored` parts before sending to the LLM, leaving an empty user message. The provider (zhipuai-lb / glm-5.2) rejects this with HTTP 400 code 1214 (`"messages 参数非法"`), `isRetryable: false` — opencode does not retry, and the session freezes until external recovery. 113 total occurrences across active sessions (8 in a single 3,156-message session).
+
+**Fix**: (1) `lib/ui/notification.ts:280-298` — `sendCompressNotification` now always uses `client.tui.showToast`; the prior `chat` branch (which called `sendIgnoredMessage`) is removed. A warn log fires once per compress when the user explicitly set `pruneNotificationType: "chat"` so the behavior change is discoverable. (2) `lib/messages/utils.ts:232-269` — `dropEmptyMessages` now treats text parts carrying `ignored: true` as contributing to emptiness, so any future ignored-only user message is dropped before reaching the provider (defense in depth). (3) `lib/config.ts:175` — default `pruneNotificationType` changed from `"chat"` to `"toast"` so default-configured users see no deprecation warning. Files: `lib/ui/notification.ts`, `lib/messages/utils.ts`, `lib/config.ts`, `tests/drop-empty-messages.test.ts`. Tests: +4 regression cases pinning the ignored-only-message drop.
 
 ### v1.13.0 — Pluggable Quality Gate (Issue #20)
 
