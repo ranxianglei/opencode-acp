@@ -91,16 +91,15 @@ export function buildCompressedBlockGuidance(
         }
     }
 
-    // [FIX Bug 35] Only show aging warnings when context usage is above 50%.
-    // Showing warnings at low usage causes unnecessary compress operations that
-    // waste tokens and attention — the model preemptively re-summarizes blocks
-    // that aren't actually at risk of GC truncation.
+    // Aging warning fires only near the actual GC trigger (majorGcThresholdPercent,
+    // default 100%). Firing at lower usage misleads the model into re-compressing
+    // blocks that aren't at risk — GC no longer truncates below the threshold.
     const usageRatio =
         context?.currentTokens && context?.modelContextLimit
             ? context.currentTokens / context.modelContextLimit
             : 0
 
-    if (gcConfig && usageRatio > 0.5) {
+    if (gcConfig && usageRatio > 0.9) {
         const promotionThreshold = gcConfig.promotionThreshold
         const agingBlocks: string[] = []
 
@@ -122,10 +121,10 @@ export function buildCompressedBlockGuidance(
 
         if (agingBlocks.length > 0) {
             lines.push("")
-            lines.push("⚠️ Block aging warning — these blocks may be truncated by GC soon:")
+            lines.push("⚠️ Block aging warning — context near limit, these blocks may be truncated by last-resort GC:")
             lines.push(...agingBlocks)
             lines.push(
-                "To preserve important content: use the compress tool to re-summarize these blocks into new concise ones. Unhandled blocks will be auto-truncated.",
+                "Re-summarize these blocks into concise new ones to preserve key facts. At 100% context, oversized blocks are auto-truncated as a last resort.",
             )
         }
     }
