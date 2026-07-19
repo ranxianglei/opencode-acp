@@ -277,23 +277,30 @@ export async function sendCompressNotification(
         }
     }
 
-    if (config.pruneNotificationType === "toast") {
-        let toastMessage = message
-        toastMessage =
-            config.pruneNotification === "minimal" ? toastMessage : truncateToastBody(toastMessage)
-
-        await client.tui.showToast({
-            body: {
-                title: "ACP: Compress Notification",
-                message: toastMessage,
-                variant: "info",
-                duration: 5000,
-            },
-        })
-        return true
+    // [FIX #20] Always toast. The prior `chat` branch called sendIgnoredMessage,
+    // whose `ignored: true` text part opencode strips before the LLM call —
+    // leaving an empty user message that triggers provider 400 (zhipuai code
+    // 1214, isRetryable: false) and freezes the session. Toast bypasses the
+    // message stream entirely.
+    if (config.pruneNotificationType === "chat") {
+        logger.warn(
+            "compress.pruneNotificationType 'chat' is no longer supported (it injects an empty user message that causes provider 400 errors); falling back to toast. Set pruneNotificationType to 'toast' (or pruneNotification to 'off') to silence this warning.",
+            { sessionId },
+        )
     }
 
-    await sendIgnoredMessage(client, sessionId, message, params, logger)
+    let toastMessage = message
+    toastMessage =
+        config.pruneNotification === "minimal" ? toastMessage : truncateToastBody(toastMessage)
+
+    await client.tui.showToast({
+        body: {
+            title: "ACP: Compress Notification",
+            message: toastMessage,
+            variant: "info",
+            duration: 5000,
+        },
+    })
     return true
 }
 
