@@ -83,6 +83,16 @@ export interface GCConfig {
     batchCleanup: BatchCleanupConfig
 }
 
+export interface QualityGateAlgorithmConfigs {
+    [gateName: string]: unknown
+}
+
+export interface QualityGateConfig {
+    enabled: boolean
+    algorithm: string
+    algorithms: QualityGateAlgorithmConfigs
+}
+
 export interface PluginConfig {
     enabled: boolean
     autoUpdate: boolean
@@ -100,6 +110,7 @@ export interface PluginConfig {
         deduplication: Deduplication
         purgeErrors: PurgeErrors
     }
+    qualityGate: QualityGateConfig
 }
 
 type CompressOverride = Partial<CompressConfig>
@@ -234,6 +245,18 @@ const defaultConfig: PluginConfig = {
             lowThreshold: "55%",
             highThreshold: "75%",
             forceThreshold: "90%",
+        },
+    },
+    qualityGate: {
+        enabled: false,
+        algorithm: "rouge-recall-v1",
+        algorithms: {
+            "rouge-recall-v1": {
+                layer1MinChars: 200,
+                layer1MinRetentionPct: 1.0,
+                layer2MaxRougeF1: 0.05,
+                layer2MaxTop20Recall: 0.20,
+            },
         },
     },
 }
@@ -504,6 +527,11 @@ function deepCloneConfig(config: PluginConfig): PluginConfig {
             ...config.gc,
             batchCleanup: { ...config.gc.batchCleanup },
         },
+        qualityGate: {
+            enabled: config.qualityGate.enabled,
+            algorithm: config.qualityGate.algorithm,
+            algorithms: { ...config.qualityGate.algorithms },
+        },
     }
 }
 
@@ -516,6 +544,18 @@ function mergeGC(base: GCConfig, override?: Partial<GCConfig>): GCConfig {
         ...base,
         ...override,
         batchCleanup: { ...base.batchCleanup, ...(override.batchCleanup ?? {}) },
+    }
+}
+
+function mergeQualityGate(
+    base: QualityGateConfig,
+    override?: Partial<QualityGateConfig>,
+): QualityGateConfig {
+    if (!override) return base
+    return {
+        enabled: override.enabled ?? base.enabled,
+        algorithm: override.algorithm ?? base.algorithm,
+        algorithms: { ...base.algorithms, ...(override.algorithms ?? {}) },
     }
 }
 
@@ -539,6 +579,7 @@ function mergeLayer(config: PluginConfig, data: Record<string, any>): PluginConf
         compress: mergeCompress(config.compress, data.compress as CompressOverride),
         gc: mergeGC(config.gc, data.gc as Partial<GCConfig>),
         strategies: mergeStrategies(config.strategies, data.strategies as any),
+        qualityGate: mergeQualityGate(config.qualityGate, data.qualityGate as Partial<QualityGateConfig>),
     }
 }
 

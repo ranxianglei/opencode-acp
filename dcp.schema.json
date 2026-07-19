@@ -472,6 +472,73 @@
                     }
                 }
             }
+        },
+        "qualityGate": {
+            "type": "object",
+            "description": "Post-compression quality evaluation. Non-blocking: failures only emit logger.warn; the compression result is already committed. Pluggable via the QualityGate interface — future algorithms (including external API judges) can be added without changing pipeline wiring.",
+            "additionalProperties": false,
+            "properties": {
+                "enabled": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Enable post-compression quality gate evaluation. Off by default for one release of burn-in."
+                },
+                "algorithm": {
+                    "type": "string",
+                    "default": "rouge-recall-v1",
+                    "description": "Name of the registered QualityGate algorithm to run."
+                },
+                "algorithms": {
+                    "type": "object",
+                    "description": "Per-algorithm config map. Keyed by algorithm name. Unknown algorithms ignored.",
+                    "additionalProperties": true,
+                    "properties": {
+                        "rouge-recall-v1": {
+                            "type": "object",
+                            "description": "Two-layer gate: L1 length/retention floor, L2 ROUGE-1 F1 AND top-20 keyword recall.",
+                            "additionalProperties": false,
+                            "properties": {
+                                "layer1MinChars": {
+                                    "type": "number",
+                                    "default": 200,
+                                    "minimum": 1,
+                                    "description": "Hard floor on summary length. Below this, L1 fails regardless of other metrics."
+                                },
+                                "layer1MinRetentionPct": {
+                                    "type": "number",
+                                    "default": 1.0,
+                                    "minimum": 0,
+                                    "description": "Minimum retention = (summaryLen / (compressedTokens * 4)) * 100. Catches catastrophic retention failures (<1%) with 0% FPR."
+                                },
+                                "layer2MaxRougeF1": {
+                                    "type": "number",
+                                    "default": 0.05,
+                                    "minimum": 0,
+                                    "description": "L2 fails (combined with top20Recall via AND) when ROUGE-1 F1 is below this threshold."
+                                },
+                                "layer2MaxTop20Recall": {
+                                    "type": "number",
+                                    "default": 0.20,
+                                    "minimum": 0,
+                                    "description": "L2 fails (combined with rougeF1 via AND) when top-20 keyword recall is below this threshold."
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "default": {
+                "enabled": false,
+                "algorithm": "rouge-recall-v1",
+                "algorithms": {
+                    "rouge-recall-v1": {
+                        "layer1MinChars": 200,
+                        "layer1MinRetentionPct": 1.0,
+                        "layer2MaxRougeF1": 0.05,
+                        "layer2MaxTop20Recall": 0.20
+                    }
+                }
+            }
         }
     }
 }
