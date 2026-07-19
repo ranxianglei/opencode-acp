@@ -109,6 +109,28 @@ stateDiagram-v2
 
 当上下文达到 100% 时，系统自动截断老年代 block 摘要，防止上下文溢出。这是最后的兜底机制，不影响模型的正常压缩/解压操作。
 
+### 质量门控（非阻塞，默认关闭）
+
+每次 `compress` 调用之后，ACP 可以运行一个可拔插的质量门控，检测摘要是否灾难性丢失了内容（例如：5K token 的范围被压缩成 147 字符、且不含任何技术关键词的摘要）。失败只发出 `logger.warn`——绝不拒绝压缩（结果已经提交到状态、对模型可见）。
+
+默认算法 `rouge-recall-v1` 是基于 6,913 个真实块校准的两层门控：
+
+- **L1（长度下限）**：捕获灾难性留存失败——摘要短于 200 字符 OR 留存率低于原始的 1%。100% 召回，0% 误报。
+- **L2（内容覆盖）**：只在通过 L1 的块上运行。当 **同时** ROUGE-1 F1 < 0.05 **且** top-20 关键词召回 < 0.20 时触发（AND 合并使误报率维持在 ~6.6%）。
+
+接口可拔插：未来算法（例如通过外部 API 的 LLM-as-judge）可通过 `registerQualityGate()` 注册，无需改动 pipeline 接线。分词器使用手写的词级分词（英文关键词 + 中文 unigram/bigram），不使用 ACP 的 BPE 分词器——后者对 ROUGE 风格的匹配粒度过粗。
+
+默认关闭，发布一个版本的烧入期后再开启。启用方式：
+
+```jsonc
+{
+    "qualityGate": {
+        "enabled": true,
+        "algorithm": "rouge-recall-v1",
+    },
+}
+```
+
 ---
 
 ## 对 Prompt 缓存的影响
@@ -293,6 +315,27 @@ ACP 使用自己的配置文件，按以下顺序搜索：
         // 上下文使用率超过此值时执行主 GC（兜底，硬编码为 100%）
         "majorGcThresholdPercent": "100%",
     },
+    // 压缩后质量门控（非阻塞；默认关闭）
+    "qualityGate": {
+        // 主开关。false 时不执行任何评估
+        "enabled": false,
+        // 算法名。可拔插——未来算法（包括外部 API 评审）可以注册而无需改 pipeline
+        "algorithm": "rouge-recall-v1",
+        // 各算法的独立配置
+        "algorithms": {
+            "rouge-recall-v1": {
+                // 摘要长度硬下限（字符）。低于此值 → L1 失败
+                "layer1MinChars": 200,
+                // 最小留存率 = summaryLen / (compressedTokens*4) * 100
+                // 捕获灾难性留存失败（<1%），0% 误报
+                "layer1MinRetentionPct": 1.0,
+                // 当 ROUGE-1 F1 低于此值时（与 top20Recall 经 AND 合并）L2 失败
+                "layer2MaxRougeF1": 0.05,
+                // 当 top-20 关键词召回低于此值时（与 rougeF1 经 AND 合并）L2 失败
+                "layer2MaxTop20Recall": 0.20,
+            },
+        },
+    },
 }
 ```
 
@@ -395,6 +438,14 @@ ACP 在首次启动时自动将配置从 `dcp.jsonc` 迁移到 `acp.jsonc`，将
 ---
 
 ## 更新日志
+
+### v1.13.0 — 可拔插质量门控（Issue #20）
+
+**问题**：ACP 没有机制检测摘要是否灾难性丢失了内容。模型可能把 5K token 的范围压缩成 147 字符、且不含任何技术关键词的摘要，系统也会默默接受。Issue #20（基于真实会话的 6,913 个块校准）识别出两种不同的失败模式：(1) 长度下限失败——摘要 < 原始的 1%（通过简单的字符计数即可 100% 召回，0% 误报）；(2) 内容覆盖失败——摘要长度足够通过长度门，但没有捕获原始内容中的任何关键词（例如：5K token 原始内容的 996 字符摘要只恢复了 0.6% 的内容词）。
+
+**修复**：在 `lib/compress/quality-gate/` 下添加可拔插的 `qualityGate` 子系统，定义 `QualityGate` 接口（`name`、`version`、`description`、`evaluate(ctx, config)`）。pipeline 在 `finalizeSession()` 中状态保存之后调用 `evaluateBatchQuality()`——失败仅发出 `logger.warn`（非阻塞：压缩结果已经提交）。默认算法 `rouge-recall-v1` 是两层门控：L1 是长度/留存下限（200 字符 AND 1% 留存），L2 是 ROUGE-1 F1 < 0.05 与 top-20 关键词召回 < 0.20 的 AND 合并（AND 把误报率维持在 ~6.6%，同时仍能捕获"长但空"的失败模式）。分词器为手写的词级分词（英文关键词 ≥4 字符 + 中文 unigram/bigram），与 ACP 的 BPE 分词器分离——后者对 ROUGE 匹配粒度过粗。配置默认 `enabled: false`，发布一个版本的烧入期。接口为未来算法留出空间，包括外部 API 评审（当前为同步签名；未来异步门控需要扩展类型或在内部 wait+timeout 包装，registry/config 不变）。
+
+文件：`lib/compress/quality-gate/{types,registry,tokenizer,evaluate,index}.ts`、`lib/compress/quality-gate/algorithms/{rouge-recall-v1,index}.ts`、`lib/compress/pipeline.ts`、`lib/config.ts`、`lib/config-validation.ts`、`dcp.schema.json`。测试：`tests/quality-gate-{tokenizer,registry,rouge-recall-v1,pipeline-integration}.test.ts`（新增，74 个测试）。842 个测试通过。
 
 ### v1.12.11 — README 文档刷新（PR #164）
 

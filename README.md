@@ -134,6 +134,28 @@ later work.
 
 When context reaches 100%, the system automatically truncates old-gen block summaries to prevent overflow. This is a last-resort safety net and does not interfere with the model's normal compress/decompress operations.
 
+### Quality gate (non-blocking, off by default)
+
+After each `compress` call, ACP can run a pluggable quality gate to detect summaries that catastrophically lost content (e.g., a 5K-token range compressed to a 147-char summary with none of the technical keywords). Failures only emit `logger.warn` — they never reject the compression (the result is already committed to state and visible to the model).
+
+The default algorithm (`rouge-recall-v1`) is a two-layer gate calibrated against 6,913 real-world blocks:
+
+- **L1 (length floor)**: Catches catastrophic retention failures — summaries shorter than 200 chars OR with <1% retention vs. the original. 100% recall, 0% FPR.
+- **L2 (content coverage)**: Only runs on blocks that pass L1. Flags when **both** ROUGE-1 F1 < 0.05 **and** top-20 keyword recall < 0.20 (AND-combine keeps FPR at ~6.6%).
+
+The interface is pluggable: future algorithms (e.g., LLM-as-judge via external API) can be registered through `registerQualityGate()` without touching pipeline wiring. Tokenizer uses hand-rolled word-level tokenization (English keywords + Chinese unigrams/bigrams) — not ACP's BPE tokenizer, which is too coarse for ROUGE-style matching.
+
+Off by default for one release of burn-in. To enable:
+
+```jsonc
+{
+    "qualityGate": {
+        "enabled": true,
+        "algorithm": "rouge-recall-v1",
+    },
+}
+```
+
 ---
 
 ## Impact on Prompt Caching
@@ -324,6 +346,28 @@ Each level overrides the previous, so project settings take priority over global
         // run major GC when context usage exceeds this (hardcoded, not configurable)
         "majorGcThresholdPercent": "100%",
     },
+    // Post-compression quality gate (non-blocking; off by default)
+    "qualityGate": {
+        // Master switch. When false, no evaluation runs.
+        "enabled": false,
+        // Algorithm name. Pluggable — future algorithms (including external
+        // API judges) can be registered without changing pipeline wiring.
+        "algorithm": "rouge-recall-v1",
+        // Per-algorithm config
+        "algorithms": {
+            "rouge-recall-v1": {
+                // Hard floor on summary length (chars). Below this → L1 fails.
+                "layer1MinChars": 200,
+                // Min retention = summaryLen / (compressedTokens*4) * 100.
+                // Catches catastrophic retention failures (<1%) with 0% FPR.
+                "layer1MinRetentionPct": 1.0,
+                // L2 fails (combined with top20Recall via AND) when below this.
+                "layer2MaxRougeF1": 0.05,
+                // L2 fails (combined with rougeF1 via AND) when below this.
+                "layer2MaxTop20Recall": 0.20,
+            },
+        },
+    },
 }
 ```
 
@@ -426,6 +470,14 @@ For the complete list with root cause analysis, see the [bug tracker](https://gi
 ---
 
 ## Changelog
+
+### v1.13.0 — Pluggable Quality Gate (Issue #20)
+
+**Problem**: ACP had no mechanism to detect summaries that catastrophically lost content. The model could compress a 5K-token range into a 147-char summary missing every technical keyword, and the system would silently accept it. Issue #20 (calibrated against 6,913 real-world blocks from real sessions) identified two distinct failure modes: (1) length-floor failures — summaries <1% the size of the original (caught with 100% recall, 0% FPR via simple char count), and (2) content-coverage failures — summaries long enough to pass the length floor but capturing none of the original's keywords (e.g., a 996-char summary of a 5K-token original that recovers 0.6% of content words).
+
+**Fix**: Added a pluggable `qualityGate` subsystem under `lib/compress/quality-gate/` with a `QualityGate` interface (`name`, `version`, `description`, `evaluate(ctx, config)`). The pipeline calls `evaluateBatchQuality()` in `finalizeSession()` after state is saved — failures only emit `logger.warn` (non-blocking: the compression result is already committed). The default algorithm `rouge-recall-v1` is a two-layer gate: L1 is a length/retention floor (200 chars AND 1% retention), L2 is an AND-combine of ROUGE-1 F1 < 0.05 AND top-20 keyword recall < 0.20 (AND keeps FPR at ~6.6% while still catching the long-but-empty failure mode). Tokenizer is hand-rolled word-level (English keywords ≥4 chars + Chinese unigrams/bigrams) — separate from ACP's BPE tokenizer, which is too coarse for ROUGE matching. Config defaults `enabled: false` for one release of burn-in. Interface leaves room for future algorithms including external API judges (sync signature today; future async gates need either type widening or internal wait+timeout wrap, registry/config unchanged).
+
+Files: `lib/compress/quality-gate/{types,registry,tokenizer,evaluate,index}.ts`, `lib/compress/quality-gate/algorithms/{rouge-recall-v1,index}.ts`, `lib/compress/pipeline.ts`, `lib/config.ts`, `lib/config-validation.ts`, `dcp.schema.json`. Tests: `tests/quality-gate-{tokenizer,registry,rouge-recall-v1,pipeline-integration}.test.ts` (NEW, 74 tests). 842 tests pass.
 
 ### v1.12.11 — README Refresh (PR #164)
 

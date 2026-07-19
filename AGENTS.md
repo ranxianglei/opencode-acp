@@ -68,6 +68,15 @@ opencode-acp/
 │   │   ├── range-utils.ts            # Range-level utility functions
 │   │   ├── timing.ts                 # Compression timing tracking
 │   │   ├── types.ts                  # Shared type definitions (ToolContext, BoundaryReference, etc.)
+│   │   ├── quality-gate/             # Post-compression quality evaluation (non-blocking, pluggable)
+│   │   │   ├── types.ts              # QualityGate interface, QualityGateContext, QualityReport
+│   │   │   ├── registry.ts           # Singleton Map; registerQualityGate / getQualityGate / list
+│   │   │   ├── tokenizer.ts          # Hand-rolled word-level tokenizer (EN keywords + ZH uni/bigrams)
+│   │   │   ├── evaluate.ts           # Orchestrator: evaluateBlockQuality + evaluateBatchQuality
+│   │   │   ├── algorithms/
+│   │   │   │   ├── rouge-recall-v1.ts # Default gate: L1 length floor + L2 ROUGE-1 F1 AND top-20 recall
+│   │   │   │   └── index.ts          # ensureBuiltinGatesRegistered() idempotent initializer
+│   │   │   └── index.ts              # Barrel export
 │   │   └── index.ts                  # Barrel export
 │   │
 │   ├── messages/                     # Message processing pipeline
@@ -206,7 +215,7 @@ index.ts (Plugin Entry — registers hooks + tools)
             │       ├─► Update byMessageId index
             │       └─→ Track newly compressed tokens
             │
-            └─► finalizeSession() → save state, send notification
+            └─► finalizeSession() → save state, evaluate quality gate (non-blocking), send notification
 ```
 
 ### 2.3 Key Concepts
