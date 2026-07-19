@@ -10,6 +10,7 @@ import type { ToolContext } from "./types"
 import { buildSearchContext, fetchSessionMessages } from "./search"
 import type { SearchContext } from "./types"
 import { applyPendingCompressionDurations } from "./timing"
+import { evaluateBatchQuality } from "./quality-gate"
 
 export interface CompressionSnapshot {
     messages: PruneMessagesState
@@ -110,6 +111,28 @@ export async function finalizeSession(
     ctx.state.manualMode = ctx.state.manualMode ? "active" : false
     applyPendingCompressionDurations(ctx.state)
     await saveSessionState(ctx.state, ctx.logger)
+
+    if (entries.length > 0) {
+        const qualityReport = evaluateBatchQuality(
+            ctx.state,
+            rawMessages,
+            entries,
+            ctx.config,
+            ctx.logger,
+        )
+        for (const failure of qualityReport.failures) {
+            const metrics = Object.fromEntries(
+                failure.result.metrics.map((m) => [m.name, m.value]),
+            )
+            ctx.logger.warn("Compression quality gate FAILED", {
+                blockId: failure.blockId,
+                algorithm: ctx.config.qualityGate.algorithm,
+                layer: failure.result.layer,
+                reason: failure.result.reason,
+                ...metrics,
+            })
+        }
+    }
 
     const params = getCurrentParams(ctx.state, rawMessages, ctx.logger)
     const sessionMessageIds = rawMessages

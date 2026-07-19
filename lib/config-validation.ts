@@ -67,6 +67,10 @@ export const VALID_CONFIG_KEYS = new Set([
     "strategies.purgeErrors.enabled",
     "strategies.purgeErrors.turns",
     "strategies.purgeErrors.protectedTools",
+    "qualityGate",
+    "qualityGate.enabled",
+    "qualityGate.algorithm",
+    "qualityGate.algorithms",
 ])
 
 function getConfigKeyPaths(obj: Record<string, any>, prefix = ""): string[] {
