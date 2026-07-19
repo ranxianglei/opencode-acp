@@ -4,6 +4,8 @@
 <strong>Active Context Pruning</strong> — <a href="https://opencode.ai">OpenCode</a> 的主动上下文剪枝插件
 <br />
 由模型决定<em>何时</em>压缩、压缩<em>什么</em> — 而非硬性截断。
+<br />
+<strong>20 万 token 足矣。</strong>
 </p>
 
 ---
@@ -72,7 +74,7 @@ opencode plugin opencode-acp@latest --global
 
 ## 工作原理
 
-ACP 把上下文压缩工具直接交给模型。模型对上下文压缩**负全责**。模型可用的工具主要是：**compress** 和 **decompress**。当上下文达到 100% 时，系统自动触发 GC 截断作为兜底。
+ACP 把上下文压缩工具直接交给模型。模型对上下文压缩**负全责**。模型的主要工具是 **compress** 和 **decompress**，辅以 **acp_status**（上下文监控）和 **search_context**（搜索已压缩内容）。当上下文达到 100% 时，系统自动触发 GC 截断作为兜底。
 
 ### 生命周期
 
@@ -111,11 +113,11 @@ stateDiagram-v2
 
 ## 对 Prompt 缓存的影响
 
-历史上 ACP 修复了大量由 DCP 导致的低缓存命中率问题。目前整体缓存命中率约为 **87%**。
+历史上 ACP 修复了大量由 DCP 导致的低缓存命中率问题。目前整体缓存命中率约为 **91%**。
 
 相比传统压缩——只在 80–90% 时才压缩，一旦压缩就强制 100% 的上下文重新命中——ACP 的命中率实际上更高。
 
-此外：ACP 大部分时间将总上下文维持在 **~30%** 左右，而传统方案是 50–80%。因此总 token 节省远高于传统压缩。
+此外：ACP 大部分时间将总上下文维持在 **~10–15%**（p50 10 万、p90 15 万，以 1M 窗口计），而传统方案是 50–80%。因此总 token 节省远高于传统压缩。
 
 **结论：** ACP 在提高整体缓存命中率的同时，确保关键上下文信息不丢失。
 
@@ -322,7 +324,7 @@ ACP 暴露六个可编辑的 prompt：
 
 `commands` 和 `strategies` 中的 `protectedTools` 数组会添加到此默认列表。
 
-对于 `compress` 工具，`compress.protectedTools` 确保特定工具的输出被**硬排除**在压缩范围之外（v1.10.0+）。当模型压缩包含受保护工具消息的范围时，该消息完整保留在可见上下文中 — 只有周围的非受保护消息被压缩。默认包含 `task`、`skill`、`todowrite`、`todoread` 和 `decompress`。
+对于 `compress` 工具，`compress.protectedTools` 确保特定工具的输出被**硬排除**在压缩范围之外（v1.10.0+）。当模型压缩包含受保护工具消息的范围时，该消息完整保留在可见上下文中 — 只有周围的非受保护消息被压缩。默认仅包含 `skill` —— 实践中这一个就够了，因为 skill 输出是唯一绝不能被压缩丢失的工具类型。
 
 ---
 

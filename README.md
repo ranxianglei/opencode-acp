@@ -4,6 +4,8 @@
 <strong>Active Context Pruning</strong> for <a href="https://opencode.ai">OpenCode</a>
 <br />
 The model decides <em>when</em> and <em>what</em> to compress — not a hard limit.
+<br />
+<strong>200K tokens is enough.</strong>
 </p>
 
 ---
@@ -86,9 +88,10 @@ Or add to your opencode config:
 ## How It Works
 
 ACP hands the context-compression tool directly to the model. The model is
-**100% responsible** for context compression. The model's available tools are
-mainly: **compress** and **decompress**. A hardcoded 100% GC fallback acts as
-a safety net when the context window is completely full.
+**100% responsible** for context compression. The model's primary tools are
+**compress** and **decompress**, supported by **acp_status** (context monitoring)
+and **search_context** (search compressed content). A hardcoded 100% GC fallback
+acts as a safety net when the context window is completely full.
 
 ### Lifecycle
 
@@ -127,27 +130,24 @@ interfere with the model's self-attention, short blocks lead the model to compre
 some content first, handle the urgent matter, then decompress what it needs in
 later work.
 
-### Deletion strategy
+### GC safety net
 
-To handle the accumulation of many small historical blocks, the new version adds
-a deletion strategy. The model decides whether to delete. **Once deleted, content
-is irrecoverable.** This replaces the original forced GC, so that forced garbage
-collection no longer deletes things the model considers important.
+When context reaches 100%, the system automatically truncates old-gen block summaries to prevent overflow. This is a last-resort safety net and does not interfere with the model's normal compress/decompress operations.
 
 ---
 
 ## Impact on Prompt Caching
 
 Historically, ACP has fixed many of the low-cache-hit-rate problems caused by
-DCP. The overall cache hit rate is now **~87%**.
+DCP. The overall cache hit rate is now **~91%**.
 
 Compared to traditional compression — which only compresses at 80–90% and, once it
 compresses, forces 100% of the context to re-hit — ACP's hit rate is effectively
 higher.
 
-Additionally, ACP keeps total context around **~30% most of the time**, versus the
-traditional **50–80%**. So total token savings are far higher than traditional
-compression.
+Additionally, ACP keeps total context around **~10–15% most of the time** (p50
+100K, p90 150K of the 1M window), versus the traditional **50–80%**. So total
+token savings are far higher than traditional compression.
 
 **Conclusion:** ACP simultaneously raises the overall cache hit rate **and**
 ensures key context information is not lost.
@@ -355,7 +355,7 @@ By default, these tools are always protected from pruning:
 
 The `protectedTools` arrays in `commands` and `strategies` add to this default list.
 
-For the `compress` tool, `compress.protectedTools` ensures specific tool outputs are **hard-excluded** from compression ranges (v1.10.0+). When the model compresses a range that includes a protected tool message, that message survives intact in visible context — only the surrounding non-protected messages are compressed. By default `compress.protectedTools` includes `task`, `skill`, `todowrite`, `todoread`, and `decompress`.
+For the `compress` tool, `compress.protectedTools` ensures specific tool outputs are **hard-excluded** from compression ranges (v1.10.0+). When the model compresses a range that includes a protected tool message, that message survives intact in visible context — only the surrounding non-protected messages are compressed. By default `compress.protectedTools` includes only `skill` — this is sufficient in practice, as skill outputs are the one tool type whose content must never be lost to compression.
 
 ---
 
