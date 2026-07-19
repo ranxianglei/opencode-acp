@@ -4,6 +4,8 @@
 <strong>Active Context Pruning</strong> for <a href="https://opencode.ai">OpenCode</a>
 <br />
 The model decides <em>when</em> and <em>what</em> to compress — not a hard limit.
+<br />
+<strong>200K tokens is enough.</strong>
 </p>
 
 ---
@@ -28,10 +30,14 @@ is, to date, the best context-management implementation on the market.
 
 This brings two concrete effects:
 
-- **It saves about two-thirds of tokens.** A model with a 1,000,000-token context
-  window effectively runs in the **200,000–300,000 token range**.
-- **It supports ultra-long sessions without losing key content** — **500M-token-level
-  cumulative context, 100,000 messages per session**.
+- **200K tokens is enough.** Across 30,000+ API calls in 50 real engineering
+  sessions, **97% of requests stayed under 200K tokens** — p90 at 150K, p95 at
+  180K. Every API call re-bills the full context, so keeping context low directly
+  reduces cost — even with a 90%+ prompt-cache hit rate, the non-cached portion
+  is billed at full price.
+- **It supports ultra-long sessions without losing key content** — observed at
+  **3,300+ messages and 300M+ cumulative tokens** per session; architecturally
+  supports up to **100,000 messages** (5-digit message-ID space).
 
 ---
 
@@ -39,22 +45,23 @@ This brings two concrete effects:
 
 Real engineering context, in practice.
 
-**Supports 500M-token-level cumulative context, with p95 context around 30% and
-an average prompt-cache hit ratio above 85%.** (That average — not per-session —
-is explained in [Impact on Prompt Caching](#impact-on-prompt-caching), where it
-turns out to save far more tokens than traditional compression.)
+**Across 6 active engineering sessions (11,000+ API calls), context p90 stays
+at 150K–190K (15–19%), p95 at 160K–210K (16–21%) of the 1M window — with an
+aggregate prompt-cache hit ratio of 91%.** (Why aggregate — not per-session —
+matters is explained in [Impact on Prompt Caching](#impact-on-prompt-caching),
+where it turns out to save far more tokens than traditional compression.)
 
-|                            | Session 1   | Session 2   |
-| -------------------------- | ----------- | ----------- |
-| **Messages**               | 3,024       | 2,028       |
-| **Total tokens processed** | 582 M       | 463 M       |
-| **Prompt-cache hit ratio** | 86.2%       | 89.0%       |
-| **Context p50 (median)**   | 1.2 K (<1%) | 1.8 K (<1%) |
-| **Context p75**            | 2.8 K       | 3.5 K       |
-| **Context p90**            | 108 K (11%) | 58 K (6%)   |
-| **Context p95**            | 251 K (25%) | 335 K (34%) |
-| **Context p99**            | 425 K (43%) | 442 K (44%) |
-| **Peak**                   | 488 K (49%) | 769 K (77%) |
+| Session   | Duration    | Messages | API calls | Cumulative | Cache hit | Context p50 | Context p90 | Context p95 |
+| --------- | ----------- | -------- | --------- | ---------- | --------- | ----------- | ----------- | ----------- |
+| 0b89319b  | 230h (9.5d) | 3,344    | 2,796     | 339M       | 93%       | 108K (11%)  | 167K (17%)  | 210K (21%)  |
+| 0a3be0cd  | 130h (5.4d) | 3,183    | 2,499     | 276M       | 91%       | 104K (10%)  | 145K (15%)  | 153K (15%)  |
+| 0b2cd5a7  | 131h (5.4d) | 2,560    | 2,181     | 314M       | 91%       | 142K (14%)  | 191K (19%)  | 197K (20%)  |
+| 08f2d501  | 37h (1.5d)  | 1,985    | 1,888     | 196M       | 95%       | 100K (10%)  | 156K (16%)  | 168K (17%)  |
+| 1410c791† | 865h (36d)  | 1,279    | 1,100     | 218M       | 87%       | 132K (13%)  | 407K (41%)  | 427K (43%)  |
+| 096cf8c4  | 72h (3d)    | 1,041    | 918       | 91M        | 89%       | 92K (9%)    | 148K (15%)  | 161K (16%)  |
+
+† Bug-testing session; p95 is abnormally high. Excluding it, p95 stays ≤ 210K
+across all other sessions.
 
 (Context percentages are of the 1M window.)
 
@@ -81,9 +88,10 @@ Or add to your opencode config:
 ## How It Works
 
 ACP hands the context-compression tool directly to the model. The model is
-**100% responsible** for context compression. The model's available tools are
-mainly: **compress** and **decompress**. A hardcoded 100% GC fallback acts as
-a safety net when the context window is completely full.
+**100% responsible** for context compression. The model's primary tools are
+**compress** and **decompress**, supported by **acp_status** (context monitoring)
+and **search_context** (search compressed content). A hardcoded 100% GC fallback
+acts as a safety net when the context window is completely full.
 
 ### Lifecycle
 
@@ -122,27 +130,24 @@ interfere with the model's self-attention, short blocks lead the model to compre
 some content first, handle the urgent matter, then decompress what it needs in
 later work.
 
-### Deletion strategy
+### GC safety net
 
-To handle the accumulation of many small historical blocks, the new version adds
-a deletion strategy. The model decides whether to delete. **Once deleted, content
-is irrecoverable.** This replaces the original forced GC, so that forced garbage
-collection no longer deletes things the model considers important.
+When context reaches 100%, the system automatically truncates old-gen block summaries to prevent overflow. This is a last-resort safety net and does not interfere with the model's normal compress/decompress operations.
 
 ---
 
 ## Impact on Prompt Caching
 
 Historically, ACP has fixed many of the low-cache-hit-rate problems caused by
-DCP. The overall cache hit rate is now **~87%**.
+DCP. The overall cache hit rate is now **~91%**.
 
 Compared to traditional compression — which only compresses at 80–90% and, once it
 compresses, forces 100% of the context to re-hit — ACP's hit rate is effectively
 higher.
 
-Additionally, ACP keeps total context around **~30% most of the time**, versus the
-traditional **50–80%**. So total token savings are far higher than traditional
-compression.
+Additionally, ACP keeps total context around **~10–15% most of the time** (p50
+100K, p90 150K of the 1M window), versus the traditional **50–80%**. So total
+token savings are far higher than traditional compression.
 
 **Conclusion:** ACP simultaneously raises the overall cache hit rate **and**
 ensures key context information is not lost.
@@ -350,7 +355,7 @@ By default, these tools are always protected from pruning:
 
 The `protectedTools` arrays in `commands` and `strategies` add to this default list.
 
-For the `compress` tool, `compress.protectedTools` ensures specific tool outputs are **hard-excluded** from compression ranges (v1.10.0+). When the model compresses a range that includes a protected tool message, that message survives intact in visible context — only the surrounding non-protected messages are compressed. By default `compress.protectedTools` includes `task`, `skill`, `todowrite`, `todoread`, and `decompress`.
+For the `compress` tool, `compress.protectedTools` ensures specific tool outputs are **hard-excluded** from compression ranges (v1.10.0+). When the model compresses a range that includes a protected tool message, that message survives intact in visible context — only the surrounding non-protected messages are compressed. By default `compress.protectedTools` includes only `skill` — this is sufficient in practice, as skill outputs are the one tool type whose content must never be lost to compression.
 
 ---
 
@@ -440,7 +445,7 @@ Files: `lib/messages/prune.ts`, `lib/messages/utils.ts`, `lib/compress/recap.ts`
 
 ### v1.12.8 — Phantom Block Rejection (PR #148)
 
-**Problem**: When the model called `compress` on a range that was already covered by an active compression block, `applyCompressionState` still created a new block with `directMessageIds: []`, `compressedTokens: 0`, and `effectiveMessageIds` inherited from the consumed block. The model saw "0 tokens removed" in the notification, retried the same range, and entered a death loop: each phantom block added ~1K of summary overhead while compressing nothing, causing context to *grow* with every compression call (issues #93, #135). User sessions showed 9 consecutive phantom compressions (b12–b20) on the same range before the user manually intervened.
+**Problem**: When the model called `compress` on a range that was already covered by an active compression block, `applyCompressionState` still created a new block with `directMessageIds: []`, `compressedTokens: 0`, and `effectiveMessageIds` inherited from the consumed block. The model saw "0 tokens removed" in the notification, retried the same range, and entered a death loop: each phantom block added ~1K of summary overhead while compressing nothing, causing context to _grow_ with every compression call (issues #93, #135). User sessions showed 9 consecutive phantom compressions (b12–b20) on the same range before the user manually intervened.
 
 **Fix**: Added `checkPhantomBlock()` — a stateless pre-check in `lib/compress/pipeline.ts` that mirrors `applyCompressionState`'s `newlyCompressedMessageIds` computation. For each plan, it builds the effective message set (plan messages + consumed blocks' effective messages) and checks whether ANY message is "new" (i.e., has no active block covering it BEFORE mutation). If no message is new, the plan is a phantom and the entire compress call is rejected with a clear error before any state mutation occurs. Wired into both range-mode (`compress/range.ts`) and message-mode (`compress/message.ts`) after plan preparation, before snapshot. 12 tests cover: empty plans, all-new messages, consumed-block inheritance, GC'd messages (deactivated blocks count as new), and the exact `applyCompressionState` mirroring.
 
@@ -569,6 +574,7 @@ This release fixes two critical compression-injection bugs (#20 echo, #78 drift)
 #### Tool-Result Recap Injection — Fixes #20 & #78 (PR #95)
 
 **Problem**: Compression summaries were injected as text-based `role:assistant` or `role:user` messages. Both roles misled the model:
+
 - `role:assistant` (Bug 37 path) → model treated summaries as its own prior output and echoed them verbatim (#20, GLM-5.2).
 - `role:user` (Bug 36 merge path) → model treated summaries as user instructions and chased old topics (#78, gpt-5.5).
 
@@ -611,6 +617,7 @@ Fixes the over-compression bug reported in issue #18 and GitHub #85, where the `
 Additionally, the `compress.toolOutputNudgeThreshold` config key was **dead** — declared in the type but missing from the config merge, validation list, and JSON schema, so user overrides were silently dropped.
 
 **Fix** (4 coordinated changes):
+
 - `lib/messages/inject/inject.ts`: `toolOutputThreshold` now defaults to `nudgeGrowthTokens` (adaptive) instead of the hardcoded `5000`.
 - `lib/config.ts` `mergeCompress`: `toolOutputNudgeThreshold` override now flows through the config merge.
 - `lib/config-validation.ts`: `compress.toolOutputNudgeThreshold` registered as a valid config key.
