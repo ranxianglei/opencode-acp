@@ -210,12 +210,18 @@ export async function sendCompressNotification(
         }
     }
 
+    const entryBlockTopics = entries
+        .map((e) => state.prune.messages.blocksById.get(e.blockId)?.topic)
+        .filter((t): t is string => typeof t === "string" && t.length > 0)
+
     const topic =
         batchTopic ??
         (entries.length === 1
             ? (state.prune.messages.blocksById.get(entries[0]?.blockId ?? -1)?.topic ??
               "(unknown topic)")
-            : "(unknown topic)")
+            : entryBlockTopics.length > 0
+              ? entryBlockTopics.join(" · ")
+              : "(unknown topic)")
 
     const contextTokensAfter = Math.max(
         0,

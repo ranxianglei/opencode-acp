@@ -164,8 +164,8 @@ function rebuildRangeInvocation(
         applyCompressionState(
             state,
             {
-                topic: input.topic,
-                batchTopic: input.topic,
+                topic: plan.entry.topic ?? input.topic ?? "",
+                batchTopic: typeof input.topic === "string" ? input.topic : undefined,
                 startId: plan.entry.startId,
                 endId: plan.entry.endId,
                 mode: "range",
@@ -260,7 +260,7 @@ function rebuildMessageInvocation(
             state,
             {
                 topic: entry.topic,
-                batchTopic: input.topic,
+                batchTopic: typeof input.topic === "string" ? input.topic : undefined,
                 startId: entry.messageId,
                 endId: entry.messageId,
                 mode: "message",
