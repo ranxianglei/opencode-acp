@@ -227,7 +227,7 @@ const defaultConfig: PluginConfig = {
     gc: {
         algorithm: "truncate",
         promotionThreshold: 5,
-        maxBlockAge: 15,
+        maxBlockAge: Number.MAX_SAFE_INTEGER, // no-op: age-based deactivation removed (memory-loss fix)
         maxOldGenSummaryLength: 3000,
         majorGcThresholdPercent: "100%",
         batchCleanup: {

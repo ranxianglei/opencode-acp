@@ -128,56 +128,15 @@ function runMajorGC(
     logger: Logger,
     messages: WithParts[],
 ): void {
-    // [FIX Bug 32] Age-based deactivation does NOT depend on modelContextLimit.
-    // modelContextLimit is set in the system prompt hook, which runs AFTER the
-    // messages transform hook. If we guard this with modelContextLimit, age-based
-    // deactivation never runs after restart (modelContextLimit starts as undefined).
-    const maxBlockAge = config.gc.maxBlockAge ?? 15
-    let agedOutCount = 0
-    let agedOutTokens = 0
-    const now = Date.now()
-    for (const [blockId, block] of state.prune.messages.blocksById) {
-        if (!block.active) continue
-        const age = block.survivedCount ?? 0
-        if (age > maxBlockAge) {
-            block.active = false
-            block.deactivatedAt = now
-            block.deactivatedByBlockId = undefined
-            state.prune.messages.activeBlockIds.delete(Number(blockId))
-            const anchorMapped = state.prune.messages.activeByAnchorMessageId.get(block.anchorMessageId)
-            if (anchorMapped === Number(blockId)) {
-                state.prune.messages.activeByAnchorMessageId.delete(block.anchorMessageId)
-            }
-            agedOutCount++
-            agedOutTokens += block.summaryTokens ?? Math.round(block.summary.length / 4)
-        }
-    }
-
-    if (agedOutCount > 0) {
-        logger.info("Major GC: deactivated aged-out blocks", {
-            agedOutCount,
-            agedOutTokens,
-            maxBlockAge,
-        })
-        saveSessionState(state, logger).catch(() => {})
-    }
-
+    // Age-based deactivation + oversized-block override intentionally removed:
+    // they truncated/deactivated model-written summaries at low context pressure,
+    // destroying memory. Only the explicit context-threshold gate remains.
+    // gc.maxBlockAge is now a no-op (kept for backward config compat).
     if (!state.modelContextLimit) return
 
     const currentTokens = getCurrentTokenUsage(state, messages)
 
-    // Check if any active block is oversized (summary > 2x maxOldGenSummaryLength)
-    // These should always be truncated regardless of token threshold
-    const oversizedThreshold = config.gc.maxOldGenSummaryLength * 2
-    let hasOversizedBlocks = false
-    for (const [, block] of state.prune.messages.blocksById) {
-        if (block.active && block.summary.length > oversizedThreshold) {
-            hasOversizedBlocks = true
-            break
-        }
-    }
-
-    if (!shouldRunMajorGC(currentTokens, state.modelContextLimit, config.gc) && !hasOversizedBlocks) return
+    if (!shouldRunMajorGC(currentTokens, state.modelContextLimit, config.gc)) return
 
     const oldBlocks: import("./state").CompressionBlock[] = []
     for (const [blockId, block] of state.prune.messages.blocksById) {
