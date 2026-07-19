@@ -2,6 +2,7 @@ import type { Logger } from "../../logger"
 import type { PluginConfig } from "../../config"
 import type { SessionState, WithParts } from "../../state/types"
 import type { CompressionBlock } from "../../state/types"
+import type { Part } from "@opencode-ai/sdk/v2"
 import type {
     QualityGateContext,
     QualityGateResult,
@@ -12,25 +13,27 @@ import { ensureBuiltinGatesRegistered } from "./algorithms"
 import { getQualityGate } from "./registry"
 
 const CHARS_PER_TOKEN_ESTIMATE = 4
+const TOOL_OUTPUT_MAX_CHARS = 1500
+const TOOL_INPUT_MAX_CHARS = 500
 
-function extractMessageText(parts: { type: string; text?: string; tool?: string; state?: { input?: unknown; output?: unknown } }[] | undefined): string {
+function extractMessageText(parts: Part[] | undefined): string {
     if (!parts || !Array.isArray(parts)) return ""
     let text = ""
     for (const part of parts) {
         if (!part || typeof part !== "object") continue
-        if (part.type === "text" && typeof part.text === "string") {
+        if (part.type === "text") {
             text += part.text + "\n"
         } else if (part.type === "tool") {
-            const toolName = part.tool ?? ""
-            const input = part.state && typeof part.state.input === "object"
-                ? JSON.stringify(part.state.input).slice(0, 500)
+            const state = part.state
+            const input = state.status === "completed" && typeof state.input === "object"
+                ? JSON.stringify(state.input).slice(0, TOOL_INPUT_MAX_CHARS)
                 : ""
-            const output = part.state && typeof part.state.output === "string"
-                ? part.state.output.slice(0, 1500)
-                : part.state && typeof part.state.output === "object"
-                  ? JSON.stringify(part.state.output).slice(0, 1500)
+            const output = state.status === "completed" && typeof state.output === "string"
+                ? state.output.slice(0, TOOL_OUTPUT_MAX_CHARS)
+                : state.status === "completed" && typeof state.output === "object"
+                  ? JSON.stringify(state.output).slice(0, TOOL_OUTPUT_MAX_CHARS)
                   : ""
-            text += `[tool:${toolName}] ${input}\n${output}\n`
+            text += `[tool:${part.tool}] ${input}\n${output}\n`
         }
     }
     return text
@@ -53,7 +56,7 @@ function buildContext(
     for (const id of directIds) {
         const m = idToMsg.get(id)
         if (!m) continue
-        chunks.push(extractMessageText(m.parts as any))
+        chunks.push(extractMessageText(m.parts))
     }
     if (chunks.length === 0) return null
 
@@ -74,7 +77,7 @@ export function evaluateBlockQuality(
     config: PluginConfig,
     logger: Logger,
 ): QualityGateResult | null {
-    const qg = (config as PluginConfig & { qualityGate?: { enabled?: boolean; algorithm?: string; algorithms?: Record<string, unknown> } }).qualityGate
+    const qg = config.qualityGate
     if (!qg || qg.enabled !== true) return null
 
     ensureBuiltinGatesRegistered()
