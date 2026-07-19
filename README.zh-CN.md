@@ -395,13 +395,13 @@ ACP 在首次启动时自动将配置从 `dcp.jsonc` 迁移到 `acp.jsonc`，将
 
 ## 更新日志
 
-### v1.12.10-dev.1 — Decompress 范围模式 + Token 分类 + Protected 标签精确性 + Nudge 抑制 + 离散间隔（PR #73, #155, #157, #158, #159）
+### v1.13.0 — 批量压缩 + Decompress 范围模式 + GC 记忆丢失修复 + Token 分类 + Nudge 质量（PR #73, #155, #156, #157, #158, #159, #161）
 
-**问题**：五个问题，涉及 decompress 易用性、token 统计和 nudge 质量。（1）`decompress` 需要先 `acp_status` 再逐块 decompress 的循环才能恢复多个压缩块。（2）自 v1.12.9（compress-as-anchor）起，compress 工具的 `summary` 内容被错误分类为 `toolTokens` 而非 `summaryTokens`，导致上下文分布中 tool% 虚高、summary% 虚低 —— 误导模型的压缩决策。（3）`[PROTECTED: ...]` 标签列出受保护消息中的所有工具（例如 `[PROTECTED: grep, skill]`），让模型误以为 `grep` 等非保护工具也是保护原因。（4）当所有可见内容都是受保护内容时，nudge 仍然以空推荐列表注入 —— 浪费上下文且让模型困惑。（5）当 nudge 被抑制（过滤器移除所有推荐）时，下一轮检查每轮都重新评估，因为 baseline 从不前进，导致重复浪费计算。
+**问题**：七个问题，涉及压缩 UX、token 统计、GC 安全和 nudge 质量。（1）`decompress` 需要先 `acp_status` 再逐块 decompress 的循环才能恢复多个压缩块。（2）自 v1.12.9 起，compress 工具的 `summary` 内容被错误分类为 `toolTokens` 而非 `summaryTokens`，导致上下文分布中 tool% 虚高、summary% 虚低。（3）`compress` 工具每次调用只能压缩一个范围 —— 模型需要多次调用才能压缩不相关的范围，浪费轮次。（4）`[PROTECTED: ...]` 标签列出受保护消息中的所有工具而非仅触发保护的工具。（5）当所有可见内容都是受保护内容时，nudge 仍然以空推荐列表注入。（6）当 nudge 被抑制时，下一轮检查每轮都重新评估。（7）**GC 系统在静默销毁模型编写的 summary**：任何 `summary.length > 6000` 字符的块在零上下文压力下被强制截断到 3000，且 `survivedCount` 过高的块被自动 deactivate —— 导致数百个会话的不可恢复记忆丢失。
 
-**修复**：（1）**PR #73** —— 为 `decompress` schema 新增可选 `startId`/`endId`；范围模式批量恢复所有 `effectiveMessageIds` 与解析范围重叠的活跃块，一次调用完成。新纯函数 `findActiveBlocksOverlappingMessages` 在 `decompress-logic.ts`；向后兼容（`blockId` 路径不变）。（2）**PR #155** —— 在 `estimateContextComposition`（`lib/messages/inject/utils.ts`）中，当 `toolName === "compress"` 时，从 `part.state.input.content[].summary` 提取 `summary` 文本并分类为 `summaryTokens`。结构开销仍计为 `toolTokens`。（3）**PR #157** —— `buildCompressibleRanges` 现在只添加通过 `isToolNameProtected` 或 `isFilePathProtected` 实际触发保护的工具，与 `messageContainsProtectedTool` 逻辑完全一致 —— 标签现在只显示 `[PROTECTED: skill]`。（4）**PR #158** —— 新增 `allProtected = compressible.length === 0 && protected.length > 0` 检查；`nothingToCompress = filterSuppressed || allProtected` 门控 nudge 注入，当确实没有可压缩内容时抑制软 nudge（`protected.length > 0` 判别式保留了"尚未分配 ref"的边缘情况）。（5）**PR #159** —— 当 nudge 被抑制时，将 `lastPerMessageNudgeTokens` 前进到 `currentTokens` 并清除 `lastNudgeShownTokens`，创建离散 5% 检查间隔而非每轮重新评估。
+**修复**：（1）**PR #73** —— 为 `decompress` schema 新增可选 `startId`/`endId`；范围模式批量恢复所有 `effectiveMessageIds` 与解析范围重叠的活跃块。（2）**PR #155** —— 在 `estimateContextComposition` 中，当 `toolName === "compress"` 时，提取 `summary` 文本并分类为 `summaryTokens`。（3）**PR #156** —— `compress` 工具现在接受 `content` 数组（`{ topic, startId, endId, summary }`），允许模型在单次调用中压缩多个不相关范围，每个范围有独立 topic。（4）**PR #157** —— `buildCompressibleRanges` 只添加实际触发保护的工具。（5）**PR #158** —— 新增 `allProtected` 检查，当确实没有可压缩内容时抑制 nudge。（6）**PR #159** —— 当 nudge 被抑制时，将 `lastPerMessageNudgeTokens` 前进到 `currentTokens`，创建离散 5% 检查间隔。（7）**PR #161** —— 删除 GC oversized-block 旁路（`hasOversizedBlocks`，在 0% 上下文压力下截断）和 age-based 自动 deactivate 循环。截断现在只在 `majorGcThresholdPercent`（默认 100%）时触发。`gc.maxBlockAge` 变为 no-op。aging warning 门槛从 50% 提高到 90%，不再误导模型。
 
-文件：`lib/compress/decompress.ts`、`lib/compress/decompress-logic.ts`、`lib/messages/inject/utils.ts`、`lib/messages/inject/inject.ts`。测试：757 通过（decompress-logic 新增 11 个，token 分类新增 5 个，4 个 "all protected" 测试修复为真正触发 `allProtected` 分支，+1 个 Scenario A 测试覆盖抑制后压缩）。
+文件：`lib/hooks.ts`、`lib/config.ts`、`lib/prompts/extensions/nudge.ts`、`lib/compress/decompress.ts`、`lib/compress/decompress-logic.ts`、`lib/messages/inject/utils.ts`、`lib/messages/inject/inject.ts`。测试：758 通过。
 
 ### v1.12.9 — Compress-as-Anchor（PR #153）
 
