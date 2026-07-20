@@ -533,6 +533,7 @@ All changes MUST follow this workflow:
 | **NEVER merge PRs without explicit human authorization**                | "merge" or "approve merge" must come from a human comment. Agent reviews passing ≠ authorization to merge.                  |
 | **NEVER remove and re-apply GitHub branch protection to force changes** | This is a circumvention of the merge policy. If protection blocks a push, the correct response is to create a PR.           |
 | **NEVER delete branches or tags without human confirmation**            | Preserve work for review.                                                                                                   |
+| **NEVER modify `version` field in `package.json` on non-release branches** | Version bumps happen ONLY on `YYYY-MM-DD_release-v*` branches (see §5.4.2). Regular feature/fix PRs MUST NOT touch the `version` field. The CI changelog check (§5.4.1) enforces this indirectly: if `version` changes, `README.md` and `README.zh-CN.md` MUST also be modified with a `### v{VERSION}` header. Violating this rule causes version-number drift across non-release PRs (e.g., v1.13.0 → v1.13.1 in a feature PR) which makes release bookkeeping unpredictable and can lead to skipped or duplicated npm publishes. |
 
 ### 5.1.2 Devlog Requirement (MANDATORY)
 

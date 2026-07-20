@@ -439,11 +439,18 @@ ACP 在首次启动时自动将配置从 `dcp.jsonc` 迁移到 `acp.jsonc`，将
 
 ## 更新日志
 
-### v1.13.1 — 压缩通知冻结修复（PR #167，issue #20）
+### v1.13.1 — cc-alg 抽取 + 压缩通知冻结修复（PR #167, #168）
 
-**问题**：每次 `compress` 工具调用成功后，ACP 会注入一条 user 角色通知消息，其中只包含一个带 `ignored: true` 标记的 text part。opencode 在发送给 LLM 前会剥离 ignored parts，于是这条消息变成空 user 消息。Provider（zhipuai-lb / glm-5.2）会以 HTTP 400 code 1214（`"messages 参数非法"`）拒绝，且 `isRetryable: false`——opencode 不会重试，会话冻结，直到外部恢复。所有活跃会话累计发生 113 次（单个 3,156 条消息的会话出现 8 次）。
+**问题（压缩通知冻结，#167）**：每次 `compress` 工具调用成功后，ACP 会注入一条 user 角色通知消息，其中只包含一个带 `ignored: true` 标记的 text part。opencode 在发送给 LLM 前会剥离 ignored parts，于是这条消息变成空 user 消息。Provider（zhipuai-lb / glm-5.2）会以 HTTP 400 code 1214（`"messages 参数非法"`）拒绝，且 `isRetryable: false`——opencode 不会重试，会话冻结，直到外部恢复。所有活跃会话累计发生 113 次（单个 3,156 条消息的会话出现 8 次）。
 
-**修复**：（1）`lib/ui/notification.ts:280-298`——`sendCompressNotification` 改为始终调用 `client.tui.showToast`；移除了原本调用 `sendIgnoredMessage` 的 `chat` 分支。当用户显式配置 `pruneNotificationType: "chat"` 时，输出一次 warn 日志以便发现行为变化。（2）`lib/messages/utils.ts:232-269`——`dropEmptyMessages` 现在将带 `ignored: true` 的 text part 也视为"可丢弃"，任何未来出现的 ignored-only user 消息会在到达 provider 之前被丢弃（纵深防御）。（3）`lib/config.ts:175`——默认 `pruneNotificationType` 从 `"chat"` 改为 `"toast"`，使用默认配置的用户不会看到弃用警告。文件：`lib/ui/notification.ts`、`lib/messages/utils.ts`、`lib/config.ts`、`tests/drop-empty-messages.test.ts`。测试：新增 4 个回归用例锁定 ignored-only 消息丢弃行为。
+**修复（压缩通知冻结，#167）**：（1）`lib/ui/notification.ts:280-298`——`sendCompressNotification` 改为始终调用 `client.tui.showToast`；移除了原本调用 `sendIgnoredMessage` 的 `chat` 分支。当用户显式配置 `pruneNotificationType: "chat"` 时，输出一次 warn 日志以便发现行为变化。（2）`lib/messages/utils.ts:232-269`——`dropEmptyMessages` 现在将带 `ignored: true` 的 text part 也视为"可丢弃"，任何未来出现的 ignored-only user 消息会在到达 provider 之前被丢弃（纵深防御）。（3）`lib/config.ts:175`——默认 `pruneNotificationType` 从 `"chat"` 改为 `"toast"`，使用默认配置的用户不会看到弃用警告。
+
+**问题（cc-alg 抽取，#168）**：可复用的压缩算法（ROUGE-1 质量门控、手写 tokenizer、trigger policy、compression-rules prompt）锁在 ACP 的 AGPL 代码库里，其他项目无法以 MIT 协议复用。算法模块与 ACP 管道的内部耦合也使独立测试和复用困难。
+
+**修复（cc-alg 抽取，#168）**：4 个模块抽取到独立 MIT 包 `context-compress-algorithms@1.0.0`（npm：https://www.npmjs.com/package/context-compress-algorithms，GitHub：https://github.com/ranxianglei/context-compress-algorithms）。ACP 通过 `^1.0.0` 引用，并用 tsup `noExternal` 把 cc-alg inline-bundle 进 `dist/index.js`，host 不需要安装额外依赖。新增 `NOTICE` 文件按开源合规要求随包发布 MIT 归属。新增 `lib/messages/inject/policy/` 注册表支持 host 端自定义 nudge trigger 行为（默认 policy 来自 cc-alg 的 `defaultTriggerPolicy`）。Provenance 审计确认对 DCP 上游（AGPL-3.0）零 derivation——在 DCP 仓库搜索 `rouge` / `qualityGate` / `computeShouldNudge` / `HOW_TO_COMPRESS_RULES` 均为 0 hit，MIT 抽取法律安全。AGENTS.md 新增 Git 安全规则：非 release 分支禁止修改 `version` 字段，避免今后版本号再次被改乱。
+
+文件（压缩通知）：`lib/ui/notification.ts`、`lib/messages/utils.ts`、`lib/config.ts`、`tests/drop-empty-messages.test.ts`。
+文件（cc-alg 抽取）：`lib/compress/quality-gate/tokenizer.ts`（删除）、`lib/compress/quality-gate/algorithms/rouge-recall-v1.ts`（删除）、`lib/prompts/compression-rules.ts`（删除）、`lib/compress/quality-gate/{index,algorithms/index}.ts`（从 cc-alg re-export，向后兼容）、`lib/messages/inject/{inject,utils}.ts`、`lib/messages/inject/policy/{types,registry,index}.ts`（新增）、`lib/prompts/{system,context-limit-nudge,turn-nudge,iteration-nudge}.ts`、`package.json`、`tsup.config.ts`、`NOTICE`（新增）、`AGENTS.md`。测试：`tests/quality-gate-tokenizer.test.ts`（删除，迁到 cc-alg）、`tests/quality-gate-rouge-recall-v1.test.ts`（删除，迁到 cc-alg——55 个测试迁移）、`tests/quality-gate-pipeline-integration.test.ts`（改用 inline stub gate）、`tests/trigger-policy-integration.test.ts`（新增）。794 个测试通过（cc-alg 自身在独立仓库有 95 个测试）。
 
 ### v1.13.0 — 可拔插质量门控（Issue #20）
 
