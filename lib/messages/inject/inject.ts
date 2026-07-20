@@ -39,7 +39,7 @@ import {
     resolveAdaptiveNudgeGrowth,
 } from "./utils"
 import { buildCompressedBlockGuidance } from "../../prompts/extensions/nudge"
-import { HOW_TO_COMPRESS_RULES, COMPRESS_PHILOSOPHY } from "../../prompts/compression-rules"
+import { HOW_TO_COMPRESS_RULES, COMPRESS_PHILOSOPHY } from "context-compress-algorithms/prompts"
 
 /**
  * Stable seed for the ACP dynamic guidance suffix message.
