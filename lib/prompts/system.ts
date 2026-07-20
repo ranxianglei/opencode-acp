@@ -1,4 +1,4 @@
-import { HOW_TO_COMPRESS_RULES } from "./compression-rules"
+import { HOW_TO_COMPRESS_RULES } from "context-compress-algorithms/prompts"
 
 export const SYSTEM = `
 

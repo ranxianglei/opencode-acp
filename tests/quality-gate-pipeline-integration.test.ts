@@ -5,7 +5,39 @@ import type { PluginConfig } from "../lib/config"
 import { Logger } from "../lib/logger"
 import { createSessionState, type WithParts, type CompressionBlock } from "../lib/state"
 import { evaluateBatchQuality, evaluateBlockQuality } from "../lib/compress/quality-gate"
+import { registerQualityGate, clearQualityGateRegistryForTests, listQualityGates } from "../lib/compress/quality-gate/registry"
+import { ensureBuiltinGatesRegistered } from "../lib/compress/quality-gate/algorithms"
+import type { QualityGate } from "../lib/compress/quality-gate/types"
 import type { NotificationEntry } from "../lib/compress/pipeline"
+
+const STUB_GATE_NAME = "test-stub-v1"
+
+const stubGate: QualityGate = {
+    name: STUB_GATE_NAME,
+    version: "1.0.0",
+    description: "Stub gate for pipeline integration tests — fails L1 when summary < minChars",
+
+    evaluate(ctx, rawConfig) {
+        const cfg = (rawConfig as { minChars?: number } | null | undefined)
+        const minChars = cfg?.minChars ?? 200
+        const metrics = [
+            { name: "summaryLen", value: ctx.summary.length },
+            { name: "originalTokens", value: ctx.block.compressedTokens },
+        ]
+        if (ctx.originalText.length > 0) {
+            metrics.push({ name: "stubMetric", value: 0.5, format: "ratio" as const })
+        }
+        if (ctx.summary.length < minChars) {
+            return {
+                passed: false,
+                layer: "L1-length",
+                reason: `Summary too short: ${ctx.summary.length} chars (threshold: ${minChars})`,
+                metrics,
+            }
+        }
+        return { passed: true, metrics }
+    },
+}
 
 function buildConfig(qualityGateEnabled: boolean): PluginConfig {
     return {
@@ -47,13 +79,10 @@ function buildConfig(qualityGateEnabled: boolean): PluginConfig {
         },
         qualityGate: {
             enabled: qualityGateEnabled,
-            algorithm: "rouge-recall-v1",
+            algorithm: STUB_GATE_NAME,
             algorithms: {
-                "rouge-recall-v1": {
-                    layer1MinChars: 200,
-                    layer1MinRetentionPct: 1.0,
-                    layer2MaxRougeF1: 0.05,
-                    layer2MaxTop20Recall: 0.20,
+                [STUB_GATE_NAME]: {
+                    minChars: 200,
                 },
             },
         },
@@ -111,6 +140,8 @@ function installBlock(state: ReturnType<typeof createSessionState>, block: Compr
 const logger = new Logger(false)
 
 test("evaluateBlockQuality returns null when qualityGate disabled", () => {
+    clearQualityGateRegistryForTests()
+    registerQualityGate(stubGate)
     const state = createSessionState()
     const block = makeBlock(1, "short", ["msg-1"])
     installBlock(state, block)
@@ -122,6 +153,8 @@ test("evaluateBlockQuality returns null when qualityGate disabled", () => {
 })
 
 test("evaluateBlockQuality runs gate when enabled", () => {
+    clearQualityGateRegistryForTests()
+    registerQualityGate(stubGate)
     const state = createSessionState()
     const block = makeBlock(1, "x".repeat(50), ["msg-1"], 10000)
     installBlock(state, block)
@@ -130,11 +163,13 @@ test("evaluateBlockQuality runs gate when enabled", () => {
 
     const result = evaluateBlockQuality(state, rawMessages, entry, buildConfig(true), logger)
     assert.ok(result, "should produce a result when enabled")
-    assert.equal(result!.passed, false, "50-char summary of 10K-token original should fail L1")
+    assert.equal(result!.passed, false, "50-char summary below 200 threshold should fail L1")
     assert.equal(result!.layer, "L1-length")
 })
 
 test("evaluateBlockQuality returns null when block not in state", () => {
+    clearQualityGateRegistryForTests()
+    registerQualityGate(stubGate)
     const state = createSessionState()
     const rawMessages: WithParts[] = []
     const entry: NotificationEntry = { blockId: 999, runId: 1, summary: "missing", summaryTokens: 2 }
@@ -144,6 +179,8 @@ test("evaluateBlockQuality returns null when block not in state", () => {
 })
 
 test("evaluateBlockQuality returns null when block has no direct messages", () => {
+    clearQualityGateRegistryForTests()
+    registerQualityGate(stubGate)
     const state = createSessionState()
     const block = makeBlock(1, "x".repeat(500), [])
     installBlock(state, block)
@@ -155,6 +192,8 @@ test("evaluateBlockQuality returns null when block has no direct messages", () =
 })
 
 test("evaluateBlockQuality handles missing raw messages gracefully", () => {
+    clearQualityGateRegistryForTests()
+    registerQualityGate(stubGate)
     const state = createSessionState()
     const summary = "first message available only summary preserved across missing parts".repeat(3)
     const block = makeBlock(1, summary, ["msg-1", "msg-2"])
@@ -164,10 +203,12 @@ test("evaluateBlockQuality handles missing raw messages gracefully", () => {
 
     const result = evaluateBlockQuality(state, rawMessages, entry, buildConfig(true), logger)
     assert.ok(result, "should still evaluate with partial messages")
-    assert.equal(result!.passed, true, "summary covers available content keywords")
+    assert.equal(result!.passed, true, "summary > 200 chars so passes L1")
 })
 
 test("evaluateBlockQuality extracts tool-call content from messages", () => {
+    clearQualityGateRegistryForTests()
+    registerQualityGate(stubGate)
     const state = createSessionState()
     const block = makeBlock(1, "x".repeat(500), ["msg-1"])
     installBlock(state, block)
@@ -192,10 +233,12 @@ test("evaluateBlockQuality extracts tool-call content from messages", () => {
     const result = evaluateBlockQuality(state, rawMessages, entry, buildConfig(true), logger)
     assert.ok(result)
     const metrics = Object.fromEntries(result!.metrics.map((m) => [m.name, m.value]))
-    assert.ok(metrics.rougeF1 !== undefined, "L2 should have run because originalText is non-empty")
+    assert.ok(metrics.stubMetric !== undefined, "L2 metrics should be present when originalText is non-empty")
 })
 
 test("evaluateBatchQuality: empty entries → empty report", () => {
+    clearQualityGateRegistryForTests()
+    registerQualityGate(stubGate)
     const state = createSessionState()
     const report = evaluateBatchQuality(state, [], [], buildConfig(true), logger)
     assert.equal(report.total, 0)
@@ -204,23 +247,21 @@ test("evaluateBatchQuality: empty entries → empty report", () => {
 })
 
 test("evaluateBatchQuality: all-passing entries → no failures", () => {
+    clearQualityGateRegistryForTests()
+    registerQualityGate(stubGate)
     const state = createSessionState()
-    const longOriginal = "compression pipeline quality gate algorithm threshold detection mechanism ".repeat(20)
-    const summary = (
-        "compression pipeline quality gate algorithm threshold detection mechanism framework module. " +
-        "This summary carefully preserves the technical keywords from the original content. "
-    ).repeat(3)
-    const block1 = makeBlock(1, summary, ["msg-1"], 100)
-    const block2 = makeBlock(2, summary, ["msg-2"], 100)
+    const longSummary = "x".repeat(500)
+    const block1 = makeBlock(1, longSummary, ["msg-1"], 100)
+    const block2 = makeBlock(2, longSummary, ["msg-2"], 100)
     installBlock(state, block1)
     installBlock(state, block2)
     const rawMessages: WithParts[] = [
-        makeTextMessage("msg-1", longOriginal),
-        makeTextMessage("msg-2", longOriginal),
+        makeTextMessage("msg-1", "original content"),
+        makeTextMessage("msg-2", "original content"),
     ]
     const entries: NotificationEntry[] = [
-        { blockId: 1, runId: 1, summary, summaryTokens: 60 },
-        { blockId: 2, runId: 1, summary, summaryTokens: 60 },
+        { blockId: 1, runId: 1, summary: longSummary, summaryTokens: 125 },
+        { blockId: 2, runId: 1, summary: longSummary, summaryTokens: 125 },
     ]
 
     const report = evaluateBatchQuality(state, rawMessages, entries, buildConfig(true), logger)
@@ -230,6 +271,8 @@ test("evaluateBatchQuality: all-passing entries → no failures", () => {
 })
 
 test("evaluateBatchQuality: failing entries → reported with blockId", () => {
+    clearQualityGateRegistryForTests()
+    registerQualityGate(stubGate)
     const state = createSessionState()
     const failingSummary = "x".repeat(50)
     const block1 = makeBlock(1, failingSummary, ["msg-1"], 50000)
@@ -260,23 +303,21 @@ test("evaluateBatchQuality: failing entries → reported with blockId", () => {
 })
 
 test("evaluateBatchQuality: mixed pass/fail entries → only failures reported", () => {
+    clearQualityGateRegistryForTests()
+    registerQualityGate(stubGate)
     const state = createSessionState()
-    const goodSummary = (
-        "compression pipeline quality gate algorithm threshold detection mechanism framework. " +
-        "Detailed notes on direction, approval, experiment results, and divergence. "
-    ).repeat(3)
+    const goodSummary = "x".repeat(500)
     const badSummary = "x".repeat(50)
     const block1 = makeBlock(1, goodSummary, ["msg-1"], 100)
     const block2 = makeBlock(2, badSummary, ["msg-2"], 50000)
     installBlock(state, block1)
     installBlock(state, block2)
-    const goodOriginal = "compression pipeline quality gate algorithm threshold detection mechanism ".repeat(10)
     const rawMessages: WithParts[] = [
-        makeTextMessage("msg-1", goodOriginal),
+        makeTextMessage("msg-1", "original content"),
         makeTextMessage("msg-2", "unrelated content"),
     ]
     const entries: NotificationEntry[] = [
-        { blockId: 1, runId: 1, summary: goodSummary, summaryTokens: 60 },
+        { blockId: 1, runId: 1, summary: goodSummary, summaryTokens: 125 },
         { blockId: 2, runId: 1, summary: badSummary, summaryTokens: 13 },
     ]
 
@@ -288,6 +329,8 @@ test("evaluateBatchQuality: mixed pass/fail entries → only failures reported",
 })
 
 test("evaluateBatchQuality: gate disabled → all entries counted as passed, no evaluation", () => {
+    clearQualityGateRegistryForTests()
+    registerQualityGate(stubGate)
     const state = createSessionState()
     const block = makeBlock(1, "tiny", ["msg-1"])
     installBlock(state, block)
@@ -302,19 +345,81 @@ test("evaluateBatchQuality: gate disabled → all entries counted as passed, no 
     assert.equal(report.failures.length, 0)
 })
 
-test("evaluateBatchQuality: unknown algorithm → entries treated as pass (warned)", () => {
+test("evaluateBlockQuality returns null when algorithm not registered", () => {
+    clearQualityGateRegistryForTests()
     const state = createSessionState()
-    const block = makeBlock(1, "tiny", ["msg-1"])
+    const block = makeBlock(1, "x".repeat(500), ["msg-1"])
     installBlock(state, block)
     const rawMessages: WithParts[] = [makeTextMessage("msg-1", "content")]
-    const entries: NotificationEntry[] = [
-        { blockId: 1, runId: 1, summary: "tiny", summaryTokens: 1 },
-    ]
-    const cfg = buildConfig(true)
-    cfg.qualityGate.algorithm = "nonexistent-algorithm"
+    const entry: NotificationEntry = { blockId: 1, runId: 1, summary: "x".repeat(500), summaryTokens: 125 }
 
-    const report = evaluateBatchQuality(state, rawMessages, entries, cfg, logger)
-    assert.equal(report.total, 1)
-    assert.equal(report.passed, 1)
-    assert.equal(report.failures.length, 0)
+    const cfg = buildConfig(true)
+    cfg.qualityGate!.algorithm = "nonexistent-algorithm"
+
+    const result = evaluateBlockQuality(state, rawMessages, entry, cfg, logger)
+    assert.equal(result, null, "missing algorithm in registry should return null (logged as warning)")
+})
+
+test("evaluateBlockQuality treats a throwing gate as pass (defensive)", () => {
+    clearQualityGateRegistryForTests()
+    const throwingGate: QualityGate = {
+        name: "throwing-stub",
+        version: "1.0.0",
+        description: "Stub that throws — pipeline must treat as pass",
+        evaluate() {
+            throw new Error("synthetic throw from gate")
+        },
+    }
+    registerQualityGate(throwingGate)
+    const state = createSessionState()
+    const block = makeBlock(1, "x".repeat(500), ["msg-1"])
+    installBlock(state, block)
+    const rawMessages: WithParts[] = [makeTextMessage("msg-1", "content")]
+    const entry: NotificationEntry = { blockId: 1, runId: 1, summary: "x".repeat(500), summaryTokens: 125 }
+
+    const cfg = buildConfig(true)
+    cfg.qualityGate!.algorithm = "throwing-stub"
+
+    const result = evaluateBlockQuality(state, rawMessages, entry, cfg, logger)
+    assert.ok(result)
+    assert.equal(result!.passed, true, "throwing gate must be treated as pass to not break pipeline")
+    assert.equal(result!.metrics.length, 0)
+})
+
+test("ensureBuiltinGatesRegistered auto-registers rouge-recall-v1 from context-compress-algorithms", () => {
+    clearQualityGateRegistryForTests()
+    ensureBuiltinGatesRegistered()
+    const registered = listQualityGates()
+    assert.ok(registered.includes("rouge-recall-v1"), "rouge-recall-v1 should be auto-registered from context-compress-algorithms package")
+
+    ensureBuiltinGatesRegistered()
+    const stillOnce = listQualityGates().filter((n) => n === "rouge-recall-v1").length
+    assert.equal(stillOnce, 1, "double-init should not duplicate registration")
+})
+
+test("evaluateBlockQuality end-to-end with real rouge-recall-v1 from context-compress-algorithms", () => {
+    clearQualityGateRegistryForTests()
+    ensureBuiltinGatesRegistered()
+    const state = createSessionState()
+    const block = makeBlock(1, "x".repeat(50), ["msg-1"], 10000)
+    installBlock(state, block)
+    const rawMessages: WithParts[] = [makeTextMessage("msg-1", "original content with technical keywords")]
+    const entry: NotificationEntry = { blockId: 1, runId: 1, summary: "x".repeat(50), summaryTokens: 13 }
+
+    const cfg = buildConfig(true)
+    cfg.qualityGate!.algorithm = "rouge-recall-v1"
+    cfg.qualityGate!.algorithms = {
+        "rouge-recall-v1": {
+            layer1MinChars: 200,
+            layer1MinRetentionPct: 1.0,
+            layer2MaxRougeF1: 0.05,
+            layer2MaxTop20Recall: 0.20,
+        },
+    }
+
+    const result = evaluateBlockQuality(state, rawMessages, entry, cfg, logger)
+    assert.ok(result, "real rouge-recall-v1 should evaluate")
+    assert.equal(result!.passed, false, "50-char summary of 10K original fails L1")
+    assert.equal(result!.layer, "L1-length")
+    assert.ok(result!.reason?.includes("too short"))
 })

@@ -207,15 +207,12 @@ export interface NudgeDecision {
     tipsVariant: TipsVariant | null
 }
 
-/**
- * Per-message Tips decision (pure — extracted for unit testing).
- *
- * Cadence is growth-only: first observed turn establishes a baseline (caller
- * records `currentTokens` into `lastPerMessageNudgeTokens` and we return
- * false); subsequent turns nudge when growth >= nudgeGrowthTokens or when
- * overMaxLimit forces it. The legacy 15% floor (minNudgeContextPercent) is
- * intentionally ignored — see devlog 2026-07-05_visible-range-guidance.
- */
+import {
+    ensureBuiltinTriggerPolicyRegistered,
+    getDefaultTriggerPolicy,
+} from "./policy"
+ensureBuiltinTriggerPolicyRegistered()
+
 export function computeShouldNudge(params: {
     currentTokens: number | undefined
     modelContextLimit: number | undefined
@@ -226,42 +223,19 @@ export function computeShouldNudge(params: {
     minNudgeContextPercent: number
     nudgeGrowthTokens: number
 }): NudgeDecision {
-    const { currentTokens, overMinLimit, overMaxLimit } = params
-
-    if (currentTokens === undefined) {
+    const policy = getDefaultTriggerPolicy()
+    if (!policy) {
         return { shouldNudge: false, tipsVariant: null }
     }
-
-    // First observed turn: caller records currentTokens as the growth baseline.
-    if (params.lastNudgeTokens === undefined) {
-        return { shouldNudge: false, tipsVariant: null }
-    }
-
-    const growthSinceLastNudge = currentTokens - params.lastNudgeTokens
-    const shouldNudge = growthSinceLastNudge >= params.nudgeGrowthTokens || overMaxLimit
-
-    if (!shouldNudge) {
-        return { shouldNudge: false, tipsVariant: null }
-    }
-
-    const tipsVariant: TipsVariant = overMaxLimit
-        ? "maxLimit"
-        : overMinLimit
-          ? "minLimit"
-          : "normal"
-    return { shouldNudge: true, tipsVariant }
+    return policy.computeShouldNudge(params)
 }
 
-const NUDGE_GROWTH_FLOOR = 6000
-const NUDGE_GROWTH_CAP = 50000
-const NUDGE_GROWTH_RATIO = 0.05
-
 export function resolveAdaptiveNudgeGrowth(modelContextLimit: number | undefined): number {
-    if (!modelContextLimit || modelContextLimit <= 0) return NUDGE_GROWTH_FLOOR
-    return Math.min(
-        NUDGE_GROWTH_CAP,
-        Math.max(NUDGE_GROWTH_FLOOR, Math.round(modelContextLimit * NUDGE_GROWTH_RATIO)),
-    )
+    const policy = getDefaultTriggerPolicy()
+    if (!policy) {
+        return 6000
+    }
+    return policy.resolveAdaptiveNudgeGrowth(modelContextLimit)
 }
 
 export function addAnchor(

@@ -229,6 +229,12 @@ export const stripHallucinations = (messages: WithParts[]): void => {
 // This is deliberately more conservative than hasContent(): hasContent treats a
 // non-completed/errored tool as "no content" (appropriate for suffix-fill logic),
 // but here we must not drop a message that carries an errored or in-flight tool call.
+//
+// [FIX #20] A text part carrying `ignored: true` also counts as discardable.
+// opencode strips ignored parts before the LLM call; a message whose only part
+// is ignored would arrive at the provider as an empty user message and trigger
+// HTTP 400 (zhipuai code 1214, isRetryable: false). Treating ignored parts as
+// empty here drops those messages before they can do damage.
 export const dropEmptyMessages = (messages: WithParts[]): number => {
     let removed = 0
     for (let i = messages.length - 1; i >= 0; i--) {
@@ -236,7 +242,8 @@ export const dropEmptyMessages = (messages: WithParts[]): number => {
         const isEmpty = parts.every(
             (part) =>
                 part.type === "text" &&
-                (typeof part.text !== "string" || part.text.trim().length === 0),
+                ((typeof part.text !== "string" || part.text.trim().length === 0) ||
+                    (part as { ignored?: boolean }).ignored === true),
         )
         if (isEmpty) {
             messages.splice(i, 1)

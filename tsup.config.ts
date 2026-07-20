@@ -6,5 +6,8 @@ export default defineConfig({
     dts: false,
     clean: true,
     sourcemap: true,
-    noExternal: ["jsonc-parser"], // Bundle this to fix its broken ESM imports
+    // Bundle both:
+    //   - jsonc-parser: broken ESM imports when external
+    //   - context-compress-algorithms: published tarball must be self-contained (file: dep does not survive pack)
+    noExternal: ["jsonc-parser", "context-compress-algorithms"],
 })
