@@ -276,7 +276,7 @@ Auto-migration: if `acp.jsonc` doesn't exist but `dcp.jsonc` does, automatically
     autoUpdate: true,
     debug: false,
     pruneNotification: "detailed",
-    pruneNotificationType: "chat",
+    pruneNotificationType: "toast",
     commands: { enabled: true, protectedTools: ["task", "skill", "todowrite", "todoread", "compress", "batch", "plan_enter", "plan_exit", "write", "edit"] },
     manualMode: { enabled: false, automaticStrategies: true },
     turnProtection: { enabled: false, turns: 4 },

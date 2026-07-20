@@ -205,8 +205,8 @@ ACP 使用自己的配置文件，按以下顺序搜索：
     "debug": false,
     // Notification display: "off", "minimal", or "detailed"
     "pruneNotification": "detailed",
-    // Notification type: "chat" (in-conversation) or "toast" (system toast)
-    "pruneNotificationType": "chat",
+    // Notification type: "chat" (deprecated, falls back to toast) or "toast" (system toast)
+    "pruneNotificationType": "toast",
     // Slash commands configuration
     "commands": {
         "enabled": true,
@@ -438,6 +438,12 @@ ACP 在首次启动时自动将配置从 `dcp.jsonc` 迁移到 `acp.jsonc`，将
 ---
 
 ## 更新日志
+
+### v1.13.1 — 压缩通知冻结修复（PR #167，issue #20）
+
+**问题**：每次 `compress` 工具调用成功后，ACP 会注入一条 user 角色通知消息，其中只包含一个带 `ignored: true` 标记的 text part。opencode 在发送给 LLM 前会剥离 ignored parts，于是这条消息变成空 user 消息。Provider（zhipuai-lb / glm-5.2）会以 HTTP 400 code 1214（`"messages 参数非法"`）拒绝，且 `isRetryable: false`——opencode 不会重试，会话冻结，直到外部恢复。所有活跃会话累计发生 113 次（单个 3,156 条消息的会话出现 8 次）。
+
+**修复**：（1）`lib/ui/notification.ts:280-298`——`sendCompressNotification` 改为始终调用 `client.tui.showToast`；移除了原本调用 `sendIgnoredMessage` 的 `chat` 分支。当用户显式配置 `pruneNotificationType: "chat"` 时，输出一次 warn 日志以便发现行为变化。（2）`lib/messages/utils.ts:232-269`——`dropEmptyMessages` 现在将带 `ignored: true` 的 text part 也视为"可丢弃"，任何未来出现的 ignored-only user 消息会在到达 provider 之前被丢弃（纵深防御）。（3）`lib/config.ts:175`——默认 `pruneNotificationType` 从 `"chat"` 改为 `"toast"`，使用默认配置的用户不会看到弃用警告。文件：`lib/ui/notification.ts`、`lib/messages/utils.ts`、`lib/config.ts`、`tests/drop-empty-messages.test.ts`。测试：新增 4 个回归用例锁定 ignored-only 消息丢弃行为。
 
 ### v1.13.0 — 可拔插质量门控（Issue #20）
 

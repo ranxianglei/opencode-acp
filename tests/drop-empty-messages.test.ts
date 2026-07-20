@@ -150,3 +150,65 @@ test("all non-empty messages returns 0", () => {
     assert.equal(removed, 0)
     assert.equal(messages.length, 2)
 })
+
+// [FIX #20] Regression coverage for the empty-user-message freeze.
+// ACP's `sendIgnoredMessage` injects a user-role message whose only part is
+// `{ type: "text", text: <notification>, ignored: true }`. opencode strips
+// ignored parts before the LLM call, leaving an empty user message that
+// triggers zhipuai-lb HTTP 400 (code 1214, isRetryable: false). These tests
+// pin dropEmptyMessages to remove such messages before they reach the provider.
+test("removes user message whose only part is ignored text", () => {
+    const messages = [
+        buildUserMessage([
+            { type: "text", text: "▣ ACP | Context 80K → 60K", ignored: true } as any,
+        ]),
+    ]
+    const removed = dropEmptyMessages(messages)
+    assert.equal(removed, 1)
+    assert.equal(messages.length, 0)
+})
+
+test("preserves user message that mixes ignored text with real content", () => {
+    const kept = buildUserMessage(
+        [
+            { type: "text", text: "▣ ACP | Context 80K → 60K", ignored: true } as any,
+            { type: "text", text: "user asked to refactor the auth module" },
+        ],
+        "msg-mixed",
+    )
+    const messages = [kept]
+    const removed = dropEmptyMessages(messages)
+    assert.equal(removed, 0)
+    assert.equal(messages.length, 1)
+    assert.equal(messages[0].info.id, "msg-mixed")
+})
+
+test("removes user message with ignored text plus whitespace-only text", () => {
+    const messages = [
+        buildUserMessage(
+            [
+                { type: "text", text: "▣ ACP | done", ignored: true } as any,
+                { type: "text", text: "   " },
+            ],
+            "msg-ignored-plus-ws",
+        ),
+    ]
+    const removed = dropEmptyMessages(messages)
+    assert.equal(removed, 1)
+    assert.equal(messages.length, 0)
+})
+
+test("preserves user message with ignored text and an errored tool call", () => {
+    const kept = buildUserMessage(
+        [
+            { type: "text", text: "ignored notification", ignored: true } as any,
+            { type: "tool", tool: "bash", state: { status: "error", output: "boom" } },
+        ],
+        "msg-ignored-plus-error",
+    )
+    const messages = [kept]
+    const removed = dropEmptyMessages(messages)
+    assert.equal(removed, 0)
+    assert.equal(messages.length, 1)
+    assert.equal(messages[0].info.id, "msg-ignored-plus-error")
+})
