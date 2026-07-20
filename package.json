@@ -62,6 +62,7 @@
     "devDependencies": {
         "@opencode-ai/plugin": "^1.4.3",
         "@types/node": "^25.5.0",
+        "context-compress-algorithms": "^1.0.0",
         "prettier": "^3.8.1",
         "tsup": "^8.5.1",
         "tsx": "^4.21.0",
@@ -70,6 +71,8 @@
     "files": [
         "dist/",
         "README.md",
-        "LICENSE"
+        "README.zh-CN.md",
+        "LICENSE",
+        "NOTICE"
     ]
 }

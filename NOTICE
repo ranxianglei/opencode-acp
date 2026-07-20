@@ -1,0 +1,29 @@
+opencode-acp — NOTICE
+
+Copyright (c) 2026 ranxianglei
+Licensed under AGPL-3.0-or-later (see ./LICENSE).
+
+This distribution bundles portions of context-compress-algorithms
+(https://github.com/ranxianglei/context-compress-algorithms), which is
+originally published under the MIT License. The MIT-licensed source retains
+its MIT status when consumed directly from that project; the bytes inlined
+into this AGPL distribution become part of the combined AGPL work.
+
+For the standalone MIT-licensed version, install
+`context-compress-algorithms` directly.
+
+MIT License (context-compress-algorithms):
+
+  Copyright (c) 2026 ranxianglei
+
+  Permission is hereby granted, free of charge, to any person obtaining a
+  copy of this software and associated documentation files (the "Software"),
+  to deal in the Software without restriction, including without limitation
+  the rights to use, copy, modify, merge, publish, distribute, sublicense,
+  and/or sell copies of the Software, and to permit persons to whom the
+  Software is furnished to do so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included
+  in all copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.
