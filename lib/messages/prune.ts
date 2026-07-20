@@ -198,18 +198,36 @@ const filterCompressedRanges = (
         return
     }
 
-    const result: WithParts[] = []
-
-    for (let i = 0; i < messages.length; i++) {
-        const msg = messages[i]!
-        const msgId = msg.info.id
-
-        const pruneEntry = state.prune.messages.byMessageId.get(msgId)
-        if (pruneEntry && pruneEntry.activeBlockIds.length > 0) {
-            continue
+    const survive: boolean[] = messages.map((msg) => {
+        const pruneEntry = state.prune.messages.byMessageId.get(msg.info.id)
+        if (!pruneEntry || pruneEntry.activeBlockIds.length === 0) {
+            return true
         }
+        return false
+    })
 
-        result.push(msg)
+    // [FIX preserve-last-user] zhipuai-lb rejects requests with zero user-role
+    // messages (code 1214, "The messages parameter is illegal"), freezing the
+    // session. Trigger: compress range extends past the most recent user msg
+    // and no newer user msg has arrived yet (right after a compress tool call).
+    // Restore the most recent pruned user msg in that case.
+    const anyUserSurvives = messages.some(
+        (msg, i) => survive[i] && msg.info.role === "user",
+    )
+    if (!anyUserSurvives) {
+        for (let i = messages.length - 1; i >= 0; i--) {
+            if (messages[i]!.info.role === "user" && !survive[i]) {
+                survive[i] = true
+                break
+            }
+        }
+    }
+
+    const result: WithParts[] = []
+    for (let i = 0; i < messages.length; i++) {
+        if (survive[i]) {
+            result.push(messages[i]!)
+        }
     }
 
     messages.length = 0

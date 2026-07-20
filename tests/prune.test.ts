@@ -756,3 +756,162 @@ test("stripStepMarkers leaves messages without step markers untouched", () => {
         "parts array reference unchanged when no step markers present",
     )
 })
+
+// =====================================================================
+// preserve-last-user — restore the most recent user msg when filtering
+// would otherwise leave zero user-role messages (FIX preserve-last-user).
+// Reproduces the zhipuai-lb code 1214 freeze from issue #20 follow-up.
+// =====================================================================
+
+function setupBlock(
+    state: ReturnType<typeof createSessionState>,
+    blockId: number,
+    anchorId: string,
+    prunedIds: string[],
+    summary: string,
+    topic = "test",
+) {
+    for (const id of prunedIds) {
+        state.prune.messages.byMessageId.set(id, {
+            tokenCount: 100,
+            allBlockIds: [blockId],
+            activeBlockIds: [blockId],
+        })
+    }
+    state.prune.messages.activeByAnchorMessageId.set(anchorId, blockId)
+    state.prune.messages.blocksById.set(blockId, {
+        blockId,
+        runId: 1,
+        active: true,
+        deactivatedByUser: false,
+        compressedTokens: prunedIds.length * 100,
+        summaryTokens: 50,
+        durationMs: 100,
+        generation: "young",
+        survivedCount: 0,
+        directMessageIds: prunedIds,
+        effectiveMessageIds: prunedIds,
+        directToolIds: [],
+        effectiveToolIds: [],
+        anchorMessageId: anchorId,
+        topic,
+        summary,
+    } as CompressionBlock)
+}
+
+test("restore most recent user msg when all user msgs fall in compressed range", () => {
+    const state = createSessionState()
+    // Block 1 compresses m1 (user), m2 (assistant), m3 (user) — anchor is m1
+    setupBlock(state, 1, "m1", ["m1", "m2", "m3"], "summary of m1-m3")
+
+    const messages: WithParts[] = [
+        userMessage("m1", "first user", 1),
+        assistantMessage("m2", 2),
+        userMessage("m3", "second user", 3),
+        assistantMessage("m4", "after compress", 4),
+        assistantMessage("m5", "more work", 5),
+    ]
+
+    prune(state, logger, buildConfig(), messages)
+
+    const ids = messages.map((m) => m.info.id)
+    assert.ok(!ids.includes("m1"), "m1 was compressed and is NOT the latest user → stays pruned")
+    assert.ok(!ids.includes("m2"), "m2 stays pruned")
+    assert.ok(ids.includes("m3"), "m3 IS the latest user → restored to keep request shape valid")
+    assert.ok(ids.includes("m4"), "uncompressed m4 survives")
+    assert.ok(ids.includes("m5"), "uncompressed m5 survives")
+
+    const survivingUsers = messages.filter((m) => m.info.role === "user")
+    assert.equal(survivingUsers.length, 1, "exactly one user msg restored")
+    assert.equal(survivingUsers[0]!.info.id, "m3", "the restored user msg is the most recent one")
+
+    const m3Idx = ids.indexOf("m3")
+    const m4Idx = ids.indexOf("m4")
+    assert.ok(m3Idx < m4Idx, "restored m3 preserves original ordering relative to m4")
+})
+
+test("do NOT restore pruned user when an uncompressed user already survives", () => {
+    const state = createSessionState()
+    // Block 1 compresses only m1 (user). Later user msgs m3 stay uncompressed.
+    setupBlock(state, 1, "m1", ["m1", "m2"], "summary")
+
+    const messages: WithParts[] = [
+        userMessage("m1", "old user", 1),
+        assistantMessage("m2", 2),
+        assistantMessage("m3", "mid assistant", 3),
+        userMessage("m4", "new user", 4),
+        assistantMessage("m5", "tail", 5),
+    ]
+
+    prune(state, logger, buildConfig(), messages)
+
+    const ids = messages.map((m) => m.info.id)
+    assert.ok(!ids.includes("m1"), "m1 stays pruned (a newer user msg already survives)")
+    assert.ok(!ids.includes("m2"), "m2 stays pruned")
+    assert.ok(ids.includes("m3"), "m3 survives")
+    assert.ok(ids.includes("m4"), "m4 survives (the real latest user)")
+    assert.ok(ids.includes("m5"), "m5 survives")
+})
+
+test("restore most recent user when multiple user msgs are all compressed", () => {
+    const state = createSessionState()
+    // Block 1 compresses m1, m2, m3, m4, m5 — three of which are user msgs.
+    setupBlock(state, 1, "m1", ["m1", "m2", "m3", "m4", "m5"], "summary")
+
+    const messages: WithParts[] = [
+        userMessage("m1", "u1", 1),
+        assistantMessage("m2", 2),
+        userMessage("m3", "u2", 3),
+        assistantMessage("m4", 4),
+        userMessage("m5", "u3 (newest)", 5),
+        assistantMessage("m6", "after compress", 6),
+    ]
+
+    prune(state, logger, buildConfig(), messages)
+
+    const ids = messages.map((m) => m.info.id)
+    assert.ok(!ids.includes("m1"), "older user m1 stays pruned")
+    assert.ok(!ids.includes("m3"), "middle user m3 stays pruned")
+    assert.ok(ids.includes("m5"), "m5 is the MOST RECENT user → restored")
+    assert.ok(ids.includes("m6"), "m6 survives")
+
+    const survivingUsers = messages.filter((m) => m.info.role === "user")
+    assert.equal(survivingUsers.length, 1, "exactly one user msg restored")
+    assert.equal(survivingUsers[0]!.info.id, "m5")
+})
+
+test("no restoration when input has zero user messages at all", () => {
+    const state = createSessionState()
+    setupBlock(state, 1, "a1", ["a2"], "summary")
+
+    const messages: WithParts[] = [
+        assistantMessage("a1", 1),
+        assistantMessage("a2", 2),
+        assistantMessage("a3", 3),
+    ]
+
+    prune(state, logger, buildConfig(), messages)
+
+    const ids = messages.map((m) => m.info.id)
+    assert.ok(!ids.includes("a2"), "a2 stays pruned")
+    assert.deepEqual(ids, ["a1", "a3"], "no user msg to restore — behavior unchanged")
+})
+
+test("restored user msg keeps its original parts intact", () => {
+    const state = createSessionState()
+    setupBlock(state, 1, "u1", ["u1", "a1", "u2"], "summary")
+
+    const messages: WithParts[] = [
+        userMessage("u1", "old", 1),
+        assistantMessage("a1", 2),
+        userMessage("u2", "RESTORE ME", 3),
+        assistantMessage("a2", "tail", 4),
+    ]
+
+    prune(state, logger, buildConfig(), messages)
+
+    const restored = messages.find((m) => m.info.id === "u2")
+    assert.ok(restored, "u2 was restored")
+    const text = restored!.parts.map((p: any) => p.text ?? "").join("")
+    assert.equal(text, "RESTORE ME", "restored user msg content is byte-identical to original")
+})
