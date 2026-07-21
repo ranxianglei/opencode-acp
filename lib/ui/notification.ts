@@ -156,11 +156,28 @@ export async function sendCompressNotification(
     params: any,
     contextTokensBefore: number,
 ): Promise<boolean> {
-    if (config.pruneNotification === "off") {
+    if (entries.length === 0) {
         return false
     }
 
-    if (entries.length === 0) {
+    const logBlockIds = entries.map((e) => e.blockId)
+    const logTopics = entries
+        .map((e) => state.prune.messages.blocksById.get(e.blockId)?.topic ?? "?")
+    const logCompressedTokens = entries.reduce((sum, e) => {
+        const block = state.prune.messages.blocksById.get(e.blockId)
+        return sum + (block?.compressedTokens ?? 0)
+    }, 0)
+    const logSummaryTokens = entries.reduce((sum, e) => sum + e.summaryTokens, 0)
+    logger.info("Compression completed", {
+        sessionId,
+        blockIds: logBlockIds,
+        topics: logTopics,
+        compressedTokens: logCompressedTokens,
+        summaryTokens: logSummaryTokens,
+        contextTokensBefore,
+    })
+
+    if (config.pruneNotification === "off") {
         return false
     }
 
