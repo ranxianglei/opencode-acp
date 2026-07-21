@@ -32,7 +32,7 @@
                 "minimal",
                 "detailed"
             ],
-            "default": "detailed",
+            "default": "off",
             "description": "Level of notification shown when context management occurs"
         },
         "pruneNotificationType": {
@@ -41,8 +41,8 @@
                 "chat",
                 "toast"
             ],
-            "default": "chat",
-            "description": "Where to display notifications (chat message or toast notification)"
+            "default": "toast",
+            "description": "Where to display notifications (chat deprecated, falls back to toast)"
         },
         "commands": {
             "type": "object",
@@ -272,7 +272,7 @@
                 },
                 "maxSummaryLengthHard": {
                     "type": "number",
-                    "default": 4000,
+                    "default": 20000,
                     "minimum": 1,
                     "description": "Hard limit for summary length in characters"
                 },
@@ -329,7 +329,7 @@
                 "protectTags": false,
                 "protectUserMessages": false,
                 "minNudgeContextPercent": 15,
-                "maxSummaryLengthHard": 3000,
+                "maxSummaryLengthHard": 20000,
                 "maxVisibleSegments": 50,
                 "minCompressRange": 5000,
                 "minNudgeGrowthRatio": 0.45,

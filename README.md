@@ -235,7 +235,7 @@ Each level overrides the previous, so project settings take priority over global
     // Enable debug logging to ~/.config/opencode/logs/acp/
     "debug": false,
     // Notification display: "off", "minimal", or "detailed"
-    "pruneNotification": "detailed",
+    "pruneNotification": "off",
     // Notification type: "chat" (deprecated, falls back to toast) or "toast" (system toast)
     "pruneNotificationType": "toast",
     // Slash commands configuration
