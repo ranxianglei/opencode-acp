@@ -471,6 +471,12 @@ For the complete list with root cause analysis, see the [bug tracker](https://gi
 
 ## Changelog
 
+### v1.13.2 — Preserve Last User Msg + Config Defaults Tuning (PR #169)
+
+**Problem**: Two issues remained after v1.13.1's notification freeze fix. (1) When the model compressed a range that covered all visible user messages, the next API call had zero user-role messages — zhipuai-lb rejected this with the same HTTP 400 code 1214 (`isRetryable: false`), freezing the session. This was the second path to the same freeze that v1.13.1's empty-notification fix addressed. (2) The default `pruneNotification: "detailed"` fired a toast on every compress call (10–30 per session is typical), which was over-intrusive for a routine background operation. Additionally, `compress.maxSummaryLengthHard: 10000` rejected ~25% of information-dense useful summaries in real sessions.
+
+**Fix**: (1) `lib/messages/prune.ts` — `filterCompressedRanges` rewritten as a two-pass filter: pass 1 computes survivors, pass 2 builds the result; if no user-role message would survive, the most recent pruned user message is restored to keep the API request shape valid. The restore is transform-time only — `byMessageId` still records the message as compressed. (2) `lib/config.ts` — default `pruneNotification` changed `"detailed"` → `"off"`; compression events still log to `~/.config/opencode/logs/acp/` via a new always-log path in `lib/ui/notification.ts` (lossless observability without UI noise). (3) `lib/config.ts` — default `compress.maxSummaryLengthHard` raised `10000` → `20000` (aligns with observed good-summary lengths). (4) `dcp.schema.json` — 4 stale defaults synced. Files: `lib/messages/prune.ts`, `lib/config.ts`, `lib/ui/notification.ts`, `dcp.schema.json`, `README.md`. Tests: 803 pass (5 new regression tests for the preserve-last-user fix).
+
 ### v1.13.1 — cc-alg Extraction + Compress Notification Freeze Fix (PRs #167, #168)
 
 **Problem (compress notification freeze, #167)**: After every successful `compress` tool call, ACP injected a user-role notification message with a single `ignored: true` text part. opencode strips `ignored` parts before sending to the LLM, leaving an empty user message. The provider (zhipuai-lb / glm-5.2) rejects this with HTTP 400 code 1214 (`"messages 参数非法"`), `isRetryable: false` — opencode does not retry, and the session freezes until external recovery. 113 total occurrences across active sessions (8 in a single 3,156-message session).

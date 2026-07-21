@@ -439,6 +439,12 @@ ACP 在首次启动时自动将配置从 `dcp.jsonc` 迁移到 `acp.jsonc`，将
 
 ## 更新日志
 
+### v1.13.2 — 保留最近用户消息 + 配置默认值调优（PR #169）
+
+**问题**：v1.13.1 的通知冻结修复之后还剩两个问题。（1）当模型压缩的范围覆盖了所有可见的 user 消息时，下一次 API 调用中 user 角色消息数量为零——zhipuai-lb 以同样的 HTTP 400 code 1214（`isRetryable: false`）拒绝，会话冻结。这是 v1.13.1 修复的空通知路径之外，通往同一冻结 bug 的第二条路径。（2）默认 `pruneNotification: "detailed"` 每次压缩都弹 toast（典型会话 10–30 次），对例行后台操作来说过于打扰。另外 `compress.maxSummaryLengthHard: 10000` 在真实会话中拒绝了约 25% 信息密度高的有用摘要。
+
+**修复**：（1）`lib/messages/prune.ts`——`filterCompressedRanges` 重写为两段过滤：第一段计算存活消息，第二段构建结果；如果没有 user 角色消息存活，恢复最近一条被压缩的 user 消息以保证 API 请求格式合法。恢复仅发生在 transform 阶段——`byMessageId` 仍记录该消息为已压缩。（2）`lib/config.ts`——默认 `pruneNotification` 改为 `"off"`；压缩事件仍通过 `lib/ui/notification.ts` 新增的 always-log 路径记录到 `~/.config/opencode/logs/acp/`（无损失可观测性，无 UI 噪音）。（3）`lib/config.ts`——默认 `compress.maxSummaryLengthHard` 从 `10000` 提升到 `20000`（与真实会话中观察到的优质摘要长度对齐）。（4）`dcp.schema.json`——同步 4 个过时默认值。文件：`lib/messages/prune.ts`、`lib/config.ts`、`lib/ui/notification.ts`、`dcp.schema.json`、`README.md`。测试：803 pass（5 个新的 preserve-last-user 回归测试）。
+
 ### v1.13.1 — cc-alg 抽取 + 压缩通知冻结修复（PR #167, #168）
 
 **问题（压缩通知冻结，#167）**：每次 `compress` 工具调用成功后，ACP 会注入一条 user 角色通知消息，其中只包含一个带 `ignored: true` 标记的 text part。opencode 在发送给 LLM 前会剥离 ignored parts，于是这条消息变成空 user 消息。Provider（zhipuai-lb / glm-5.2）会以 HTTP 400 code 1214（`"messages 参数非法"`）拒绝，且 `isRetryable: false`——opencode 不会重试，会话冻结，直到外部恢复。所有活跃会话累计发生 113 次（单个 3,156 条消息的会话出现 8 次）。
