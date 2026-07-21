@@ -134,3 +134,84 @@ export function evaluateBatchQuality(
         failures,
     }
 }
+
+/**
+ * Pre-commit quality evaluation: check summary quality BEFORE the block is
+ * committed to state. Builds a pseudo-block snapshot from the plan data.
+ *
+ * Returns null if quality gate is disabled or evaluation cannot run.
+ * Returns QualityGateResult (passed: true/false) otherwise.
+ *
+ * `compressedTokens` is estimated as the sum of messageTokenById for all
+ * direct message IDs. This overestimates when some messages were already
+ * active under consumed blocks, making the gate more conservative (stricter)
+ * — which is the safe direction for a blocking check.
+ */
+export function evaluatePreCommitQuality(
+    rawMessages: WithParts[],
+    messageIds: string[],
+    messageTokenById: Map<string, number>,
+    summary: string,
+    config: PluginConfig,
+    logger: Logger,
+): QualityGateResult | null {
+    const qg = config.qualityGate
+    if (!qg || qg.enabled !== true) return null
+
+    ensureBuiltinGatesRegistered()
+    const algoName = qg.algorithm
+    if (!algoName) {
+        logger.warn("Quality gate enabled but no algorithm specified", {})
+        return null
+    }
+    const gate = getQualityGate(algoName)
+    if (!gate) {
+        logger.warn("Quality gate algorithm not found in registry", { algorithm: algoName })
+        return null
+    }
+
+    if (messageIds.length === 0) return null
+
+    const idToMsg = new Map<string, WithParts>()
+    for (const m of rawMessages) {
+        const id = m?.info?.id
+        if (typeof id === "string") idToMsg.set(id, m)
+    }
+
+    const chunks: string[] = []
+    let compressedTokens = 0
+    for (const id of messageIds) {
+        const m = idToMsg.get(id)
+        if (m) chunks.push(extractMessageText(m.parts))
+        compressedTokens += messageTokenById.get(id) || 0
+    }
+    if (chunks.length === 0) return null
+
+    const originalText = chunks.join("\n")
+    const pseudoBlock = {
+        blockId: -1,
+        summary,
+        compressedTokens,
+        directMessageIds: messageIds,
+        effectiveMessageIds: messageIds,
+    }
+
+    const ctx: QualityGateContext = {
+        block: pseudoBlock as CompressionBlock,
+        summary,
+        originalChunks: chunks,
+        originalText,
+        originalTokens: Math.ceil(originalText.length / CHARS_PER_TOKEN_ESTIMATE),
+    }
+
+    const algoConfig = (qg.algorithms && qg.algorithms[algoName]) ?? {}
+    try {
+        return gate.evaluate(ctx, algoConfig)
+    } catch (err) {
+        logger.warn("Pre-commit quality gate threw — treating as pass", {
+            gate: gate.name,
+            error: err instanceof Error ? err.message : String(err),
+        })
+        return { passed: true, metrics: [] }
+    }
+}
