@@ -21,6 +21,11 @@ import {
 } from "./state"
 import { resolveKeepMarkers } from "./keep-markers"
 import type { CompressMessageToolArgs } from "./types"
+import {
+    buildPreemptiveAcknowledgeError,
+    buildQualityRejectionError,
+    evaluatePreCommitQuality,
+} from "./quality-gate"
 
 function buildSchema(maxSummaryLengthHard: number) {
     return {
@@ -58,6 +63,7 @@ function buildSchema(maxSummaryLengthHard: number) {
             .describe(
                 "Set to true ONLY when you are certain the most recent message(s) must be compressed. Required when a range includes the tail of the conversation.",
             ),
+        acknowledgeRisk: tool.schema.boolean().optional(),
     }
 }
 
@@ -180,6 +186,40 @@ export function createCompressMessageTool(ctx: ToolContext): ReturnType<typeof t
                 })),
             )
             if (phantomError) throw phantomError
+
+            const acknowledgeRisk =
+                (args as { acknowledgeRisk?: boolean }).acknowledgeRisk === true
+
+            if (acknowledgeRisk && !ctx.state.qualityGateRetryPending) {
+                throw buildPreemptiveAcknowledgeError()
+            }
+            if (acknowledgeRisk) {
+                ctx.state.qualityGateRetryPending = false
+            } else {
+                for (const { plan, summaryWithTools } of preparedPlans) {
+                    const result = evaluatePreCommitQuality(
+                        rawMessages,
+                        plan.selection.messageIds,
+                        plan.selection.messageTokenById,
+                        summaryWithTools,
+                        ctx.config,
+                        ctx.logger,
+                    )
+                    if (result && !result.passed) {
+                        ctx.state.qualityGateRetryPending = true
+                        throw buildQualityRejectionError(
+                            {
+                                startId: plan.entry.messageId,
+                                endId: plan.entry.messageId,
+                                summary: summaryWithTools,
+                                messageIds: plan.selection.messageIds,
+                                messageTokenById: plan.selection.messageTokenById,
+                            },
+                            result,
+                        )
+                    }
+                }
+            }
 
             const snapshot = snapshotCompressionState(ctx.state)
             const runId = allocateRunId(ctx.state)
