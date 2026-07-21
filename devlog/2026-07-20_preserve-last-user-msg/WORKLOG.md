@@ -3,7 +3,7 @@
 - Task ID: `2026-07-20_preserve-last-user-msg`
 - Home Repo: `opencode-acp`
 - Status: Done
-- Updated: 2026-07-20 23:30
+- Updated: 2026-07-21
 
 ## 1. Summary
 
@@ -18,9 +18,18 @@
   compresses a range that extends past the latest user message and no newer user
   message has arrived, the next API call has zero user messages and is rejected
   with `isRetryable: false`, freezing the session.
-- **Behavior / compatibility changes**: No. Persisted state format unchanged.
-  The restore is purely a transform-time view operation; `byMessageId` still
-  records the message as compressed.
+- **Behavior / compatibility changes**:
+  - Persisted state format unchanged. The restore is purely a transform-time
+    view operation; `byMessageId` still records the message as compressed.
+  - **New default `pruneNotification: "off"`** (was `"detailed"`). Compression
+    events now log to `~/.config/opencode/logs/acp/` by default without
+    surfacing a toast to the user. Rationale: toasts were perceived as
+    over-intrusive for a routine background operation. Users who want the
+    toast can set `"minimal"` or `"detailed"` explicitly.
+  - **New default `compress.maxSummaryLengthHard: 20000`** (was `10000`).
+    The old 10K cap rejected ~25% of model-written summaries that were
+    information-dense and useful; 20K aligns with observed good-summary
+    lengths in real sessions.
 - **Risk level**: Low.
 
 ## 2. Change Log
@@ -35,8 +44,18 @@
 
 - `lib/messages/prune.ts` — `filterCompressedRanges` rewritten as two-pass with
   preserve-last-user safety net.
-- `tests/prune.test.ts` — 5 regression tests + `setupBlock` helper covering:
-  restore-when-all-pruned, no-over-restore, multi-user-picks-most-recent,
+- `lib/config.ts` — defaults updated: `pruneNotification: "off"`,
+  `compress.maxSummaryLengthHard: 20000`.
+- `lib/ui/notification.ts` — `sendCompressNotification` always logs compression
+  events to the ACP logger before the `"off"` early-return, so events are
+  observable in `logs/acp/` even when toast is disabled.
+- `dcp.schema.json` — four stale defaults synced: `pruneNotification "off"`,
+  `pruneNotificationType "toast"`, `maxSummaryLengthHard 20000` (both the
+  property default and the `compress.default` block).
+- `README.md` — Default Configuration section updated (`pruneNotification: "off"`).
+- `tests/prune.test.ts` — 5 regression tests + minimal `setupBlock` helper
+  (sets up only `byMessageId`, the sole field `filterCompressedRanges` reads)
+  covering: restore-when-all-pruned, no-over-restore, multi-user-picks-most-recent,
   no-user-no-op, restored-content-byte-identical.
 
 ## 3. Design & Implementation Notes
@@ -84,10 +103,51 @@ compressed; we just leak one message back into the API request to keep the
 shape valid. Updating `byMessageId` would break the compress state model and
 cause future compress calls to misbehave.
 
+### Why `pruneNotification` default changed to `"off"`
+
+Toasts fire on every compress call. In long sessions with frequent compression
+(10–30 compressions per session is typical), this is over-intrusive — the user
+did not ask for a popup each time the model manages its own context. The
+compression is a routine background operation, not a user-facing event.
+
+The always-log path added to `lib/ui/notification.ts` ensures compression
+events are still recorded in `~/.config/opencode/logs/acp/daily/<date>.log`
+for debugging, so `"off"` loses no observability — only the UI noise.
+
+Users who want notifications can opt in via `"minimal"` (one-line toast) or
+`"detailed"` (full context transition + topics).
+
+### Why `maxSummaryLengthHard` (20000) differs from `gc.maxOldGenSummaryLength` (3000)
+
+These are two independent limits operating at different times for different
+purposes — the asymmetry is intentional, not drift:
+
+- **`compress.maxSummaryLengthHard: 20000`** — **write-time** limit, enforced
+  in `lib/compress/range.ts` when the model calls `compress`. If the summary
+  exceeds this, the compress call is **rejected** (not truncated) and the model
+  must retry with a shorter summary. 20K allows dense, detailed summaries that
+  preserve critical content (file paths, code signatures, decisions). Observed
+  good summaries in real sessions range 2K–12K chars; 20K gives headroom for
+  large multi-range batches without rejecting useful work.
+
+- **`gc.maxOldGenSummaryLength: 3000`** — **GC-time** limit, enforced by
+  `runTruncateGC` in `lib/gc/truncate.ts`. Fires only when context usage
+  exceeds `majorGcThresholdPercent` (default `"100%"` — i.e., context is
+  completely full). At that point, old-gen blocks (promoted after
+  `promotionThreshold: 5` survivals) have their summaries **truncated** to
+  3000 chars as a last-resort pressure-relief valve. Young-gen blocks keep
+  their full summaries.
+
+The write-time limit is generous (don't reject useful work); the GC-time limit
+is aggressive (when context is full, sacrifice detail to stay operational).
+A block can be written at 18K chars, serve the model well for many turns, then
+get truncated to 3K only when the session is critically full and the block has
+aged into old-gen. This is the intended lifecycle.
+
 ## 4. Validation
 
 - `npm run typecheck` — clean (0 errors).
-- `npm test` — 847 tests pass (842 pre-existing + 5 new).
+- `npm test` — 803 tests pass (798 pre-existing + 5 new).
 - `npm run build` — dist/index.js 423 KB, tsup success.
 - Regression test "restore most recent user msg when all user msgs fall in
   compressed range" directly reproduces the `ses_0805cd994ffeeIQYQJHkoGlnLR`
