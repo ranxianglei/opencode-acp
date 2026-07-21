@@ -8,7 +8,8 @@ import {
     buildQualityRejectionError,
     buildPreemptiveAcknowledgeError,
 } from "../lib/compress/quality-gate"
-import { createSessionState, type WithParts } from "../lib/state"
+import { createCompressRangeTool } from "../lib/compress/range"
+import { createSessionState, resetSessionState, type WithParts } from "../lib/state"
 import type { PluginConfig } from "../lib/config"
 import type { QualityGateResult } from "../lib/compress/quality-gate/types"
 import { Logger } from "../lib/logger"
@@ -25,6 +26,7 @@ mkdirSync(testConfigHome, { recursive: true })
 function buildConfig(qualityGateEnabled: boolean): PluginConfig {
     return {
         enabled: true,
+        autoUpdate: true,
         debug: false,
         pruneNotification: "off",
         pruneNotificationType: "chat",
@@ -37,14 +39,23 @@ function buildConfig(qualityGateEnabled: boolean): PluginConfig {
             mode: "range",
             permission: "allow",
             showCompression: false,
+            summaryBuffer: true,
             maxContextLimit: 150000,
             minContextLimit: 50000,
             nudgeFrequency: 5,
+            minNudgeContextPercent: 15,
             iterationNudgeThreshold: 15,
             nudgeForce: "soft",
             protectedTools: [],
             protectTags: false,
             protectUserMessages: false,
+            maxSummaryLengthHard: 20000,
+            minCompressRange: 0,
+            minNudgeGrowthRatio: 0.45,
+            minNudgeGrowthFloor: 5000,
+            emergencyThresholdPercent: "98%",
+            maxVisibleSegments: 50,
+            keepEmbedMaxChars: 2000,
             lastSegmentSoftBlock: false,
         },
         strategies: {
@@ -272,40 +283,171 @@ test("qualityGateRetryPending defaults to false", () => {
 test("qualityGateRetryPending resets to false on resetSessionState", () => {
     const state = createSessionState()
     state.qualityGateRetryPending = true
-    state.sessionId = null
-    state.prune = {
-        tools: new Map(),
-        messages: {
-            byMessageId: new Map(),
-            blocksById: new Map(),
-            activeBlockIds: new Set(),
-            activeByAnchorMessageId: new Map(),
-            nextBlockId: 1,
-            nextRunId: 1,
-            markedForCleanup: new Set(),
-        },
-    }
-    state.nudges = {
-        contextLimitAnchors: new Set(),
-        turnNudgeAnchors: new Set(),
-        iterationNudgeAnchors: new Set(),
-        lastPerMessageNudgeTurn: 0,
-        lastPerMessageNudgeTokens: undefined,
-        lastNudgeShownTokens: undefined,
-        lastToolOutputNudgeTokens: undefined,
-        shouldInjectThisTurn: undefined,
-        compressBaselineSet: false,
-    }
-    state.stats = { pruneTokenCounter: 0, totalPruneTokens: 0 }
-    state.toolParameters.clear()
-    state.subAgentResultCache.clear()
-    state.toolIdList = []
-    state.messageIds = { byRawId: new Map(), byRef: new Map(), nextRef: 1 }
-    state.lastCompaction = 0
-    state.currentTurn = 0
-    state.modelContextLimit = undefined
-    state.systemPromptTokens = undefined
-    state.qualityGateRetryPending = false
-
+    resetSessionState(state)
     assert.equal(state.qualityGateRetryPending, false)
+})
+
+function buildIntegrationMessages(sessionID: string): WithParts[] {
+    const messages: WithParts[] = []
+    const longText =
+        "This is a detailed technical analysis of the authentication system. " +
+        "File: lib/auth.ts:142 contains the token refresh logic. " +
+        "Decision: JWT over session cookies for stateless architecture. " +
+        "Critical bug found: retry mechanism missing exponential backoff. " +
+        "Fix applied: added backoff with base=1000ms, max=30000ms. " +
+        "Test coverage: lib/auth.test.ts now covers refresh edge cases. " +
+        "Performance: 3ms overhead per refresh attempt, acceptable. "
+    for (let i = 0; i < 6; i++) {
+        const msgId = `msg-int-${i}`
+        messages.push({
+            info: {
+                id: msgId,
+                role: i % 2 === 0 ? "user" : "assistant",
+                sessionID,
+                model: { providerID: "anthropic", modelID: "claude-test" },
+                time: { created: i + 1 },
+            } as WithParts["info"],
+            parts: [textPart(msgId, sessionID, `int-part-${i}`, longText + `Iteration ${i}. `)],
+        })
+    }
+    return messages
+}
+
+function buildToolContext(state: ReturnType<typeof createSessionState>, config: PluginConfig, rawMessages: WithParts[]) {
+    return createCompressRangeTool({
+        client: {
+            session: {
+                messages: async () => ({ data: rawMessages }),
+                get: async () => ({ data: { parentID: null } }),
+            },
+        },
+        state,
+        logger: new Logger(false),
+        config,
+        prompts: {
+            reload() {},
+            getRuntimePrompts() {
+                return { compressRange: "", compressMessage: "" }
+            },
+        },
+    } as any)
+}
+
+const toolCtx = {
+    ask: async () => {},
+    metadata: () => {},
+    sessionID: "",
+    messageID: "msg-compress",
+}
+
+test("integration: quality gate rejects bad summary through createCompressRangeTool", async () => {
+    const sessionID = `ses-int-reject-${Date.now()}`
+    const rawMessages = buildIntegrationMessages(sessionID)
+    const state = createSessionState()
+    const config = buildConfig(true)
+    const tool = buildToolContext(state, config, rawMessages)
+
+    await assert.rejects(
+        tool.execute(
+            {
+                topic: "Auth analysis",
+                content: [
+                    {
+                        startId: "m00001",
+                        endId: "m00004",
+                        summary: "Stuff happened.",
+                    },
+                ],
+            },
+            { ...toolCtx, sessionID },
+        ),
+        (err: Error) => {
+            assert.ok(err.message.includes("COMPRESSION REJECTED"), `should be quality rejection, got: ${err.message}`)
+            return true
+        },
+    )
+    assert.equal(state.qualityGateRetryPending, true, "flag should be set after rejection")
+    assert.equal(state.prune.messages.blocksById.size, 0, "no blocks should be committed")
+})
+
+test("integration: acknowledgeRisk bypasses quality after rejection", async () => {
+    const sessionID = `ses-int-ack-${Date.now()}`
+    const rawMessages = buildIntegrationMessages(sessionID)
+    const state = createSessionState()
+    const config = buildConfig(true)
+    const tool = buildToolContext(state, config, rawMessages)
+
+    await assert.rejects(
+        tool.execute(
+            {
+                topic: "Auth analysis",
+                content: [{ startId: "m00001", endId: "m00004", summary: "Bad." }],
+            },
+            { ...toolCtx, sessionID },
+        ),
+    )
+    assert.equal(state.qualityGateRetryPending, true)
+
+    const result = await tool.execute(
+        {
+            topic: "Auth analysis",
+            content: [{ startId: "m00001", endId: "m00004", summary: "Bad summary bypassed." }],
+            acknowledgeRisk: true,
+        } as any,
+        { ...toolCtx, sessionID },
+    )
+    assert.ok(result.includes("Compressed"), "retry with acknowledgeRisk should succeed")
+    assert.equal(state.qualityGateRetryPending, false, "flag should be consumed after successful retry")
+    assert.equal(state.prune.messages.blocksById.size, 1, "one block should be committed")
+})
+
+test("integration: preemptive acknowledgeRisk without prior rejection is rejected", async () => {
+    const sessionID = `ses-int-preempt-${Date.now()}`
+    const rawMessages = buildIntegrationMessages(sessionID)
+    const state = createSessionState()
+    const config = buildConfig(true)
+    const tool = buildToolContext(state, config, rawMessages)
+
+    await assert.rejects(
+        tool.execute(
+            {
+                topic: "Auth analysis",
+                content: [{ startId: "m00001", endId: "m00004", summary: "Good enough summary with keywords." }],
+                acknowledgeRisk: true,
+            } as any,
+            { ...toolCtx, sessionID },
+        ),
+        (err: Error) => {
+            assert.ok(err.message.includes("no quality gate rejection is pending"), `should be preemptive error, got: ${err.message}`)
+            return true
+        },
+    )
+    assert.equal(state.qualityGateRetryPending, false, "flag should stay false")
+    assert.equal(state.prune.messages.blocksById.size, 0, "no blocks committed")
+})
+
+test("integration: flag cleared on successful non-acknowledgeRisk compression", async () => {
+    const sessionID = `ses-int-clear-${Date.now()}`
+    const rawMessages = buildIntegrationMessages(sessionID)
+    const state = createSessionState()
+    const config = buildConfig(true)
+    const tool = buildToolContext(state, config, rawMessages)
+
+    state.qualityGateRetryPending = true
+
+    const goodSummary =
+        "Authentication system analysis. File: lib/auth.ts:142 token refresh logic. " +
+        "Decision: JWT over session cookies for stateless architecture. " +
+        "Critical bug: retry mechanism missing exponential backoff. Fix: base=1000ms, max=30000ms. " +
+        "Test: lib/auth.test.ts covers refresh edge cases. Performance: 3ms overhead per refresh."
+
+    const result = await tool.execute(
+        {
+            topic: "Auth analysis",
+            content: [{ startId: "m00001", endId: "m00004", summary: goodSummary }],
+        },
+        { ...toolCtx, sessionID },
+    )
+    assert.ok(result.includes("Compressed"), "good summary should pass quality and compress")
+    assert.equal(state.qualityGateRetryPending, false, "flag should be cleared on successful quality pass")
 })

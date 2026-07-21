@@ -281,12 +281,15 @@ export function createCompressRangeTool(ctx: ToolContext): ReturnType<typeof too
             const acknowledgeRisk =
                 (args as { acknowledgeRisk?: boolean }).acknowledgeRisk === true
 
+            const qualityGateRetryPendingBefore = ctx.state.qualityGateRetryPending
+
             if (acknowledgeRisk && !ctx.state.qualityGateRetryPending) {
                 throw buildPreemptiveAcknowledgeError()
             }
             if (acknowledgeRisk) {
                 ctx.state.qualityGateRetryPending = false
             } else {
+                ctx.state.qualityGateRetryPending = false
                 for (const plan of preparedPlans) {
                     const result = evaluatePreCommitQuality(
                         rawMessages,
@@ -368,6 +371,7 @@ export function createCompressRangeTool(ctx: ToolContext): ReturnType<typeof too
                 )
             } catch (error) {
                 restoreCompressionState(ctx.state, snapshot)
+                ctx.state.qualityGateRetryPending = qualityGateRetryPendingBefore
                 throw error
             }
 

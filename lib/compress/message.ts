@@ -190,12 +190,15 @@ export function createCompressMessageTool(ctx: ToolContext): ReturnType<typeof t
             const acknowledgeRisk =
                 (args as { acknowledgeRisk?: boolean }).acknowledgeRisk === true
 
+            const qualityGateRetryPendingBefore = ctx.state.qualityGateRetryPending
+
             if (acknowledgeRisk && !ctx.state.qualityGateRetryPending) {
                 throw buildPreemptiveAcknowledgeError()
             }
             if (acknowledgeRisk) {
                 ctx.state.qualityGateRetryPending = false
             } else {
+                ctx.state.qualityGateRetryPending = false
                 for (const { plan, summaryWithTools } of preparedPlans) {
                     const result = evaluatePreCommitQuality(
                         rawMessages,
@@ -269,6 +272,7 @@ export function createCompressMessageTool(ctx: ToolContext): ReturnType<typeof t
                 await finalizeSession(ctx, toolCtx, rawMessages, notifications, input.topic)
             } catch (error) {
                 restoreCompressionState(ctx.state, snapshot)
+                ctx.state.qualityGateRetryPending = qualityGateRetryPendingBefore
                 throw error
             }
 
