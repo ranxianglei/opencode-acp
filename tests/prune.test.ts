@@ -763,13 +763,13 @@ test("stripStepMarkers leaves messages without step markers untouched", () => {
 // Reproduces the zhipuai-lb code 1214 freeze from issue #20 follow-up.
 // =====================================================================
 
+// Minimal block setup: filterCompressedRanges only reads byMessageId, so this
+// helper sets up just that. No anchor/blocksById needed (those are read by
+// other code paths like decompress/recap, not by the prune filter).
 function setupBlock(
     state: ReturnType<typeof createSessionState>,
     blockId: number,
-    anchorId: string,
     prunedIds: string[],
-    summary: string,
-    topic = "test",
 ) {
     for (const id of prunedIds) {
         state.prune.messages.byMessageId.set(id, {
@@ -778,31 +778,12 @@ function setupBlock(
             activeBlockIds: [blockId],
         })
     }
-    state.prune.messages.activeByAnchorMessageId.set(anchorId, blockId)
-    state.prune.messages.blocksById.set(blockId, {
-        blockId,
-        runId: 1,
-        active: true,
-        deactivatedByUser: false,
-        compressedTokens: prunedIds.length * 100,
-        summaryTokens: 50,
-        durationMs: 100,
-        generation: "young",
-        survivedCount: 0,
-        directMessageIds: prunedIds,
-        effectiveMessageIds: prunedIds,
-        directToolIds: [],
-        effectiveToolIds: [],
-        anchorMessageId: anchorId,
-        topic,
-        summary,
-    } as CompressionBlock)
 }
 
 test("restore most recent user msg when all user msgs fall in compressed range", () => {
     const state = createSessionState()
-    // Block 1 compresses m1 (user), m2 (assistant), m3 (user) — anchor is m1
-    setupBlock(state, 1, "m1", ["m1", "m2", "m3"], "summary of m1-m3")
+    // Block 1 compresses m1 (user), m2 (assistant), m3 (user)
+    setupBlock(state, 1, ["m1", "m2", "m3"])
 
     const messages: WithParts[] = [
         userMessage("m1", "first user", 1),
@@ -833,7 +814,7 @@ test("restore most recent user msg when all user msgs fall in compressed range",
 test("do NOT restore pruned user when an uncompressed user already survives", () => {
     const state = createSessionState()
     // Block 1 compresses only m1 (user). Later user msgs m3 stay uncompressed.
-    setupBlock(state, 1, "m1", ["m1", "m2"], "summary")
+    setupBlock(state, 1, ["m1", "m2"])
 
     const messages: WithParts[] = [
         userMessage("m1", "old user", 1),
@@ -856,7 +837,7 @@ test("do NOT restore pruned user when an uncompressed user already survives", ()
 test("restore most recent user when multiple user msgs are all compressed", () => {
     const state = createSessionState()
     // Block 1 compresses m1, m2, m3, m4, m5 — three of which are user msgs.
-    setupBlock(state, 1, "m1", ["m1", "m2", "m3", "m4", "m5"], "summary")
+    setupBlock(state, 1, ["m1", "m2", "m3", "m4", "m5"])
 
     const messages: WithParts[] = [
         userMessage("m1", "u1", 1),
@@ -882,7 +863,7 @@ test("restore most recent user when multiple user msgs are all compressed", () =
 
 test("no restoration when input has zero user messages at all", () => {
     const state = createSessionState()
-    setupBlock(state, 1, "a1", ["a2"], "summary")
+    setupBlock(state, 1, ["a2"])
 
     const messages: WithParts[] = [
         assistantMessage("a1", 1),
@@ -899,7 +880,7 @@ test("no restoration when input has zero user messages at all", () => {
 
 test("restored user msg keeps its original parts intact", () => {
     const state = createSessionState()
-    setupBlock(state, 1, "u1", ["u1", "a1", "u2"], "summary")
+    setupBlock(state, 1, ["u1", "a1", "u2"])
 
     const messages: WithParts[] = [
         userMessage("u1", "old", 1),
