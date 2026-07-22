@@ -1,0 +1,32 @@
+{
+    "name": "quality-reject",
+    "description": "Quality gate rejects a too-short summary, sets qualityGateRetryPending=true",
+    "turns": [
+        {
+            "respond": "text",
+            "text": "Let me tell you about database design. Database normalization is the process of organizing data in a database to reduce redundancy and improve data integrity. First normal form (1NF) requires atomic values and no repeating groups. Second normal form (2NF) requires 1NF plus no partial dependencies on composite keys. Third normal form (3NF) requires 2NF plus no transitive dependencies. BCNF is a stricter version of 3NF. File: src/db/schema.ts:20 defines the table structure."
+        },
+        {
+            "respond": "text",
+            "text": "Indexing strategies include B-tree indexes (default, good for equality and range queries), hash indexes (fast equality but no ranges), GIN indexes (for full-text search and arrays), and GiST indexes (for geometric data). Composite indexes can speed up multi-column queries but have overhead. Partial indexes index only a subset of rows. File: src/db/migrations/001.ts:15 creates indexes."
+        },
+        {
+            "respond": "text",
+            "text": "Connection pooling manages a pool of database connections that can be reused across requests, avoiding the overhead of establishing new connections. Common pooling libraries include pg-pool for PostgreSQL and mysql2/promise for MySQL. Pool size tuning depends on the workload: too few connections cause queuing, too many waste resources. File: src/db/pool.ts:8 configures the connection pool."
+        },
+        {
+            "respond": "compress",
+            "topic": "DB Design",
+            "summary": "Stuff happened.",
+            "range": "all"
+        },
+        {
+            "respond": "text",
+            "text": "The compression was rejected by the quality gate. The summary was too short.",
+            "auto": true
+        }
+    ],
+    "verify": {
+        "blockCount": 0
+    }
+}
