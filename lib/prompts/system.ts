@@ -64,7 +64,7 @@ When \`qualityGate.enabled\` is on, a \`compress\` call can be REJECTED by a qua
 
 1. SPLIT the range. If the range is large (>50K tokens), one summary can rarely be dense enough to pass. Break it into 2-3 smaller contiguous ranges and compress each separately in the SAME batch \`compress\` call (each entry gets its own \`topic\` and \`summary\`).
 2. WRITE a denser / longer summary. For a small range, keep every load-bearing detail (full file paths with line numbers, signatures, exact errors, decisions WITH their rationale). If the hard cap is too tight, pass \`summaryMaxChars\` (e.g. 12000) to allow a longer summary.
-3. ACKNOWLEDGE RISK as a last resort. Only after (1) and (2) genuinely failed, add \`"acknowledgeRisk": true\` to accept information loss. This only works immediately after a rejection — it errors if set preemptively.
+3. ACKNOWLEDGE RISK when you judge the information loss acceptable. Set \`"acknowledgeRisk": true\` to bypass the gate — usable on the first attempt, no need to trigger a rejection first. Use it for low-value ranges or when a dense summary is not feasible; for content that matters, prefer (1) or (2).
 
 Do NOT loop: if the same range is rejected twice, you MUST change strategy (split it). Never resubmit an identical or near-identical summary — it will be rejected again and waste context.
 

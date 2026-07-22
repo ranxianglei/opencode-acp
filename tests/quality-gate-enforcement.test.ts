@@ -6,7 +6,6 @@ import { mkdirSync } from "node:fs"
 import {
     evaluatePreCommitQuality,
     buildQualityRejectionError,
-    buildPreemptiveAcknowledgeError,
 } from "../lib/compress/quality-gate"
 import { createCompressRangeTool } from "../lib/compress/range"
 import { createSessionState, resetSessionState, type WithParts } from "../lib/state"
@@ -322,16 +321,6 @@ test("buildQualityRejectionError advises a denser summary for a small range", ()
     assert.ok(msg.includes("acknowledgeRisk"), "should mention acknowledgeRisk as last resort")
 })
 
-test("buildPreemptiveAcknowledgeError explains the parameter is invalid without pending rejection", () => {
-    const error = buildPreemptiveAcknowledgeError()
-    assert.ok(error.message.includes("acknowledgeRisk"), "should mention the parameter name")
-    assert.ok(
-        error.message.includes("no quality gate rejection is pending"),
-        "should explain why it's invalid",
-    )
-    assert.ok(error.message.includes("Remove it"), "should tell model to remove it")
-})
-
 test("qualityGateRetryPending defaults to false", () => {
     const state = createSessionState()
     assert.equal(state.qualityGateRetryPending, false)
@@ -458,29 +447,27 @@ test("integration: acknowledgeRisk bypasses quality after rejection", async () =
     assert.equal(state.prune.messages.blocksById.size, 1, "one block should be committed")
 })
 
-test("integration: preemptive acknowledgeRisk without prior rejection is rejected", async () => {
+test("integration: preemptive acknowledgeRisk bypasses the gate without a prior rejection", async () => {
     const sessionID = `ses-int-preempt-${Date.now()}`
     const rawMessages = buildIntegrationMessages(sessionID)
     const state = createSessionState()
     const config = buildConfig(true)
     const tool = buildToolContext(state, config, rawMessages)
 
-    await assert.rejects(
-        tool.execute(
-            {
-                topic: "Auth analysis",
-                content: [{ startId: "m00001", endId: "m00004", summary: "Good enough summary with keywords." }],
-                acknowledgeRisk: true,
-            } as any,
-            { ...toolCtx, sessionID },
-        ),
-        (err: Error) => {
-            assert.ok(err.message.includes("no quality gate rejection is pending"), `should be preemptive error, got: ${err.message}`)
-            return true
-        },
+    const result = await tool.execute(
+        {
+            topic: "Auth analysis",
+            content: [{ startId: "m00001", endId: "m00004", summary: "Good enough summary with keywords." }],
+            acknowledgeRisk: true,
+        } as any,
+        { ...toolCtx, sessionID },
+    )
+    assert.ok(
+        result.includes("Compressed"),
+        "preemptive acknowledgeRisk should compress without a prior rejection",
     )
     assert.equal(state.qualityGateRetryPending, false, "flag should stay false")
-    assert.equal(state.prune.messages.blocksById.size, 0, "no blocks committed")
+    assert.equal(state.prune.messages.blocksById.size, 1, "one block should be committed")
 })
 
 test("integration: flag cleared on successful non-acknowledgeRisk compression", async () => {

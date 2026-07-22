@@ -60,7 +60,29 @@
 
 ## 5. Follow-ups
 
-- Anti-deadlock counter (auto-downgrade to non-blocking after N consecutive
-  rejections of the same range) — needs a state counter → persistence migration.
-  Separate PR.
 - README doc fix for the blocking-vs-non-blocking gate description.
+
+## 6. Round 2 — make `acknowledgeRisk` usable anytime (per issue #33 feedback)
+
+- **Trigger**: user analyzed the pre-restart session (dog/opencode-acp#33) and
+  found the model doing a "write-short → rejected → retry-with-ACK" dance 7× in
+  a row. User's reframe: the "ACK only after a rejection" rule MANUFACTURES the
+  deliberate-fail pattern, and over-blocking causes the model to avoid
+  compressing entirely (the actual root of the 330K problem) — worse than
+  occasional bad compressions.
+- **Change**: removed the preemptive-`acknowledgeRisk` guard so ACK bypasses
+  the gate on the FIRST attempt, no prior rejection needed. The gate still
+  BLOCKS non-ACK calls (protection by default + explicit opt-out → the model is
+  never trapped into avoiding compression). Post-commit `evaluateBatchQuality`
+  still runs + warns → observability retained.
+- **Removed**: `buildPreemptiveAcknowledgeError` (now dead code), its export,
+  and its test. The integration test "preemptive acknowledgeRisk ... is
+  rejected" was FLIPPED to assert it now succeeds.
+- **Wording**: `acknowledgeRisk` `.describe()` and the system-prompt ACK bullet
+  no longer say "never preemptive"; they say "usable on the first attempt".
+- **Verification**: `npm run typecheck` clean; `npm test` 836 pass / 0 fail;
+  `npm run build` ok; bundle verified (guard text gone, new describe present).
+- **Dropped earlier idea**: "constrain ACK / refuse short-summary ACK /
+  rate-limit" — would worsen over-blocking; explicitly rejected by user.
+- **Still out of scope**: making the gate fully advisory (warn-only). This PR
+  keeps it blocking for non-ACK calls; free-ACK is the middle ground.
