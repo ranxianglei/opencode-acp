@@ -5,11 +5,6 @@ import {
     isFilePathProtected,
     isToolNameProtected,
 } from "../protected-patterns"
-import {
-    buildSubagentResultText,
-    getSubAgentId,
-    mergeSubagentResult,
-} from "../subagents/subagent-results"
 import { fetchSessionMessages } from "./search"
 import type { SearchContext, SelectionResolution } from "./types"
 
@@ -110,7 +105,6 @@ export function extractProtectedPromptInfo(text: string): string[] {
 export async function appendProtectedTools(
     client: any,
     state: SessionState,
-    allowSubAgents: boolean,
     summary: string,
     selection: SelectionResolution,
     searchContext: SearchContext,
@@ -149,46 +143,6 @@ export async function appendProtectedTools(
                             typeof part.state.output === "string"
                                 ? part.state.output
                                 : JSON.stringify(part.state.output)
-                    }
-
-                    if (
-                        allowSubAgents &&
-                        part.tool === "task" &&
-                        part.state?.status === "completed" &&
-                        typeof part.state?.output === "string"
-                    ) {
-                        const cachedSubAgentResult = state.subAgentResultCache.get(part.callID)
-
-                        if (cachedSubAgentResult !== undefined) {
-                            if (cachedSubAgentResult) {
-                                output = mergeSubagentResult(
-                                    part.state.output,
-                                    cachedSubAgentResult,
-                                )
-                            }
-                        } else {
-                            const subAgentSessionId = getSubAgentId(part)
-                            if (subAgentSessionId) {
-                                let subAgentResultText = ""
-                                try {
-                                    const subAgentMessages = await fetchSessionMessages(
-                                        client,
-                                        subAgentSessionId,
-                                    )
-                                    subAgentResultText = buildSubagentResultText(subAgentMessages)
-                                } catch {
-                                    subAgentResultText = ""
-                                }
-
-                                if (subAgentResultText) {
-                                    state.subAgentResultCache.set(part.callID, subAgentResultText)
-                                    output = mergeSubagentResult(
-                                        part.state.output,
-                                        subAgentResultText,
-                                    )
-                                }
-                            }
-                        }
                     }
 
                     if (output) {

@@ -7,7 +7,6 @@ import {
     buildToolIdList,
     dropEmptyMessages,
     injectCompressNudges,
-    injectExtendedSubAgentResults,
     injectMessageIds,
     prune,
     stripHallucinations,
@@ -220,13 +219,6 @@ export function createChatMessageTransformHandler(
         // Compress tool calls stay visible — they serve as natural anchors
         // carrying the summary in their input. No synthetic recap injection.
         assignMessageRefs(state, output.messages)
-        await injectExtendedSubAgentResults(
-            client,
-            state,
-            logger,
-            output.messages,
-            config.experimental.allowSubAgents,
-        )
         const compressionPriorities = buildPriorityMap(config, state, output.messages)
         prompts.reload()
         injectCompressNudges(

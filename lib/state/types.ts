@@ -121,7 +121,6 @@ export interface SessionState {
     stats: SessionStats
     compressionTiming: CompressionTimingState
     toolParameters: Map<string, ToolParameterEntry>
-    subAgentResultCache: Map<string, string>
     toolIdList: string[]
     messageIds: MessageIdState
     lastCompaction: number
