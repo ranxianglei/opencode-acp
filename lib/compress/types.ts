@@ -23,6 +23,9 @@ export interface CompressRangeToolArgs {
     /** Fallback topic for entries without their own. Optional if every entry has one. */
     topic?: string
     content: CompressRangeEntry[]
+    summaryMaxChars?: number
+    dangerous?: boolean
+    acknowledgeRisk?: boolean
 }
 
 export interface CompressMessageEntry {
@@ -34,6 +37,9 @@ export interface CompressMessageEntry {
 export interface CompressMessageToolArgs {
     topic: string
     content: CompressMessageEntry[]
+    summaryMaxChars?: number
+    dangerous?: boolean
+    acknowledgeRisk?: boolean
 }
 
 export interface BoundaryReference {

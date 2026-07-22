@@ -128,4 +128,16 @@ export interface SessionState {
     currentTurn: number
     modelContextLimit: number | undefined
     systemPromptTokens: number | undefined
+    /**
+     * Transient flag (NOT persisted): set to true when a compress call is rejected
+     * by the pre-commit quality gate. The model must retry with `acknowledgeRisk: true`
+     * to bypass quality on the retry. Consumed (reset to false) on use.
+     *
+     * Lifecycle:
+     * - Quality fails → flag = true → rejection error returned
+     * - Retry with acknowledgeRisk:true + flag=true → accepted, flag = false
+     * - acknowledgeRisk:true + flag=false → error "no rejection pending, remove parameter"
+     * - Normal call (no acknowledgeRisk) → quality runs normally
+     */
+    qualityGateRetryPending: boolean
 }

@@ -35,6 +35,11 @@ import {
 } from "./state"
 import type { CompressRangeToolArgs } from "./types"
 import { resolveKeepMarkers } from "./keep-markers"
+import {
+    buildPreemptiveAcknowledgeError,
+    buildQualityRejectionError,
+    evaluatePreCommitQuality,
+} from "./quality-gate"
 
 function buildSchema(maxSummaryLengthHard: number) {
     return {
@@ -83,6 +88,7 @@ function buildSchema(maxSummaryLengthHard: number) {
             .describe(
                 "Set to true ONLY when you are certain the most recent message(s) must be compressed. Required when a range includes the tail of the conversation.",
             ),
+        acknowledgeRisk: tool.schema.boolean().optional(),
     }
 }
 
@@ -272,6 +278,43 @@ export function createCompressRangeTool(ctx: ToolContext): ReturnType<typeof too
             )
             if (phantomError) throw phantomError
 
+            const acknowledgeRisk =
+                (args as { acknowledgeRisk?: boolean }).acknowledgeRisk === true
+
+            const qualityGateRetryPendingBefore = ctx.state.qualityGateRetryPending
+
+            if (acknowledgeRisk && !ctx.state.qualityGateRetryPending) {
+                throw buildPreemptiveAcknowledgeError()
+            }
+            if (acknowledgeRisk) {
+                ctx.state.qualityGateRetryPending = false
+            } else {
+                ctx.state.qualityGateRetryPending = false
+                for (const plan of preparedPlans) {
+                    const result = evaluatePreCommitQuality(
+                        rawMessages,
+                        plan.selection.messageIds,
+                        plan.selection.messageTokenById,
+                        plan.finalSummary,
+                        ctx.config,
+                        ctx.logger,
+                    )
+                    if (result && !result.passed) {
+                        ctx.state.qualityGateRetryPending = true
+                        throw buildQualityRejectionError(
+                            {
+                                startId: plan.entry.startId,
+                                endId: plan.entry.endId,
+                                summary: plan.finalSummary,
+                                messageIds: plan.selection.messageIds,
+                                messageTokenById: plan.selection.messageTokenById,
+                            },
+                            result,
+                        )
+                    }
+                }
+            }
+
             const snapshot = snapshotCompressionState(ctx.state)
             const runId = allocateRunId(ctx.state)
 
@@ -328,6 +371,7 @@ export function createCompressRangeTool(ctx: ToolContext): ReturnType<typeof too
                 )
             } catch (error) {
                 restoreCompressionState(ctx.state, snapshot)
+                ctx.state.qualityGateRetryPending = qualityGateRetryPendingBefore
                 throw error
             }
 

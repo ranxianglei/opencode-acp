@@ -13,5 +13,7 @@ export {
     clearQualityGateRegistryForTests,
 } from "./registry"
 
-export { evaluateBlockQuality, evaluateBatchQuality } from "./evaluate"
+export { evaluateBlockQuality, evaluateBatchQuality, evaluatePreCommitQuality } from "./evaluate"
+export { buildQualityRejectionError, buildPreemptiveAcknowledgeError } from "./rejection"
+export type { RejectionPlanInfo } from "./rejection"
 export { ensureBuiltinGatesRegistered } from "./algorithms"
