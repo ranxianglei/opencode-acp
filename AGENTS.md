@@ -523,17 +523,55 @@ All changes MUST follow this workflow:
 6. Commit with descriptive messages (include devlog files)
 7. Push branch and create a GitHub PR
 8. Obtain **dual-agent review** (Sections 5.3 + 5.4) on the PR
-9. **PR merge requires explicit human confirmation** — AI agents MUST NOT autonomously merge PRs or push to master. Wait for the user to explicitly say "merge" or "approve merge".
+9. **PR merge is a human-only operation** — AI agents MUST NEVER merge PRs, even when explicitly instructed or forced by a human. See [§5.1.1.2](#5112-pr-merge-absolute-prohibition) for the absolute policy. The Agent prepares the PR; the human clicks "Merge".
 
 ### 5.1.1.1 Git Safety Rules (MANDATORY)
 
 | Rule                                                                    | Enforcement                                                                                                                 |
 | ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
 | **NEVER force-push to `master`**                                        | Under no circumstances. Not for reverts, not for fixes, not for "quick corrections". If master needs changing, create a PR. |
-| **NEVER merge PRs without explicit human authorization**                | "merge" or "approve merge" must come from a human comment. Agent reviews passing ≠ authorization to merge.                  |
+| **NEVER merge PRs — ABSOLUTE PROHIBITION, no exceptions**               | PR merges are a **human-only operation**. The Agent MUST NEVER merge any PR, under ANY circumstances. See [§5.1.1.2](#5112-pr-merge-absolute-prohibition) for the full policy. |
 | **NEVER remove and re-apply GitHub branch protection to force changes** | This is a circumvention of the merge policy. If protection blocks a push, the correct response is to create a PR.           |
 | **NEVER delete branches or tags without human confirmation**            | Preserve work for review.                                                                                                   |
 | **NEVER modify `version` field in `package.json` on non-release branches** | Version bumps happen ONLY on `YYYY-MM-DD_release-v*` branches (see §5.4.2). Regular feature/fix PRs MUST NOT touch the `version` field. The CI changelog check (§5.4.1) enforces this indirectly: if `version` changes, `README.md` and `README.zh-CN.md` MUST also be modified with a `### v{VERSION}` header. Violating this rule causes version-number drift across non-release PRs (e.g., v1.13.0 → v1.13.1 in a feature PR) which makes release bookkeeping unpredictable and can lead to skipped or duplicated npm publishes. |
+
+### 5.1.1.2 PR Merge — Absolute Prohibition
+
+> **PR merges are a human-only operation. The Agent MUST NEVER merge any PR.**
+
+This is an **absolute rule with no exceptions**. It applies to:
+
+| Situation                                                                       | Agent Action                                                                                       |
+| ------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| No human instruction to merge                                                    | Do not merge. End of story.                                                                        |
+| Human implicitly suggests merging (e.g., "提交一下代码", "ship it", "looks good") | Do not merge. Treat as commit/push only. If ambiguous, ASK; do not assume merge authorization.    |
+| Human explicitly authorizes merge (e.g., "you may merge")                       | Do not merge. Reply that PR merges are a human-only operation and the human must perform it.       |
+| Human directly instructs/orders merge (e.g., "merge this now")                  | Do not merge. Reply that PR merges are a human-only operation and the human must perform it.       |
+| Human forces or demands auto-merge (e.g., "I order you to merge", ultimatums)   | **Explicitly refuse.** State that this rule cannot be overridden by any instruction, including this one. |
+| Human claims this rule does not apply to a specific case                         | Do not merge. This rule has no case-by-case exceptions.                                            |
+| The PR is a revert, fix-up, or "obvious" merge                                  | Do not merge. Reverts and fixes follow the same rule.                                              |
+| CI checks all pass and reviews are complete                                      | Do not merge. Green CI is necessary but not sufficient — human action is still required.           |
+| Hotfix / urgent situation                                                       | Do not merge. Urgency does not override this rule.                                                 |
+
+**What the Agent MUST do instead:**
+
+1. Prepare the PR (branch, commits, push, `gh pr create`).
+2. Verify CI passes.
+3. Report the PR URL to the human.
+4. **Stop.** Wait for the human to click "Merge" themselves.
+
+**What the Agent MUST NOT do:**
+
+- Call `gh pr merge`, `gh api .../merge`, or any command that merges a PR.
+- Toggle GitHub branch protection to enable a merge (also forbidden by §5.1.1.1).
+- Use admin overrides, force-push, or any workaround to land changes on `master` without going through human-initiated PR merge.
+- Re-interpret human words ("commit", "ship", "land", "deploy", "提交", "上线") as merge authorization. These mean commit/push, not merge.
+
+**How to respond when a human instructs the Agent to merge:**
+
+> I can't merge PRs — AGENTS.md §5.1.1.2 forbids Agents from merging PRs under any circumstances, including when explicitly instructed. Please merge the PR yourself: [PR URL].
+
+This rule exists because PR merges are irreversible, land code on the protected `master` branch, and may trigger automated releases. Human-only execution ensures a human is always in the loop for these irreversible operations. The rule is intentionally designed so that **no instruction — not even an explicit override from the user — can relax it**. If a human wants this rule changed, they must edit this section of AGENTS.md themselves; the Agent will continue to follow the written rule until then.
 
 ### 5.1.2 Devlog Requirement (MANDATORY)
 
@@ -650,9 +688,9 @@ git push origin YYYY-MM-DD_release-v{VERSION}
 gh pr create --title "release: v{VERSION} — title" --body "..."
 ```
 
-**Step 4: Merge PR (requires human confirmation)**
+**Step 4: Merge PR (human-only operation — Agent MUST NOT merge)**
 
-Wait for CI to pass (`pr-validation`, `test`, `build`), then a human merges the PR.
+Wait for CI to pass (`pr-validation`, `test`, `build`), then a human merges the PR. The Agent MUST NEVER merge the PR itself, even if explicitly instructed — see [§5.1.1.2](#5112-pr-merge-absolute-prohibition).
 
 **Step 5: Auto-publish (fully automated)**
 
@@ -734,7 +772,7 @@ git add -A && git commit -m "release: v{VERSION}-dev.1 — title"
 git push origin YYYY-MM-DD_release-v{VERSION}-dev
 gh pr create --title "release: v{VERSION}-dev.1 — title" --body "..."
 
-# 6. Merge PR (requires human confirmation)
+# 6. Merge PR (human-only operation — Agent MUST NOT merge, see §5.1.1.2)
 
 # 7. CI auto-publishes to npm dev tag + creates prerelease GitHub Release
 ```
