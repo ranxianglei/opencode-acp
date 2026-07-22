@@ -63,7 +63,12 @@ function buildSchema(maxSummaryLengthHard: number) {
             .describe(
                 "Set to true ONLY when you are certain the most recent message(s) must be compressed. Required when a range includes the tail of the conversation.",
             ),
-        acknowledgeRisk: tool.schema.boolean().optional(),
+        acknowledgeRisk: tool.schema
+            .boolean()
+            .optional()
+            .describe(
+                'Set to true ONLY to override a quality-gate rejection, after you have genuinely tried to fix the summary. Never set it preemptively — it errors if no rejection is pending. Two better fixes to try FIRST: (1) split an oversized range into 2-3 smaller contiguous ranges and compress each separately, or (2) pass "summaryMaxChars" to allow a longer summary.',
+            ),
     }
 }
 

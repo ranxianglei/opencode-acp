@@ -265,6 +265,63 @@ test("buildQualityRejectionError computes ratio and retention from plan data", (
     assert.ok(error.message.includes("100 chars"), "should show summary chars")
 })
 
+test("buildQualityRejectionError advises SPLITTING for a large range (>50K tokens)", () => {
+    const messageIds = ["msg-1", "msg-2"]
+    const plan = {
+        startId: "m00472",
+        endId: "m00793",
+        summary: "x".repeat(8543),
+        messageIds,
+        messageTokenById: buildTokenMap(messageIds, 30000),
+    }
+    const result: QualityGateResult = {
+        passed: false,
+        layer: "L1-length",
+        reason: "retention too low",
+        metrics: [],
+    }
+
+    const error = buildQualityRejectionError(plan, result)
+    const msg = error.message
+
+    assert.ok(msg.includes("SPLIT THE RANGE"), "large range should lead with split guidance")
+    assert.ok(
+        msg.includes("smaller contiguous ranges"),
+        "should tell the model to split into smaller ranges",
+    )
+    assert.ok(msg.includes("60000 tokens"), "should report the large token count")
+    assert.ok(msg.includes("summaryMaxChars"), "should mention the summaryMaxChars escape hatch")
+    assert.ok(msg.includes("acknowledgeRisk"), "should mention acknowledgeRisk as last resort")
+})
+
+test("buildQualityRejectionError advises a denser summary for a small range", () => {
+    const messageIds = ["msg-1"]
+    const plan = {
+        startId: "m00001",
+        endId: "m00002",
+        summary: "too short",
+        messageIds,
+        messageTokenById: buildTokenMap(messageIds, 1000),
+    }
+    const result: QualityGateResult = {
+        passed: false,
+        layer: "L1-length",
+        reason: "retention too low",
+        metrics: [],
+    }
+
+    const error = buildQualityRejectionError(plan, result)
+    const msg = error.message
+
+    assert.ok(
+        msg.includes("DENSER SUMMARY"),
+        "small range should lead with denser-summary guidance",
+    )
+    assert.ok(!msg.includes("SPLIT THE RANGE"), "small range should not advise splitting")
+    assert.ok(msg.includes("summaryMaxChars"), "should mention the summaryMaxChars escape hatch")
+    assert.ok(msg.includes("acknowledgeRisk"), "should mention acknowledgeRisk as last resort")
+})
+
 test("buildPreemptiveAcknowledgeError explains the parameter is invalid without pending rejection", () => {
     const error = buildPreemptiveAcknowledgeError()
     assert.ok(error.message.includes("acknowledgeRisk"), "should mention the parameter name")
