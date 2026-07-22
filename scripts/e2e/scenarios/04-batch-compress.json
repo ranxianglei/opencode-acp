@@ -1,0 +1,50 @@
+{
+    "name": "batch-compress",
+    "description": "Batch compress: compress multiple ranges in one tool call",
+    "turns": [
+        {
+            "respond": "text",
+            "text": "Topic one: Redis caching. Redis is an in-memory key-value store used for caching, session management, and message queues. It supports data structures like strings, hashes, lists, sets, and sorted sets. Persistence options include RDB snapshots and AOF logs. File: src/cache/redis.ts:10 initializes the Redis client."
+        },
+        {
+            "respond": "text",
+            "text": "Topic two: Kafka messaging. Apache Kafka is a distributed event streaming platform for building real-time data pipelines. Core concepts: producers publish messages to topics, consumers subscribe to topics, partitions enable parallelism, consumer groups enable scalable consumption. File: src/messaging/kafka.ts:20 sets up the Kafka producer."
+        },
+        {
+            "respond": "text",
+            "text": "Topic three: GraphQL APIs. GraphQL provides a query language for APIs that lets clients request exactly the data they need. Key concepts: schema definition language, resolvers, mutations for writes, subscriptions for real-time updates. Unlike REST, a single endpoint handles all queries. File: src/api/graphql.ts:15 defines the schema."
+        },
+        {
+            "respond": "text",
+            "text": "Topic four: Docker deployment. Docker containers package applications with their dependencies for consistent deployment. Multi-stage builds reduce image size. Docker Compose orchestrates multi-container apps. Key practices: non-root users, minimal base images, health checks, layer caching. File: Dockerfile:1 defines the build stages."
+        },
+        {
+            "respond": "compress",
+            "ranges": [
+                {
+                    "topic": "Redis Caching",
+                    "summary": "## Redis Caching\n\nRedis is an in-memory key-value store for caching, sessions, and queues. Supports strings, hashes, lists, sets, sorted sets. Persistence: RDB snapshots and AOF logs. Client init at src/cache/redis.ts:10.",
+                    "range": [0, 1]
+                },
+                {
+                    "topic": "Kafka Messaging",
+                    "summary": "## Kafka Messaging\n\nDistributed event streaming platform. Producers publish to topics, consumers subscribe, partitions enable parallelism, consumer groups enable scalable consumption. Producer setup at src/messaging/kafka.ts:20.",
+                    "range": [2, 3]
+                },
+                {
+                    "topic": "GraphQL APIs",
+                    "summary": "## GraphQL APIs\n\nQuery language for APIs. Clients request exact data needed. Schema definition language, resolvers, mutations, subscriptions. Single endpoint. Schema at src/api/graphql.ts:15. Docker deployment practices: multi-stage builds, non-root users, health checks. Dockerfile at Dockerfile:1.",
+                    "range": [4, 5]
+                }
+            ]
+        },
+        {
+            "respond": "text",
+            "text": "Batch compression complete. Three blocks created.",
+            "auto": true
+        }
+    ],
+    "verify": {
+        "minBlockCount": 2
+    }
+}

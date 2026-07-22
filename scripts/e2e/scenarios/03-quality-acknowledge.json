@@ -1,0 +1,37 @@
+{
+    "name": "quality-acknowledge",
+    "description": "Quality gate rejects bad summary, then LLM retries with acknowledgeRisk=true in same turn",
+    "turns": [
+        {
+            "respond": "text",
+            "text": "Let me explain the API gateway pattern. An API gateway sits between clients and backend services, handling cross-cutting concerns like authentication, rate limiting, request routing, and response transformation. It provides a unified interface for multiple microservices. Popular implementations include Kong, AWS API Gateway, and Nginx-based gateways. File: src/gateway/router.ts:25 implements request routing."
+        },
+        {
+            "respond": "text",
+            "text": "Load balancing strategies include round-robin (distribute evenly), least-connections (route to server with fewest active connections), weighted round-robin (account for server capacity), and IP-hash (sticky sessions). Health checks remove unhealthy servers from the pool. File: src/gateway/balancer.ts:12 implements the load balancer."
+        },
+        {
+            "respond": "text",
+            "text": "Circuit breakers prevent cascading failures by stopping requests to a failing service. States: closed (normal), open (failures exceeded threshold, reject all), half-open (test if service recovered). Configuration: failure threshold, recovery timeout, half-open request limit. File: src/gateway/circuit-breaker.ts:8 defines the circuit breaker."
+        },
+        {
+            "respond": "compress",
+            "topic": "API Gateway",
+            "summary": "Short.",
+            "range": "all",
+            "retryOnReject": {
+                "topic": "API Gateway",
+                "summary": "## API Gateway Pattern Discussion\n\n### Gateway Overview\nAPI gateway handles auth, rate limiting, routing, response transformation between clients and backend services. Implementations: Kong, AWS API Gateway, Nginx. Router at src/gateway/router.ts:25.\n\n### Load Balancing\nStrategies: round-robin, least-connections, weighted round-robin, IP-hash. Health checks remove unhealthy servers. Load balancer at src/gateway/balancer.ts:12.\n\n### Circuit Breakers\nPrevents cascading failures. States: closed (normal), open (failures exceeded threshold), half-open (testing recovery). Circuit breaker at src/gateway/circuit-breaker.ts:8.\n\n### Decision\nChose least-connections strategy for our gateway because servers have varying capacity.",
+                "acknowledgeRisk": true
+            }
+        },
+        {
+            "respond": "text",
+            "text": "Compression acknowledged and completed.",
+            "auto": true
+        }
+    ],
+    "verify": {
+        "blockCount": 1
+    }
+}
