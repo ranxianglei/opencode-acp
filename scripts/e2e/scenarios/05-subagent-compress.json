@@ -1,0 +1,58 @@
+{
+    "name": "subagent-compress",
+    "description": "Spawn a subagent via task tool, run compression inside it, verify child ACP state has blocks",
+    "turns": [
+        {
+            "respond": "task",
+            "description": "Research auth patterns",
+            "prompt": "Research authentication patterns and report findings.",
+            "subagent_type": "general",
+            "subagent_turns": [
+                {
+                    "respond": "tool",
+                    "tool": "bash",
+                    "toolArgs": {
+                        "command": "echo 'Authentication methods include passwords biometrics twoFactor certificates. Web apps use session tokens or JWT. File: src/auth/login.ts handles password verification, src/auth/jwt.ts implements token signing.'",
+                        "description": "List authentication methods"
+                    }
+                },
+                {
+                    "respond": "tool",
+                    "tool": "bash",
+                    "toolArgs": {
+                        "command": "echo 'JWT encodes user claims signs with secret key. Three parts: header payload signature. Client sends via Authorization header. Server verifies signature. Key file: src/auth/jwt.ts verifyToken function at line 78.'",
+                        "description": "Describe JWT implementation"
+                    }
+                },
+                {
+                    "respond": "tool",
+                    "tool": "bash",
+                    "toolArgs": {
+                        "command": "echo 'Security considerations: rateLimiting against brute force, sessionFixation prevention, httpOnly cookies for token storage, csrf protection, https mandatory, sqlInjection prevention. Rate limiter at src/middleware/auth.ts line 30.'",
+                        "description": "List security considerations"
+                    }
+                },
+                {
+                    "respond": "compress",
+                    "topic": "Auth Research",
+                    "summary": "## Authentication Research\n\nResearched authentication methods: passwords biometrics twoFactor certificates. Web apps use session tokens or JWT.\n\n### JWT Implementation\nJWT encodes user claims signs with secret key. Three parts: header payload signature. Client sends via Authorization header. Server verifies signature. verifyToken function at src/auth/jwt.ts line 78. Token signing at src/auth/jwt.ts. Password verification at src/auth/login.ts.\n\n### Security\nrateLimiting against brute force, sessionFixation prevention, httpOnly cookies, csrf protection, https mandatory, sqlInjection prevention. Rate limiter at src/middleware/auth.ts line 30.",
+                    "range": "all",
+                    "acknowledgeRisk": true
+                },
+                {
+                    "respond": "text",
+                    "text": "Research complete. Findings compressed successfully."
+                }
+            ]
+        },
+        {
+            "respond": "text",
+            "text": "Subagent task completed successfully.",
+            "auto": true
+        }
+    ],
+    "verify": {
+        "blockCount": 0,
+        "childBlockCount": 1
+    }
+}

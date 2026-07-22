@@ -94,16 +94,25 @@ cat > "$FAKE_HOME/.config/opencode/opencode.json" <<OCJSON
       }
     }
   },
+  "agent": {
+    "general": {
+      "model": "fake/fake-model",
+      "prompt": "You are a general-purpose assistant."
+    }
+  },
   "model": "fake/fake-model",
   "permission": {
     "compress": "allow",
-    "acp_status": "allow"
+    "acp_status": "allow",
+    "task": "allow",
+    "bash": "allow"
   }
 }
 OCJSON
 
 cat > "$FAKE_HOME/.config/opencode/acp.jsonc" <<'ACPJSON'
 {
+    "experimental": { "allowSubAgents": true },
     "compress": {
         "minCompressRange": 0,
         "maxSummaryLengthHard": 20000
@@ -132,6 +141,7 @@ for scenario in "${SCENARIOS[@]}"; do
     HOME="$FAKE_HOME" timeout -s KILL 120 "$OPENCODE_BIN" session list </dev/null >/dev/null 2>&1 || true
 
     rm -f /tmp/acp-e2e-turn-counter
+    rm -f /tmp/acp-e2e-turn-counter-child
 
     info "starting fake LLM server"
     PORT="$FAKE_LLM_PORT" SCENARIO="$scenario" TURN_COUNTER=/tmp/acp-e2e-turn-counter "$BUN_BIN" run "$SCRIPT_DIR/fake-llm-server.ts" 2>/tmp/acp-e2e-fakellm.log &
@@ -202,7 +212,8 @@ for scenario in "${SCENARIOS[@]}"; do
     fi
 
     info "verifying state"
-    if HOME="$FAKE_HOME" "$NODE_BIN" --import tsx "$SCRIPT_DIR/verify.ts" "$STATE_FILE" "$scenario"; then
+    ACP_DIR="$FAKE_HOME/.local/share/opencode/storage/plugin/acp"
+    if HOME="$FAKE_HOME" "$NODE_BIN" --import tsx "$SCRIPT_DIR/verify.ts" "$STATE_FILE" "$scenario" "$ACP_DIR"; then
         pass "scenario $scenario_name"
         ((TOTAL_PASS++)) || true
     else
