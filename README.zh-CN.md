@@ -278,8 +278,9 @@ ACP 使用自己的配置文件，按以下顺序搜索：
         // Controls how likely compression is after user messages
         // ("strong" = more likely, "soft" = less likely)
         "nudgeForce": "soft",
-        // Tool names whose completed outputs are appended to the compression
-        "protectedTools": [],
+        // Hard-excluded tool names. The root default is ["skill"]; an explicit
+        // array replaces the inherited policy. Use [] to compress all tool outputs.
+        "protectedTools": ["skill"],
         // Preserve text wrapped in <protect>...</protect> when compressed
         "protectTags": false,
         // Preserve your messages during compression.
@@ -367,7 +368,7 @@ ACP 暴露六个可编辑的 prompt：
 
 `commands` 和 `strategies` 中的 `protectedTools` 数组会添加到此默认列表。
 
-对于 `compress` 工具，`compress.protectedTools` 确保特定工具的输出被**硬排除**在压缩范围之外（v1.10.0+）。当模型压缩包含受保护工具消息的范围时，该消息完整保留在可见上下文中 — 只有周围的非受保护消息被压缩。默认仅包含 `skill` —— 实践中这一个就够了，因为 skill 输出是唯一绝不能被压缩丢失的工具类型。
+对于 `compress` 工具，`compress.protectedTools` 确保特定工具的输出被**硬排除**在压缩范围之外（v1.10.0+）。当模型压缩包含受保护工具消息的范围时，该消息完整保留在可见上下文中 — 只有周围的非受保护消息被压缩。根默认值为 `["skill"]`；显式数组会替换继承的策略。使用 `[]` 可允许所有已完成工具的输出被压缩。
 
 ---
 

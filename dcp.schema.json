@@ -251,8 +251,8 @@
                     "items": {
                         "type": "string"
                     },
-                    "default": [],
-                    "description": "Tool names or wildcard patterns whose completed outputs should be appended to the compression summary. Supports glob wildcards: * matches any characters, ? matches a single character (e.g., \"mcp_*\", \"my_tool_?\")"
+                    "default": ["skill"],
+                    "description": "Tool names or wildcard patterns to hard-exclude from compression ranges. The root default is [\"skill\"]; an explicit array replaces the inherited policy. Use [] to allow all tool outputs to compress. Supports glob wildcards: * matches any characters, ? matches a single character (e.g., \"mcp_*\", \"my_tool_?\")"
                 },
                 "protectTags": {
                     "type": "boolean",
@@ -325,7 +325,7 @@
                 "nudgeFrequency": 5,
                 "iterationNudgeThreshold": 15,
                 "nudgeForce": "soft",
-                "protectedTools": [],
+                "protectedTools": ["skill"],
                 "protectTags": false,
                 "protectUserMessages": false,
                 "minNudgeContextPercent": 15,
