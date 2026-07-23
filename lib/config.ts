@@ -421,7 +421,7 @@ function mergeStrategies(
     }
 }
 
-function mergeCompress(
+export function mergeCompress(
     base: PluginConfig["compress"],
     override?: CompressOverride,
 ): PluginConfig["compress"] {
@@ -444,7 +444,9 @@ function mergeCompress(
         toolOutputNudgeThreshold: override.toolOutputNudgeThreshold,
         iterationNudgeThreshold: override.iterationNudgeThreshold ?? base.iterationNudgeThreshold,
         nudgeForce: override.nudgeForce ?? base.nudgeForce,
-        protectedTools: [...new Set([...base.protectedTools, ...(override.protectedTools ?? [])])],
+        protectedTools: Array.isArray(override.protectedTools)
+            ? [...new Set(override.protectedTools)]
+            : base.protectedTools,
         protectTags: override.protectTags ?? base.protectTags,
         protectUserMessages: override.protectUserMessages ?? base.protectUserMessages,
         maxSummaryLengthHard: override.maxSummaryLengthHard ?? base.maxSummaryLengthHard,

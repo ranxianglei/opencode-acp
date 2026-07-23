@@ -292,7 +292,7 @@ Auto-migration: if `acp.jsonc` doesn't exist but `dcp.jsonc` does, automatically
         nudgeFrequency: 5,               // nudges every N turns
         iterationNudgeThreshold: 15,     // nudge after N messages since last user message
         nudgeForce: "soft",              // "strong" | "soft"
-        protectedTools: ["task", "skill", "todowrite", "todoread"],
+        protectedTools: ["skill"],       // root default; an explicit array replaces inherited policy (use [] to protect nothing)
         protectTags: false,
         protectUserMessages: false,
     },
