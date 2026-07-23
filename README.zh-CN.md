@@ -440,6 +440,14 @@ ACP 在首次启动时自动将配置从 `dcp.jsonc` 迁移到 `acp.jsonc`，将
 
 ## 更新日志
 
+### v1.13.3 — 质量门禁 + E2E 测试框架 + protectedTools 修复（PR #173, #174, #175, #177, #179）
+
+**问题**：（1）极低保留率（<1%）或接近零关键词召回的压缩会静默通过，导致严重的上下文丢失。（2）缺少端到端测试基础设施来验证 ACP 通过真实 opencode→LLM 管道的压缩行为。（3）`compress.protectedTools` 与继承的默认值合并而非替换——显式 `[]` 仍会保护继承的集合。
+
+**修复**：（1）PR #173——新增可选 `qualityGate` 配置（默认 `enabled: false`）。提交前通过 ROUGE-1 召回率 + L1 长度下限评估。被拒绝的压缩返回结构化错误并附带恢复指引（拆分范围或写更密的摘要）。`qualityGateRetryPending` 标志跟踪拒绝状态。（2）PR #174——`scripts/e2e/` 框架：fake LLM 服务器（OpenAI 兼容 SSE）、脚本化 JSON 场景、状态验证器。4 个基线场景。（3）PR #175——18 个新的比例基线调整测试。（4）PR #177——`compress.protectedTools` 现在替换继承的默认值；显式 `[]` 不保护任何工具。（5）PR #179——AGENTS.md §5.1.1.2：绝对禁止 Agent 合并 PR。
+
+文件：`lib/compress/quality-gate/`、`lib/compress/{range,message}.ts`、`lib/config.ts`、`scripts/e2e/`、`tests/proportional-baseline.test.ts`、`tests/quality-gate-enforcement.test.ts`、`AGENTS.md`。测试：837 pass。
+
 ### v1.13.2 — 保留最近用户消息 + 配置默认值调优（PR #169）
 
 **问题**：v1.13.1 的通知冻结修复之后还剩两个问题。（1）当模型压缩的范围覆盖了所有可见的 user 消息时，下一次 API 调用中 user 角色消息数量为零——zhipuai-lb 以同样的 HTTP 400 code 1214（`isRetryable: false`）拒绝，会话冻结。这是 v1.13.1 修复的空通知路径之外，通往同一冻结 bug 的第二条路径。（2）默认 `pruneNotification: "detailed"` 每次压缩都弹 toast（典型会话 10–30 次），对例行后台操作来说过于打扰。另外 `compress.maxSummaryLengthHard: 10000` 在真实会话中拒绝了约 25% 信息密度高的有用摘要。
