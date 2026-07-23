@@ -393,6 +393,7 @@ export const injectCompressNudges = (
             if (recommendedRanges.length > 0) {
                 breakdown += `\n\n${formatCompressibleRanges(recommendedRanges, contextRanges.protected)}`
                 breakdown += `\n💡 Compress all ranges in one call (pass multiple content entries: \`content: [{...}, {...}]\`).`
+                breakdown += `\n⚠️ Before compressing, scan each range for critical facts the task depends on (constraints, decisions, exact values) and record them with \`memory\` FIRST — once compressed, the raw content is gone.`
             }
             breakdown += `\nUse \`acp_status({scope:"uncompressed"})\` to re-fetch compressible ranges after compressing, or \`acp_status\` for compressed block details.`
 
