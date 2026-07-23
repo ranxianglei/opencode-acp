@@ -26,7 +26,6 @@ function computeStats(plan: RejectionPlanInfo): {
     originalTokens: number
     summaryChars: number
     ratio: string
-    ratioNum: number | null
     retentionPct: string
 } {
     let originalTokens = 0
@@ -34,23 +33,23 @@ function computeStats(plan: RejectionPlanInfo): {
         originalTokens += plan.messageTokenById.get(id) || 0
     }
     const summaryChars = plan.summary.length
-    const ratioNum =
-        originalTokens > 0 ? originalTokens / Math.max(summaryChars / 4, 1) : null
-    const ratio = ratioNum !== null ? ratioNum.toFixed(1) : "?"
+    const ratio = originalTokens > 0 ? (originalTokens / Math.max(summaryChars / 4, 1)).toFixed(1) : "?"
     const retentionPct =
         originalTokens > 0 ? ((summaryChars / (originalTokens * 4)) * 100).toFixed(2) : "?"
-    return { originalTokens, summaryChars, ratio, ratioNum, retentionPct }
+    return { originalTokens, summaryChars, ratio, retentionPct }
 }
 
 // A range this large cannot be summarized densely enough in one pass: the L1
-// retention floor (1% of originalTokens*4 chars) would demand a multi-thousand
-// char summary. At this size, splitting is the correct recovery, not rewriting.
+// retention floor (qualityGate layer1MinRetentionPct, default 1% → originalTokens*4*0.01)
+// would demand a multi-thousand char summary. At this size, splitting is the
+// correct recovery, not rewriting. If layer1MinRetentionPct is raised, this
+// crossover shrinks proportionally.
 const LARGE_RANGE_TOKENS = 50_000
 
-function buildRecoveryGuidance(stats: ReturnType<typeof computeStats>): string {
+function buildRecoveryGuidance(stats: ReturnType<typeof computeStats>, maxSummaryLengthHard: number): string {
     const isLargeRange = stats.originalTokens > LARGE_RANGE_TOKENS
 
-    const escapeHatches = `If the hard length limit is too tight for important detail, pass "summaryMaxChars" (e.g. 12000) to raise the cap.
+    const escapeHatches = `If the hard length limit is too tight for important detail, pass "summaryMaxChars" (e.g. ${maxSummaryLengthHard}) to raise the cap.
 As a LAST RESORT only — after you have genuinely tried the above — add "acknowledgeRisk": true to accept the information loss and force the compression through. Without acknowledgeRisk: true on the retry, the compression will be rejected again.`
 
     if (isLargeRange) {
@@ -82,6 +81,7 @@ ${escapeHatches}`
 export function buildQualityRejectionError(
     plan: RejectionPlanInfo,
     result: QualityGateResult,
+    maxSummaryLengthHard: number,
 ): Error {
     const stats = computeStats(plan)
     const metrics = [
@@ -105,7 +105,7 @@ Your summary becomes the SOLE record. If it fails, subsequent work is built on a
 memory loss → wrong assumptions → entire reasoning chain collapse.
 Treat every compression with maximum care.
 
-${buildRecoveryGuidance(stats)}
+${buildRecoveryGuidance(stats, maxSummaryLengthHard)}
 
 ${HOW_TO_COMPRESS_RULES}`
 

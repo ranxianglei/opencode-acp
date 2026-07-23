@@ -220,6 +220,7 @@ export function createCompressMessageTool(ctx: ToolContext): ReturnType<typeof t
                                 messageTokenById: plan.selection.messageTokenById,
                             },
                             result,
+                            ctx.config.compress.maxSummaryLengthHard,
                         )
                     }
                 }

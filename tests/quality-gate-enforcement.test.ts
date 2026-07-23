@@ -233,7 +233,7 @@ test("buildQualityRejectionError includes range, stats, and acknowledgeRisk inst
         ],
     }
 
-    const error = buildQualityRejectionError(plan, result)
+    const error = buildQualityRejectionError(plan, result, 20000)
     const msg = error.message
 
     assert.ok(msg.includes("COMPRESSION REJECTED"), "should have rejection header")
@@ -259,7 +259,7 @@ test("buildQualityRejectionError computes ratio and retention from plan data", (
         metrics: [],
     }
 
-    const error = buildQualityRejectionError(plan, result)
+    const error = buildQualityRejectionError(plan, result, 20000)
     assert.ok(error.message.includes("1000 tokens"), "should show original tokens")
     assert.ok(error.message.includes("100 chars"), "should show summary chars")
 })
@@ -280,7 +280,7 @@ test("buildQualityRejectionError advises SPLITTING for a large range (>50K token
         metrics: [],
     }
 
-    const error = buildQualityRejectionError(plan, result)
+    const error = buildQualityRejectionError(plan, result, 20000)
     const msg = error.message
 
     assert.ok(msg.includes("SPLIT THE RANGE"), "large range should lead with split guidance")
@@ -309,7 +309,7 @@ test("buildQualityRejectionError advises a denser summary for a small range", ()
         metrics: [],
     }
 
-    const error = buildQualityRejectionError(plan, result)
+    const error = buildQualityRejectionError(plan, result, 20000)
     const msg = error.message
 
     assert.ok(

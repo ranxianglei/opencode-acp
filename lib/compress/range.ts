@@ -311,6 +311,7 @@ export function createCompressRangeTool(ctx: ToolContext): ReturnType<typeof too
                                 messageTokenById: plan.selection.messageTokenById,
                             },
                             result,
+                            ctx.config.compress.maxSummaryLengthHard,
                         )
                     }
                 }

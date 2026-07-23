@@ -86,3 +86,36 @@
   rate-limit" — would worsen over-blocking; explicitly rejected by user.
 - **Still out of scope**: making the gate fully advisory (warn-only). This PR
   keeps it blocking for non-ACK calls; free-ACK is the middle ground.
+
+## Iteration 3 — hardcoded-values cleanup (review follow-up)
+
+- **Trigger**: review (dog/opencode-acp#34) flagged three hardcoded values that
+  drifted from config reality.
+- **Fix 1 — `ratioNum` dead code** (`rejection.ts`): the PR added a
+  `ratioNum: number | null` field to `computeStats`'s return, but no caller
+  read it (`buildRecoveryGuidance` uses `originalTokens`; metrics use the
+  pre-formatted `ratio` string). Leftover from a dropped ratio-branching idea.
+  Removed the field + its computation; inlined `ratio` again.
+- **Fix 2 — `12000` stale example** (`rejection.ts`, `system.ts`): the
+  escapeHatches string and system-prompt both hardcoded `12000` as a
+  `summaryMaxChars` example, but the real `maxSummaryLengthHard` default is
+  `20000` (`config.ts`), and the tool schema already interpolates the real
+  value. The example was both wrong and frozen (didn't follow config).
+  - `rejection.ts`: `buildQualityRejectionError` now takes
+    `maxSummaryLengthHard: number` as a 3rd param; `buildRecoveryGuidance`
+    receives it and interpolates `${maxSummaryLengthHard}`.
+    Callers `range.ts`/`message.ts` pass `ctx.config.compress.maxSummaryLengthHard`.
+  - `system.ts`: removed the number entirely (static prompt string can't
+    interpolate config; now says "see the tool schema for the current max").
+  - `tests/quality-gate-enforcement.test.ts`: all 4 call sites updated to pass
+    `20000`.
+- **Fix 3 — `layer1MinRetentionPct` 5.0 vs 1.0** (`config.ts`): the runtime
+  default was `5.0` but `dcp.schema.json`, `README.md`, and the cc-alg
+  `DEFAULT_ROUGE_RECALL_V1_CONFIG` all say `1.0`. The v1.13.0 changelog
+  documents the floor as 1%. The `LARGE_RANGE_TOKENS = 50_000` threshold
+  rationale (crossover where the 1% floor demands a multi-thousand-char
+  summary) assumes 1%; at 5% the real crossover is ~12K tokens. Aligned
+  `config.ts` to `1.0`. Updated the `LARGE_RANGE_TOKENS` comment to name the
+  config key and note the proportional coupling.
+- **Verification**: `npm run typecheck` clean; `npm test` 836 pass / 0 fail;
+  `npm run build` ok.
