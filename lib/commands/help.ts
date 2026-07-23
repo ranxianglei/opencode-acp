@@ -24,6 +24,7 @@ const BASE_COMMANDS: [string, string][] = [
     ["/acp stats", "Show ACP pruning statistics"],
     ["/acp sweep [n]", "Prune tools since last user message, or last n tools"],
     ["/acp manual [on|off]", "Toggle manual mode or set explicit state"],
+    ["/acp memory [list|forget <id>]", "Show or forget recorded memories"],
 ]
 
 const TOOL_COMMANDS: Record<string, [string, string]> = {
