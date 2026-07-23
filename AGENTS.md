@@ -120,9 +120,6 @@ opencode-acp/
 │   │   ├── purge-errors.ts           # Errored tool input pruning after N turns
 │   │   └── index.ts                  # Barrel export
 │   │
-│   ├── subagents/
-│   │   └── subagent-results.ts       # Sub-agent result caching
-│   │
 │   ├── commands/                     # /acp slash commands
 │   │   ├── index.ts                  # Command barrel (context, stats, sweep, manual, decompress, recompress, help)
 │   │   ├── context.ts                # /acp context — show current context usage
