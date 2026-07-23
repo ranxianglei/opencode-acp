@@ -63,8 +63,10 @@ Three gaps make the correct recovery path undiscoverable:
 
 - [ ] `acknowledgeRisk` has a `.describe()` in both `range.ts` and `message.ts`.
 - [ ] `buildQualityRejectionError` gives **split-range** guidance when the range
-      is large (>50K tokens or ratio >50:1), and keeps denser-summary guidance
-      for small ranges. Both paths mention `summaryMaxChars` + `acknowledgeRisk`.
+      is large (>50K tokens, absolute count — ratio intentionally excluded so a
+      small-but-terse range still gets denser-summary advice), and keeps
+      denser-summary guidance for small ranges. Both paths mention
+      `summaryMaxChars` + `acknowledgeRisk`.
 - [ ] `system.ts` has a "COMPRESSION REJECTION HANDLING" section listing the
       three recovery paths in priority order, and an explicit "do not loop"
       rule.

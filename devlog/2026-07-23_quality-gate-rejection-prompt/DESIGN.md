@@ -27,8 +27,12 @@ at three points: the tool schema, the thrown error text, and the system prompt.
 ### 3.1 Tool schema — discoverable escape hatch
 
 `lib/compress/range.ts` + `lib/compress/message.ts`: add `.describe(...)` to
-`acknowledgeRisk`. The describe states (a) it overrides a rejection only, never
-preemptive, (b) two better fixes to try first (split range / summaryMaxChars).
+`acknowledgeRisk`. The describe states it bypasses the quality gate when the
+model judges the information loss acceptable, is usable on the first attempt
+(no prior rejection needed), and that for content which matters a dense
+summary or splitting an oversized range is preferred. (Round 2 removed the
+preemptive-ACK guard — see §6 of WORKLOG — so ACK is no longer gated behind a
+prior rejection.)
 
 ### 3.2 Rejection message — recovery path sized to the failure
 
@@ -36,20 +40,26 @@ preemptive, (b) two better fixes to try first (split range / summaryMaxChars).
 introduce a "large range" branch using `originalTokens` (already computed in
 `computeStats`).
 
-- **Large range** (`originalTokens > 50000` OR `ratio > 50:1`): lead with
-  **SPLIT** guidance — "break into 2-3 smaller contiguous ranges, compress each
-  in the same batch call". A single dense summary is impractical at this size.
+- **Large range** (`originalTokens > 50000`): lead with **SPLIT** guidance —
+  "break into 2-3 smaller contiguous ranges, compress each in the same batch
+  call". A single dense summary is impractical at this size.
 - **Small range**: keep the existing "write a denser summary" lead.
 - **Both paths** additionally mention `summaryMaxChars` (raise the cap) and
   `acknowledgeRisk: true` (last resort). Keep the existing metrics block
   (Range / Original / Summary / Ratio / Retention / Gate layer / rougeF1 /
   top20Recall) and the appended `HOW_TO_COMPRESS_RULES`.
 
-Threshold rationale: L1 floor is `retentionPct = summaryChars /
-(originalTokens*4) >= 1%`, i.e. `summaryChars >= originalTokens*0.04`. At
-50K tokens the dense minimum is already 2000 chars and grows linearly; by
-~250K it exceeds 9000 chars — impractical for one summary. 50K is a sensible
-"crossover" where splitting becomes the better advice.
+Threshold rationale (token-only, ratio intentionally excluded): the branch is
+gated on **absolute token count only** (`originalTokens > 50000`), NOT on the
+summary:tokens ratio. A small range with a terse summary (e.g. 1K tokens → 10
+chars, ratio 400:1) is better served by "write a denser summary" advice, not
+"split the range" — splitting an already-small range makes no sense. L1 floor is
+`retentionPct = summaryChars / (originalTokens*4) >= 1%`, i.e.
+`summaryChars >= originalTokens*0.04`. At 50K tokens the dense minimum is
+already 2000 chars and grows linearly; by ~250K it exceeds 9000 chars —
+impractical for one summary. 50K is a sensible "crossover" where splitting
+becomes the better advice. (The `ratioNum` field in `computeStats` is computed
+only for the displayed metrics string; it does not influence the branch.)
 
 ### 3.3 System prompt — set expectations up front
 
