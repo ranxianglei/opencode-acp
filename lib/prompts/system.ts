@@ -58,6 +58,16 @@ WHEN NOT TO COMPRESS
 
 ${HOW_TO_COMPRESS_RULES}
 
+COMPRESSION REJECTION HANDLING
+
+When \`qualityGate.enabled\` is on, a \`compress\` call can be REJECTED by a quality gate if your summary would lose too much information. The error reports original tokens, summary chars, retention %, ratio, and which gate layer failed. A rejection commits nothing — the original messages stay intact. Recover in this priority order:
+
+1. SPLIT the range. If the range is large (>50K tokens), one summary can rarely be dense enough to pass. Break it into 2-3 smaller contiguous ranges and compress each separately in the SAME batch \`compress\` call (each entry gets its own \`topic\` and \`summary\`).
+2. WRITE a denser / longer summary. For a small range, keep every load-bearing detail (full file paths with line numbers, signatures, exact errors, decisions WITH their rationale). If the hard cap is too tight, pass \`summaryMaxChars\` to allow a longer summary (see the tool schema for the current max).
+3. ACKNOWLEDGE RISK when you judge the information loss acceptable. Set \`"acknowledgeRisk": true\` to bypass the gate — usable on the first attempt, no need to trigger a rejection first. Use it for low-value ranges or when a dense summary is not feasible; for content that matters, prefer (1) or (2).
+
+Do NOT loop: if the same range is rejected twice, you MUST change strategy (split it). Never resubmit an identical or near-identical summary — it will be rejected again and waste context.
+
 PERIODIC CONTEXT STATUS
 
 Periodically, as context grows, the system appends a short status line in a synthetic suffix message. It looks like:

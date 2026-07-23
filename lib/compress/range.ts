@@ -36,7 +36,6 @@ import {
 import type { CompressRangeToolArgs } from "./types"
 import { resolveKeepMarkers } from "./keep-markers"
 import {
-    buildPreemptiveAcknowledgeError,
     buildQualityRejectionError,
     evaluatePreCommitQuality,
 } from "./quality-gate"
@@ -88,7 +87,12 @@ function buildSchema(maxSummaryLengthHard: number) {
             .describe(
                 "Set to true ONLY when you are certain the most recent message(s) must be compressed. Required when a range includes the tail of the conversation.",
             ),
-        acknowledgeRisk: tool.schema.boolean().optional(),
+        acknowledgeRisk: tool.schema
+            .boolean()
+            .optional()
+            .describe(
+                'Set to true to bypass the quality gate when you judge the summary acceptable despite some information loss (e.g. the range is low-value, or you cannot make it denser). Usable on the first attempt. For content that matters, prefer writing a dense summary or splitting an oversized range instead.',
+            ),
     }
 }
 
@@ -283,9 +287,6 @@ export function createCompressRangeTool(ctx: ToolContext): ReturnType<typeof too
 
             const qualityGateRetryPendingBefore = ctx.state.qualityGateRetryPending
 
-            if (acknowledgeRisk && !ctx.state.qualityGateRetryPending) {
-                throw buildPreemptiveAcknowledgeError()
-            }
             if (acknowledgeRisk) {
                 ctx.state.qualityGateRetryPending = false
             } else {
@@ -310,6 +311,7 @@ export function createCompressRangeTool(ctx: ToolContext): ReturnType<typeof too
                                 messageTokenById: plan.selection.messageTokenById,
                             },
                             result,
+                            ctx.config.compress.maxSummaryLengthHard,
                         )
                     }
                 }

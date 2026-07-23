@@ -256,7 +256,7 @@ const defaultConfig: PluginConfig = {
         algorithms: {
             "rouge-recall-v1": {
                 layer1MinChars: 200,
-                layer1MinRetentionPct: 5.0,
+                layer1MinRetentionPct: 1.0,
                 layer2MaxRougeF1: 0.05,
                 layer2MaxTop20Recall: 0.20,
             },

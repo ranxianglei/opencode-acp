@@ -6,7 +6,6 @@ import { mkdirSync } from "node:fs"
 import {
     evaluatePreCommitQuality,
     buildQualityRejectionError,
-    buildPreemptiveAcknowledgeError,
 } from "../lib/compress/quality-gate"
 import { createCompressRangeTool } from "../lib/compress/range"
 import { createSessionState, resetSessionState, type WithParts } from "../lib/state"
@@ -234,7 +233,7 @@ test("buildQualityRejectionError includes range, stats, and acknowledgeRisk inst
         ],
     }
 
-    const error = buildQualityRejectionError(plan, result)
+    const error = buildQualityRejectionError(plan, result, 20000)
     const msg = error.message
 
     assert.ok(msg.includes("COMPRESSION REJECTED"), "should have rejection header")
@@ -260,19 +259,66 @@ test("buildQualityRejectionError computes ratio and retention from plan data", (
         metrics: [],
     }
 
-    const error = buildQualityRejectionError(plan, result)
+    const error = buildQualityRejectionError(plan, result, 20000)
     assert.ok(error.message.includes("1000 tokens"), "should show original tokens")
     assert.ok(error.message.includes("100 chars"), "should show summary chars")
 })
 
-test("buildPreemptiveAcknowledgeError explains the parameter is invalid without pending rejection", () => {
-    const error = buildPreemptiveAcknowledgeError()
-    assert.ok(error.message.includes("acknowledgeRisk"), "should mention the parameter name")
+test("buildQualityRejectionError advises SPLITTING for a large range (>50K tokens)", () => {
+    const messageIds = ["msg-1", "msg-2"]
+    const plan = {
+        startId: "m00472",
+        endId: "m00793",
+        summary: "x".repeat(8543),
+        messageIds,
+        messageTokenById: buildTokenMap(messageIds, 30000),
+    }
+    const result: QualityGateResult = {
+        passed: false,
+        layer: "L1-length",
+        reason: "retention too low",
+        metrics: [],
+    }
+
+    const error = buildQualityRejectionError(plan, result, 20000)
+    const msg = error.message
+
+    assert.ok(msg.includes("SPLIT THE RANGE"), "large range should lead with split guidance")
     assert.ok(
-        error.message.includes("no quality gate rejection is pending"),
-        "should explain why it's invalid",
+        msg.includes("smaller contiguous ranges"),
+        "should tell the model to split into smaller ranges",
     )
-    assert.ok(error.message.includes("Remove it"), "should tell model to remove it")
+    assert.ok(msg.includes("60000 tokens"), "should report the large token count")
+    assert.ok(msg.includes("summaryMaxChars"), "should mention the summaryMaxChars escape hatch")
+    assert.ok(msg.includes("acknowledgeRisk"), "should mention acknowledgeRisk as last resort")
+})
+
+test("buildQualityRejectionError advises a denser summary for a small range", () => {
+    const messageIds = ["msg-1"]
+    const plan = {
+        startId: "m00001",
+        endId: "m00002",
+        summary: "too short",
+        messageIds,
+        messageTokenById: buildTokenMap(messageIds, 1000),
+    }
+    const result: QualityGateResult = {
+        passed: false,
+        layer: "L1-length",
+        reason: "retention too low",
+        metrics: [],
+    }
+
+    const error = buildQualityRejectionError(plan, result, 20000)
+    const msg = error.message
+
+    assert.ok(
+        msg.includes("DENSER SUMMARY"),
+        "small range should lead with denser-summary guidance",
+    )
+    assert.ok(!msg.includes("SPLIT THE RANGE"), "small range should not advise splitting")
+    assert.ok(msg.includes("summaryMaxChars"), "should mention the summaryMaxChars escape hatch")
+    assert.ok(msg.includes("acknowledgeRisk"), "should mention acknowledgeRisk as last resort")
 })
 
 test("qualityGateRetryPending defaults to false", () => {
@@ -401,29 +447,27 @@ test("integration: acknowledgeRisk bypasses quality after rejection", async () =
     assert.equal(state.prune.messages.blocksById.size, 1, "one block should be committed")
 })
 
-test("integration: preemptive acknowledgeRisk without prior rejection is rejected", async () => {
+test("integration: preemptive acknowledgeRisk bypasses the gate without a prior rejection", async () => {
     const sessionID = `ses-int-preempt-${Date.now()}`
     const rawMessages = buildIntegrationMessages(sessionID)
     const state = createSessionState()
     const config = buildConfig(true)
     const tool = buildToolContext(state, config, rawMessages)
 
-    await assert.rejects(
-        tool.execute(
-            {
-                topic: "Auth analysis",
-                content: [{ startId: "m00001", endId: "m00004", summary: "Good enough summary with keywords." }],
-                acknowledgeRisk: true,
-            } as any,
-            { ...toolCtx, sessionID },
-        ),
-        (err: Error) => {
-            assert.ok(err.message.includes("no quality gate rejection is pending"), `should be preemptive error, got: ${err.message}`)
-            return true
-        },
+    const result = await tool.execute(
+        {
+            topic: "Auth analysis",
+            content: [{ startId: "m00001", endId: "m00004", summary: "Good enough summary with keywords." }],
+            acknowledgeRisk: true,
+        } as any,
+        { ...toolCtx, sessionID },
+    )
+    assert.ok(
+        result.includes("Compressed"),
+        "preemptive acknowledgeRisk should compress without a prior rejection",
     )
     assert.equal(state.qualityGateRetryPending, false, "flag should stay false")
-    assert.equal(state.prune.messages.blocksById.size, 0, "no blocks committed")
+    assert.equal(state.prune.messages.blocksById.size, 1, "one block should be committed")
 })
 
 test("integration: flag cleared on successful non-acknowledgeRisk compression", async () => {

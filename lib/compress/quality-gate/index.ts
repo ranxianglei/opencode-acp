@@ -14,6 +14,6 @@ export {
 } from "./registry"
 
 export { evaluateBlockQuality, evaluateBatchQuality, evaluatePreCommitQuality } from "./evaluate"
-export { buildQualityRejectionError, buildPreemptiveAcknowledgeError } from "./rejection"
+export { buildQualityRejectionError } from "./rejection"
 export type { RejectionPlanInfo } from "./rejection"
 export { ensureBuiltinGatesRegistered } from "./algorithms"

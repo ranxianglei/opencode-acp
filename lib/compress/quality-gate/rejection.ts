@@ -39,9 +39,49 @@ function computeStats(plan: RejectionPlanInfo): {
     return { originalTokens, summaryChars, ratio, retentionPct }
 }
 
+// A range this large cannot be summarized densely enough in one pass: the L1
+// retention floor (qualityGate layer1MinRetentionPct, default 1% → originalTokens*4*0.01)
+// would demand a multi-thousand char summary. At this size, splitting is the
+// correct recovery, not rewriting. If layer1MinRetentionPct is raised, this
+// crossover shrinks proportionally.
+const LARGE_RANGE_TOKENS = 50_000
+
+function buildRecoveryGuidance(stats: ReturnType<typeof computeStats>, maxSummaryLengthHard: number): string {
+    const isLargeRange = stats.originalTokens > LARGE_RANGE_TOKENS
+
+    const escapeHatches = `If the hard length limit is too tight for important detail, pass "summaryMaxChars" (e.g. ${maxSummaryLengthHard}) to raise the cap.
+As a LAST RESORT only — after you have genuinely tried the above — add "acknowledgeRisk": true to accept the information loss and force the compression through. Without acknowledgeRisk: true on the retry, the compression will be rejected again.`
+
+    if (isLargeRange) {
+        return `HOW TO RECOVER — SPLIT THE RANGE
+
+This range is very large (~${stats.originalTokens} tokens). A single summary almost cannot be dense
+enough to pass the retention floor — the failure is structural, not a wording problem.
+Do NOT resubmit the same range with a slightly longer summary. Instead:
+
+1. SPLIT this range into 2-3 smaller contiguous ranges (e.g. first half, second half) and
+   compress each one separately in the SAME batch "compress" call — give each its own "topic"
+   and "summary". Smaller ranges are far easier to summarize densely.
+2. Only if a sub-range is still rejected, rewrite THAT smaller summary to be denser (full file
+   paths, signatures, exact errors, decisions + rationale).
+
+${escapeHatches}`
+    }
+
+    return `HOW TO RECOVER — WRITE A DENSER SUMMARY
+
+The range is small enough that one summary can pass. Rewrite it to preserve every load-bearing
+detail: full file paths with line numbers, function/type signatures, exact error strings,
+decisions WITH their rationale, exact values. Strip only true noise (verbose logs, duplicate
+reads, spent exploration).
+
+${escapeHatches}`
+}
+
 export function buildQualityRejectionError(
     plan: RejectionPlanInfo,
     result: QualityGateResult,
+    maxSummaryLengthHard: number,
 ): Error {
     const stats = computeStats(plan)
     const metrics = [
@@ -65,19 +105,9 @@ Your summary becomes the SOLE record. If it fails, subsequent work is built on a
 memory loss → wrong assumptions → entire reasoning chain collapse.
 Treat every compression with maximum care.
 
-${HOW_TO_COMPRESS_RULES}
+${buildRecoveryGuidance(stats, maxSummaryLengthHard)}
 
-To retry: rewrite a more complete summary that preserves critical details (file paths, decisions,
-exact values, errors). Then add "acknowledgeRisk": true to the compress tool call parameters.
-Without acknowledgeRisk: true, the compression will be rejected again.`
+${HOW_TO_COMPRESS_RULES}`
 
     return new Error(message)
-}
-
-export function buildPreemptiveAcknowledgeError(): Error {
-    return new Error(
-        'Parameter "acknowledgeRisk": true was provided, but no quality gate rejection is pending. ' +
-            "This parameter is only valid immediately after a compression was rejected by the quality gate. " +
-            "Remove it and try again.",
-    )
 }
