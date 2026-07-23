@@ -9,6 +9,7 @@ import {
     createPruneTool,
     createSearchContextTool,
 } from "./lib/compress"
+import { createMemoryTool } from "./lib/memory"
 import {
     compressDisabledByOpencode,
     hasExplicitToolPermission,
@@ -97,6 +98,7 @@ const server: Plugin = (async (ctx) => {
                 search_context: createSearchContextTool(compressToolContext),
                 acp_status: createAcpStatusTool(compressToolContext),
                 acp_context_recap: createAcpContextRecapTool(compressToolContext),
+                memory: createMemoryTool(compressToolContext),
             }),
         },
         config: async (opencodeConfig) => {
@@ -118,9 +120,7 @@ const server: Plugin = (async (ctx) => {
             const toolsToAdd: string[] = []
             if (config.compress.permission !== "deny" && !config.experimental.allowSubAgents) {
                 toolsToAdd.push("compress", "decompress", "search_context", "acp_status")
-            }
-
-            if (toolsToAdd.length > 0) {
+            }            if (toolsToAdd.length > 0) {
                 const existingPrimaryTools = opencodeConfig.experimental?.primary_tools ?? []
                 opencodeConfig.experimental = {
                     ...opencodeConfig.experimental,
@@ -134,6 +134,7 @@ const server: Plugin = (async (ctx) => {
                     ...permission,
                     compress: config.compress.permission,
                     acp_status: "allow",
+                    memory: "allow",
                 } as typeof permission
             }
 
