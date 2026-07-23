@@ -472,6 +472,14 @@ For the complete list with root cause analysis, see the [bug tracker](https://gi
 
 ## Changelog
 
+### v1.13.3 — Quality Gate Enforcement + E2E Test Framework + protectedTools Fix (PRs #173, #174, #175, #177, #179)
+
+**Problem**: (1) Compressions with extremely low retention (<1%) or near-zero keyword recall passed silently, causing severe context loss. (2) No end-to-end test infrastructure existed to verify ACP compression through the real opencode→LLM pipeline. (3) `compress.protectedTools` merged with inherited defaults instead of replacing them — an explicit `[]` still protected the inherited set.
+
+**Fix**: (1) PR #173 — New opt-in `qualityGate` config (`enabled: false` by default). Pre-commit evaluation via ROUGE-1 recall + L1 length floor. Rejected compressions return a structured error with recovery guidance (split range or write denser summary). `qualityGateRetryPending` flag tracks rejection state. (2) PR #174 — `scripts/e2e/` framework: fake LLM server (OpenAI-compatible SSE), scripted JSON scenarios, state verifier. 4 baseline scenarios. (3) PR #175 — 18 new proportional baseline adjustment tests. (4) PR #177 — `compress.protectedTools` now replaces inherited defaults; explicit `[]` protects nothing. (5) PR #179 — AGENTS.md §5.1.1.2: absolute prohibition on Agent merging PRs.
+
+Files: `lib/compress/quality-gate/`, `lib/compress/{range,message}.ts`, `lib/config.ts`, `scripts/e2e/`, `tests/proportional-baseline.test.ts`, `tests/quality-gate-enforcement.test.ts`, `AGENTS.md`. Tests: 837 pass.
+
 ### v1.13.2 — Preserve Last User Msg + Config Defaults Tuning (PR #169)
 
 **Problem**: Two issues remained after v1.13.1's notification freeze fix. (1) When the model compressed a range that covered all visible user messages, the next API call had zero user-role messages — zhipuai-lb rejected this with the same HTTP 400 code 1214 (`isRetryable: false`), freezing the session. This was the second path to the same freeze that v1.13.1's empty-notification fix addressed. (2) The default `pruneNotification: "detailed"` fired a toast on every compress call (10–30 per session is typical), which was over-intrusive for a routine background operation. Additionally, `compress.maxSummaryLengthHard: 10000` rejected ~25% of information-dense useful summaries in real sessions.
