@@ -472,6 +472,14 @@ For the complete list with root cause analysis, see the [bug tracker](https://gi
 
 ## Changelog
 
+### v1.13.4 — Protect Compress Tool Calls from Being Compressed (PR #185)
+
+**Problem**: Sequential compressions ate previous summaries. Each compress tool call (which carries the summary in its `summary` parameter) lives a few messages after the range it compressed. When the model issued a new compress whose range started right after the previous one's end, the previous compress call fell inside the new range and was pruned — destroying the accumulated summary chain. Evidence from `ses_07562b88`: 113 messages → 6 messages in one compress call because all previous compress call anchors (b5–b10) were inside the new range.
+
+**Fix**: Added `"compress"` to `COMPRESS_DEFAULT_PROTECTED_TOOLS` in `lib/config.ts`. This makes `filterProtectedToolMessages` hard-exclude compress tool call messages from compression ranges (Bug 39 mechanism). The compress call survives intact in visible context; only surrounding non-protected messages are compressed. Also synced stale `["skill"]` defaults in `dcp.schema.json`, `README.md`, and `README.zh-CN.md` to `["skill", "compress"]`. Users can opt out with `compress.protectedTools: ["skill"]`.
+
+Files: `lib/config.ts`, `dcp.schema.json`, `README.md`, `README.zh-CN.md`. Tests: `tests/protect-compress-calls.test.ts` (6 new tests). 843 pass.
+
 ### v1.13.3 — Quality Gate Enforcement + E2E Test Framework + protectedTools Fix (PRs #173, #174, #175, #177, #179)
 
 **Problem**: (1) Compressions with extremely low retention (<1%) or near-zero keyword recall passed silently, causing severe context loss. (2) No end-to-end test infrastructure existed to verify ACP compression through the real opencode→LLM pipeline. (3) `compress.protectedTools` merged with inherited defaults instead of replacing them — an explicit `[]` still protected the inherited set.
