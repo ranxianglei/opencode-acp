@@ -3,6 +3,6 @@ export {
     recordMemory,
     forgetMemory,
     listMemories,
-    getActiveMemoryMessageIds,
+    getForgottenMemoryMessageIds,
     formatMemoryId,
 } from "./state"

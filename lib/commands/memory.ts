@@ -1,5 +1,6 @@
 import type { Logger } from "../logger"
-import type { SessionState } from "../state"
+import type { SessionState, WithParts } from "../state"
+import { saveSessionState } from "../state/persistence"
 import { sendIgnoredMessage } from "../ui/notification"
 import { getCurrentParams } from "../token-utils"
 import { listMemories, forgetMemory } from "../memory"
@@ -9,7 +10,7 @@ export interface MemoryCommandContext {
     state: SessionState
     logger: Logger
     sessionId: string
-    messages: any[]
+    messages: WithParts[]
 }
 
 export async function handleMemoryCommand(
@@ -69,6 +70,7 @@ export async function handleMemoryCommand(
             )
             return
         }
+        await saveSessionState(state, logger)
         await sendIgnoredMessage(
             client,
             sessionId,

@@ -36,7 +36,7 @@ export function listMemories(state: SessionState): MemoryEntry[] {
     return Array.from(state.memories.entries.values()).sort((a, b) => a.createdAt - b.createdAt)
 }
 
-export function getActiveMemoryMessageIds(state: SessionState): Set<string> {
+export function getForgottenMemoryMessageIds(state: SessionState): Set<string> {
     const forgotten = new Set<string>()
     if (!state.memories) return forgotten
     for (const entry of state.memories.entries.values()) {

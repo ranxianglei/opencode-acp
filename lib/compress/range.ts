@@ -1,7 +1,7 @@
 import { tool } from "@opencode-ai/plugin"
 import type { ToolContext } from "./types"
 import { countMessageCharacters, countTokens } from "../token-utils"
-import { getActiveMemoryMessageIds } from "../memory"
+import { getForgottenMemoryMessageIds } from "../memory"
 import { RANGE_FORMAT_EXTENSION } from "../prompts/extensions/tool"
 import {
     finalizeSession,
@@ -128,7 +128,7 @@ export function createCompressRangeTool(ctx: ToolContext): ReturnType<typeof too
             const resolvedPlans = resolveRanges(input, searchContext, ctx.state)
             validateNonOverlapping(resolvedPlans)
 
-            const forgottenMemoryMessageIds = getActiveMemoryMessageIds(ctx.state)
+            const forgottenMemoryMessageIds = getForgottenMemoryMessageIds(ctx.state)
             const filteredPlans = resolvedPlans
                 .map((plan) => ({
                     ...plan,

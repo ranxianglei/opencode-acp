@@ -1,6 +1,7 @@
 import { tool } from "@opencode-ai/plugin"
 import type { ToolContext } from "../compress/types"
 import { recordMemory } from "./state"
+import { saveSessionState } from "../state/persistence"
 
 const MEMORY_TOOL_DESCRIPTION = `Record a durable fact that must survive for the rest of the task, even after compression.
 
@@ -24,6 +25,7 @@ export function createMemoryTool(ctx: ToolContext): ReturnType<typeof tool> {
                 args.topic,
                 ctx.logger,
             )
+            await saveSessionState(ctx.state, ctx.logger)
             return `Recorded ${entry.id} [${entry.topic}]: ${args.content}\n\nThis memory is protected from compression. It will persist until explicitly forgotten via /acp memory forget ${entry.id}.`
         },
     })
