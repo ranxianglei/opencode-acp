@@ -39,3 +39,10 @@
 - [x] Removed dead `consumeCompressionStart` export from `lib/compress/timing.ts`; updated stale comment in `state.ts` — R1 M3 / R2 n2.
 - [x] Updated doc drift: `AGENTS.md §2.2` data-flow + `TESTING.md` (`checkSession` → `registry.getOrCreate` + `updatePerTurnState`) — R2 m3.
 - [x] 841 tests pass (was 837, +4 registry), typecheck + build clean.
+
+## Issue #33 follow-up: nudge baseline initialization fix + regression test
+- **Bug found during testing**: `lib/messages/inject/inject.ts:308` initialized `lastPerMessageNudgeTokens = currentTokens` (first transform's absolute value ~55K, includes system prompt). Effective first-nudge threshold became ~105K (10.5%) instead of ~50K (5%). The nudge never fired at 5% context, so the model never compressed voluntarily → context grew unchecked to 330K.
+- **Fix**: Changed to `lastPerMessageNudgeTokens = 0`. Growth now measured from session start; first nudge fires at ~nudgeGrowthTokens (5% of model context).
+- **Why tests missed it**: Every test in `tests/inject.test.ts` manually sets `lastPerMessageNudgeTokens` before calling `injectCompressNudges`, bypassing the initialization path (line 304-309). No test exercised the `undefined → initialized` transition.
+- **Regression test added**: `tests/inject.test.ts` — "baseline initialized to 0 on first transform, not currentTokens (issue #33 regression)". Simulates two sequential calls: turn 1 establishes baseline (assert =0), turn 2 verifies nudge fires at ~5.8% growth from baseline 0. Verified: FAILS with bug reverted (`55000 !== 0`), PASSES with fix.
+- 842 tests pass (841 + 1 regression), typecheck clean.

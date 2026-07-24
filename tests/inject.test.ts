@@ -448,6 +448,66 @@ test("voluntary compress (no nudge shown) does NOT reset baseline", () => {
     assert.equal(state.nudges.compressBaselineSet, false, "lock NOT set for voluntary compress")
 })
 
+test("baseline initialized to 0 on first transform, not currentTokens (issue #33 regression)", () => {
+    // REGRESSION: lastPerMessageNudgeTokens was initialized to currentTokens
+    // (~55K, includes system prompt). This made the effective first-nudge
+    // threshold ~105K (10.5% of 1M) instead of ~50K (5%). The nudge never
+    // fired at 5% context, so the model never compressed voluntarily.
+    //
+    // FIX: initialize to 0 so growth is measured from session start.
+    //
+    // WHY EXISTING TESTS MISSED THIS: every other test in this file manually
+    // sets lastPerMessageNudgeTokens before calling injectCompressNudges,
+    // bypassing the initialization path entirely.
+    const state = createSessionState()
+    state.modelContextLimit = 1_000_000
+    assert.equal(
+        state.nudges.lastPerMessageNudgeTokens,
+        undefined,
+        "fresh state has undefined baseline — no growth tracking yet",
+    )
+
+    const config = buildConfig()
+    config.compress.maxContextLimit = 500_000
+    config.compress.minContextLimit = 200_000
+
+    // Turn 1: first message transform. currentTokens = 55K (input 50K + output 5K).
+    // Baseline is undefined → gets initialized. No nudge fires (baseline establishment).
+    const messages1: WithParts[] = [
+        userMsg("u1", "hello"),
+        assistantMsgWithTokens("a1", "work", { input: 50_000, output: 5_000 }),
+    ]
+    injectCompressNudges(state, config, logger, messages1, {} as any)
+
+    // THE CRITICAL ASSERTION: baseline must be 0, NOT 55K (currentTokens).
+    // With the old bug, this would be 55_000, making the next nudge threshold 105K.
+    assert.equal(
+        state.nudges.lastPerMessageNudgeTokens,
+        0,
+        "baseline initialized to 0 — growth measured from session start, not from first-turn absolute tokens",
+    )
+    assert.equal(
+        state.nudges.shouldInjectThisTurn,
+        false,
+        "first turn never nudges — baseline establishment only",
+    )
+
+    // Turn 2: context grew slightly to 58K. Growth from baseline 0 = 58K > 50K threshold.
+    // Nudge MUST fire at ~5.8% context. With the old bug (baseline=55K), growth
+    // would be 58K-55K=3K < 50K → nudge suppressed → model never compresses voluntarily.
+    const messages2: WithParts[] = [
+        userMsg("u2", "more"),
+        assistantMsgWithTokens("a2", "work", { input: 53_000, output: 5_000 }),
+    ]
+    injectCompressNudges(state, config, logger, messages2, {} as any)
+
+    assert.equal(
+        state.nudges.shouldInjectThisTurn,
+        true,
+        "58K growth from baseline 0 (>= 50K nudgeGrowthTokens) → nudge fires at ~5.8% — the bug suppressed this",
+    )
+})
+
 test("nudge threshold restores to full after compress (issue #23)", () => {
     const state = createSessionState()
     state.modelContextLimit = 1_000_000
