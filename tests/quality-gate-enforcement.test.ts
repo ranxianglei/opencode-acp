@@ -13,6 +13,7 @@ import { createSessionState, resetSessionState, type WithParts } from "../lib/st
 import type { PluginConfig } from "../lib/config"
 import type { QualityGateResult } from "../lib/compress/quality-gate/types"
 import { Logger } from "../lib/logger"
+import { singletonRegistry } from "./registry-stub"
 
 const testDataHome = join(tmpdir(), `opencode-acp-qg-tests-${process.pid}`)
 const testConfigHome = join(tmpdir(), `opencode-acp-qg-config-tests-${process.pid}`)
@@ -321,7 +322,7 @@ function buildToolContext(state: ReturnType<typeof createSessionState>, config: 
                 get: async () => ({ data: { parentID: null } }),
             },
         },
-        state,
+        registry: singletonRegistry(state),
         logger: new Logger(false),
         config,
         prompts: {

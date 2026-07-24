@@ -23,6 +23,7 @@ import { isSyntheticMessage } from "../lib/messages/query"
 import { mkdtempSync, rmSync } from "node:fs"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
+import { createTestRegistry } from "./registry-stub"
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -185,7 +186,7 @@ function setupPipeline(stateOverrides: Partial<SessionState> = {}) {
 
     const handler = createChatMessageTransformHandler(
         client,
-        state,
+        createTestRegistry(state),
         logger,
         config,
         prompts,
@@ -748,7 +749,7 @@ test("deny permission: still filters messages and strips hallucinations", async 
     const logger = new Logger(false)
     const handler = createChatMessageTransformHandler(
         createMockClient(),
-        state,
+        createTestRegistry(state),
         logger,
         config,
         createMockPrompts(),

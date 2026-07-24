@@ -8,6 +8,7 @@ import { createCompressMessageTool } from "../lib/compress/message"
 import { createSessionState, type WithParts } from "../lib/state"
 import type { PluginConfig } from "../lib/config"
 import { Logger } from "../lib/logger"
+import { singletonRegistry } from "./registry-stub"
 import {
     messageContainsProtectedTool,
     filterProtectedToolMessages,
@@ -198,7 +199,7 @@ function buildRangeToolCtx(config: PluginConfig, rawMessages: WithParts[], state
                 get: async () => ({ data: { parentID: null } }),
             },
         },
-        state,
+        registry: singletonRegistry(state),
         logger,
         config,
         prompts: {
@@ -219,7 +220,7 @@ function buildMessageToolCtx(config: PluginConfig, rawMessages: WithParts[], sta
                 get: async () => ({ data: { parentID: null } }),
             },
         },
-        state,
+        registry: singletonRegistry(state),
         logger,
         config,
         prompts: {
