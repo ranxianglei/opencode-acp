@@ -309,9 +309,9 @@ Each level overrides the previous, so project settings take priority over global
         // Controls how likely compression is after user messages
         // ("strong" = more likely, "soft" = less likely)
         "nudgeForce": "soft",
-        // Hard-excluded tool names. The root default is ["skill"]; an explicit
+        // Hard-excluded tool names. The root default is ["skill", "compress"]; an explicit
         // array replaces the inherited policy. Use [] to compress all tool outputs.
-        "protectedTools": ["skill"],
+        "protectedTools": ["skill", "compress"],
         // Preserve text wrapped in <protect>...</protect> when compressed
         "protectTags": false,
         // Preserve your messages during compression.
@@ -400,7 +400,7 @@ By default, these tools are always protected from pruning:
 
 The `protectedTools` arrays in `commands` and `strategies` add to this default list.
 
-For the `compress` tool, `compress.protectedTools` ensures specific tool outputs are **hard-excluded** from compression ranges (v1.10.0+). When the model compresses a range that includes a protected tool message, that message survives intact in visible context — only the surrounding non-protected messages are compressed. The root default is `["skill"]`; an explicit array replaces the inherited policy. Use `[]` to allow all completed tool outputs to compress.
+For the `compress` tool, `compress.protectedTools` ensures specific tool outputs are **hard-excluded** from compression ranges (v1.10.0+). When the model compresses a range that includes a protected tool message, that message survives intact in visible context — only the surrounding non-protected messages are compressed. The root default is `["skill", "compress"]` (the `compress` entry protects compress tool calls — which carry summaries — from being eaten by subsequent sequential compressions); an explicit array replaces the inherited policy. Use `[]` to allow all completed tool outputs to compress.
 
 ---
 
@@ -471,6 +471,22 @@ For the complete list with root cause analysis, see the [bug tracker](https://gi
 ---
 
 ## Changelog
+
+### v1.13.5 — Fix Release CI for Squash Merges (PR #187)
+
+**Problem**: The release detection regex in `.github/workflows/release.yml` only matched standard merge commits (`Merge pull request #N from .../YYYY-MM-DD_release-v...`), not squash merges. PRs #182 (v1.13.3) and #186 (v1.13.4) were squash-merged, so the release workflow silently skipped — no tag, no npm publish, no GitHub Release. npm was stuck at 1.13.2 while master had already moved to 1.13.4.
+
+**Fix**: Added a second pattern to the detection logic: `^release: v[0-9]+\.[0-9]+\.[0-9]+` matches squash merge commit titles that start with the release PR title convention (`release: vVERSION ...`). Both standard and squash merges are now detected. Also bumps version to 1.13.5 to publish all accumulated changes (v1.13.3 quality gate + v1.13.4 compress protection + this CI fix).
+
+Files: `.github/workflows/release.yml`, `package.json`, `README.md`, `README.zh-CN.md`. 843 tests pass (no source code changes).
+
+### v1.13.4 — Protect Compress Tool Calls from Being Compressed (PR #185)
+
+**Problem**: Sequential compressions ate previous summaries. Each compress tool call (which carries the summary in its `summary` parameter) lives a few messages after the range it compressed. When the model issued a new compress whose range started right after the previous one's end, the previous compress call fell inside the new range and was pruned — destroying the accumulated summary chain. Evidence from `ses_07562b88`: 113 messages → 6 messages in one compress call because all previous compress call anchors (b5–b10) were inside the new range.
+
+**Fix**: Added `"compress"` to `COMPRESS_DEFAULT_PROTECTED_TOOLS` in `lib/config.ts`. This makes `filterProtectedToolMessages` hard-exclude compress tool call messages from compression ranges (Bug 39 mechanism). The compress call survives intact in visible context; only surrounding non-protected messages are compressed. Also synced stale `["skill"]` defaults in `dcp.schema.json`, `README.md`, and `README.zh-CN.md` to `["skill", "compress"]`. Users can opt out with `compress.protectedTools: ["skill"]`.
+
+Files: `lib/config.ts`, `dcp.schema.json`, `README.md`, `README.zh-CN.md`. Tests: `tests/protect-compress-calls.test.ts` (6 new tests). 843 pass.
 
 ### v1.13.3 — Quality Gate Enforcement + E2E Test Framework + protectedTools Fix (PRs #173, #174, #175, #177, #179)
 
