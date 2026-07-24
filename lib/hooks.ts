@@ -33,6 +33,7 @@ import {
     handleHelpCommand,
     handleManualToggleCommand,
     handleManualTriggerCommand,
+    handleMemoryCommand,
     handleRecompressCommand,
     handleStatsCommand,
     handleSweepCommand,
@@ -375,6 +376,11 @@ export function createCommandExecuteHandler(
                     args: subArgs,
                 })
                 throw new Error("__DCP_RECOMPRESS_HANDLED__")
+            }
+
+            if (subcommand === "memory") {
+                await handleMemoryCommand(commandCtx, subArgs)
+                throw new Error("__DCP_MEMORY_HANDLED__")
             }
 
             await handleHelpCommand(commandCtx)

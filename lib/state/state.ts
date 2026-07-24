@@ -1,4 +1,4 @@
-import type { SessionState, ToolParameterEntry, WithParts } from "./types"
+import type { SessionState, ToolParameterEntry, WithParts, MemoryEntry } from "./types"
 import type { PluginConfig } from "../config"
 import type { Logger } from "../logger"
 import { applyPendingCompressionDurations } from "../compress/timing"
@@ -105,6 +105,10 @@ export function createSessionState(): SessionState {
             byRef: new Map<string, string>(),
             nextRef: 1,
         },
+        memories: {
+            entries: new Map<string, MemoryEntry>(),
+            nextId: 1,
+        },
         lastCompaction: 0,
         currentTurn: 0,
         modelContextLimit: undefined,
@@ -145,6 +149,10 @@ export function resetSessionState(state: SessionState): void {
         byRawId: new Map<string, string>(),
         byRef: new Map<string, string>(),
         nextRef: 1,
+    }
+    state.memories = {
+        entries: new Map<string, MemoryEntry>(),
+        nextId: 1,
     }
     state.lastCompaction = 0
     state.currentTurn = 0
@@ -240,6 +248,13 @@ export async function ensureSessionInitialized(
     }
     if (persistedAny._persistedLastCompaction !== undefined) {
         state.lastCompaction = Math.max(state.lastCompaction, persistedAny._persistedLastCompaction)
+    }
+    const persistedMemories = persistedAny.memories as
+        | { entries?: Array<[string, MemoryEntry]>; nextId?: number }
+        | undefined
+    if (persistedMemories?.entries) {
+        state.memories.entries = new Map(persistedMemories.entries)
+        state.memories.nextId = persistedMemories.nextId ?? state.memories.entries.size + 1
     }
     if (typeof persisted.modelContextLimit === "number" && persisted.modelContextLimit > 0) {
         state.modelContextLimit = persisted.modelContextLimit

@@ -1,4 +1,7 @@
-import { HOW_TO_COMPRESS_RULES } from "context-compress-algorithms/prompts"
+import {
+    HOW_TO_COMPRESS_RULES,
+    MEMORY_GUIDELINES,
+} from "context-compress-algorithms/prompts"
 
 export const SYSTEM = `
 
@@ -21,13 +24,14 @@ When you see past \`compress\` tool calls in the conversation, their \`summary\`
 
 TOOLS
 
-You have five context-management tools:
+You have six context-management tools:
 
 - \`compress\` — Replace a contiguous range of older conversation with a single detailed summary you write. Use when content is genuinely consumed (no longer needed for the current task step). Single range: \`compress({ topic: "API exploration", content: [{ startId: "m00150", endId: "m00220", summary: "..." }] })\`. Batch (multiple unrelated ranges, each with its own topic): \`compress({ content: [{ topic: "Auth", startId: "m00150", endId: "m00220", summary: "..." }, { topic: "Deploy", startId: "m00300", endId: "m00350", summary: "..." }] })\`.
 - \`decompress\` — Restore a previously compressed block's full original content, optionally to a file for large blocks. Use when a summary lacks the exact detail you need. Example: \`decompress({ blockId: "b5" })\` or \`decompress({ blockId: "b5", toFile: "path" })\`.
 - \`search_context\` — Search compressed block summaries (and optionally visible messages) by keyword. Use BEFORE decompressing to find the right block. Example: \`search_context({ query: "auth token refresh" })\`.
 - \`prune\` — Remove old tool outputs by tool type, keeping only recent calls. Unlike compress (which creates summaries), prune directly strips outputs. Use for disposable outputs like old todowrite states or edit echoes. Example: \`prune({ toolType: "todowrite", keepLatest: 3 })\`.
 - \`acp_status\` — Context status with compressible ranges. No args = overview + ranges. \`scope:"uncompressed"\` for range view; add \`view:"messages"\` for per-message listing with \`tool\`/\`sort\` filters. \`scope:"compressed"\` for block details.
+- \`memory\` — Record a durable fact that must survive for the rest of the task, even after compression. Memories are permanent and protected from compression. Use \`/acp memory list\` to view them and \`/acp memory forget <id>\` to clear one. Example: \`memory({ topic: "deploy constraint", content: "production deploy requires Node 22 — CI fails on 20" })\`.
 
 COMPRESSION PHILOSOPHY
 
@@ -54,9 +58,11 @@ WHEN NOT TO COMPRESS
 
 - Content the current task step is actively reading or reasoning about.
 - Important user messages — preserve their exact intent, constraints, and acceptance criteria verbatim, not just the most recent one.
-- Protected tool outputs (default: \`skill\` only) — hard-excluded from compression ranges, survive intact in visible context.
+- Protected tool outputs (default: \`skill\` and \`memory\`) — hard-excluded from compression ranges, survive intact in visible context.
 
 ${HOW_TO_COMPRESS_RULES}
+
+${MEMORY_GUIDELINES}
 
 PERIODIC CONTEXT STATUS
 

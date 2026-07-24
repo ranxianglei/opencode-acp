@@ -89,6 +89,19 @@ export interface MessageIdState {
     nextRef: number
 }
 
+export interface MemoryEntry {
+    id: string
+    messageId: string
+    topic: string
+    createdAt: number
+    forgotten: boolean
+}
+
+export interface MemoryState {
+    entries: Map<string, MemoryEntry>
+    nextId: number
+}
+
 export interface Nudges {
     contextLimitAnchors: Set<string>
     turnNudgeAnchors: Set<string>
@@ -124,6 +137,7 @@ export interface SessionState {
     subAgentResultCache: Map<string, string>
     toolIdList: string[]
     messageIds: MessageIdState
+    memories: MemoryState
     lastCompaction: number
     currentTurn: number
     modelContextLimit: number | undefined

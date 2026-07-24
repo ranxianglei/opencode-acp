@@ -129,7 +129,7 @@ const DEFAULT_PROTECTED_TOOLS = [
     "edit",
 ]
 
-const COMPRESS_DEFAULT_PROTECTED_TOOLS = ["skill"]
+const COMPRESS_DEFAULT_PROTECTED_TOOLS = ["skill", "memory"]
 
 export { VALID_CONFIG_KEYS, getInvalidConfigKeys, validateConfigTypes, type ValidationError } from "./config-validation"
 

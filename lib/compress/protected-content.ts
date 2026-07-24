@@ -235,6 +235,7 @@ export function filterProtectedToolMessages(
     searchContext: SearchContext,
     protectedTools: string[],
     protectedFilePatterns: string[] = [],
+    unprotectedMessageIds?: Set<string>,
 ): SelectionResolution {
     const removedMessageIds = new Set<string>()
     const removedToolIds = new Set<string>()
@@ -242,6 +243,8 @@ export function filterProtectedToolMessages(
     for (const messageId of selection.messageIds) {
         const message = searchContext.rawMessagesById.get(messageId)
         if (!message) continue
+
+        if (unprotectedMessageIds?.has(messageId)) continue
 
         if (messageContainsProtectedTool(message, protectedTools, protectedFilePatterns)) {
             removedMessageIds.add(messageId)

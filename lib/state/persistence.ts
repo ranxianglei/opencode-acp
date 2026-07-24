@@ -9,7 +9,13 @@ import { existsSync } from "fs"
 import { homedir } from "os"
 import { join } from "path"
 import { cpSync, existsSync as existsSyncSync } from "fs"
-import type { CompressionBlock, PrunedMessageEntry, SessionState, SessionStats } from "./types"
+import type {
+    CompressionBlock,
+    PrunedMessageEntry,
+    SessionState,
+    SessionStats,
+    MemoryEntry,
+} from "./types"
 import type { Logger } from "../logger"
 import { serializePruneMessagesState } from "./utils"
 
@@ -63,6 +69,10 @@ export interface PersistedSessionState {
     stats: SessionStats
     lastUpdated: string
     messageIds?: PersistedMessageIds
+    memories?: {
+        entries: Array<[string, MemoryEntry]>
+        nextId: number
+    }
     lastCompaction?: number
     modelContextLimit?: number
 }
@@ -161,6 +171,13 @@ export async function saveSessionState(
         },
         lastCompaction: sessionState.lastCompaction,
         modelContextLimit: sessionState.modelContextLimit,
+        memories: {
+            entries: Array.from(sessionState.memories.entries.entries()).map(([id, entry]) => [
+                id,
+                { ...entry },
+            ]),
+            nextId: sessionState.memories.nextId,
+        },
     }
 
     await writePersistedSessionState(sessionState.sessionId, state, logger)
