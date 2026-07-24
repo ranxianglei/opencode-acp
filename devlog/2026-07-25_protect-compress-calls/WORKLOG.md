@@ -35,6 +35,15 @@ accumulated compress calls is not viable.
 - `filterProtectedToolMessages` is a no-op when `compress` is not protected (old behavior)
 - `filterProtectedToolMessages` handles all-compress-call selections (empty result)
 
+### 3. Documentation sync (schema + READMEs)
+
+Updated stale `["skill"]` defaults to `["skill", "compress"]` in:
+- `dcp.schema.json` — property default (line 254), description text, and default object (line 328)
+- `README.md` — Default Configuration section (line 312-314) and Protected Tools explanation (line 403)
+- `README.zh-CN.md` — same two sections
+
+Historical changelog entries were NOT modified (they record what was true at that time).
+
 ## Verification
 
 - `npm run typecheck` — pass

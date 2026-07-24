@@ -309,9 +309,9 @@ Each level overrides the previous, so project settings take priority over global
         // Controls how likely compression is after user messages
         // ("strong" = more likely, "soft" = less likely)
         "nudgeForce": "soft",
-        // Hard-excluded tool names. The root default is ["skill"]; an explicit
+        // Hard-excluded tool names. The root default is ["skill", "compress"]; an explicit
         // array replaces the inherited policy. Use [] to compress all tool outputs.
-        "protectedTools": ["skill"],
+        "protectedTools": ["skill", "compress"],
         // Preserve text wrapped in <protect>...</protect> when compressed
         "protectTags": false,
         // Preserve your messages during compression.
@@ -400,7 +400,7 @@ By default, these tools are always protected from pruning:
 
 The `protectedTools` arrays in `commands` and `strategies` add to this default list.
 
-For the `compress` tool, `compress.protectedTools` ensures specific tool outputs are **hard-excluded** from compression ranges (v1.10.0+). When the model compresses a range that includes a protected tool message, that message survives intact in visible context — only the surrounding non-protected messages are compressed. The root default is `["skill"]`; an explicit array replaces the inherited policy. Use `[]` to allow all completed tool outputs to compress.
+For the `compress` tool, `compress.protectedTools` ensures specific tool outputs are **hard-excluded** from compression ranges (v1.10.0+). When the model compresses a range that includes a protected tool message, that message survives intact in visible context — only the surrounding non-protected messages are compressed. The root default is `["skill", "compress"]` (the `compress` entry protects compress tool calls — which carry summaries — from being eaten by subsequent sequential compressions); an explicit array replaces the inherited policy. Use `[]` to allow all completed tool outputs to compress.
 
 ---
 
