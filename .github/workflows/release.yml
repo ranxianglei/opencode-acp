@@ -24,14 +24,22 @@ jobs:
               id: check
               run: |
                   MERGE_MSG=$(git log -1 --pretty=%B)
-                  echo "Commit message: $MERGE_MSG"
+                  MERGE_TITLE=$(echo "$MERGE_MSG" | head -1)
+                  echo "Commit title: $MERGE_TITLE"
 
                   FORCE="${{ github.event.inputs.force }}"
                   IS_RELEASE="false"
 
-                  if echo "$MERGE_MSG" | grep -qE 'Merge pull request #[0-9]+ from .*[0-9]{4}-[0-9]{2}-[0-9]{2}_release-v'; then
+                  # Pattern 1: Standard merge commit
+                  #   "Merge pull request #171 from ranxianglei/2026-07-21_release-v1.13.2"
+                  if echo "$MERGE_TITLE" | grep -qE 'Merge pull request #[0-9]+ from .*[0-9]{4}-[0-9]{2}-[0-9]{2}_release-v'; then
                       IS_RELEASE="true"
-                      echo "Release branch detected"
+                      echo "Release branch detected (standard merge)"
+                  # Pattern 2: Squash merge of a release PR
+                  #   "release: v1.13.4 — ... (#186)"
+                  elif echo "$MERGE_TITLE" | grep -qE '^release: v[0-9]+\.[0-9]+\.[0-9]+'; then
+                      IS_RELEASE="true"
+                      echo "Release branch detected (squash merge)"
                   elif [ "$FORCE" = "true" ]; then
                       IS_RELEASE="true"
                       echo "Force publish requested"
