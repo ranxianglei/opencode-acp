@@ -440,6 +440,14 @@ ACP 在首次启动时自动将配置从 `dcp.jsonc` 迁移到 `acp.jsonc`，将
 
 ## 更新日志
 
+### v1.13.4 — 保护 compress 工具调用不被压缩（PR #185）
+
+**问题**：顺序压缩会吞噬之前的 summary。每个 compress 工具调用（在其 `summary` 参数中携带摘要）位于其压缩范围之后几条消息处。当模型发出新的 compress，其范围紧接前一个范围的结尾开始时，前一个 compress 调用落入新范围内并被裁剪——摧毁累积的摘要链。`ses_07562b88` 的证据：113 条消息在一次 compress 调用中变为 6 条，因为所有之前的 compress 调用锚点（b5–b10）都在新范围内。
+
+**修复**：在 `lib/config.ts` 的 `COMPRESS_DEFAULT_PROTECTED_TOOLS` 中添加 `"compress"`。这使得 `filterProtectedToolMessages` 硬排除 compress 工具调用消息不进入压缩范围（Bug 39 机制）。compress 调用完整保留在可见上下文中；只有周围的非受保护消息被压缩。同时将 `dcp.schema.json`、`README.md` 和 `README.zh-CN.md` 中过时的 `["skill"]` 默认值同步为 `["skill", "compress"]`。用户可通过 `compress.protectedTools: ["skill"]` 退出。
+
+文件：`lib/config.ts`、`dcp.schema.json`、`README.md`、`README.zh-CN.md`。测试：`tests/protect-compress-calls.test.ts`（6 个新测试）。843 pass。
+
 ### v1.13.3 — 质量门禁 + E2E 测试框架 + protectedTools 修复（PR #173, #174, #175, #177, #179）
 
 **问题**：（1）极低保留率（<1%）或接近零关键词召回的压缩会静默通过，导致严重的上下文丢失。（2）缺少端到端测试基础设施来验证 ACP 通过真实 opencode→LLM 管道的压缩行为。（3）`compress.protectedTools` 与继承的默认值合并而非替换——显式 `[]` 仍会保护继承的集合。
