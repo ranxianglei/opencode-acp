@@ -7,6 +7,7 @@ import { createCompressRangeTool } from "../lib/compress/range"
 import { createSessionState, type WithParts } from "../lib/state"
 import type { PluginConfig } from "../lib/config"
 import { Logger } from "../lib/logger"
+import { singletonRegistry } from "./registry-stub"
 
 const testDataHome = join(tmpdir(), `opencode-dcp-tests-${process.pid}`)
 const testConfigHome = join(tmpdir(), `opencode-dcp-config-tests-${process.pid}`)
@@ -150,7 +151,7 @@ test("compress range rebuilds subagent message refs after session state was rese
                 get: async () => ({ data: { parentID: "ses_parent" } }),
             },
         },
-        state,
+        registry: singletonRegistry(state),
         logger,
         config: buildConfig(),
         prompts: {
@@ -236,7 +237,7 @@ test("compress range mode appends protected prompt info", async () => {
                 get: async () => ({ data: { parentID: null } }),
             },
         },
-        state,
+        registry: singletonRegistry(state),
         logger,
         config,
         prompts: {
@@ -296,7 +297,7 @@ test("compress range mode batches multiple ranges into one notification", async 
                 },
             },
         },
-        state,
+        registry: singletonRegistry(state),
         logger,
         config,
         prompts: {
@@ -354,7 +355,7 @@ test("compress range mode rejects overlapping batched ranges", async () => {
                 get: async () => ({ data: { parentID: "ses_parent" } }),
             },
         },
-        state,
+        registry: singletonRegistry(state),
         logger,
         config: buildConfig(),
         prompts: {

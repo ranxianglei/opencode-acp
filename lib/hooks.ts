@@ -21,7 +21,6 @@ import { buildProtectedToolsExtension } from "./prompts/extensions/system"
 import {
     applyPendingCompressionDurations,
     buildCompressionTimingKey,
-    consumeCompressionStart,
     resolveCompressionDuration,
 } from "./compress/timing"
 import { filterMessages, filterMessagesInPlace } from "./messages/shape"
@@ -39,7 +38,7 @@ import {
 } from "./commands"
 import { type HostPermissionSnapshot } from "./host-permissions"
 import { compressPermission, syncCompressPermissionState } from "./compress-permission"
-import { checkSession, ensureSessionInitialized, saveSessionState, syncToolCache } from "./state"
+import { createSessionState, saveSessionState, syncToolCache, updatePerTurnState, type SessionStateRegistry } from "./state"
 import { cacheSystemPromptTokens } from "./ui/utils"
 import { runTruncateGC, shouldRunMajorGC, getGCParams } from "./gc/truncate"
 import { runBatchCleanup } from "./gc/merge"
@@ -71,7 +70,8 @@ function isInternalAgentRequest(messages: WithParts[]): boolean {
 }
 
 export function createSystemPromptHandler(
-    state: SessionState,
+    client: any,
+    registry: SessionStateRegistry,
     logger: Logger,
     config: PluginConfig,
     prompts: PromptStore,
@@ -83,11 +83,14 @@ export function createSystemPromptHandler(
         },
         output: { system: string[] },
     ) => {
-        if (input.model?.limit?.context) {
+        // messages.transform creates the session state before this fires; if
+        // absent (internal-agent early-return), there is nothing to attribute.
+        const state = input.sessionID ? registry.get(input.sessionID) : undefined
+        if (state && input.model?.limit?.context) {
             state.modelContextLimit = input.model.limit.context
         }
 
-        if (state.isSubAgent && !config.experimental.allowSubAgents) {
+        if (!state || (state.isSubAgent && !config.experimental.allowSubAgents)) {
             return
         }
 
@@ -97,10 +100,7 @@ export function createSystemPromptHandler(
             return
         }
 
-        const effectivePermission =
-            input.sessionID && state.sessionId === input.sessionID
-                ? compressPermission(state, config)
-                : config.compress.permission
+        const effectivePermission = compressPermission(state, config)
 
         if (effectivePermission === "deny") {
             return
@@ -168,7 +168,7 @@ function runMajorGC(
 
 export function createChatMessageTransformHandler(
     client: any,
-    state: SessionState,
+    registry: SessionStateRegistry,
     logger: Logger,
     config: PluginConfig,
     prompts: PromptStore,
@@ -185,14 +185,31 @@ export function createChatMessageTransformHandler(
         }
 
         // [FIX Bug 37] Skip OpenCode internal agents (title/summary/compaction).
-        // These small hidden LLM requests must not be mutated, and running
-        // checkSession on them would corrupt shared state (currentTurn, etc.).
+        // These small hidden LLM requests must not be mutated, and resolving a
+        // session state for them would corrupt it (currentTurn, etc.).
         if (isInternalAgentRequest(messages)) {
             logger.debug("Skipping message transform for internal agent request")
             return
         }
 
-        await checkSession(client, state, logger, output.messages, config.manualMode.enabled, config)
+        const lastUserMessage = getLastUserMessage(messages)
+        let state: SessionState
+        if (!lastUserMessage) {
+            // Ephemeral state: no session to resolve, but keep running
+            // state-independent stages (e.g. stripHallucinations).
+            state = createSessionState()
+        } else {
+            // [FIX #33] Per-session state: each session keeps its own SessionState,
+            // so interleaved sessions no longer reset each other's modelContextLimit.
+            state = await registry.getOrCreate(
+                client,
+                lastUserMessage.info.sessionID,
+                messages,
+                config.manualMode.enabled,
+                config,
+            )
+            await updatePerTurnState(state, logger, messages)
+        }
 
         syncCompressPermissionState(state, config, hostPermissions, output.messages)
 
@@ -266,7 +283,7 @@ export function createChatMessageTransformHandler(
 
 export function createCommandExecuteHandler(
     client: any,
-    state: SessionState,
+    registry: SessionStateRegistry,
     logger: Logger,
     config: PluginConfig,
     workingDirectory: string,
@@ -286,11 +303,9 @@ export function createCommandExecuteHandler(
             })
             const messages = filterMessages(messagesResponse.data || messagesResponse)
 
-            await ensureSessionInitialized(
+            const state = await registry.getOrCreate(
                 client,
-                state,
                 input.sessionID,
-                logger,
                 messages,
                 config.manualMode.enabled,
                 config,
@@ -392,7 +407,7 @@ export function createTextCompleteHandler() {
     }
 }
 
-export function createEventHandler(state: SessionState, logger: Logger) {
+export function createEventHandler(registry: SessionStateRegistry, logger: Logger) {
     return async (input: { event: any }) => {
         const eventTime =
             typeof input.event?.time === "number" && Number.isFinite(input.event.time)
@@ -411,6 +426,12 @@ export function createEventHandler(state: SessionState, logger: Logger) {
             return
         }
 
+        // [FIX #33] The event hook carries no sessionID. compressionTiming is
+        // shared on the registry so record/consume use one map (a per-session map
+        // would let the destructive consume delete the start in the wrong
+        // session). The apply step iterates sessions; only the owner matches.
+        const timing = registry.compressionTiming
+
         if (part.state.status === "pending") {
             if (typeof part.callID !== "string" || typeof part.messageID !== "string") {
                 return
@@ -418,10 +439,10 @@ export function createEventHandler(state: SessionState, logger: Logger) {
 
             const startedAt = eventTime ?? Date.now()
             const key = buildCompressionTimingKey(part.messageID, part.callID)
-            if (state.compressionTiming.startsByCallId.has(key)) {
+            if (timing.startsByCallId.has(key)) {
                 return
             }
-            state.compressionTiming.startsByCallId.set(key, startedAt)
+            timing.startsByCallId.set(key, startedAt)
             logger.debug("Recorded compression start", {
                 messageID: part.messageID,
                 callID: part.callID,
@@ -436,31 +457,31 @@ export function createEventHandler(state: SessionState, logger: Logger) {
             }
 
             const key = buildCompressionTimingKey(part.messageID, part.callID)
-            const start = consumeCompressionStart(state, part.messageID, part.callID)
+            const start = timing.startsByCallId.get(key)
+            timing.startsByCallId.delete(key)
             const durationMs = resolveCompressionDuration(start, eventTime, part.state.time)
             if (typeof durationMs !== "number") {
                 return
             }
 
-            state.compressionTiming.pendingByCallId.set(key, {
+            timing.pendingByCallId.set(key, {
                 messageId: part.messageID,
                 callId: part.callID,
                 durationMs,
             })
 
-            const updates = applyPendingCompressionDurations(state)
-            if (updates === 0) {
-                return
+            for (const state of registry.all()) {
+                const updates = applyPendingCompressionDurations(state)
+                if (updates > 0) {
+                    await saveSessionState(state, logger)
+                    logger.info("Attached compression time to blocks", {
+                        messageID: part.messageID,
+                        callID: part.callID,
+                        blocks: updates,
+                        durationMs,
+                    })
+                }
             }
-
-            await saveSessionState(state, logger)
-
-            logger.info("Attached compression time to blocks", {
-                messageID: part.messageID,
-                callID: part.callID,
-                blocks: updates,
-                durationMs,
-            })
             return
         }
 
@@ -469,7 +490,7 @@ export function createEventHandler(state: SessionState, logger: Logger) {
         }
 
         if (typeof part.callID === "string" && typeof part.messageID === "string") {
-            state.compressionTiming.startsByCallId.delete(
+            timing.startsByCallId.delete(
                 buildCompressionTimingKey(part.messageID, part.callID),
             )
         }

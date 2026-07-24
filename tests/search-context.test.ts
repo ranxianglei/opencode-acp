@@ -1,8 +1,9 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 import { createSearchContextTool } from "../lib/compress/search"
-import type { ToolContext } from "../lib/compress/types"
+import type { ToolFactoryContext } from "../lib/compress/types"
 import type { CompressionBlock, PrunedMessageEntry, SessionState } from "../lib/state/types"
+import { singletonRegistry } from "./registry-stub"
 
 // --- Factory helpers ---
 
@@ -81,10 +82,10 @@ function makeState(blocks: Map<number, CompressionBlock>): SessionState {
     }
 }
 
-function makeToolContext(blocks: Map<number, CompressionBlock>): ToolContext {
+function makeToolContext(blocks: Map<number, CompressionBlock>): ToolFactoryContext {
     return {
         client: {},
-        state: makeState(blocks),
+        registry: singletonRegistry(makeState(blocks)),
         logger: { enabled: false } as any,
         config: {} as any,
         prompts: { reload: () => {} } as any,

@@ -4,6 +4,7 @@ import { createCompressRangeTool } from "../lib/compress/range"
 import { createSessionState, type WithParts } from "../lib/state"
 import type { PluginConfig } from "../lib/config"
 import { Logger } from "../lib/logger"
+import { singletonRegistry } from "./registry-stub"
 
 const testDataHome = `/tmp/opencode-dcp-dangerous-${process.pid}`
 process.env.XDG_DATA_HOME = testDataHome
@@ -102,7 +103,7 @@ function createTool(state: any, rawMessages: WithParts[], sessionID: string, con
                 get: async () => ({ data: { parentID: null } }),
             },
         },
-        state,
+        registry: singletonRegistry(state),
         logger: new Logger(false),
         config,
         prompts: {

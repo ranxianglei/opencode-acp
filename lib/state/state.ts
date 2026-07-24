@@ -1,7 +1,11 @@
 import type { SessionState, ToolParameterEntry, WithParts } from "./types"
 import type { PluginConfig } from "../config"
 import type { Logger } from "../logger"
-import { applyPendingCompressionDurations } from "../compress/timing"
+import {
+    applyPendingCompressionDurations,
+    type CompressionTimingState,
+    type PendingCompressionDuration,
+} from "../compress/timing"
 import { loadSessionState, saveSessionState } from "./persistence"
 import { rebuildCompressionState } from "./rebuild"
 import {
@@ -14,41 +18,17 @@ import {
     loadPruneMap,
     collectTurnNudgeAnchors,
 } from "./utils"
-import { getLastUserMessage } from "../messages/query"
 import { parseMessageRef, formatMessageRef } from "../message-ids"
 
-export const checkSession = async (
-    client: any,
+/**
+ * Per-turn state update (compaction detection + turn count). Extracted from the
+ * old `checkSession`; session-switch + init now live in SessionStateRegistry.
+ */
+export async function updatePerTurnState(
     state: SessionState,
     logger: Logger,
     messages: WithParts[],
-    manualModeDefault: boolean,
-    config?: PluginConfig,
-): Promise<void> => {
-    const lastUserMessage = getLastUserMessage(messages)
-    if (!lastUserMessage) {
-        return
-    }
-
-    const lastSessionId = lastUserMessage.info.sessionID
-
-    if (state.sessionId === null || state.sessionId !== lastSessionId) {
-        logger.info(`Session changed: ${state.sessionId} -> ${lastSessionId}`)
-        try {
-            await ensureSessionInitialized(
-                client,
-                state,
-                lastSessionId,
-                logger,
-                messages,
-                manualModeDefault,
-                config,
-            )
-        } catch (err: any) {
-            logger.error("Failed to initialize session state", { error: err.message })
-        }
-    }
-
+): Promise<void> {
     const lastCompactionTimestamp = findLastCompactionTimestamp(messages)
     if (lastCompactionTimestamp > state.lastCompaction) {
         state.lastCompaction = lastCompactionTimestamp
@@ -65,6 +45,94 @@ export const checkSession = async (
     }
 
     state.currentTurn = countTurns(state, messages)
+}
+
+// Soft cap on held sessions — guards a long-lived plugin process (daemon mode)
+// from unbounded growth. Evicted sessions reload from persisted JSON on next
+// access; modelContextLimit and all persisted fields survive eviction.
+const REGISTRY_SOFT_CAP = 32
+
+// [FIX #33] Per-session state. Replaces the single shared SessionState singleton
+// whose resetSessionState-on-switch wiped modelContextLimit (set only by
+// system.transform, which fires AFTER messages.transform) and flipped
+// isSubAgent/manualMode across interleaved sessions. Each session now keeps its
+// own state for its lifetime — no reset-on-switch.
+//
+// compressionTiming is SHARED (hoisted here) rather than per-session: the `event`
+// hook carries no sessionID, and a per-session map would let the destructive
+// consumeCompressionStart delete entries in the wrong session (leaving the owning
+// session dangling). One shared map = correct record/consume; the apply step
+// iterates all sessions and only the owner matches (applied > 0).
+export class SessionStateRegistry {
+    private readonly states = new Map<string, SessionState>()
+    readonly compressionTiming: CompressionTimingState = {
+        startsByCallId: new Map<string, number>(),
+        pendingByCallId: new Map<string, PendingCompressionDuration>(),
+    }
+
+    constructor(private readonly logger: Logger) {}
+
+    get(sessionId: string): SessionState | undefined {
+        return this.states.get(sessionId)
+    }
+
+    all(): SessionState[] {
+        return Array.from(this.states.values())
+    }
+
+    get size(): number {
+        return this.states.size
+    }
+
+    // Idempotent: ensureSessionInitialized returns immediately once
+    // state.sessionId === sessionId (assigned synchronously before any await),
+    // so repeat calls for the same session never re-reset.
+    async getOrCreate(
+        client: any,
+        sessionId: string,
+        messages: WithParts[],
+        manualModeDefault: boolean,
+        config?: PluginConfig,
+    ): Promise<SessionState> {
+        let state = this.states.get(sessionId)
+        if (!state) {
+            state = createSessionState()
+            // Assign shared compressionTiming BEFORE ensureSessionInitialized so
+            // its init-time applyPendingCompressionDurations reads the shared map.
+            state.compressionTiming = this.compressionTiming
+            this.states.set(sessionId, state)
+            this.enforceSoftCap()
+        }
+        try {
+            await ensureSessionInitialized(
+                client,
+                state,
+                sessionId,
+                this.logger,
+                messages,
+                manualModeDefault,
+                config,
+            )
+        } catch (err: any) {
+            this.logger.error("Failed to initialize session state", {
+                error: err.message,
+            })
+        }
+        state.compressionTiming = this.compressionTiming
+        return state
+    }
+
+    private enforceSoftCap(): void {
+        if (this.states.size <= REGISTRY_SOFT_CAP) return
+        const oldest = this.states.keys().next().value
+        if (oldest !== undefined) {
+            this.states.delete(oldest as string)
+            this.logger.info("SessionStateRegistry evicted session (soft cap)", {
+                sessionId: oldest,
+                remaining: this.states.size,
+            })
+        }
+    }
 }
 
 export function createSessionState(): SessionState {

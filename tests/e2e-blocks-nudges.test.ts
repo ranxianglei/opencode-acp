@@ -15,6 +15,7 @@ import type { PluginConfig } from "../lib/config"
 import { createChatMessageTransformHandler } from "../lib/hooks"
 import { Logger } from "../lib/logger"
 import { createSessionState, type WithParts, type SessionState } from "../lib/state"
+import { createTestRegistry } from "./registry-stub"
 import { isSyntheticMessage } from "../lib/messages/query"
 import { mkdtempSync, rmSync } from "node:fs"
 import { join } from "node:path"
@@ -180,7 +181,7 @@ function setupPipeline(
     const logger = new Logger(false)
     const handler = createChatMessageTransformHandler(
         createMockClient(),
-        state,
+        createTestRegistry(state),
         logger,
         config,
         createMockPrompts(),
@@ -410,7 +411,7 @@ test("tool error pruning: error tool inputs are preserved (prefix cache fix)", a
 
 // ─── Test: Session switch resets state ──────────────────────────────────────
 
-test("session switch: state is reinitialized when session changes", async () => {
+test("session switch: each session keeps its own state (no cross-session reset)", async () => {
     const { state, handler } = setupPipeline(SID_A)
 
     // First call with session A
@@ -426,8 +427,9 @@ test("session switch: state is reinitialized when session changes", async () => 
     assert.equal(state.messageIds.byRawId.get("u1a"), "m00001")
     assert.equal(state.messageIds.byRawId.get("a1a"), "m00002")
 
-    // Second call with a DIFFERENT session (session B)
-    // checkSession detects the change and reinitializes
+    // Second call with a DIFFERENT session (session B).
+    // Per-session state (#33): session B resolves its own state; session A is
+    // left untouched instead of being reset by the shared singleton.
     const output2 = {
         messages: [
             makeUserMessage("u1b", "Hello B", SID_B),
@@ -436,15 +438,10 @@ test("session switch: state is reinitialized when session changes", async () => 
     }
     await handler({}, output2)
 
-    // Session should have switched
-    assert.equal(state.sessionId, SID_B)
-
-    // Old message IDs should be cleared (state reset on session switch)
-    assert.equal(state.messageIds.byRawId.has("u1a"), false, "old session IDs should be cleared")
-
-    // New session gets fresh IDs
-    assert.equal(state.messageIds.byRawId.get("u1b"), "m00001")
-    assert.equal(state.messageIds.byRawId.get("a1b"), "m00002")
+    // Session A's state is preserved, not reset by session B's activity
+    assert.equal(state.sessionId, SID_A)
+    assert.equal(state.messageIds.byRawId.get("u1a"), "m00001", "session A IDs preserved")
+    assert.equal(state.messageIds.byRawId.get("a1a"), "m00002")
 })
 
 // ─── Test: Message IDs injected into tool parts ─────────────────────────────
