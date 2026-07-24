@@ -120,7 +120,9 @@ const server: Plugin = (async (ctx) => {
             const toolsToAdd: string[] = []
             if (config.compress.permission !== "deny" && !config.experimental.allowSubAgents) {
                 toolsToAdd.push("compress", "decompress", "search_context", "acp_status")
-            }            if (toolsToAdd.length > 0) {
+            }
+
+            if (toolsToAdd.length > 0) {
                 const existingPrimaryTools = opencodeConfig.experimental?.primary_tools ?? []
                 opencodeConfig.experimental = {
                     ...opencodeConfig.experimental,

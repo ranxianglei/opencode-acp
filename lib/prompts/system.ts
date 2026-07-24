@@ -24,7 +24,7 @@ When you see past \`compress\` tool calls in the conversation, their \`summary\`
 
 TOOLS
 
-You have five context-management tools:
+You have six context-management tools:
 
 - \`compress\` — Replace a contiguous range of older conversation with a single detailed summary you write. Use when content is genuinely consumed (no longer needed for the current task step). Single range: \`compress({ topic: "API exploration", content: [{ startId: "m00150", endId: "m00220", summary: "..." }] })\`. Batch (multiple unrelated ranges, each with its own topic): \`compress({ content: [{ topic: "Auth", startId: "m00150", endId: "m00220", summary: "..." }, { topic: "Deploy", startId: "m00300", endId: "m00350", summary: "..." }] })\`.
 - \`decompress\` — Restore a previously compressed block's full original content, optionally to a file for large blocks. Use when a summary lacks the exact detail you need. Example: \`decompress({ blockId: "b5" })\` or \`decompress({ blockId: "b5", toFile: "path" })\`.

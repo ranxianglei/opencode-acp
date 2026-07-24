@@ -4,7 +4,7 @@ import {
     recordMemory,
     forgetMemory,
     listMemories,
-    getActiveMemoryMessageIds,
+    getForgottenMemoryMessageIds,
     formatMemoryId,
 } from "../lib/memory/state"
 import { filterProtectedToolMessages } from "../lib/compress/protected-content"
@@ -76,21 +76,21 @@ test("listMemories returns entries sorted by createdAt ascending", () => {
     assert.equal(list[1]!.topic, "second")
 })
 
-test("getActiveMemoryMessageIds returns messageIds of forgotten entries only", () => {
+test("getForgottenMemoryMessageIds returns messageIds of forgotten entries only", () => {
     const state = makeState()
     recordMemory(state, "msg_active", "topic", mockLogger)
     recordMemory(state, "msg_forgotten", "topic2", mockLogger)
     forgetMemory(state, "mem_002")
-    const ids = getActiveMemoryMessageIds(state)
+    const ids = getForgottenMemoryMessageIds(state)
     assert.equal(ids.size, 1)
     assert.ok(ids.has("msg_forgotten"))
     assert.ok(!ids.has("msg_active"))
 })
 
-test("getActiveMemoryMessageIds is defensive when state.memories is undefined", () => {
+test("getForgottenMemoryMessageIds is defensive when state.memories is undefined", () => {
     const state = makeState()
     ;(state as any).memories = undefined
-    const ids = getActiveMemoryMessageIds(state)
+    const ids = getForgottenMemoryMessageIds(state)
     assert.equal(ids.size, 0)
 })
 
@@ -193,4 +193,96 @@ test("SYSTEM prompt marks memory as protected in WHEN NOT TO COMPRESS", () => {
         SYSTEM.includes("skill` and `memory"),
         "WHEN NOT TO COMPRESS should list memory as protected alongside skill",
     )
+})
+
+test("SYSTEM prompt lists six context-management tools", () => {
+    assert.ok(
+        SYSTEM.includes("six context-management tools"),
+        "tool count should be six now that memory is added",
+    )
+})
+
+test("integration: record → filterProtectedToolMessages → active memory survives", () => {
+    const state = makeState()
+    const memMsg = makeToolMessage("msg_mem", "memory", "call_mem")
+    const plainMsg = makeToolMessage("msg_plain", "bash", "call_plain")
+    const search = makeSearchContext([memMsg, plainMsg])
+
+    recordMemory(state, "msg_mem", "constraint", mockLogger)
+
+    const sel = makeSelection(["msg_mem", "msg_plain"])
+    const forgotten = getForgottenMemoryMessageIds(state)
+    assert.equal(forgotten.size, 0, "no forgotten memories yet")
+
+    const result = filterProtectedToolMessages(sel, search, ["memory"], [], forgotten)
+    assert.ok(
+        !result.messageIds.includes("msg_mem"),
+        "active memory message should survive (excluded from compress selection)",
+    )
+    assert.ok(
+        result.messageIds.includes("msg_plain"),
+        "non-protected message should remain compressible",
+    )
+})
+
+test("integration: forget → filterProtectedToolMessages → forgotten memory consumed", () => {
+    const state = makeState()
+    const memMsg = makeToolMessage("msg_mem", "memory", "call_mem")
+    const plainMsg = makeToolMessage("msg_plain", "bash", "call_plain")
+    const search = makeSearchContext([memMsg, plainMsg])
+
+    const entry = recordMemory(state, "msg_mem", "constraint", mockLogger)
+    forgetMemory(state, entry.id)
+
+    const sel = makeSelection(["msg_mem", "msg_plain"])
+    const forgotten = getForgottenMemoryMessageIds(state)
+    assert.equal(forgotten.size, 1)
+    assert.ok(forgotten.has("msg_mem"))
+
+    const result = filterProtectedToolMessages(sel, search, ["memory"], [], forgotten)
+    assert.ok(
+        result.messageIds.includes("msg_mem"),
+        "forgotten memory message should be consumable (in compress selection)",
+    )
+    assert.ok(
+        result.messageIds.includes("msg_plain"),
+        "non-protected message should remain compressible",
+    )
+})
+
+test("persistence: memories serialize and deserialize correctly", () => {
+    const state = makeState()
+    recordMemory(state, "msg_a", "topic1", mockLogger)
+    recordMemory(state, "msg_b", "topic2", mockLogger)
+    forgetMemory(state, "mem_001")
+
+    const serialized = {
+        entries: Array.from(state.memories.entries.entries()).map(([id, entry]) => [
+            id,
+            { ...entry },
+        ]),
+        nextId: state.memories.nextId,
+    }
+
+    const reloaded = createSessionState()
+    reloaded.memories.entries = new Map(
+        (serialized.entries as Array<[string, any]>).map(([id, entry]) => [
+            id,
+            { ...entry },
+        ]),
+    )
+    reloaded.memories.nextId = serialized.nextId
+
+    assert.equal(reloaded.memories.entries.size, 2)
+    assert.equal(reloaded.memories.nextId, 3)
+
+    const e1 = reloaded.memories.entries.get("mem_001")
+    assert.ok(e1)
+    assert.equal(e1!.forgotten, true)
+    assert.equal(e1!.topic, "topic1")
+
+    const e2 = reloaded.memories.entries.get("mem_002")
+    assert.ok(e2)
+    assert.equal(e2!.forgotten, false)
+    assert.equal(e2!.topic, "topic2")
 })
