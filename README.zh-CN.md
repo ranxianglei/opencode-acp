@@ -440,6 +440,14 @@ ACP 在首次启动时自动将配置从 `dcp.jsonc` 迁移到 `acp.jsonc`，将
 
 ## 更新日志
 
+### v1.13.5 — 修复 Release CI 对 Squash Merge 的检测（PR #187）
+
+**问题**：`.github/workflows/release.yml` 的发布检测正则只认标准 merge commit（`Merge pull request #N from .../YYYY-MM-DD_release-v...`），不认 squash merge。PR #182（v1.13.3）和 #186（v1.13.4）都是 squash 合并，导致 release workflow 静默跳过 — 没有 tag、没有 npm 发布、没有 GitHub Release。npm 卡在 1.13.2，而 master 已经到了 1.13.4。
+
+**修复**：在检测逻辑中添加第二个模式：`^release: v[0-9]+\.[0-9]+\.[0-9]+` 匹配以 release PR 标题开头的 squash merge commit（`release: vVERSION ...`）。现在标准 merge 和 squash merge 都能被检测到。同时将版本号升到 1.13.5，以发布所有累积的变更（v1.13.3 质量门禁 + v1.13.4 compress 保护 + 本次 CI 修复）。
+
+文件：`.github/workflows/release.yml`、`package.json`、`README.md`、`README.zh-CN.md`。843 测试通过（无源码变更）。
+
 ### v1.13.4 — 保护 compress 工具调用不被压缩（PR #185）
 
 **问题**：顺序压缩会吞噬之前的 summary。每个 compress 工具调用（在其 `summary` 参数中携带摘要）位于其压缩范围之后几条消息处。当模型发出新的 compress，其范围紧接前一个范围的结尾开始时，前一个 compress 调用落入新范围内并被裁剪——摧毁累积的摘要链。`ses_07562b88` 的证据：113 条消息在一次 compress 调用中变为 6 条，因为所有之前的 compress 调用锚点（b5–b10）都在新范围内。
