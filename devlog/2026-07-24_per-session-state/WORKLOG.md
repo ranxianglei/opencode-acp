@@ -30,5 +30,12 @@
 - [ ] Deploy locally (`scripts/dev-deploy.sh`); observe subagent `modelContextLimit` now populated across interleaved sessions.
 
 ## Review (AGENTS.md §5.3 — dual-agent required)
-- [ ] Agent review 1.
-- [ ] Agent review 2.
+- [x] Agent review 1 (correctness/lifecycle): APPROVE — no Critical/Major. Minors: dead `consumeCompressionStart`, defense-in-depth on eviction save (decided skip).
+- [x] Agent review 2 (backward-compat/API/tests): REQUEST CHANGES → resolved. Major M1 (real `SessionStateRegistry` untested) fixed via `tests/registry.test.ts` (4 tests: idempotency, per-session isolation, shared compressionTiming, eviction+reload).
+
+## Review fixes applied
+- [x] `tests/registry.test.ts` (new): 4 tests against the real `SessionStateRegistry` — R2 M1.
+- [x] Removed unused `client` param from `createSystemPromptHandler` + `index.ts` call site — R2 n1.
+- [x] Removed dead `consumeCompressionStart` export from `lib/compress/timing.ts`; updated stale comment in `state.ts` — R1 M3 / R2 n2.
+- [x] Updated doc drift: `AGENTS.md §2.2` data-flow + `TESTING.md` (`checkSession` → `registry.getOrCreate` + `updatePerTurnState`) — R2 m3.
+- [x] 841 tests pass (was 837, +4 registry), typecheck + build clean.

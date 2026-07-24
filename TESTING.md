@@ -56,7 +56,7 @@ Zero external dependencies. Test deterministic logic in isolation.
 | Test File | Source Module | What It Tests |
 |-----------|--------------|---------------|
 | `token-counting.test.ts` | `lib/token-utils.ts` | `countAllMessageTokens`, `countToolTokens`, `estimateTokensBatch`, `extractToolContent`, `extractCompletedToolOutput` |
-| `message-ids.test.ts` | `lib/message-ids.ts`, `lib/state/state.ts` | `assignMessageRefs`, `checkSession` (ID reset after native compaction) |
+| `message-ids.test.ts` | `lib/message-ids.ts`, `lib/state/state.ts` | `assignMessageRefs`, `updatePerTurnState` (ID reset after native compaction) |
 | `message-utils.test.ts` | `lib/messages/query.ts` | `isIgnoredUserMessage` |
 | `message-priority.test.ts` | `lib/messages/priority.ts`, `lib/messages/inject/inject.ts`, `lib/messages/inject/utils.ts`, `lib/messages/prune.ts`, `lib/messages/utils.ts` | `buildPriorityMap`, `injectMessageIds`, `applyAnchoredNudges`, `prune`, `stripHallucinationsFromString` |
 | `input-budget.test.ts` | `lib/messages/inject/utils.ts` | `computeInputBudget` |
@@ -92,7 +92,7 @@ Not yet implemented. Will test the complete message transform pipeline from `hoo
 |--------------|-------------|----------------------|
 | `lib/token-utils.ts` | `token-counting.test.ts`, `token-usage.test.ts` | `countAllMessageTokens`, `countToolTokens`, `estimateTokensBatch`, `extractToolContent`, `extractCompletedToolOutput`, `getCurrentTokenUsage` |
 | `lib/message-ids.ts` | `message-ids.test.ts` | `assignMessageRefs` |
-| `lib/state/state.ts` | `message-ids.test.ts` | `checkSession` |
+| `lib/state/state.ts` | `registry.test.ts`, `message-ids.test.ts` | `SessionStateRegistry`, `updatePerTurnState`, `ensureSessionInitialized` |
 | `lib/state/utils.ts` | (indirect via other tests) | `isMessageCompacted`, `serializePruneMessagesState` |
 | `lib/messages/query.ts` | `message-utils.test.ts` | `isIgnoredUserMessage` |
 | `lib/messages/shape.ts` | `message-utils.test.ts` | `isMessageWithInfo` (indirect) |

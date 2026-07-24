@@ -59,9 +59,9 @@ const REGISTRY_SOFT_CAP = 32
 // own state for its lifetime — no reset-on-switch.
 //
 // compressionTiming is SHARED (hoisted here) rather than per-session: the `event`
-// hook carries no sessionID, and a per-session map would let the destructive
-// consumeCompressionStart delete entries in the wrong session (leaving the owning
-// session dangling). One shared map = correct record/consume; the apply step
+// hook carries no sessionID, and a per-session map would let the event hook
+// delete start entries in the wrong session (leaving the owning session
+// dangling). One shared map = correct record/consume; the apply step
 // iterates all sessions and only the owner matches (applied > 0).
 export class SessionStateRegistry {
     private readonly states = new Map<string, SessionState>()

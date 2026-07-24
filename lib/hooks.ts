@@ -70,7 +70,6 @@ function isInternalAgentRequest(messages: WithParts[]): boolean {
 }
 
 export function createSystemPromptHandler(
-    client: any,
     registry: SessionStateRegistry,
     logger: Logger,
     config: PluginConfig,

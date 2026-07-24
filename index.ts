@@ -63,7 +63,6 @@ const server: Plugin = (async (ctx) => {
 
     return {
         "experimental.chat.system.transform": createSystemPromptHandler(
-            ctx.client,
             registry,
             logger,
             config,
