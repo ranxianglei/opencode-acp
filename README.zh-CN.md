@@ -443,6 +443,12 @@ ACP 在首次启动时自动将配置从 `dcp.jsonc` 迁移到 `acp.jsonc`，将
 
 ## 更新日志
 
+### v1.13.8-dev.1 — Dev 预发布同步（master @ v1.13.7）
+
+**目的**：将 npm `dev` 标签同步到 v1.13.7 稳定版。内容与 v1.13.7 完全相同 —— 无新代码变更。使 `opencode-acp@dev` 与 `opencode-acp@latest`（1.13.7）保持一致。
+
+文件：`package.json`、`README.md`、`README.zh-CN.md`。851 项测试通过（无源码变更）。
+
 ### v1.13.7 — 每会话状态隔离 + 失活块修复 + 保留首条用户消息（PR #184、#193、#196）
 
 **问题**：v1.13.6 之后的三个 bug。（1）**子代理状态隔离失败**（PR #184）：ACP 为每个插件实例存储单个全局 `SessionState`。当子代理（child）会话与父会话交替运行时，子会话的状态覆盖了父会话的 `modelContextLimit` —— 丢失 1M 上下文窗口，回退到 6K 自适应下限，导致父会话中过度触发压缩提醒。`compressionTiming` 追踪器也跨会话共享，存在跨会话碰撞风险。（2）**失活块不可见**（PR #193）：`decompress` 拒绝失活块（"not active — may have already been decompressed"），`acp_status` 完全隐藏被消费/失活的块。用户无法解压被 GC 回收或被二次压缩消费的块，也无法在状态输出中看到它们。（3）**零用户消息会话冻结**（PR #196）：当压缩剪枝了所有 user 角色消息（全部落在压缩范围内）时，zhipuai-lb 拒绝请求（HTTP 400，code 1214，`"messages 参数非法"`，`isRetryable: false`），冻结会话。v1.13.2 的 `preserve-last-user` 修复在消息数组中搜索被剪枝的用户消息来恢复 —— 但 OpenCode 压缩移除被剪枝的消息后，搜索找不到任何内容，零用户请求仍然漏过。

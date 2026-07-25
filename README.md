@@ -475,6 +475,12 @@ For the complete list with root cause analysis, see the [bug tracker](https://gi
 
 ## Changelog
 
+### v1.13.8-dev.1 — Dev Prerelease Sync (master @ v1.13.7)
+
+**Purpose**: Sync the `dev` npm tag with v1.13.7 stable. Content is identical to v1.13.7 — no new code changes. This brings `opencode-acp@dev` up to parity with `opencode-acp@latest` (1.13.7).
+
+Files: `package.json`, `README.md`, `README.zh-CN.md`. 851 tests pass (no source changes).
+
 ### v1.13.7 — Per-Session State + Inactive Block Fixes + Preserve First User Message (PRs #184, #193, #196)
 
 **Problem**: Three bugs since v1.13.6. (1) **Subagent state isolation failure** (PR #184): ACP stored a single global `SessionState` per plugin instance. When subagent (child) sessions ran interleaved with the parent, the child's state overwrote the parent's `modelContextLimit` — losing the 1M context window and falling back to the 6K adaptive floor, causing over-aggressive nudging in the parent. The `compressionTiming` tracker was also shared across sessions, risking cross-session collision. (2) **Inactive block opacity** (PR #193): `decompress` rejected inactive blocks with "not active — may have already been decompressed", and `acp_status` hid consumed/inactive blocks entirely. Users could not decompress blocks that were GC'd or consumed by secondary compression, and could not see them in status output. (3) **Zero-user session freeze** (PR #196): When compression pruned all user-role messages (all fell inside compressed ranges), zhipuai-lb rejected the request with HTTP 400 code 1214 (`"messages 参数非法"`, `isRetryable: false`), freezing the session. The v1.13.2 `preserve-last-user` fix searched the messages array for a pruned user to restore — but after OpenCode compaction removes pruned messages from the array, the search finds nothing and zero-user requests slip through.
