@@ -41,7 +41,8 @@ import {
     resolveAdaptiveNudgeGrowth,
 } from "./utils"
 import { buildCompressedBlockGuidance } from "../../prompts/extensions/nudge"
-import { HOW_TO_COMPRESS_RULES, COMPRESS_PHILOSOPHY } from "context-compress-algorithms/prompts"
+import { HOW_TO_COMPRESS_RULES, COMPRESS_PHILOSOPHY, TIER2_DISTILL_RULES, TIER3_CONDENSE_RULES } from "context-compress-algorithms/prompts"
+import { getTierTokenUsage } from "../../state/utils"
 
 /**
  * Stable seed for the ACP dynamic guidance suffix message.
@@ -112,6 +113,7 @@ export const injectCompressNudges = (
         state.nudges.iterationNudgeAnchors.clear()
         state.nudges.lastNudgeShownTokens = undefined
         state.nudges.lastToolOutputNudgeTokens = undefined
+        state.nudges.lastTierNudgeTokens = undefined
 
         // Proportional baseline adjustment: if nudge-triggered compress, adjust
         // baseline by how much was actually compressed. >50% of growth compressed
@@ -360,11 +362,65 @@ export const injectCompressNudges = (
     const filterSuppressed = contextRanges.compressible.length > 0 && !hasRecommendations
     const allProtected = contextRanges.compressible.length === 0 && contextRanges.protected.length > 0
     const nothingToCompress = filterSuppressed || allProtected
-    const shouldInject = nudgeAllowed && (!nothingToCompress || emergencyOverride)
+    let shouldInject = nudgeAllowed && (!nothingToCompress || emergencyOverride)
 
     if (nudgeAllowed && nothingToCompress && !emergencyOverride && currentTokens !== undefined) {
         state.nudges.lastPerMessageNudgeTokens = currentTokens
         state.nudges.lastNudgeShownTokens = undefined
+    }
+
+    // ── Tier 2/3 triggers (INDEPENDENT of Tier 1) ────────────────────
+    // Each tier triggers when its input summaries reach nudgeGrowthTokens.
+    // Frequency naturally decreases via compression ratio: T1 every few turns
+    // (raw grows fast), T2 every few dozen (T1 summaries grow ~60x slower),
+    // T3 every few hundred (T2 summaries grow ~12x slower than T1).
+    if (suffixMessage) {
+        const tierUsage = getTierTokenUsage(state)
+
+        const tierCadenceMet =
+            state.nudges.lastTierNudgeTokens === undefined ||
+            (currentTokens !== undefined &&
+                currentTokens - state.nudges.lastTierNudgeTokens >= growthFloor)
+
+        // Priority: T2 > T3 (only one per turn). T2 checks tier1Tokens, T3 checks tier2Tokens.
+        let triggerTier: 2 | 3 | null = null
+        if (tierUsage.tier1Tokens >= nudgeGrowthTokens) {
+            triggerTier = 2
+        } else if (tierUsage.tier2Tokens >= nudgeGrowthTokens) {
+            triggerTier = 3
+        }
+
+        if (tierCadenceMet && triggerTier !== null) {
+            const targetTier = (triggerTier - 1) as 1 | 2
+            const candidates = [...state.prune.messages.activeBlockIds]
+                .map((id) => state.prune.messages.blocksById.get(id))
+                .filter((b): b is NonNullable<typeof b> => b !== undefined && b.active && (b.tier ?? 1) === targetTier)
+                .sort((a, b) => (b.survivedCount || 0) - (a.survivedCount || 0))
+
+            const candidateTokens = candidates.reduce((s, b) => s + b.summaryTokens, 0)
+            const enoughCandidates = candidates.length >= 3 || candidateTokens >= nudgeGrowthTokens
+
+            if (enoughCandidates) {
+                const rules = triggerTier === 2 ? TIER2_DISTILL_RULES : TIER3_CONDENSE_RULES
+                const firstBlock = candidates[0]
+                const lastBlock = candidates[candidates.length - 1]
+                const fmt = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n))
+                const sourceTier = triggerTier === 2 ? "Tier 1" : "Tier 2"
+                const action = triggerTier === 2 ? "Distill" : "Condense"
+
+                const blockList = candidates
+                    .slice(0, 10)
+                    .map((b) => `b${b.blockId} (age=${b.survivedCount}, ${fmt(b.summaryTokens)}tok): "${b.topic}"`)
+                    .join("\n")
+                const extraCount = candidates.length > 10 ? `\n...and ${candidates.length - 10} more` : ""
+
+                const tierText = `\n\n[Tier ${triggerTier} Trigger] ${sourceTier} summaries accumulated (${fmt(candidateTokens)} tokens across ${candidates.length} blocks). ${action} them to free context.\n\nTarget blocks (oldest first):\n${blockList}${extraCount}\n\nCompress range: \`content: [{ startId: "b${firstBlock.blockId}", endId: "b${lastBlock.blockId}", summary: "..." }]\`\n\n${rules}`
+
+                appendToLastTextPart(suffixMessage, tierText)
+                shouldInject = true
+                state.nudges.lastTierNudgeTokens = currentTokens
+            }
+        }
     }
 
     state.nudges.shouldInjectThisTurn = shouldInject
