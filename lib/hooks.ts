@@ -37,6 +37,7 @@ import {
 } from "./commands"
 import { type HostPermissionSnapshot } from "./host-permissions"
 import { compressPermission, syncCompressPermissionState } from "./compress-permission"
+import { hideConsumedCompressCalls } from "./compress/hide-consumed"
 import { createSessionState, saveSessionState, syncToolCache, updatePerTurnState, type SessionStateRegistry } from "./state"
 import { cacheSystemPromptTokens } from "./ui/utils"
 import { runTruncateGC, shouldRunMajorGC, getGCParams } from "./gc/truncate"
@@ -232,8 +233,7 @@ export function createChatMessageTransformHandler(
         }
         const prePruneTokens = getCurrentTokenUsage(state, output.messages)
         prune(state, logger, config, output.messages)
-        // Compress tool calls stay visible — they serve as natural anchors
-        // carrying the summary in their input. No synthetic recap injection.
+        hideConsumedCompressCalls(state, output.messages)
         assignMessageRefs(state, output.messages)
         const compressionPriorities = buildPriorityMap(config, state, output.messages)
         prompts.reload()
