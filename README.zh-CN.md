@@ -280,6 +280,9 @@ ACP 使用自己的配置文件，按以下顺序搜索：
         "nudgeForce": "soft",
         // Hard-excluded tool names. The root default is ["skill", "compress"]; an explicit
         // array replaces the inherited policy. Use [] to compress all tool outputs.
+        // "compress" is always force-protected regardless of this setting — its summary
+        // parameter is the sole record of compressed conversation and cannot be recovered
+        // if lost. Use [] to compress all tool outputs except compress itself.
         "protectedTools": ["skill", "compress"],
         // Preserve text wrapped in <protect>...</protect> when compressed
         "protectTags": false,
@@ -368,7 +371,7 @@ ACP 暴露六个可编辑的 prompt：
 
 `commands` 和 `strategies` 中的 `protectedTools` 数组会添加到此默认列表。
 
-对于 `compress` 工具，`compress.protectedTools` 确保特定工具的输出被**硬排除**在压缩范围之外（v1.10.0+）。当模型压缩包含受保护工具消息的范围时，该消息完整保留在可见上下文中 — 只有周围的非受保护消息被压缩。根默认值为 `["skill", "compress"]`（`compress` 条目保护携带 summary 的 compress 工具调用，防止被后续顺序压缩吞噬）；显式数组会替换继承的策略。使用 `[]` 可允许所有已完成工具的输出被压缩。
+对于 `compress` 工具，`compress.protectedTools` 确保特定工具的输出被**硬排除**在压缩范围之外（v1.10.0+）。当模型压缩包含受保护工具消息的范围时，该消息完整保留在可见上下文中 — 只有周围的非受保护消息被压缩。根默认值为 `["skill", "compress"]`（`compress` 条目保护携带 summary 的 compress 工具调用，防止被后续顺序压缩吞噬）；显式数组会替换继承的策略。**`"compress"` 无论用户如何配置都会被强制保护** — 其 `summary` 参数是已压缩对话的唯一记录，一旦丢失无法恢复。设置 `[]` 仅保护 `compress`；设置 `["task"]` 保护 `task` 和 `compress`。
 
 ---
 
@@ -439,6 +442,22 @@ ACP 在首次启动时自动将配置从 `dcp.jsonc` 迁移到 `acp.jsonc`，将
 ---
 
 ## 更新日志
+
+### v1.13.7-dev.1 — Dev 预发布同步（master @ v1.13.6）
+
+**目的**：将 npm `dev` 标签（卡在 `1.12.10-dev.1`）同步到当前 master。`dev` 标签已远远落后于 `latest`（1.13.6），导致早期采用者无法通过 `opencode-acp@dev` 测试最新修复。
+
+**内容**：与 v1.13.6 稳定版完全相同（master HEAD `5d67b84`）。无新代码变更。仅为 dev 标签发布，使 `opencode-acp@dev` 与 `opencode-acp@latest` 保持一致。
+
+文件：`package.json`、`README.md`、`README.zh-CN.md`。846 项测试通过（无源码变更）。
+
+### v1.13.6 — 强制保护 compress 工具，无视用户配置（PR #188）
+
+**问题**：`compress.protectedTools` 使用替换式合并策略（PR #177）：用户设置 `protectedTools: ["skill"]` 或 `protectedTools: []` 会静默地从保护列表中移除 `"compress"`。这使得 compress 摘要 — 压缩对话的唯一记录 — 容易被后续的顺序压缩裁剪，导致不可恢复的数据丢失。
+
+**修复**：在 `lib/config.ts` 中添加 `FORCE_COMPRESS_PROTECTED = ["compress"]` 常量。在 `mergeCompress()` 中，当用户提供显式 `protectedTools` 数组时，该常量被展开到 Set 中，保证 `"compress"` 在任何覆盖下都保留。即使 `protectedTools: []` 现在也会解析为 `["compress"]`。双 agent 审查通过（Oracle + General，均 APPROVE）。
+
+文件：`lib/config.ts`、`tests/config-protected-tools.test.ts`、`README.md`、`README.zh-CN.md`。846 项测试通过。
 
 ### v1.13.5 — 修复 Release CI 对 Squash Merge 的检测（PR #187）
 

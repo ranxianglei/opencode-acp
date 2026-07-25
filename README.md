@@ -311,6 +311,9 @@ Each level overrides the previous, so project settings take priority over global
         "nudgeForce": "soft",
         // Hard-excluded tool names. The root default is ["skill", "compress"]; an explicit
         // array replaces the inherited policy. Use [] to compress all tool outputs.
+        // "compress" is always force-protected regardless of this setting — its summary
+        // parameter is the sole record of compressed conversation and cannot be recovered
+        // if lost. Use [] to compress all tool outputs except compress itself.
         "protectedTools": ["skill", "compress"],
         // Preserve text wrapped in <protect>...</protect> when compressed
         "protectTags": false,
@@ -400,7 +403,7 @@ By default, these tools are always protected from pruning:
 
 The `protectedTools` arrays in `commands` and `strategies` add to this default list.
 
-For the `compress` tool, `compress.protectedTools` ensures specific tool outputs are **hard-excluded** from compression ranges (v1.10.0+). When the model compresses a range that includes a protected tool message, that message survives intact in visible context — only the surrounding non-protected messages are compressed. The root default is `["skill", "compress"]` (the `compress` entry protects compress tool calls — which carry summaries — from being eaten by subsequent sequential compressions); an explicit array replaces the inherited policy. Use `[]` to allow all completed tool outputs to compress.
+For the `compress` tool, `compress.protectedTools` ensures specific tool outputs are **hard-excluded** from compression ranges (v1.10.0+). When the model compresses a range that includes a protected tool message, that message survives intact in visible context — only the surrounding non-protected messages are compressed. The root default is `["skill", "compress"]` (the `compress` entry protects compress tool calls — which carry summaries — from being eaten by subsequent sequential compressions); an explicit array replaces the inherited policy. **`"compress"` is always force-protected regardless of user config** — its `summary` parameter is the sole record of compressed conversation and cannot be recovered if lost. Setting `[]` protects only `compress`; setting `["task"]` protects `task` and `compress`.
 
 ---
 
@@ -471,6 +474,22 @@ For the complete list with root cause analysis, see the [bug tracker](https://gi
 ---
 
 ## Changelog
+
+### v1.13.7-dev.1 — Dev Prerelease Sync (master @ v1.13.6)
+
+**Purpose**: Sync the `dev` npm tag (stuck at `1.12.10-dev.1`) with current master. The `dev` tag had fallen far behind `latest` (1.13.6), making it impossible for early adopters to test the latest fixes via `opencode-acp@dev`.
+
+**Content**: Identical to v1.13.6 stable (master HEAD `5d67b84`). No new code changes. This is a dev-tag-only release to bring `opencode-acp@dev` up to parity with `opencode-acp@latest`.
+
+Files: `package.json`, `README.md`, `README.zh-CN.md`. 846 tests pass (no source changes).
+
+### v1.13.6 — Force-Protect Compress Tool Regardless of User Config (PR #188)
+
+**Problem**: `compress.protectedTools` uses a replace merge policy (PR #177): a user setting `protectedTools: ["skill"]` or `protectedTools: []` silently removed `"compress"` from the protected list. This made compress summaries — the sole record of compressed conversation — vulnerable to being pruned by subsequent sequential compressions, causing irreversible data loss.
+
+**Fix**: Added `FORCE_COMPRESS_PROTECTED = ["compress"]` constant in `lib/config.ts`. In `mergeCompress()`, when a user provides an explicit `protectedTools` array, the constant is spread into the Set to guarantee `"compress"` survives any override. Even `protectedTools: []` now resolves to `["compress"]`. Dual-agent reviewed (Oracle + General, both APPROVE).
+
+Files: `lib/config.ts`, `tests/config-protected-tools.test.ts`, `README.md`, `README.zh-CN.md`. 846 tests pass.
 
 ### v1.13.5 — Fix Release CI for Squash Merges (PR #187)
 
