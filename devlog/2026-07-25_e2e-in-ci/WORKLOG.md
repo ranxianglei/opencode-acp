@@ -18,7 +18,7 @@
 
 | Commit | Description |
 |--------|-------------|
-| `<pending>` | ci: run E2E tests on every PR |
+| `2c418b8` | ci: run E2E tests on every PR |
 
 ### Key Files
 
