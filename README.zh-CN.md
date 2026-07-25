@@ -443,6 +443,14 @@ ACP 在首次启动时自动将配置从 `dcp.jsonc` 迁移到 `acp.jsonc`，将
 
 ## 更新日志
 
+### v1.13.6 — 强制保护 compress 工具，无视用户配置（PR #188）
+
+**问题**：`compress.protectedTools` 使用替换式合并策略（PR #177）：用户设置 `protectedTools: ["skill"]` 或 `protectedTools: []` 会静默地从保护列表中移除 `"compress"`。这使得 compress 摘要 — 压缩对话的唯一记录 — 容易被后续的顺序压缩裁剪，导致不可恢复的数据丢失。
+
+**修复**：在 `lib/config.ts` 中添加 `FORCE_COMPRESS_PROTECTED = ["compress"]` 常量。在 `mergeCompress()` 中，当用户提供显式 `protectedTools` 数组时，该常量被展开到 Set 中，保证 `"compress"` 在任何覆盖下都保留。即使 `protectedTools: []` 现在也会解析为 `["compress"]`。双 agent 审查通过（Oracle + General，均 APPROVE）。
+
+文件：`lib/config.ts`、`tests/config-protected-tools.test.ts`、`README.md`、`README.zh-CN.md`。846 项测试通过。
+
 ### v1.13.5 — 修复 Release CI 对 Squash Merge 的检测（PR #187）
 
 **问题**：`.github/workflows/release.yml` 的发布检测正则只认标准 merge commit（`Merge pull request #N from .../YYYY-MM-DD_release-v...`），不认 squash merge。PR #182（v1.13.3）和 #186（v1.13.4）都是 squash 合并，导致 release workflow 静默跳过 — 没有 tag、没有 npm 发布、没有 GitHub Release。npm 卡在 1.13.2，而 master 已经到了 1.13.4。

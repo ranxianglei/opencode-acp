@@ -475,6 +475,14 @@ For the complete list with root cause analysis, see the [bug tracker](https://gi
 
 ## Changelog
 
+### v1.13.6 — Force-Protect Compress Tool Regardless of User Config (PR #188)
+
+**Problem**: `compress.protectedTools` uses a replace merge policy (PR #177): a user setting `protectedTools: ["skill"]` or `protectedTools: []` silently removed `"compress"` from the protected list. This made compress summaries — the sole record of compressed conversation — vulnerable to being pruned by subsequent sequential compressions, causing irreversible data loss.
+
+**Fix**: Added `FORCE_COMPRESS_PROTECTED = ["compress"]` constant in `lib/config.ts`. In `mergeCompress()`, when a user provides an explicit `protectedTools` array, the constant is spread into the Set to guarantee `"compress"` survives any override. Even `protectedTools: []` now resolves to `["compress"]`. Dual-agent reviewed (Oracle + General, both APPROVE).
+
+Files: `lib/config.ts`, `tests/config-protected-tools.test.ts`, `README.md`, `README.zh-CN.md`. 846 tests pass.
+
 ### v1.13.5 — Fix Release CI for Squash Merges (PR #187)
 
 **Problem**: The release detection regex in `.github/workflows/release.yml` only matched standard merge commits (`Merge pull request #N from .../YYYY-MM-DD_release-v...`), not squash merges. PRs #182 (v1.13.3) and #186 (v1.13.4) were squash-merged, so the release workflow silently skipped — no tag, no npm publish, no GitHub Release. npm was stuck at 1.13.2 while master had already moved to 1.13.4.
