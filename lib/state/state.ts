@@ -118,7 +118,6 @@ export class SessionStateRegistry {
                 error: err.message,
             })
         }
-        state.compressionTiming = this.compressionTiming
         return state
     }
 
