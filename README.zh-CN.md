@@ -443,6 +443,14 @@ ACP 在首次启动时自动将配置从 `dcp.jsonc` 迁移到 `acp.jsonc`，将
 
 ## 更新日志
 
+### v1.13.9-dev.1 — 移除子代理历史重写（PR #180）
+
+**问题**：`injectExtendedSubAgentResults` 在 `experimental.allowSubAgents: true` 时，每次消息变换都会重写父代理历史中的 `<task_result>` 工具输出。`subAgentResultCache` 在每次父↔子会话切换时被清空且从不持久化，导致每次变换都重新获取子代理会话并生成新的历史消息体 —— 使 provider prefix cache 失效（观察到的命中率约 56%，健康水平为 96-98%，prefix 冻结在约 22K tokens）。
+
+**修复**：PR #180 —— 从消息变换管道和 `appendProtectedTools` 中移除 `injectExtendedSubAgentResults`。删除 `lib/messages/inject/subagent-results.ts`（82 行）和 `lib/subagents/subagent-results.ts`（74 行）。从 `SessionState` 中移除 `subAgentResultCache` 字段。重写是冗余的：OpenCode 原生在 `task` 调用完成后立即追加一条 `state="completed"` 消息（含完整子代理结果）。`experimental.allowSubAgents` 仍然控制 ACP 是否在子代理会话中运行 —— 只是移除了父历史重写。经双 Agent 审查（均 APPROVE）。
+
+文件：`lib/hooks.ts`、`lib/compress/protected-content.ts`、`lib/compress/{message,range}.ts`、`lib/state/{state,types}.ts`、`lib/messages/index.ts`、`AGENTS.md`。851 项测试通过。
+
 ### v1.13.8-dev.1 — Dev 预发布同步（master @ v1.13.7）
 
 **目的**：将 npm `dev` 标签同步到 v1.13.7 稳定版。内容与 v1.13.7 完全相同 —— 无新代码变更。使 `opencode-acp@dev` 与 `opencode-acp@latest`（1.13.7）保持一致。
