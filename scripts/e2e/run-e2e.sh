@@ -9,7 +9,9 @@
 #   4. Runs scripted multi-turn conversations
 #   5. Verifies ACP state files
 #
-# Uses HOME isolation (/tmp/acp-e2e) to avoid touching real config.
+# Uses HOME + XDG isolation (/tmp/acp-e2e) to avoid touching real config.
+# Bun-compiled opencode ignores $HOME for config resolution, so XDG_CONFIG_HOME
+# and XDG_DATA_HOME must be set explicitly.
 #
 # Usage:
 #   ./scripts/e2e/run-e2e.sh                     # run all scenarios
@@ -27,6 +29,7 @@ step() { printf '%s==>%s %s\n' "$c_blu" "$c_rst" "$*" >&2; }
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SCRIPT_DIR="$REPO_ROOT/scripts/e2e"
 FAKE_HOME="/tmp/acp-e2e"
+OC_ENV="HOME=$FAKE_HOME XDG_CONFIG_HOME=$FAKE_HOME/.config XDG_DATA_HOME=$FAKE_HOME/.local/share"
 FAKE_LLM_PORT="${FAKE_LLM_PORT:-8400}"
 OPENCODE_BIN="${OPENCODE_BIN:-$(which opencode)}"
 BUN_BIN="${BUN_BIN:-$(which bun)}"
@@ -126,7 +129,7 @@ ACPJSON
 pass "opencode config written"
 
 step "warm up opencode DB (migration takes time on first run)"
-HOME="$FAKE_HOME" timeout -s KILL 300 "$OPENCODE_BIN" session list </dev/null >/dev/null 2>&1 || true
+env $OC_ENV timeout -s KILL 300 "$OPENCODE_BIN" session list </dev/null >/dev/null 2>&1 || true
 pass "opencode warm-up done"
 
 TOTAL_PASS=0
@@ -138,7 +141,7 @@ for scenario in "${SCENARIOS[@]}"; do
 
     rm -rf "$FAKE_HOME/.local/share/opencode/storage/plugin/acp"
     rm -f "$FAKE_HOME/.local/share/opencode/opencode.db"
-    HOME="$FAKE_HOME" timeout -s KILL 120 "$OPENCODE_BIN" session list </dev/null >/dev/null 2>&1 || true
+    env $OC_ENV timeout -s KILL 120 "$OPENCODE_BIN" session list </dev/null >/dev/null 2>&1 || true
 
     rm -f /tmp/acp-e2e-turn-counter
     rm -f /tmp/acp-e2e-turn-counter-child
@@ -172,12 +175,12 @@ for scenario in "${SCENARIOS[@]}"; do
         msg="E2E test message $i for $scenario_name"
         info "  turn $i: opencode run"
         if [[ $i -eq 1 ]]; then
-            HOME="$FAKE_HOME" timeout -s KILL 120 "$OPENCODE_BIN" run \
+            env $OC_ENV timeout -s KILL 120 "$OPENCODE_BIN" run \
                 --model fake/fake-model \
                 --format json \
                 "$msg" </dev/null > /tmp/acp-e2e-turn-$i.json 2>&1 || true
         else
-            HOME="$FAKE_HOME" timeout -s KILL 120 "$OPENCODE_BIN" run \
+            env $OC_ENV timeout -s KILL 120 "$OPENCODE_BIN" run \
                 --model fake/fake-model \
                 --format json \
                 --continue \
@@ -186,7 +189,7 @@ for scenario in "${SCENARIOS[@]}"; do
         info "  turn $i events: $(wc -l < /tmp/acp-e2e-turn-$i.json)"
     done
 
-    SESSION_ID=$(HOME="$FAKE_HOME" "$OPENCODE_BIN" session list --format json 2>/dev/null \
+    SESSION_ID=$(env $OC_ENV "$OPENCODE_BIN" session list --format json 2>/dev/null \
         | "$NODE_BIN" -e "
             const data = JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));
             const sessions = Array.isArray(data) ? data : (data.data || data.sessions || []);
@@ -196,7 +199,7 @@ for scenario in "${SCENARIOS[@]}"; do
 
     if [[ -z "$SESSION_ID" ]]; then
         info "session list fallback: reading from DB"
-        SESSION_ID=$(HOME="$FAKE_HOME" "$OPENCODE_BIN" session list 2>&1 | head -5)
+        SESSION_ID=$(env $OC_ENV "$OPENCODE_BIN" session list 2>&1 | head -5)
         info "raw session list: $SESSION_ID"
         fail "could not determine session ID for $scenario_name"
     fi
