@@ -175,7 +175,8 @@ index.ts (Plugin Entry — registers hooks + tools)
     │
     ├─► Message Transform Hook (experimental.chat.messages.transform) ← runs EVERY LLM call
     │       │
-    │       ├─► checkSession() → state init, load persisted state
+    │       ├─► registry.getOrCreate() → resolve per-session state (init + load persisted)
+    │       ├─► updatePerTurnState() → compaction detection + turn count
     │       ├─► stripHallucinations() → remove stale mNNNNN refs from model output
     │       ├─► assignMessageRefs() → bidirectional map: raw message IDs ↔ mNNNNN refs
     │       ├─► syncCompressionBlocks() → deactivate orphaned blocks (messages deleted externally)

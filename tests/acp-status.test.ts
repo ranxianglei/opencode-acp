@@ -1,8 +1,9 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 import { createAcpStatusTool } from "../lib/compress/status"
-import type { ToolContext } from "../lib/compress/types"
+import type { ToolFactoryContext } from "../lib/compress/types"
 import type { CompressionBlock, PrunedMessageEntry, SessionState } from "../lib/state/types"
+import { singletonRegistry } from "./registry-stub"
 
 const SID = "session-acp-status-test"
 
@@ -91,10 +92,10 @@ function makeToolContext(
     activeIds: number[],
     blocks: Map<number, CompressionBlock>,
     client?: any,
-): ToolContext {
+): ToolFactoryContext {
     return {
         client: client ?? {},
-        state: makeState(activeIds, blocks),
+        registry: singletonRegistry(makeState(activeIds, blocks)),
         logger: { enabled: false } as any,
         config: {} as any,
         prompts: { reload: () => {} } as any,
@@ -272,9 +273,9 @@ test("acp_status: scope=uncompressed defaults to ranges view", async () => {
     const mockClient = makeMockClient(mockMsgs)
     const state = makeState([], new Map())
     state.messageIds.byRawId.set("raw-1", "m00001")
-    const ctx: ToolContext = {
+    const ctx: ToolFactoryContext = {
         client: mockClient,
-        state,
+        registry: singletonRegistry(state),
         logger: { enabled: false } as any,
         config: {} as any,
         prompts: { reload: () => {} } as any,
@@ -293,9 +294,9 @@ test("acp_status: scope=uncompressed view=messages shows per-message listing", a
     const mockClient = makeMockClient(mockMsgs)
     const state = makeState([], new Map())
     state.messageIds.byRawId.set("raw-1", "m00001")
-    const ctx: ToolContext = {
+    const ctx: ToolFactoryContext = {
         client: mockClient,
-        state,
+        registry: singletonRegistry(state),
         logger: { enabled: false } as any,
         config: {} as any,
         prompts: { reload: () => {} } as any,
@@ -317,9 +318,9 @@ test("acp_status: scope=uncompressed view=messages with tool filter shows filter
     const mockClient = makeMockClient(mockMsgs)
     const state = makeState([], new Map())
     state.messageIds.byRawId.set("raw-1", "m00001")
-    const ctx: ToolContext = {
+    const ctx: ToolFactoryContext = {
         client: mockClient,
-        state,
+        registry: singletonRegistry(state),
         logger: { enabled: false } as any,
         config: {} as any,
         prompts: { reload: () => {} } as any,

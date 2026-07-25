@@ -7,6 +7,7 @@ import { createCompressMessageTool } from "../lib/compress/message"
 import { createSessionState, type WithParts } from "../lib/state"
 import type { PluginConfig } from "../lib/config"
 import { Logger } from "../lib/logger"
+import { singletonRegistry } from "./registry-stub"
 
 const testDataHome = join(tmpdir(), `opencode-dcp-message-tests-${process.pid}`)
 const testConfigHome = join(tmpdir(), `opencode-dcp-message-config-tests-${process.pid}`)
@@ -153,7 +154,7 @@ function buildMessages(sessionID: string): WithParts[] {
 test("compress message tool appends non-editable format extension", () => {
     const tool = createCompressMessageTool({
         client: {},
-        state: createSessionState(),
+        registry: singletonRegistry(createSessionState()),
         logger: new Logger(false),
         config: buildConfig(),
         prompts: {
@@ -181,7 +182,7 @@ test("compress message mode batches individual message summaries", async () => {
                 get: async () => ({ data: { parentID: null } }),
             },
         },
-        state,
+        registry: singletonRegistry(state),
         logger,
         config: buildConfig(),
         prompts: {
@@ -250,7 +251,7 @@ test("compress message mode appends protected prompt info", async () => {
                 get: async () => ({ data: { parentID: null } }),
             },
         },
-        state,
+        registry: singletonRegistry(state),
         logger,
         config,
         prompts: {
@@ -309,7 +310,7 @@ test("compress message mode ignores protect tags on ignored user messages", asyn
                 get: async () => ({ data: { parentID: null } }),
             },
         },
-        state,
+        registry: singletonRegistry(state),
         logger,
         config,
         prompts: {
@@ -360,7 +361,7 @@ test("compress message mode stores call id for later duration attachment", async
                 get: async () => ({ data: { parentID: null } }),
             },
         },
-        state,
+        registry: singletonRegistry(state),
         logger,
         config: buildConfig(),
         prompts: {
@@ -411,7 +412,7 @@ test("compress message mode does not partially apply when preparation fails", as
                 get: async () => ({ data: { parentID: null } }),
             },
         },
-        state,
+        registry: singletonRegistry(state),
         logger,
         config,
         prompts: {
@@ -459,7 +460,7 @@ test("compress message mode rejects compressed block ids", async () => {
                 get: async () => ({ data: { parentID: null } }),
             },
         },
-        state,
+        registry: singletonRegistry(state),
         logger,
         config: buildConfig(),
         prompts: {
@@ -508,7 +509,7 @@ test("compress message mode skips protected user message references", async () =
                 get: async () => ({ data: { parentID: null } }),
             },
         },
-        state,
+        registry: singletonRegistry(state),
         logger,
         config,
         prompts: {
@@ -592,7 +593,7 @@ test("compress message mode allows messages containing compress tool parts", asy
                 get: async () => ({ data: { parentID: null } }),
             },
         },
-        state,
+        registry: singletonRegistry(state),
         logger,
         config: buildConfig(),
         prompts: {
@@ -651,7 +652,7 @@ test("compress message mode sends one aggregated notification for batched messag
                 },
             },
         },
-        state,
+        registry: singletonRegistry(state),
         logger,
         config,
         prompts: {
@@ -706,7 +707,7 @@ test("compress message mode skips messages that are already actively compressed"
                 get: async () => ({ data: { parentID: null } }),
             },
         },
-        state,
+        registry: singletonRegistry(state),
         logger,
         config: buildConfig(),
         prompts: {
@@ -778,7 +779,7 @@ test("compress message mode skips invalid batch entries and reports issues", asy
                 get: async () => ({ data: { parentID: null } }),
             },
         },
-        state,
+        registry: singletonRegistry(state),
         logger,
         config: buildConfig(),
         prompts: {
@@ -843,7 +844,7 @@ test("compress message mode reports issues when every batch entry is skipped", a
                 get: async () => ({ data: { parentID: null } }),
             },
         },
-        state,
+        registry: singletonRegistry(state),
         logger,
         config: buildConfig(),
         prompts: {

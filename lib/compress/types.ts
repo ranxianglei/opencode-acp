@@ -2,6 +2,7 @@ import type { PluginConfig } from "../config"
 import type { Logger } from "../logger"
 import type { PromptStore } from "../prompts/store"
 import type { CompressionBlock, CompressionMode, SessionState, WithParts } from "../state"
+import type { SessionStateRegistry } from "../state"
 
 export interface ToolContext {
     client: any
@@ -9,6 +10,37 @@ export interface ToolContext {
     logger: Logger
     config: PluginConfig
     prompts: PromptStore
+}
+
+export interface ToolFactoryContext {
+    client: any
+    registry: SessionStateRegistry
+    logger: Logger
+    config: PluginConfig
+    prompts: PromptStore
+}
+
+// [FIX #33] Resolve the caller's per-session state at tool-call time and build a
+// ToolContext bound to it. A compress tool can only run after messages.transform
+// initialized the session, so the state is guaranteed present.
+export function resolveToolContext(
+    factoryCtx: ToolFactoryContext,
+    sessionID: string,
+): ToolContext {
+    const state = factoryCtx.registry.get(sessionID)
+    if (!state) {
+        throw new Error(
+            `ACP: session ${sessionID} has no initialized state. ` +
+                "messages.transform must run before a compress tool call.",
+        )
+    }
+    return {
+        client: factoryCtx.client,
+        state,
+        logger: factoryCtx.logger,
+        config: factoryCtx.config,
+        prompts: factoryCtx.prompts,
+    }
 }
 
 export interface CompressRangeEntry {

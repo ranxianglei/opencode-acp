@@ -1,5 +1,5 @@
 import { tool } from "@opencode-ai/plugin"
-import type { ToolContext } from "./types"
+import { type ToolContext, type ToolFactoryContext, resolveToolContext } from "./types"
 import { formatAge } from "../ui/utils"
 import type { CompressionBlock, WithParts } from "../state/types"
 import {
@@ -390,8 +390,8 @@ function buildVisibleWithSummaries(rawMessages: WithParts[], ctx: ToolContext): 
     return visible
 }
 
-export function createAcpStatusTool(ctx: ToolContext): ReturnType<typeof tool> {
-    ctx.prompts.reload()
+export function createAcpStatusTool(factoryCtx: ToolFactoryContext): ReturnType<typeof tool> {
+    factoryCtx.prompts.reload()
 
     return tool({
         description: ACP_STATUS_TOOL_DESCRIPTION,
@@ -419,6 +419,7 @@ export function createAcpStatusTool(ctx: ToolContext): ReturnType<typeof tool> {
             limit: tool.schema.number().optional().describe("Max items to list (default 30)"),
         },
         async execute(args, toolCtx) {
+            const ctx = resolveToolContext(factoryCtx, toolCtx.sessionID)
             const scope =
                 args.scope === "compressed" || args.scope === "uncompressed"
                     ? args.scope

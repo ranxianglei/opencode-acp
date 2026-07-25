@@ -10,6 +10,7 @@ import { handleRecompressCommand } from "../lib/commands/recompress"
 import { createSessionState, type WithParts } from "../lib/state"
 import type { PluginConfig } from "../lib/config"
 import { Logger } from "../lib/logger"
+import { singletonRegistry } from "./registry-stub"
 
 const testDataHome = join(tmpdir(), `opencode-dcp-compression-groups-${process.pid}`)
 const testConfigHome = join(tmpdir(), `opencode-dcp-compression-groups-config-${process.pid}`)
@@ -185,7 +186,7 @@ test("compression notifications increment by tool call across range and message 
 
     const rangeTool = createCompressRangeTool({
         client,
-        state,
+        registry: singletonRegistry(state),
         logger,
         config: rangeConfig,
         prompts: {
@@ -219,7 +220,7 @@ test("compression notifications increment by tool call across range and message 
 
     const messageTool = createCompressMessageTool({
         client,
-        state,
+        registry: singletonRegistry(state),
         logger,
         config: messageConfig,
         prompts: {
@@ -277,7 +278,7 @@ test("decompress groups batched message compressions by tool call", async () => 
 
     const tool = createCompressMessageTool({
         client,
-        state,
+        registry: singletonRegistry(state),
         logger,
         config: buildConfig("message"),
         prompts: {
@@ -377,7 +378,7 @@ test("decompress keeps batched ranges individually restorable", async () => {
 
     const tool = createCompressRangeTool({
         client,
-        state,
+        registry: singletonRegistry(state),
         logger,
         config: buildConfig("range"),
         prompts: {

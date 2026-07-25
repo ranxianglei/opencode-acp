@@ -1,8 +1,9 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 import { createAcpContextRecapTool } from "../lib/compress/recap"
-import type { ToolContext } from "../lib/compress/types"
+import type { ToolFactoryContext } from "../lib/compress/types"
 import type { CompressionBlock, PrunedMessageEntry, SessionState } from "../lib/state/types"
+import { singletonRegistry } from "./registry-stub"
 
 const SID = "session-recap-test"
 
@@ -82,10 +83,10 @@ function makeState(activeIds: number[], blocks: Map<number, CompressionBlock>): 
 function makeToolContext(
     activeIds: number[],
     blocks: Map<number, CompressionBlock>,
-): ToolContext {
+): ToolFactoryContext {
     return {
         client: {},
-        state: makeState(activeIds, blocks),
+        registry: singletonRegistry(makeState(activeIds, blocks)),
         logger: { enabled: false } as any,
         config: {} as any,
         prompts: { reload: () => {} } as any,

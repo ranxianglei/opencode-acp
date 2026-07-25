@@ -1,5 +1,5 @@
 import { tool } from "@opencode-ai/plugin"
-import type { ToolContext } from "./types"
+import { type ToolFactoryContext, resolveToolContext } from "./types"
 import { countMessageCharacters, countTokens } from "../token-utils"
 import { RANGE_FORMAT_EXTENSION } from "../prompts/extensions/tool"
 import {
@@ -92,14 +92,15 @@ function buildSchema(maxSummaryLengthHard: number) {
     }
 }
 
-export function createCompressRangeTool(ctx: ToolContext): ReturnType<typeof tool> {
-    ctx.prompts.reload()
-    const runtimePrompts = ctx.prompts.getRuntimePrompts()
+export function createCompressRangeTool(factoryCtx: ToolFactoryContext): ReturnType<typeof tool> {
+    factoryCtx.prompts.reload()
+    const runtimePrompts = factoryCtx.prompts.getRuntimePrompts()
 
     return tool({
         description: runtimePrompts.compressRange + RANGE_FORMAT_EXTENSION,
-        args: buildSchema(ctx.config.compress.maxSummaryLengthHard),
+        args: buildSchema(factoryCtx.config.compress.maxSummaryLengthHard),
         async execute(args, toolCtx) {
+            const ctx = resolveToolContext(factoryCtx, toolCtx.sessionID)
             const input = args as CompressRangeToolArgs
             validateArgs(input)
 

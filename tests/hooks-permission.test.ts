@@ -14,6 +14,7 @@ import {
     saveSessionState,
     type WithParts,
 } from "../lib/state"
+import { createTestRegistry } from "./registry-stub"
 
 function buildConfig(permission: "allow" | "ask" | "deny" = "allow"): PluginConfig {
     return {
@@ -100,7 +101,7 @@ test("chat message transform strips hallucinated tags even when compress is deni
     const config = buildConfig("deny")
     const handler = createChatMessageTransformHandler(
         { session: { get: async () => ({}) } } as any,
-        state,
+        createTestRegistry(state),
         logger,
         config,
         {
@@ -127,7 +128,7 @@ test("chat message transform drops messages without info instead of crashing", a
     const config = buildConfig("deny")
     const handler = createChatMessageTransformHandler(
         { session: { get: async () => ({}) } } as any,
-        state,
+        createTestRegistry(state),
         logger,
         config,
         {
@@ -171,7 +172,7 @@ test("command execute exits after effective permission resolves to deny", async 
                 },
             },
         } as any,
-        createSessionState(),
+        createTestRegistry(createSessionState()),
         new Logger(false),
         buildConfig("deny"),
         "/tmp",
@@ -196,7 +197,7 @@ test("text complete strips hallucinated metadata tags", async () => {
 test("event hook attaches durations to matching blocks by message and call id", async () => {
     const state = createSessionState()
     state.sessionId = "session-1"
-    const handler = createEventHandler(state, new Logger(false))
+    const handler = createEventHandler(createTestRegistry(state), new Logger(false))
     const originalNow = Date.now
     Date.now = () => 100
 
@@ -389,7 +390,7 @@ test("event hook attaches durations to matching blocks by message and call id", 
 test("event hook falls back to completed runtime when running duration missing", async () => {
     const state = createSessionState()
     state.sessionId = "session-1"
-    const handler = createEventHandler(state, new Logger(false))
+    const handler = createEventHandler(createTestRegistry(state), new Logger(false))
 
     state.prune.messages.blocksById.set(1, {
         blockId: 1,
@@ -480,7 +481,7 @@ test("event hook queues duration updates until the matching session is loaded", 
 
     const liveState = createSessionState()
     liveState.sessionId = otherSessionId
-    const handler = createEventHandler(liveState, logger)
+    const handler = createEventHandler(createTestRegistry(liveState), logger)
 
     await handler({
         event: {
@@ -560,7 +561,7 @@ test("event hook queues duration updates until the matching session is loaded", 
 test("event hook keeps same call id distinct across message ids", async () => {
     const state = createSessionState()
     state.sessionId = "session-1"
-    const handler = createEventHandler(state, new Logger(false))
+    const handler = createEventHandler(createTestRegistry(state), new Logger(false))
 
     state.prune.messages.blocksById.set(1, {
         blockId: 1,

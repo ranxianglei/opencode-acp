@@ -448,6 +448,56 @@ test("voluntary compress (no nudge shown) does NOT reset baseline", () => {
     assert.equal(state.nudges.compressBaselineSet, false, "lock NOT set for voluntary compress")
 })
 
+test("baseline initialized to currentTokens on first transform", () => {
+    // Baseline = currentTokens. The system prompt is always present and is
+    // NOT "growth" — measuring from currentTokens means the first nudge fires
+    // at ~currentTokens + nudgeGrowthTokens, not at nudgeGrowthTokens absolute.
+    const state = createSessionState()
+    state.modelContextLimit = 1_000_000
+    assert.equal(
+        state.nudges.lastPerMessageNudgeTokens,
+        undefined,
+        "fresh state has undefined baseline — no growth tracking yet",
+    )
+
+    const config = buildConfig()
+    config.compress.maxContextLimit = 500_000
+    config.compress.minContextLimit = 200_000
+
+    // Turn 1: first message transform. currentTokens = 55K (input 50K + output 5K).
+    // Baseline is undefined → gets initialized to currentTokens. No nudge fires.
+    const messages1: WithParts[] = [
+        userMsg("u1", "hello"),
+        assistantMsgWithTokens("a1", "work", { input: 50_000, output: 5_000 }),
+    ]
+    injectCompressNudges(state, config, logger, messages1, {} as any)
+
+    assert.equal(
+        state.nudges.lastPerMessageNudgeTokens,
+        55_000,
+        "baseline initialized to currentTokens — growth measured from starting context, not from 0",
+    )
+    assert.equal(
+        state.nudges.shouldInjectThisTurn,
+        false,
+        "first turn never nudges — baseline establishment only",
+    )
+
+    // Turn 2: context grew slightly to 58K. Growth = 58K - 55K = 3K < 50K threshold.
+    // Nudge MUST NOT fire — only 3K of real growth, not 50K.
+    const messages2: WithParts[] = [
+        userMsg("u2", "more"),
+        assistantMsgWithTokens("a2", "work", { input: 53_000, output: 5_000 }),
+    ]
+    injectCompressNudges(state, config, logger, messages2, {} as any)
+
+    assert.equal(
+        state.nudges.shouldInjectThisTurn,
+        false,
+        "3K growth < 50K threshold → nudge correctly suppressed",
+    )
+})
+
 test("nudge threshold restores to full after compress (issue #23)", () => {
     const state = createSessionState()
     state.modelContextLimit = 1_000_000

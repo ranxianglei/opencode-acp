@@ -4,7 +4,13 @@ import { formatBlockRef, formatMessageRef, parseBoundaryId, parseMessageRef } fr
 import { isIgnoredUserMessage } from "../messages/query"
 import { filterMessages } from "../messages/shape"
 import { countAllMessageTokens } from "../token-utils"
-import type { BoundaryReference, SearchContext, SelectionResolution, ToolContext } from "./types"
+import {
+    type BoundaryReference,
+    type SearchContext,
+    type SelectionResolution,
+    type ToolFactoryContext,
+    resolveToolContext,
+} from "./types"
 
 export async function fetchSessionMessages(client: any, sessionId: string): Promise<WithParts[]> {
     const response = await client.session.messages({
@@ -380,8 +386,8 @@ function buildSearchPreview(text: string, firstTerm: string): string {
     return text.substring(0, 200) + (text.length > 200 ? "..." : "")
 }
 
-export function createSearchContextTool(ctx: ToolContext): ReturnType<typeof tool> {
-    ctx.prompts.reload()
+export function createSearchContextTool(factoryCtx: ToolFactoryContext): ReturnType<typeof tool> {
+    factoryCtx.prompts.reload()
 
     return tool({
         description: SEARCH_CONTEXT_TOOL_DESCRIPTION,
@@ -398,7 +404,8 @@ export function createSearchContextTool(ctx: ToolContext): ReturnType<typeof too
                 .optional()
                 .describe("If true, also search visible (uncompressed) messages. Slower but more thorough (default: false)"),
         },
-        async execute(args) {
+        async execute(args, toolCtx) {
+            const ctx = resolveToolContext(factoryCtx, toolCtx.sessionID)
             const query = (args.query || "").toLowerCase().trim()
             const limit = args.limit ?? 10
 

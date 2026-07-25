@@ -302,6 +302,8 @@ export const injectCompressNudges = (
     }
 
     if (state.nudges.lastPerMessageNudgeTokens === undefined && currentTokens !== undefined) {
+        // Growth is measured from the session's starting context — the system
+        // prompt is always present and is NOT growth.
         state.nudges.lastPerMessageNudgeTokens = currentTokens
         baselineReEstablished = true
     }

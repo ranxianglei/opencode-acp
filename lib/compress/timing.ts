@@ -16,17 +16,6 @@ export function buildCompressionTimingKey(messageId: string, callId: string): st
     return `${messageId}:${callId}`
 }
 
-export function consumeCompressionStart(
-    state: SessionState,
-    messageId: string,
-    callId: string,
-): number | undefined {
-    const key = buildCompressionTimingKey(messageId, callId)
-    const start = state.compressionTiming.startsByCallId.get(key)
-    state.compressionTiming.startsByCallId.delete(key)
-    return start
-}
-
 export function resolveCompressionDuration(
     startedAt: number | undefined,
     eventTime: number | undefined,

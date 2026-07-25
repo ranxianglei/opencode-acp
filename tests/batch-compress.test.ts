@@ -8,6 +8,7 @@ import { validateArgs } from "../lib/compress/range-utils"
 import { createSessionState, type WithParts } from "../lib/state"
 import type { PluginConfig } from "../lib/config"
 import { Logger } from "../lib/logger"
+import { singletonRegistry } from "./registry-stub"
 import type { CompressRangeToolArgs } from "../lib/compress/types"
 
 const testDataHome = join(tmpdir(), `opencode-dcp-tests-${process.pid}`)
@@ -117,7 +118,7 @@ function buildToolCtx(sessionID: string, state: ReturnType<typeof createSessionS
                 get: async () => ({ data: { parentID: null } }),
             },
         },
-        state,
+        registry: singletonRegistry(state),
         logger: new Logger(false),
         config: buildConfig(),
         prompts: {

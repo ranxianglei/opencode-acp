@@ -1,6 +1,6 @@
 import { tool } from "@opencode-ai/plugin"
 import type { CompressionBlock } from "../state/types"
-import type { ToolContext } from "./types"
+import { type ToolFactoryContext, resolveToolContext } from "./types"
 
 function formatCoverage(block: CompressionBlock): string {
     const count = block.effectiveMessageIds?.length || 0
@@ -14,7 +14,7 @@ Call this tool to re-fetch a specific block's summary without decompressing the 
 Args:
 - blockId: optional block number (e.g., 5). If omitted, lists all active blocks with brief info.`
 
-export function createAcpContextRecapTool(ctx: ToolContext): ReturnType<typeof tool> {
+export function createAcpContextRecapTool(factoryCtx: ToolFactoryContext): ReturnType<typeof tool> {
     return tool({
         description: RECAP_TOOL_DESCRIPTION,
         args: {
@@ -23,7 +23,8 @@ export function createAcpContextRecapTool(ctx: ToolContext): ReturnType<typeof t
                 .optional()
                 .describe("Block number to retrieve (e.g., 5). If omitted, lists all active blocks."),
         },
-        async execute(args) {
+        async execute(args, toolCtx) {
+            const ctx = resolveToolContext(factoryCtx, toolCtx.sessionID)
             const msgState = ctx.state.prune.messages
             const activeIds = Array.from(msgState.activeBlockIds).sort((a, b) => a - b)
 

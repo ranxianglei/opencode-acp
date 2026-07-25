@@ -1,5 +1,5 @@
 import { tool } from "@opencode-ai/plugin"
-import type { ToolContext } from "./types"
+import { type ToolContext, type ToolFactoryContext, resolveToolContext } from "./types"
 import type { CompressionTarget } from "../commands/compression-targets"
 import type { CompressionBlock } from "../state/types"
 import type { SessionState, WithParts } from "../state"
@@ -264,11 +264,12 @@ function extractMessageText(m: WithParts): string {
     return `[${role}]\n${content}`
 }
 
-export function createDecompressTool(ctx: ToolContext): ReturnType<typeof tool> {
+export function createDecompressTool(factoryCtx: ToolFactoryContext): ReturnType<typeof tool> {
     return tool({
         description: TOOL_DESCRIPTION,
         args: buildSchema(),
         async execute(args, toolCtx) {
+            const ctx = resolveToolContext(factoryCtx, toolCtx.sessionID)
             const { rawMessages } = await prepareDecompressSession(ctx, toolCtx)
 
             const contextUsageBefore = ctx.state.modelContextLimit

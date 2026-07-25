@@ -1,5 +1,5 @@
 import { tool } from "@opencode-ai/plugin"
-import type { ToolContext } from "./types"
+import { type ToolFactoryContext, resolveToolContext } from "./types"
 import { fetchSessionMessages } from "./search"
 import { finalizeSession, prepareSession } from "./pipeline"
 
@@ -11,8 +11,8 @@ Args:
 - toolType: tool name to prune (e.g., "todowrite", "bash", "edit")
 - keepLatest: how many recent calls to keep visible (default 3)`
 
-export function createPruneTool(ctx: ToolContext): ReturnType<typeof tool> {
-    ctx.prompts.reload()
+export function createPruneTool(factoryCtx: ToolFactoryContext): ReturnType<typeof tool> {
+    factoryCtx.prompts.reload()
 
     return tool({
         description: PRUNE_TOOL_DESCRIPTION,
@@ -26,6 +26,7 @@ export function createPruneTool(ctx: ToolContext): ReturnType<typeof tool> {
                 .describe("How many recent calls to keep visible (default 3)"),
         },
         async execute(args, toolCtx) {
+            const ctx = resolveToolContext(factoryCtx, toolCtx.sessionID)
             const keepLatest = args.keepLatest ?? 3
             const { rawMessages } = await prepareSession(
                 ctx,
