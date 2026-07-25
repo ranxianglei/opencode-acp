@@ -1,7 +1,8 @@
 import { describe, it } from "node:test"
 import assert from "node:assert/strict"
 import type { SessionState, CompressionBlock } from "../lib/state/types.ts"
-import { getTierTokenUsage } from "../lib/state/utils.ts"
+import { getTierTokenUsage, loadPruneMessagesState } from "../lib/state/utils.ts"
+import type { PersistedPruneMessagesState } from "../lib/state/persistence.ts"
 
 function makeBlock(id: number, tier: 1 | 2 | 3 | undefined, summaryTokens: number, survivedCount = 5): CompressionBlock {
     return {
@@ -147,5 +148,58 @@ describe("getTierTokenUsage", () => {
         assert.equal(usage.tier1Tokens, 600)
         assert.equal(usage.tier2Tokens, 125)
         assert.equal(usage.tier3Tokens, 25)
+    })
+})
+
+describe("tier field persistence round-trip", () => {
+    it("preserves tier 1/2/3 through loadPruneMessagesState", () => {
+        const persisted: PersistedPruneMessagesState = {
+            nextBlockId: 4,
+            nextRunId: 2,
+            byMessageId: {},
+            blocksById: {
+                "1": { ...makeBlock(1, 1, 1000), tier: 1 },
+                "2": { ...makeBlock(2, 2, 500), tier: 2 },
+                "3": { ...makeBlock(3, 3, 100), tier: 3 },
+            },
+        }
+
+        const loaded = loadPruneMessagesState(persisted)
+
+        assert.equal(loaded.blocksById.get(1)?.tier, 1)
+        assert.equal(loaded.blocksById.get(2)?.tier, 2)
+        assert.equal(loaded.blocksById.get(3)?.tier, 3)
+    })
+
+    it("defaults missing tier to undefined (treated as tier 1 by consumers)", () => {
+        const persisted: PersistedPruneMessagesState = {
+            nextBlockId: 2,
+            nextRunId: 2,
+            byMessageId: {},
+            blocksById: {
+                "1": { ...makeBlock(1, undefined, 1000), tier: undefined },
+            },
+        }
+
+        const loaded = loadPruneMessagesState(persisted)
+
+        assert.equal(loaded.blocksById.get(1)?.tier, undefined)
+        const state = makeState([loaded.blocksById.get(1)!])
+        assert.equal(getTierTokenUsage(state).tier1Tokens, 1000)
+    })
+
+    it("rejects invalid tier values (> 3)", () => {
+        const persisted: PersistedPruneMessagesState = {
+            nextBlockId: 2,
+            nextRunId: 2,
+            byMessageId: {},
+            blocksById: {
+                "1": { ...makeBlock(1, 1, 1000), tier: 99 as unknown as 1 },
+            },
+        }
+
+        const loaded = loadPruneMessagesState(persisted)
+
+        assert.equal(loaded.blocksById.get(1)?.tier, undefined)
     })
 })

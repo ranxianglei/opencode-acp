@@ -85,7 +85,11 @@ function makeUserMessage(id: string, text: string): WithParts {
     }
 }
 
-function makeAssistantMessage(id: string, text: string): WithParts {
+function makeAssistantMessage(id: string, text: string, extraParts?: WithParts["parts"]): WithParts {
+    const baseParts: WithParts["parts"] = [
+        { type: "step-start", id: `${id}-ss`, sessionID: SID, messageID: id },
+        { type: "text", text, id: `${id}-p1`, sessionID: SID, messageID: id },
+    ]
     return {
         info: {
             id,
@@ -102,10 +106,7 @@ function makeAssistantMessage(id: string, text: string): WithParts {
             tokens: { input: 100, output: 50, reasoning: 0, cache: { read: 0, write: 0 } },
             time: { created: Date.now() },
         } as WithParts["info"],
-        parts: [
-            { type: "step-start", id: `${id}-ss`, sessionID: SID, messageID: id },
-            { type: "text", text, id: `${id}-p1`, sessionID: SID, messageID: id },
-        ],
+        parts: extraParts ? [...baseParts, ...extraParts] : baseParts,
     }
 }
 
