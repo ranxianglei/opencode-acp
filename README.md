@@ -475,6 +475,14 @@ For the complete list with root cause analysis, see the [bug tracker](https://gi
 
 ## Changelog
 
+### v1.13.7-dev.1 — Dev Prerelease Sync (master @ v1.13.6)
+
+**Purpose**: Sync the `dev` npm tag (stuck at `1.12.10-dev.1`) with current master. The `dev` tag had fallen far behind `latest` (1.13.6), making it impossible for early adopters to test the latest fixes via `opencode-acp@dev`.
+
+**Content**: Identical to v1.13.6 stable (master HEAD `5d67b84`). No new code changes. This is a dev-tag-only release to bring `opencode-acp@dev` up to parity with `opencode-acp@latest`.
+
+Files: `package.json`, `README.md`, `README.zh-CN.md`. 846 tests pass (no source changes).
+
 ### v1.13.6 — Force-Protect Compress Tool Regardless of User Config (PR #188)
 
 **Problem**: `compress.protectedTools` uses a replace merge policy (PR #177): a user setting `protectedTools: ["skill"]` or `protectedTools: []` silently removed `"compress"` from the protected list. This made compress summaries — the sole record of compressed conversation — vulnerable to being pruned by subsequent sequential compressions, causing irreversible data loss.
