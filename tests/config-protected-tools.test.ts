@@ -25,26 +25,34 @@ const base: CompressConfig = {
     keepEmbedMaxChars: 2000,
 }
 
-test("explicit compress protected tools replace the inherited policy", () => {
+test("no override returns base protectedTools unchanged", () => {
     assert.deepEqual(mergeCompress(base, {}).protectedTools, ["skill"])
-    assert.deepEqual(mergeCompress(base, { protectedTools: ["task"] }).protectedTools, ["task"])
-    assert.deepEqual(mergeCompress(base, { protectedTools: [] }).protectedTools, [])
 })
 
-// Chaining mergeCompress calls mirrors how mergeLayer chains them inside
-// getConfig() across the global → configDir → project layers.
-test("replacement survives across multiple config merge layers", () => {
+test("explicit override replaces inherited policy but 'compress' is force-appended", () => {
+    assert.deepEqual(mergeCompress(base, { protectedTools: ["task"] }).protectedTools, ["task", "compress"])
+})
+
+test("empty array override still force-protects 'compress'", () => {
+    assert.deepEqual(mergeCompress(base, { protectedTools: [] }).protectedTools, ["compress"])
+})
+
+test("override that already includes 'compress' does not duplicate", () => {
+    assert.deepEqual(mergeCompress(base, { protectedTools: ["skill", "compress"] }).protectedTools, ["skill", "compress"])
+})
+
+test("force-protection survives across multiple config merge layers", () => {
     const afterGlobal = mergeCompress(base, { protectedTools: ["my_tool"] })
-    assert.deepEqual(afterGlobal.protectedTools, ["my_tool"])
+    assert.deepEqual(afterGlobal.protectedTools, ["my_tool", "compress"])
 
     const afterConfigDir = mergeCompress(afterGlobal, {})
-    assert.deepEqual(afterConfigDir.protectedTools, ["my_tool"])
+    assert.deepEqual(afterConfigDir.protectedTools, ["my_tool", "compress"])
 
     const afterProject = mergeCompress(afterConfigDir, { protectedTools: [] })
-    assert.deepEqual(afterProject.protectedTools, [])
+    assert.deepEqual(afterProject.protectedTools, ["compress"])
 
     const emptyGlobal = mergeCompress(base, { protectedTools: [] })
-    assert.deepEqual(emptyGlobal.protectedTools, [])
+    assert.deepEqual(emptyGlobal.protectedTools, ["compress"])
     const taskProject = mergeCompress(emptyGlobal, { protectedTools: ["task"] })
-    assert.deepEqual(taskProject.protectedTools, ["task"])
+    assert.deepEqual(taskProject.protectedTools, ["task", "compress"])
 })

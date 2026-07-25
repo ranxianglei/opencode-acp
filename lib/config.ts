@@ -131,6 +131,15 @@ const DEFAULT_PROTECTED_TOOLS = [
 
 const COMPRESS_DEFAULT_PROTECTED_TOOLS = ["skill", "compress"]
 
+/**
+ * Tools that are ALWAYS protected from compression, regardless of user config.
+ * "compress" must never be compressed away — its `summary` parameter is the
+ * sole record of compressed conversation. Losing it causes irreversible data
+ * loss. Even if a user explicitly sets `compress.protectedTools: []`, these
+ * tools are force-appended after the override.
+ */
+const FORCE_COMPRESS_PROTECTED: readonly string[] = ["compress"]
+
 export { VALID_CONFIG_KEYS, getInvalidConfigKeys, validateConfigTypes, type ValidationError } from "./config-validation"
 
 function showConfigWarnings(
@@ -445,7 +454,7 @@ export function mergeCompress(
         iterationNudgeThreshold: override.iterationNudgeThreshold ?? base.iterationNudgeThreshold,
         nudgeForce: override.nudgeForce ?? base.nudgeForce,
         protectedTools: Array.isArray(override.protectedTools)
-            ? [...new Set(override.protectedTools)]
+            ? [...new Set([...override.protectedTools, ...FORCE_COMPRESS_PROTECTED])]
             : base.protectedTools,
         protectTags: override.protectTags ?? base.protectTags,
         protectUserMessages: override.protectUserMessages ?? base.protectUserMessages,

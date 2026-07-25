@@ -311,6 +311,9 @@ Each level overrides the previous, so project settings take priority over global
         "nudgeForce": "soft",
         // Hard-excluded tool names. The root default is ["skill", "compress"]; an explicit
         // array replaces the inherited policy. Use [] to compress all tool outputs.
+        // "compress" is always force-protected regardless of this setting — its summary
+        // parameter is the sole record of compressed conversation and cannot be recovered
+        // if lost. Use [] to compress all tool outputs except compress itself.
         "protectedTools": ["skill", "compress"],
         // Preserve text wrapped in <protect>...</protect> when compressed
         "protectTags": false,
@@ -400,7 +403,7 @@ By default, these tools are always protected from pruning:
 
 The `protectedTools` arrays in `commands` and `strategies` add to this default list.
 
-For the `compress` tool, `compress.protectedTools` ensures specific tool outputs are **hard-excluded** from compression ranges (v1.10.0+). When the model compresses a range that includes a protected tool message, that message survives intact in visible context — only the surrounding non-protected messages are compressed. The root default is `["skill", "compress"]` (the `compress` entry protects compress tool calls — which carry summaries — from being eaten by subsequent sequential compressions); an explicit array replaces the inherited policy. Use `[]` to allow all completed tool outputs to compress.
+For the `compress` tool, `compress.protectedTools` ensures specific tool outputs are **hard-excluded** from compression ranges (v1.10.0+). When the model compresses a range that includes a protected tool message, that message survives intact in visible context — only the surrounding non-protected messages are compressed. The root default is `["skill", "compress"]` (the `compress` entry protects compress tool calls — which carry summaries — from being eaten by subsequent sequential compressions); an explicit array replaces the inherited policy. **`"compress"` is always force-protected regardless of user config** — its `summary` parameter is the sole record of compressed conversation and cannot be recovered if lost. Setting `[]` protects only `compress`; setting `["task"]` protects `task` and `compress`.
 
 ---
 

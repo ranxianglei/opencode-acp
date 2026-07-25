@@ -280,6 +280,9 @@ ACP 使用自己的配置文件，按以下顺序搜索：
         "nudgeForce": "soft",
         // Hard-excluded tool names. The root default is ["skill", "compress"]; an explicit
         // array replaces the inherited policy. Use [] to compress all tool outputs.
+        // "compress" is always force-protected regardless of this setting — its summary
+        // parameter is the sole record of compressed conversation and cannot be recovered
+        // if lost. Use [] to compress all tool outputs except compress itself.
         "protectedTools": ["skill", "compress"],
         // Preserve text wrapped in <protect>...</protect> when compressed
         "protectTags": false,
@@ -368,7 +371,7 @@ ACP 暴露六个可编辑的 prompt：
 
 `commands` 和 `strategies` 中的 `protectedTools` 数组会添加到此默认列表。
 
-对于 `compress` 工具，`compress.protectedTools` 确保特定工具的输出被**硬排除**在压缩范围之外（v1.10.0+）。当模型压缩包含受保护工具消息的范围时，该消息完整保留在可见上下文中 — 只有周围的非受保护消息被压缩。根默认值为 `["skill", "compress"]`（`compress` 条目保护携带 summary 的 compress 工具调用，防止被后续顺序压缩吞噬）；显式数组会替换继承的策略。使用 `[]` 可允许所有已完成工具的输出被压缩。
+对于 `compress` 工具，`compress.protectedTools` 确保特定工具的输出被**硬排除**在压缩范围之外（v1.10.0+）。当模型压缩包含受保护工具消息的范围时，该消息完整保留在可见上下文中 — 只有周围的非受保护消息被压缩。根默认值为 `["skill", "compress"]`（`compress` 条目保护携带 summary 的 compress 工具调用，防止被后续顺序压缩吞噬）；显式数组会替换继承的策略。**`"compress"` 无论用户如何配置都会被强制保护** — 其 `summary` 参数是已压缩对话的唯一记录，一旦丢失无法恢复。设置 `[]` 仅保护 `compress`；设置 `["task"]` 保护 `task` 和 `compress`。
 
 ---
 
