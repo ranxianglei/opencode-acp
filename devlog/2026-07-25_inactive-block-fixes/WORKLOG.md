@@ -33,5 +33,25 @@
 ## Verification
 
 - typecheck: pass
-- tests: 851 pass (846 existing + 5 new), 0 fail
+- tests: 859 pass (846 existing + 13 new across 4 commits), 0 fail
 - build: pass
+
+## Round 2 dual-agent review findings (fixed in commit 4)
+
+### Fixed: toFile writes garbage for inactive blocks
+`lib/compress/decompress.ts:325` — inactive blocks had empty `activeBlocks`, so fallback was
+`activeBlocks[0]?.summary` (undefined) → wrote literal `"(no content available)"`. Changed to
+`targets[0]?.blocks[0]?.summary` so the block's actual summary is written.
+
+### Fixed: /acp decompress slash command still rejected inactive blocks
+`lib/commands/decompress.ts:153-161` — same "not active" rejection existed in the slash command
+path. Applied the same fix: keep nested-redirect, drop "not active" rejection.
+
+### Added: E2E tests for actual decompress tool behavior
+`tests/inactive-block-decompress.test.ts` — 7 tests exercising the real decompress tool:
+- resolveCompressionTarget returns target for inactive block
+- decompress tool succeeds for standalone inactive block (actual behavior change)
+- decompress tool redirects for consumed block with active parent
+- decompress tool works normally for active block (control)
+- toFile on inactive block writes summary (not placeholder)
+- decompress succeeds when all ancestor chain is inactive (multi-block scenario)

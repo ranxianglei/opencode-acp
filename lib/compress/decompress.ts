@@ -322,7 +322,7 @@ export function createDecompressTool(ctx: ToolContext): ReturnType<typeof tool> 
                 const fileContent =
                     lines.length > 0
                         ? lines.join("\n\n---\n\n")
-                        : (activeBlocks[0]?.summary ?? "(no content available)")
+                        : (targets[0]?.blocks[0]?.summary ?? "(no content available)")
                 await writeFile(targetPath, fileContent, "utf-8")
 
                 const displayIds = targets.map((t) => `b${t.displayId}`).join(", ")
