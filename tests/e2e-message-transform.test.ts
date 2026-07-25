@@ -375,7 +375,7 @@ test("compression blocks: compressed messages are replaced with summaries", asyn
 
     const remainingIds = output.messages.map((m: any) => m.info.id)
 
-    assert.ok(!remainingIds.includes("u1"), "u1 should be pruned")
+    assert.ok(remainingIds.includes("u1"), "u1 (first user) is force-preserved even when compressed")
     assert.ok(!remainingIds.includes("a1"), "a1 should be pruned")
 
     assert.ok(remainingIds.includes("u2"), "u2 should survive")
@@ -468,15 +468,26 @@ test("compression summary: never produces two consecutive user turns (Bug 36)", 
         (m: any, idx: number) => !(idx === lastIdx && isSyntheticMessage(m)),
     )
 
+    // With preserve-first-user, u1 (the first user message) is always
+    // force-preserved even when it falls in a compression range. When a
+    // later user message (u2) also survives, u1 and u2 become adjacent.
+    // This is an accepted trade-off: zero user messages is a hard API
+    // rejection (zhipuai-lb code 1214), while adjacent user messages are
+    // accepted by virtually all providers. The no-adjacent-users invariant
+    // still holds for all NON-first-user pairs.
     for (let i = 1; i < historical.length; i++) {
         const prev = historical[i - 1]!
         const curr = historical[i]!
         const bothUser = prev.info.role === "user" && curr.info.role === "user"
+        const isForcePreservedFirstUser = i === 1 && prev.info.id === "u1"
         assert.ok(
-            !bothUser,
-            `adjacent user turns at index ${i - 1}/${i} (ids ${prev.info.id}, ${curr.info.id})`,
+            !bothUser || isForcePreservedFirstUser,
+            `unexpected adjacent user turns at index ${i - 1}/${i} (ids ${prev.info.id}, ${curr.info.id})`,
         )
     }
+
+    const u1 = historical.find((m: WithParts) => m.info.id === "u1")
+    assert.ok(u1, "u1 (first user) should be force-preserved even when compressed")
 
     const u2 = historical.find((m: WithParts) => m.info.id === "u2")
     assert.ok(u2, "u2 should survive")
@@ -675,7 +686,7 @@ test("message IDs remain consistent after compression and pruning", async () => 
     assert.equal(new Set(allRefs).size, allRefs.length, "no duplicate message refs")
 
     const outputIds = output.messages.map((m: any) => m.info.id)
-    assert.ok(!outputIds.includes("u1"), "u1 should be pruned from output")
+    assert.ok(outputIds.includes("u1"), "u1 (first user) is force-preserved even when compressed")
     assert.ok(!outputIds.includes("a1"), "a1 should be pruned from output")
     assert.ok(outputIds.includes("u2"), "u2 should survive")
     assert.ok(outputIds.includes("a2"), "a2 should survive")
