@@ -165,7 +165,6 @@ export function createCompressMessageTool(factoryCtx: ToolFactoryContext): Retur
                 const summaryWithTools = await appendProtectedTools(
                     ctx.client,
                     ctx.state,
-                    ctx.config.experimental.allowSubAgents,
                     summaryWithPromptInfo,
                     plan.selection,
                     searchContext,

@@ -165,7 +165,6 @@ export function createSessionState(): SessionState {
             pendingByCallId: new Map(),
         },
         toolParameters: new Map<string, ToolParameterEntry>(),
-        subAgentResultCache: new Map<string, string>(),
         toolIdList: [],
         messageIds: {
             byRawId: new Map<string, string>(),
@@ -206,7 +205,6 @@ export function resetSessionState(state: SessionState): void {
         totalPruneTokens: 0,
     }
     state.toolParameters.clear()
-    state.subAgentResultCache.clear()
     state.toolIdList = []
     state.messageIds = {
         byRawId: new Map<string, string>(),

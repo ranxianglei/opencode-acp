@@ -229,7 +229,6 @@ export function createCompressRangeTool(factoryCtx: ToolFactoryContext): ReturnT
                 const summaryWithTools = await appendProtectedTools(
                     ctx.client,
                     ctx.state,
-                    ctx.config.experimental.allowSubAgents,
                     summaryWithPromptInfo,
                     plan.selection,
                     searchContext,
