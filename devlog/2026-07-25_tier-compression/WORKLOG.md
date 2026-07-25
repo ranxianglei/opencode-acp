@@ -112,3 +112,36 @@ After code review by Oracle (ses_066c46be), fixed 2 BLOCKERs + 2 MEDIUMs:
 
 ### Verification
 - typecheck ✅ | 866 tests pass ✅ | build ✅ with pinned 1.2.0
+
+## Phase 6: Dual-Agent Review Fixes + Deferred Limitations
+
+### First review fixes (commits 0523fe4 + c189eaa)
+- **B1 BLOCKER**: `makeAssistantMessage` 3-arg call silently discarded tool output parts
+- **M1/M5**: Dead code (`enoughCandidates` tautology), unsound tier cast
+- **M2**: No tier persistence round-trip tests (added 3)
+- **L1**: Unnecessary cast in hide-consumed.ts
+
+### Deferred limitations fixed (commits f17dc5f + 16e270c + b88ec5f)
+
+**Cross-tier contamination prevention**:
+- `lib/messages/inject/inject.ts`: Sort candidates by blockId (ascending) instead of survivedCount. Safety check narrows suggested compress range when non-target active blocks exist between candidates by blockId, finding the largest contiguous sub-group.
+- `lib/compress/state.ts`: `applyCompressionState` uses `minConsumedTier` (not `maxConsumedTier`) for output tier. Non-target-tier consumed blocks are NOT deactivated — their summaries remain visible via their own compress calls. `consumedBlockIds` and `includedBlockIds` on the new block only include target-tier blocks.
+
+**effectiveCompressedTokens for T2+ blocks**:
+- `lib/state/types.ts`: New optional `effectiveCompressedTokens?: number` field on CompressionBlock
+- `lib/compress/state.ts`: Computed at creation time as `compressedTokens + sum of consumed blocks' effectiveCompressedTokens`. Used for `pruneTokenCounter`/`totalPruneTokens` stats instead of raw `compressedTokens`.
+- `lib/state/utils.ts`: Parsed in `loadPruneMessagesState` with validation + fallback to undefined
+- `lib/ui/notification.ts`: Log uses `effectiveCompressedTokens ?? compressedTokens`
+- `lib/compress/status.ts`: `getEffectiveCompressedTokens` prefers stored field, falls back to recursive computation for old state files
+- `lib/commands/compression-targets.ts`: Sum uses `effectiveCompressedTokens ?? compressedTokens`
+
+### New tests (6)
+- T2 trigger narrows range when non-target (T2) block between T1 candidates
+- applyCompressionState mixed-tier consumption produces minTier+1
+- T2 block gets effectiveCompressedTokens = consumed T1 tokens
+- T1 block gets effectiveCompressedTokens = compressedTokens
+- effectiveCompressedTokens round-trip through loadPruneMessagesState
+- Missing effectiveCompressedTokens defaults to undefined
+
+### Verification
+- typecheck ✅ | 875 tests pass ✅ (869 + 6 new)
