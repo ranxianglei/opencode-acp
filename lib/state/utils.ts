@@ -259,6 +259,10 @@ export function loadPruneMessagesState(
                     block.generation === "young" || block.generation === "old"
                         ? block.generation
                         : undefined,
+                tier:
+                    block.tier === 1 || block.tier === 2 || block.tier === 3
+                        ? block.tier
+                        : undefined,
             })
         }
     }
@@ -361,6 +365,25 @@ export function getActiveSummaryTokenUsage(
     return total
 }
 
+export function getTierTokenUsage(
+    state: SessionState,
+): { tier1Tokens: number; tier2Tokens: number; tier3Tokens: number } {
+    let tier1Tokens = 0
+    let tier2Tokens = 0
+    let tier3Tokens = 0
+    for (const blockId of state.prune.messages.activeBlockIds) {
+        const block = state.prune.messages.blocksById.get(blockId)
+        if (!block || !block.active) {
+            continue
+        }
+        const tier = block.tier ?? 1
+        if (tier === 1) tier1Tokens += block.summaryTokens
+        else if (tier === 2) tier2Tokens += block.summaryTokens
+        else tier3Tokens += block.summaryTokens
+    }
+    return { tier1Tokens, tier2Tokens, tier3Tokens }
+}
+
 export function resetOnCompaction(state: SessionState): void {
     state.toolParameters.clear()
     state.prune.tools = new Map<string, number>()
@@ -375,6 +398,7 @@ export function resetOnCompaction(state: SessionState): void {
         lastPerMessageNudgeTokens: undefined,
         lastNudgeShownTokens: undefined,
         lastToolOutputNudgeTokens: undefined,
+        lastTierNudgeTokens: undefined,
         shouldInjectThisTurn: undefined,
         compressBaselineSet: false,
     }

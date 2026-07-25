@@ -47,6 +47,7 @@ export interface PersistedNudges {
     lastPerMessageNudgeTokens?: number
     lastNudgeShownTokens?: number
     lastToolOutputNudgeTokens?: number
+    lastTierNudgeTokens?: number
     compressBaselineSet?: boolean
 }
 
@@ -150,6 +151,7 @@ export async function saveSessionState(
             lastPerMessageNudgeTokens: sessionState.nudges.lastPerMessageNudgeTokens,
             lastNudgeShownTokens: sessionState.nudges.lastNudgeShownTokens,
             lastToolOutputNudgeTokens: sessionState.nudges.lastToolOutputNudgeTokens,
+            lastTierNudgeTokens: sessionState.nudges.lastTierNudgeTokens,
             compressBaselineSet: sessionState.nudges.compressBaselineSet,
         },
         stats: sessionState.stats,

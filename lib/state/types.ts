@@ -32,6 +32,8 @@ export type CompressionMode = "range" | "message"
 
 export type BlockGeneration = "young" | "old"
 
+export type CompressionTier = 1 | 2 | 3
+
 export interface CompressionBlock {
     blockId: number
     runId: number
@@ -41,6 +43,7 @@ export interface CompressionBlock {
     summaryTokens: number
     durationMs: number
     mode?: CompressionMode
+    tier?: CompressionTier
     topic: string
     batchTopic?: string
     startId: string
@@ -97,6 +100,7 @@ export interface Nudges {
     lastPerMessageNudgeTokens: number | undefined
     lastNudgeShownTokens: number | undefined
     lastToolOutputNudgeTokens: number | undefined
+    lastTierNudgeTokens: number | undefined
     /** Set by injectCompressNudges; read by system prompt handler next turn (1-turn lag). Undefined = first turn. */
     shouldInjectThisTurn: boolean | undefined
     /**
