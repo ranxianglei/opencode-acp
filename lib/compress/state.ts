@@ -1,4 +1,4 @@
-import type { CompressionBlock, PruneMessagesState, SessionState } from "../state"
+import type { CompressionBlock, CompressionTier, PruneMessagesState, SessionState } from "../state"
 import { formatBlockRef, formatMessageIdTag } from "../message-ids"
 import type { AppliedCompressionResult, CompressionStateInput, SelectionResolution } from "./types"
 import type { GCConfig } from "../config"
@@ -113,6 +113,19 @@ export function applyCompressionState(
     }
 
     const createdAt = Date.now()
+
+    let outputTier: CompressionTier = 1
+    for (const consumedBlockId of consumed) {
+        const cb = messagesState.blocksById.get(consumedBlockId)
+        if (cb) {
+            const cbTier = cb.tier ?? 1
+            if (cbTier >= outputTier) {
+                outputTier = (cbTier + 1) as CompressionTier
+            }
+        }
+    }
+    if (outputTier > 3) outputTier = 3
+
     const block: CompressionBlock = {
         blockId,
         runId: input.runId,
@@ -122,6 +135,7 @@ export function applyCompressionState(
         summaryTokens: input.summaryTokens,
         durationMs: 0,
         mode: input.mode,
+        tier: outputTier,
         topic: input.topic,
         batchTopic: input.batchTopic,
         startId: input.startId,

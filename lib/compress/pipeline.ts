@@ -214,6 +214,9 @@ export function checkPhantomBlock(
         })
 
         if (!hasNew) {
+            if (plan.consumedBlockIds.length >= 2) {
+                continue
+            }
             return new Error(
                 `Compression range ${i + 1} contains only already-compressed messages ` +
                     "(0 new direct messages, 0 tokens saved). Nothing to compress — " +
