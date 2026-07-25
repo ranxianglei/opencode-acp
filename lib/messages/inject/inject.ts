@@ -302,10 +302,9 @@ export const injectCompressNudges = (
     }
 
     if (state.nudges.lastPerMessageNudgeTokens === undefined && currentTokens !== undefined) {
-        // Baseline 0 so the first nudge fires at ~nudgeGrowthTokens absolute (5%),
-        // not baseline + nudgeGrowthTokens (~10.9% when currentTokens includes
-        // system prompt overhead).
-        state.nudges.lastPerMessageNudgeTokens = 0
+        // Growth is measured from the session's starting context — the system
+        // prompt is always present and is NOT growth.
+        state.nudges.lastPerMessageNudgeTokens = currentTokens
         baselineReEstablished = true
     }
 
