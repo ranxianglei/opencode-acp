@@ -47,7 +47,7 @@ export function hideConsumedCompressCalls(state: SessionState, messages: WithPar
         const parts = Array.isArray(msg.parts) ? msg.parts : []
         let changed = false
         const remaining = parts.filter((p) => {
-            if (p.type === "tool" && (p as { tool?: string }).tool === "compress") {
+            if (p.type === "tool" && p.tool === "compress") {
                 hidden++
                 changed = true
                 return false

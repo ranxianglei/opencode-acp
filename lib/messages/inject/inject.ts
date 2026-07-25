@@ -398,7 +398,8 @@ export const injectCompressNudges = (
                 .sort((a, b) => (b.survivedCount || 0) - (a.survivedCount || 0))
 
             const candidateTokens = candidates.reduce((s, b) => s + b.summaryTokens, 0)
-            const enoughCandidates = candidates.length >= 3 || candidateTokens >= nudgeGrowthTokens
+            const minCandidatesForTierEscalation = 2
+            const enoughCandidates = candidates.length >= minCandidatesForTierEscalation
 
             if (enoughCandidates) {
                 const rules = triggerTier === 2 ? TIER2_DISTILL_RULES : TIER3_CONDENSE_RULES

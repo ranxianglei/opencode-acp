@@ -114,17 +114,17 @@ export function applyCompressionState(
 
     const createdAt = Date.now()
 
-    let outputTier: CompressionTier = 1
+    let maxConsumedTier = 0
     for (const consumedBlockId of consumed) {
         const cb = messagesState.blocksById.get(consumedBlockId)
         if (cb) {
             const cbTier = cb.tier ?? 1
-            if (cbTier >= outputTier) {
-                outputTier = (cbTier + 1) as CompressionTier
+            if (cbTier > maxConsumedTier) {
+                maxConsumedTier = cbTier
             }
         }
     }
-    if (outputTier > 3) outputTier = 3
+    const outputTier = Math.min(3, maxConsumedTier + 1) as CompressionTier
 
     const block: CompressionBlock = {
         blockId,
