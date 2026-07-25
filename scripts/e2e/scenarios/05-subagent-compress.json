@@ -36,8 +36,7 @@
                     "respond": "compress",
                     "topic": "Auth Research",
                     "summary": "## Authentication Research\n\nResearched authentication methods: passwords biometrics twoFactor certificates. Web apps use session tokens or JWT.\n\n### JWT Implementation\nJWT encodes user claims signs with secret key. Three parts: header payload signature. Client sends via Authorization header. Server verifies signature. verifyToken function at src/auth/jwt.ts line 78. Token signing at src/auth/jwt.ts. Password verification at src/auth/login.ts.\n\n### Security\nrateLimiting against brute force, sessionFixation prevention, httpOnly cookies, csrf protection, https mandatory, sqlInjection prevention. Rate limiter at src/middleware/auth.ts line 30.",
-                    "range": "all",
-                    "acknowledgeRisk": true
+                    "range": "all"
                 },
                 {
                     "respond": "text",
