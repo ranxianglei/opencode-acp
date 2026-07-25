@@ -149,15 +149,6 @@ export async function handleDecompressCommand(ctx: DecompressCommandContext): Pr
             )
             return
         }
-
-        await sendIgnoredMessage(
-            client,
-            sessionId,
-            `Compression ${target.displayId} is not active.`,
-            params,
-            logger,
-        )
-        return
     }
 
     const activeMessagesBefore = snapshotActiveMessages(messagesState)

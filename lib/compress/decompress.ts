@@ -117,6 +117,8 @@ function resolveSingleBlockTarget(
         }
     }
 
+    // Keep nested-redirect (consumed blocks must go through parent) but drop the
+    // "not active" rejection — inactive standalone blocks can be decompressed.
     const activeBlocks = target.blocks.filter((block) => block.active)
     if (activeBlocks.length === 0) {
         const activeAncestorBlockId = findActiveAncestorBlockId(messagesState, target)
@@ -125,10 +127,6 @@ function resolveSingleBlockTarget(
                 ok: false,
                 error: `Error: Block ${target.displayId} is nested inside active block ${activeAncestorBlockId}. Decompress block ${activeAncestorBlockId} first.`,
             }
-        }
-        return {
-            ok: false,
-            error: `Error: Block ${target.displayId} is not active. It may have already been decompressed.`,
         }
     }
 
@@ -324,7 +322,7 @@ export function createDecompressTool(ctx: ToolContext): ReturnType<typeof tool> 
                 const fileContent =
                     lines.length > 0
                         ? lines.join("\n\n---\n\n")
-                        : (activeBlocks[0]?.summary ?? "(no content available)")
+                        : (targets[0]?.blocks[0]?.summary ?? "(no content available)")
                 await writeFile(targetPath, fileContent, "utf-8")
 
                 const displayIds = targets.map((t) => `b${t.displayId}`).join(", ")
