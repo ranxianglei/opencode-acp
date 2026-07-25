@@ -440,6 +440,14 @@ ACP 在首次启动时自动将配置从 `dcp.jsonc` 迁移到 `acp.jsonc`，将
 
 ## 更新日志
 
+### v1.14.0-dev.1 — Per-Session State Registry + Nudge 基线修复（Issue #33）
+
+**问题**：(1) 交错的子代理会话共享单个 `SessionState` 单例 — 子代理运行时，父会话的压缩状态被 `resetSessionState` 清空。子代理的 `modelContextLimit` 从未被持久化（`system.transform` 设置它时在 `messages.transform` 之后），导致子代理以 undefined 的 `modelContextLimit` 运行，`nudgeGrowthTokens` 从 50K 塌缩到 6K，在 4.9% context 时触发过度压缩。(2) Nudge 基线初始化为 `currentTokens`（~55K，含系统提示词）而非 0，导致首次 nudge 的实际阈值为 ~105K（10.5%）而非 ~50K（5%）— 模型在 5% context 时从不主动压缩，context 无限增长到 330K。
+
+**修复**：(1) 新增 `SessionStateRegistry` — `Map<sessionId, SessionState>` + 软上限 32 + 最旧优先淘汰。所有 hook handler 和 compress 工具通过 `registry.getOrCreate(sessionID)` 按 session 解析状态，彻底消除跨会话状态污染。(2) 基线初始化从 `lastPerMessageNudgeTokens = currentTokens` 改为 `= 0`（`lib/messages/inject/inject.ts:308`）。增长从会话开始计算，首次 nudge 在 ~nudgeGrowthTokens（model context 的 5%）时触发。
+
+文件：`lib/state/state.ts`、`lib/hooks.ts`、`index.ts`、`lib/compress/types.ts`、`lib/compress/{range,message,decompress,prune-tool,recap,search,status}.ts`、`lib/messages/inject/inject.ts`。测试：`tests/registry.test.ts`（新增，4 个测试）、`tests/inject.test.ts`（+1 基线初始化回归测试）。848 tests pass。
+
 ### v1.13.5 — 修复 Release CI 对 Squash Merge 的检测（PR #187）
 
 **问题**：`.github/workflows/release.yml` 的发布检测正则只认标准 merge commit（`Merge pull request #N from .../YYYY-MM-DD_release-v...`），不认 squash merge。PR #182（v1.13.3）和 #186（v1.13.4）都是 squash 合并，导致 release workflow 静默跳过 — 没有 tag、没有 npm 发布、没有 GitHub Release。npm 卡在 1.13.2，而 master 已经到了 1.13.4。

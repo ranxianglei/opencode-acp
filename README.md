@@ -472,6 +472,14 @@ For the complete list with root cause analysis, see the [bug tracker](https://gi
 
 ## Changelog
 
+### v1.14.0-dev.1 — Per-Session State Registry + Nudge Baseline Fix (Issue #33)
+
+**Problem**: (1) Interleaved subagent sessions shared a single `SessionState` singleton — when a subagent ran, the parent session's compression state was wiped by `resetSessionState`. Subagent `modelContextLimit` was never persisted because `system.transform` (which sets it) fires after `messages.transform` (which reads and saves), so subagents ran with undefined `modelContextLimit`, collapsing `nudgeGrowthTokens` from 50K to 6K and triggering over-compression at 4.9% context. (2) Nudge baseline initialized to `currentTokens` (~55K, includes system prompt) instead of 0, making the effective first-nudge threshold ~105K (10.5%) instead of ~50K (5%) — the model never compressed voluntarily at 5% context, allowing context to grow unchecked to 330K.
+
+**Fix**: (1) New `SessionStateRegistry` — a `Map<sessionId, SessionState>` with soft cap 32 and oldest-first eviction. All hook handlers and compress tools resolve state per-call via `registry.getOrCreate(sessionID)`. Eliminates cross-session state contamination. (2) Baseline initialization changed from `lastPerMessageNudgeTokens = currentTokens` to `= 0` (`lib/messages/inject/inject.ts:308`). Growth now measured from session start; first nudge fires at ~nudgeGrowthTokens (5% of model context).
+
+Files: `lib/state/state.ts`, `lib/hooks.ts`, `index.ts`, `lib/compress/types.ts`, `lib/compress/{range,message,decompress,prune-tool,recap,search,status}.ts`, `lib/messages/inject/inject.ts`. Tests: `tests/registry.test.ts` (NEW, 4 tests), `tests/inject.test.ts` (+1 regression test for baseline init). 848 tests pass.
+
 ### v1.13.5 — Fix Release CI for Squash Merges (PR #187)
 
 **Problem**: The release detection regex in `.github/workflows/release.yml` only matched standard merge commits (`Merge pull request #N from .../YYYY-MM-DD_release-v...`), not squash merges. PRs #182 (v1.13.3) and #186 (v1.13.4) were squash-merged, so the release workflow silently skipped — no tag, no npm publish, no GitHub Release. npm was stuck at 1.13.2 while master had already moved to 1.13.4.
