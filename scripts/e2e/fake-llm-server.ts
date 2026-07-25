@@ -33,7 +33,7 @@ if (!SCENARIO_PATH) {
 }
 
 interface ScenarioStep {
-    respond: "text" | "compress"
+    respond: "text" | "compress" | "task" | "tool"
     text?: string
     summary?: string
     topic?: string
@@ -48,6 +48,15 @@ interface ScenarioStep {
     range?: "all" | [number, number]
     /** For batch compress: multiple ranges */
     ranges?: Array<{ summary: string; topic?: string; range?: "all" | [number, number] }>
+    /** For task: subagent spawn parameters */
+    description?: string
+    prompt?: string
+    subagent_type?: string
+    /** For task: turns the spawned subagent session will execute */
+    subagent_turns?: ScenarioStep[]
+    /** For tool: arbitrary tool_use call */
+    tool?: string
+    toolArgs?: Record<string, unknown>
 }
 
 interface Scenario {
@@ -59,6 +68,21 @@ interface Scenario {
 const scenario: Scenario = JSON.parse(readFileSync(SCENARIO_PATH, "utf-8"))
 
 process.stderr.write(`[fake-llm] scenario: ${scenario.name} (${scenario.turns.length} turns)\n`)
+
+const CHILD_TURN_COUNTER = TURN_COUNTER + "-child"
+
+function readChildTurnCounter(): number {
+    if (existsSync(CHILD_TURN_COUNTER)) {
+        return parseInt(readFileSync(CHILD_TURN_COUNTER, "utf-8").trim(), 10) || 0
+    }
+    return 0
+}
+
+function incrementChildTurnCounter(): number {
+    const current = readChildTurnCounter()
+    writeFileSync(CHILD_TURN_COUNTER, String(current + 1))
+    return current
+}
 
 // --- HTTP server ---
 
@@ -120,22 +144,27 @@ async function handleChatCompletion(req: Request): Promise<Response> {
     const isStream: boolean = body?.stream === true
     const model: string = body?.model ?? "fake-model"
 
+    const parentSessionId = req.headers.get("x-parent-session-id")
+    const sessionId = req.headers.get("x-session-id") ?? "unknown"
+    const isChild = !!parentSessionId
+
     const lastMsg = messages[messages.length - 1]
     const lastRole = lastMsg?.role
 
     log(
         `  body: stream=${isStream} msgs=${messages.length} ` +
-            `lastRole=${lastRole} tools=${tools.length}`,
+            `lastRole=${lastRole} tools=${tools.length}${isChild ? " [CHILD]" : ""}`,
     )
 
-    // Auxiliary calls (e.g., opencode title generation) have tools=0.
-    // Respond with generic text without consuming a scenario turn.
     if (tools.length === 0) {
         log("  → auxiliary call (tools=0), emitting generic text")
         return textResponse(model, "Session summary.", isStream)
     }
 
-    // After a tool result (role=tool), emit text acknowledgment.
+    if (isChild) {
+        return handleChildRequest(model, messages, lastRole, lastMsg, isStream)
+    }
+
     if (lastRole === "tool" || lastRole === "function") {
         const toolText = extractMessageText(lastMsg)
         if (toolText.includes("QUALITY GATE FAILURE") || toolText.includes("COMPRESSION REJECTED")) {
@@ -177,6 +206,10 @@ async function handleChatCompletion(req: Request): Promise<Response> {
     }
 
     log(`  → turn ${turnIdx + 1}: respond=${step.respond}`)
+
+    if (step.respond === "task") {
+        return handleTaskStep(model, step, isStream)
+    }
 
     if (step.respond === "compress") {
         return handleCompressStep(model, messages, step, isStream)
@@ -252,6 +285,78 @@ function handleCompressStep(
     return compressResponse(model, { content }, step.acknowledgeRisk ?? false, isStream)
 }
 
+function handleChildRequest(
+    model: string,
+    messages: any[],
+    lastRole: string | undefined,
+    lastMsg: any,
+    isStream: boolean,
+): Response {
+    const taskStep = scenario.turns.find((t) => t.respond === "task")
+    const childTurns = taskStep?.subagent_turns ?? []
+
+    if (lastRole === "tool" || lastRole === "function") {
+        const toolText = extractMessageText(lastMsg)
+        if (toolText.includes("QUALITY GATE FAILURE") || toolText.includes("COMPRESSION REJECTED")) {
+            const idx = readChildTurnCounter() - 1
+            const step = childTurns[idx]
+            if (step?.retryOnReject) {
+                const refs = parseMessageRefs(messages)
+                const [startId, endId] = resolveRange(refs, step.range ?? "all")
+                log(`  → [CHILD] retrying compress with acknowledgeRisk`)
+                return compressResponse(
+                    model,
+                    {
+                        content: [
+                            {
+                                topic: step.retryOnReject.topic ?? "Retry",
+                                startId,
+                                endId,
+                                summary: step.retryOnReject.summary,
+                            },
+                        ],
+                    },
+                    step.retryOnReject.acknowledgeRisk ?? true,
+                    isStream,
+                )
+            }
+        }
+    }
+
+    const turnIdx = incrementChildTurnCounter()
+    const step = childTurns[turnIdx]
+
+    if (!step) {
+        log(`  → [CHILD] turn ${turnIdx + 1}: no step, emitting default text`)
+        return textResponse(model, "Task complete.", isStream)
+    }
+
+    log(`  → [CHILD] turn ${turnIdx + 1}: respond=${step.respond}`)
+
+    if (step.respond === "compress") {
+        return handleCompressStep(model, messages, step, isStream)
+    }
+
+    if (step.respond === "tool") {
+        const toolName = step.tool ?? "bash"
+        log(`  → [CHILD] emitting ${toolName} tool call`)
+        return toolUseResponse(model, toolName, step.toolArgs ?? {}, isStream)
+    }
+
+    return textResponse(model, step.text ?? "Done.", isStream)
+}
+
+function handleTaskStep(model: string, step: ScenarioStep, isStream: boolean): Response {
+    const args: Record<string, unknown> = {
+        description: step.description ?? "E2E subagent task",
+        prompt: step.prompt ?? "Complete the assigned task.",
+        subagent_type: step.subagent_type ?? "general",
+    }
+
+    log(`  → emitting task tool call (subagent_type=${args.subagent_type})`)
+    return toolUseResponse(model, "task", args, isStream)
+}
+
 /**
  * Parse <dcp-message-id ...>mNNNNN</dcp-message-id> tags from all messages.
  * Returns an ordered list of unique refs (m00001, m00002, ...).
@@ -278,18 +383,24 @@ function parseMessageRefs(messages: any[]): string[] {
 }
 
 function extractMessageText(msg: any): string {
-    if (typeof msg?.content === "string") return msg.content
-    if (Array.isArray(msg?.content)) {
-        return msg.content
-            .map((part: any) => {
-                if (typeof part === "string") return part
-                if (part?.text) return part.text
-                if (part?.content) return part.content
-                return ""
-            })
-            .join("")
+    const parts: string[] = []
+    if (typeof msg?.content === "string") {
+        parts.push(msg.content)
+    } else if (Array.isArray(msg?.content)) {
+        for (const part of msg.content) {
+            if (typeof part === "string") parts.push(part)
+            else if (part?.text) parts.push(part.text)
+            else if (part?.content) parts.push(part.content)
+        }
     }
-    return ""
+    // ACP injects <dcp-message-id> tags into tool_calls arguments for
+    // assistant messages that contain tool calls (no text content).
+    if (Array.isArray(msg?.tool_calls)) {
+        for (const tc of msg.tool_calls) {
+            if (tc?.function?.arguments) parts.push(String(tc.function.arguments))
+        }
+    }
+    return parts.join("")
 }
 
 /**
@@ -385,6 +496,54 @@ function compressResponse(
     return sseStream(
         model,
         [{ type: "tool_use", toolName: "compress", callId, args: argsJson }],
+        usage,
+    )
+}
+
+function toolUseResponse(
+    model: string,
+    toolName: string,
+    args: Record<string, unknown>,
+    isStream: boolean,
+): Response {
+    const argsJson = JSON.stringify(args)
+    const callId = `call_${crypto.randomUUID().replace(/-/g, "").slice(0, 24)}`
+    const usage = {
+        prompt_tokens: Math.max(1, Math.ceil(argsJson.length / 4)),
+        completion_tokens: Math.max(1, Math.ceil(argsJson.length / 4)),
+        total_tokens: Math.max(2, Math.ceil(argsJson.length / 2)),
+    }
+
+    if (!isStream) {
+        return jsonResponse({
+            id: `chatcmpl-fake-${crypto.randomUUID()}`,
+            object: "chat.completion",
+            created: Math.floor(Date.now() / 1000),
+            model,
+            choices: [
+                {
+                    index: 0,
+                    message: {
+                        role: "assistant",
+                        content: null,
+                        tool_calls: [
+                            {
+                                id: callId,
+                                type: "function",
+                                function: { name: toolName, arguments: argsJson },
+                            },
+                        ],
+                    },
+                    finish_reason: "tool_calls",
+                },
+            ],
+            usage,
+        })
+    }
+
+    return sseStream(
+        model,
+        [{ type: "tool_use", toolName, callId, args: argsJson }],
         usage,
     )
 }
