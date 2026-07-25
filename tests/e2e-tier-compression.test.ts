@@ -572,3 +572,223 @@ test("getTierTokenUsage: blocks without tier field default to tier 1", async () 
     assert.equal(usage.tier1Tokens, 5000, "Untiered block should count as tier 1")
     assert.equal(usage.tier2Tokens, 0)
 })
+
+// ─── Cross-tier safety: nudge narrows range to exclude non-target blocks ──
+
+test("T2 trigger: narrows range when non-target (T2) block sits between T1 candidates", async () => {
+    const { state, handler } = setupPipeline({
+        compress: {
+            ...buildConfig().compress!,
+            nudgeGrowthTokens: 50000,
+        },
+    }, {
+        modelContextLimit: 1_000_000,
+    })
+
+    // T1 candidates: b5, b6, b7 (before T2) and b12, b13 (after T2)
+    // T2 block b10 sits between them — should narrow to one contiguous group
+    const blocks: CompressionBlock[] = [
+        makeCompressionBlock(5, 12000, "T1-a", 1, 25),
+        makeCompressionBlock(6, 12000, "T1-b", 1, 25),
+        makeCompressionBlock(7, 12000, "T1-c", 1, 25),
+        makeCompressionBlock(10, 5000, "T2 block", 2, 30),
+        makeCompressionBlock(12, 12000, "T1-d", 1, 20),
+        makeCompressionBlock(13, 12000, "T1-e", 1, 20),
+    ]
+    populateBlocks(state, blocks)
+
+    state.nudges.lastPerMessageNudgeTokens = 100000
+
+    const output = {
+        messages: [
+            makeUserMessage("u1", "Continue"),
+            makeAssistantMessage("a1", "OK"),
+        ],
+    }
+
+    await handler({}, output)
+
+    const suffixText = getSuffixText(output)
+    // T2 trigger should fire (T1 summaries exceed 50K)
+    assert.ok(suffixText.includes("[Tier 2 Trigger]"), "T2 trigger should fire")
+
+    // The range should be narrowed — either b5→b7 or b12→b13, NOT b5→b13
+    // (which would include the T2 block b10)
+    assert.ok(
+        !suffixText.includes('endId: "b13"'),
+        "Should NOT suggest range ending at b13 (would include T2 b10)",
+    )
+    assert.ok(
+        suffixText.includes('startId: "b5"') && suffixText.includes('endId: "b7"'),
+        "Should narrow to first contiguous group b5→b7",
+    )
+})
+
+// ─── Cross-tier safety: applyCompressionState uses minConsumedTier ─────────
+
+test("applyCompressionState: mixed-tier consumption produces minTier+1, not maxTier+1", async () => {
+    const { applyCompressionState } = await import("../lib/compress/state")
+    const { state } = setupPipeline()
+
+    // Pre-populate a T2 block that would be "accidentally" consumed
+    const t2Block = makeCompressionBlock(10, 3000, "T2 block", 2, 20)
+    const t1BlockA = makeCompressionBlock(5, 3000, "T1-a", 1, 15)
+    const t1BlockB = makeCompressionBlock(12, 3000, "T1-b", 1, 15)
+
+    populateBlocks(state, [t1BlockA, t2Block, t1BlockB])
+
+    // Simulate a compression that "consumes" all three (as search.ts would
+    // if their anchors fell in range)
+    const selection = {
+        messageIds: ["msg-5", "msg-10", "msg-12"],
+        toolIds: [] as string[],
+        messageTokenById: new Map([
+            ["msg-5", 500],
+            ["msg-10", 300],
+            ["msg-12", 500],
+        ]),
+    }
+
+    applyCompressionState(
+        state,
+        {
+            runId: 100,
+            mode: "range",
+            topic: "T2 compression",
+            batchTopic: "T2 compression",
+            startId: "b5",
+            endId: "b12",
+            summaryTokens: 800,
+            summary: "distilled summary",
+            compressMessageId: "msg-comp-100",
+        },
+        selection,
+        "msg-anchor-100",
+        100,
+        "distilled summary",
+        [5, 10, 12], // consumedBlockIds: T1(5), T2(10), T1(12)
+    )
+
+    const newBlock = state.prune.messages.blocksById.get(100)!
+    assert.equal(newBlock.tier, 2, "Output tier should be minTier+1=2, not maxTier+1=3")
+
+    // T1 blocks should be deactivated; T2 block should stay active
+    const b5 = state.prune.messages.blocksById.get(5)!
+    const b10 = state.prune.messages.blocksById.get(10)!
+    const b12 = state.prune.messages.blocksById.get(12)!
+    assert.equal(b5.active, false, "T1 block b5 should be deactivated")
+    assert.equal(b12.active, false, "T1 block b12 should be deactivated")
+    assert.equal(b10.active, true, "T2 block b10 should remain active (not consumed)")
+
+    // consumedBlockIds should only include target-tier blocks
+    assert.deepEqual(
+        newBlock.consumedBlockIds.sort((a, b) => a - b),
+        [5, 12],
+        "consumedBlockIds should exclude non-target T2 block",
+    )
+})
+
+// ─── effectiveCompressedTokens: T2+ blocks track full coverage ─────────────
+
+test("applyCompressionState: T2 block gets effectiveCompressedTokens = consumed T1 tokens", async () => {
+    const { applyCompressionState } = await import("../lib/compress/state")
+    const { state } = setupPipeline()
+
+    // T1 blocks with known compressedTokens
+    const t1a = makeCompressionBlock(1, 1000, "T1-a", 1, 10)
+    t1a.compressedTokens = 60000
+    t1a.effectiveCompressedTokens = 60000
+    const t1b = makeCompressionBlock(2, 1000, "T1-b", 1, 10)
+    t1b.compressedTokens = 40000
+    t1b.effectiveCompressedTokens = 40000
+
+    populateBlocks(state, [t1a, t1b])
+
+    const selection = {
+        messageIds: [],
+        toolIds: [],
+        messageTokenById: new Map(),
+    }
+
+    applyCompressionState(
+        state,
+        {
+            runId: 10,
+            mode: "range",
+            topic: "T2 distillation",
+            batchTopic: "T2 distillation",
+            startId: "b1",
+            endId: "b2",
+            summaryTokens: 2000,
+            summary: "distilled",
+            compressMessageId: "msg-comp-10",
+        },
+        selection,
+        "msg-anchor-10",
+        10,
+        "distilled",
+        [1, 2],
+    )
+
+    const t2Block = state.prune.messages.blocksById.get(10)!
+    assert.equal(t2Block.tier, 2)
+    assert.equal(t2Block.compressedTokens, 0, "T2 direct compressedTokens should be 0")
+    assert.equal(
+        t2Block.effectiveCompressedTokens,
+        100000,
+        "effectiveCompressedTokens should be 60000+40000=100000",
+    )
+
+    // Stats should use effective tokens
+    assert.equal(
+        state.stats.totalPruneTokens,
+        100000,
+        "totalPruneTokens should reflect effective tokens, not 0",
+    )
+})
+
+// ─── effectiveCompressedTokens: T1 blocks get effectiveCompressedTokens = compressedTokens ──
+
+test("applyCompressionState: T1 block gets effectiveCompressedTokens = compressedTokens", async () => {
+    const { applyCompressionState } = await import("../lib/compress/state")
+    const { state } = setupPipeline()
+
+    const selection = {
+        messageIds: ["m1", "m2", "m3"],
+        toolIds: [],
+        messageTokenById: new Map([
+            ["m1", 500],
+            ["m2", 300],
+            ["m3", 200],
+        ]),
+    }
+
+    applyCompressionState(
+        state,
+        {
+            runId: 1,
+            mode: "range",
+            topic: "T1 compression",
+            batchTopic: "T1 compression",
+            startId: "m00001",
+            endId: "m00003",
+            summaryTokens: 100,
+            summary: "summary",
+            compressMessageId: "msg-comp-1",
+        },
+        selection,
+        "msg-anchor-1",
+        1,
+        "summary",
+        [], // no consumed blocks → T1
+    )
+
+    const t1Block = state.prune.messages.blocksById.get(1)!
+    assert.equal(t1Block.tier, 1)
+    assert.equal(t1Block.compressedTokens, 1000, "compressedTokens from direct messages")
+    assert.equal(
+        t1Block.effectiveCompressedTokens,
+        1000,
+        "T1 effectiveCompressedTokens should equal compressedTokens",
+    )
+})

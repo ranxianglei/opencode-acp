@@ -202,4 +202,38 @@ describe("tier field persistence round-trip", () => {
 
         assert.equal(loaded.blocksById.get(1)?.tier, undefined)
     })
+
+    it("preserves effectiveCompressedTokens through loadPruneMessagesState", () => {
+        const persisted: PersistedPruneMessagesState = {
+            nextBlockId: 2,
+            nextRunId: 2,
+            byMessageId: {},
+            blocksById: {
+                "1": {
+                    ...makeBlock(1, 2, 500),
+                    compressedTokens: 0,
+                    effectiveCompressedTokens: 100000,
+                },
+            },
+        }
+
+        const loaded = loadPruneMessagesState(persisted)
+
+        assert.equal(loaded.blocksById.get(1)?.effectiveCompressedTokens, 100000)
+    })
+
+    it("defaults missing effectiveCompressedTokens to undefined", () => {
+        const persisted: PersistedPruneMessagesState = {
+            nextBlockId: 2,
+            nextRunId: 2,
+            byMessageId: {},
+            blocksById: {
+                "1": { ...makeBlock(1, 1, 1000) },
+            },
+        }
+
+        const loaded = loadPruneMessagesState(persisted)
+
+        assert.equal(loaded.blocksById.get(1)?.effectiveCompressedTokens, undefined)
+    })
 })
