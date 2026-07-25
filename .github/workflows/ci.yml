@@ -43,9 +43,35 @@ jobs:
             - run: npm run build
             - uses: oven-sh/setup-bun@v2
             - run: npm install -g opencode-stable
-            - run: |
+            - name: Test plugin import
+              run: |
+                  echo "=== dist contents ==="
+                  ls -la dist/
+                  echo "=== @opencode-ai/plugin in node_modules? ==="
+                  ls node_modules/@opencode-ai/plugin/package.json 2>/dev/null && echo "FOUND" || echo "MISSING"
+                  echo "=== direct import test ==="
+                  node --input-type=module -e "
+                    import('$(pwd)/dist/index.js')
+                      .then(m => console.log('SUCCESS: exports =', Object.keys(m)))
+                      .catch(e => { console.error('FAILED:', e.message); if (e.cause) console.error('cause:', e.cause); process.exit(1); })
+                  "
+            - name: Run E2E scenarios
+              run: |
                   SKIP_BUILD=1 ./scripts/e2e/run-e2e.sh \
                     scripts/e2e/scenarios/01-basic-compress.json \
                     scripts/e2e/scenarios/02-quality-reject.json \
                     scripts/e2e/scenarios/03-quality-acknowledge.json \
                     scripts/e2e/scenarios/04-batch-compress.json
+            - name: Dump diagnostics on failure
+              if: failure()
+              run: |
+                  echo "=== opencode logs ==="
+                  find /tmp/acp-e2e -name '*.log' -exec cat {} \; 2>/dev/null || echo "(no logs)"
+                  echo "=== turn 1 output (first 30 lines) ==="
+                  head -30 /tmp/acp-e2e-turn-1.json 2>/dev/null || echo "(no turn output)"
+                  echo "=== turn 4 output (first 30 lines) ==="
+                  head -30 /tmp/acp-e2e-turn-4.json 2>/dev/null || echo "(no turn output)"
+                  echo "=== fake LLM log ==="
+                  cat /tmp/acp-e2e-fakellm.log 2>/dev/null || echo "(no fake LLM log)"
+                  echo "=== storage tree ==="
+                  find /tmp/acp-e2e/.local/share/opencode -type f 2>/dev/null | head -20 || echo "(no storage)"
