@@ -36,18 +36,15 @@ function formatIdRange(block: CompressionBlock): string {
     return count > 0 ? `${count} msg${count !== 1 ? "s" : ""}` : "—"
 }
 
-/**
- * Recursively compute effective compressed tokens for a block.
- * For tier 1 blocks: just compressedTokens (direct messages).
- * For tier 2+ blocks: own compressedTokens + sum of all consumed blocks' effective tokens.
- * This gives the true coverage — how many original tokens this block represents.
- */
 function getEffectiveCompressedTokens(
     block: CompressionBlock,
     blocksById: Map<number, CompressionBlock>,
     visited: Set<number> = new Set(),
 ): number {
-    if (visited.has(block.blockId)) return 0 // cycle guard
+    if (block.effectiveCompressedTokens !== undefined) {
+        return block.effectiveCompressedTokens
+    }
+    if (visited.has(block.blockId)) return 0
     visited.add(block.blockId)
     let total = block.compressedTokens || 0
     for (const consumedId of block.consumedBlockIds || []) {
