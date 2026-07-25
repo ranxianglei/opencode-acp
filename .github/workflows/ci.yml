@@ -30,3 +30,22 @@ jobs:
                   cache: npm
             - run: npm ci
             - run: npm run build
+    e2e:
+        runs-on: ubuntu-latest
+        needs: build
+        steps:
+            - uses: actions/checkout@v4
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 22
+                  cache: npm
+            - run: npm ci
+            - run: npm run build
+            - uses: oven-sh/setup-bun@v2
+            - run: npm install -g opencode-stable
+            - run: |
+                  SKIP_BUILD=1 ./scripts/e2e/run-e2e.sh \
+                    scripts/e2e/scenarios/01-basic-compress.json \
+                    scripts/e2e/scenarios/02-quality-reject.json \
+                    scripts/e2e/scenarios/03-quality-acknowledge.json \
+                    scripts/e2e/scenarios/04-batch-compress.json
