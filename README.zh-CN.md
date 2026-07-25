@@ -443,6 +443,14 @@ ACP 在首次启动时自动将配置从 `dcp.jsonc` 迁移到 `acp.jsonc`，将
 
 ## 更新日志
 
+### v1.13.7-dev.1 — Dev 预发布同步（master @ v1.13.6）
+
+**目的**：将 npm `dev` 标签（卡在 `1.12.10-dev.1`）同步到当前 master。`dev` 标签已远远落后于 `latest`（1.13.6），导致早期采用者无法通过 `opencode-acp@dev` 测试最新修复。
+
+**内容**：与 v1.13.6 稳定版完全相同（master HEAD `5d67b84`）。无新代码变更。仅为 dev 标签发布，使 `opencode-acp@dev` 与 `opencode-acp@latest` 保持一致。
+
+文件：`package.json`、`README.md`、`README.zh-CN.md`。846 项测试通过（无源码变更）。
+
 ### v1.13.6 — 强制保护 compress 工具，无视用户配置（PR #188）
 
 **问题**：`compress.protectedTools` 使用替换式合并策略（PR #177）：用户设置 `protectedTools: ["skill"]` 或 `protectedTools: []` 会静默地从保护列表中移除 `"compress"`。这使得 compress 摘要 — 压缩对话的唯一记录 — 容易被后续的顺序压缩裁剪，导致不可恢复的数据丢失。
