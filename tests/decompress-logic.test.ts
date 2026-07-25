@@ -580,3 +580,25 @@ test("resolveDecompressMode: empty string startId/endId → error (treated as mi
     assert.equal(result.ok, false)
     if (!result.ok) assert.match(result.error, /Must specify either/)
 })
+
+// --- Inactive block decompress ---
+
+test("findActiveAncestorBlockId returns null for standalone inactive block", () => {
+    const inactiveBlock = makeBlock({ blockId: 5, active: false, parentBlockIds: [] })
+    const ms = makeMessagesState({ blocksById: new Map([[5, inactiveBlock]]) })
+    const target = makeTarget({ blocks: [inactiveBlock] })
+    assert.equal(findActiveAncestorBlockId(ms, target), null)
+})
+
+test("findActiveAncestorBlockId returns active ancestor for consumed inactive block", () => {
+    const activeParent = makeBlock({ blockId: 10, active: true })
+    const consumedBlock = makeBlock({ blockId: 5, active: false, parentBlockIds: [10] })
+    const ms = makeMessagesState({
+        blocksById: new Map([
+            [5, consumedBlock],
+            [10, activeParent],
+        ]),
+    })
+    const target = makeTarget({ blocks: [consumedBlock] })
+    assert.equal(findActiveAncestorBlockId(ms, target), 10)
+})
