@@ -344,3 +344,46 @@ test("acp_status: invalid sort falls back to size", async () => {
 
     assert.match(result, /Sorted by size/)
 })
+
+test("acp_status: scope=compressed shows inactive/consumed blocks", async () => {
+    const blocks = blocksMap(
+        makeBlock({ blockId: 1, active: true, compressedTokens: 5000, topic: "live" }),
+        makeBlock({
+            blockId: 2,
+            active: false,
+            compressedTokens: 3000,
+            topic: "consumed",
+            parentBlockIds: [1],
+        }),
+    )
+    const result = await runStatus([1], blocks, { scope: "compressed" })
+
+    assert.match(result, /b2/)
+    assert.match(result, /"consumed"/)
+    assert.match(result, /\[inactive\]/)
+    assert.match(result, /1 active, 1 inactive\/consumed/)
+})
+
+test("acp_status: scope=compressed marks user-decompressed blocks as inactive", async () => {
+    const blocks = blocksMap(
+        makeBlock({
+            blockId: 5,
+            active: false,
+            deactivatedByUser: true,
+            topic: "user-decompressed",
+        }),
+    )
+    const result = await runStatus([], blocks, { scope: "compressed" })
+
+    assert.match(result, /b5/)
+    assert.match(result, /\[inactive\]/)
+    assert.match(result, /0 active, 1 inactive\/consumed/)
+})
+
+test("acp_status: scope=compressed does not add inactive marker to active blocks", async () => {
+    const blocks = blocksMap(makeBlock({ blockId: 1, active: true, topic: "active block" }))
+    const result = await runStatus([1], blocks, { scope: "compressed" })
+
+    assert.match(result, /b1/)
+    assert.doesNotMatch(result, /\[inactive\]/)
+})
