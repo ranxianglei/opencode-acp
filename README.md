@@ -475,6 +475,14 @@ For the complete list with root cause analysis, see the [bug tracker](https://gi
 
 ## Changelog
 
+### v1.13.9-dev.1 — Remove Subagent History Rewriting (PR #180)
+
+**Problem**: `injectExtendedSubAgentResults` rewrote historical `<task_result>` tool outputs in the parent agent's message history on every transform run when `experimental.allowSubAgents: true`. The `subAgentResultCache` was cleared on every parent↔child session switch and was never persisted, so each transform run re-fetched the subagent session and produced a new historical message body — invalidating the provider prefix cache (observed: ~56% hit rate vs healthy 96–98%, prefix frozen at ~22K tokens).
+
+**Fix**: PR #180 — Removed `injectExtendedSubAgentResults` from the message-transform pipeline and `appendProtectedTools`. Deleted `lib/messages/inject/subagent-results.ts` (82 lines) and `lib/subagents/subagent-results.ts` (74 lines). Dropped `subAgentResultCache` field from `SessionState`. The rewrite was redundant: OpenCode natively appends a `state="completed"` message with the full subagent result immediately after the `task` call completes. `experimental.allowSubAgents` still controls whether ACP runs inside subagent sessions — only the parent-history rewriting is gone. Dual-agent reviewed (both APPROVE).
+
+Files: `lib/hooks.ts`, `lib/compress/protected-content.ts`, `lib/compress/{message,range}.ts`, `lib/state/{state,types}.ts`, `lib/messages/index.ts`, `AGENTS.md`. 851 tests pass.
+
 ### v1.13.8-dev.1 — Dev Prerelease Sync (master @ v1.13.7)
 
 **Purpose**: Sync the `dev` npm tag with v1.13.7 stable. Content is identical to v1.13.7 — no new code changes. This brings `opencode-acp@dev` up to parity with `opencode-acp@latest` (1.13.7).
