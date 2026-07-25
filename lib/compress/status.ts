@@ -478,7 +478,7 @@ export function createAcpStatusTool(ctx: ToolContext): ReturnType<typeof tool> {
                     ...renderOverview(
                         visibleMsgs,
                         summaryTokens,
-                        allBlocks,
+                        allBlocks.filter((b) => b.active),
                         fetchFailed,
                         rawMessages,
                         ctx,

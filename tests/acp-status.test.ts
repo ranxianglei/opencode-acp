@@ -387,3 +387,28 @@ test("acp_status: scope=compressed does not add inactive marker to active blocks
     assert.match(result, /b1/)
     assert.doesNotMatch(result, /\[inactive\]/)
 })
+
+test("acp_status: overview (no scope) excludes inactive blocks from count and totals", async () => {
+    const blocks = blocksMap(
+        makeBlock({
+            blockId: 1,
+            active: true,
+            summaryTokens: 1000,
+            compressedTokens: 5000,
+            topic: "live",
+        }),
+        makeBlock({
+            blockId: 2,
+            active: false,
+            summaryTokens: 500,
+            compressedTokens: 3000,
+            topic: "dead",
+            deactivatedByUser: true,
+        }),
+    )
+    const result = await runStatus([1], blocks)
+
+    assert.match(result, /1 active/)
+    assert.doesNotMatch(result, /2 active/)
+    assert.doesNotMatch(result, /"dead"/)
+})
