@@ -443,6 +443,14 @@ ACP 在首次启动时自动将配置从 `dcp.jsonc` 迁移到 `acp.jsonc`，将
 
 ## 更新日志
 
+### v1.13.7 — 每会话状态隔离 + 失活块修复 + 保留首条用户消息（PR #184、#193、#196）
+
+**问题**：v1.13.6 之后的三个 bug。（1）**子代理状态隔离失败**（PR #184）：ACP 为每个插件实例存储单个全局 `SessionState`。当子代理（child）会话与父会话交替运行时，子会话的状态覆盖了父会话的 `modelContextLimit` —— 丢失 1M 上下文窗口，回退到 6K 自适应下限，导致父会话中过度触发压缩提醒。`compressionTiming` 追踪器也跨会话共享，存在跨会话碰撞风险。（2）**失活块不可见**（PR #193）：`decompress` 拒绝失活块（"not active — may have already been decompressed"），`acp_status` 完全隐藏被消费/失活的块。用户无法解压被 GC 回收或被二次压缩消费的块，也无法在状态输出中看到它们。（3）**零用户消息会话冻结**（PR #196）：当压缩剪枝了所有 user 角色消息（全部落在压缩范围内）时，zhipuai-lb 拒绝请求（HTTP 400，code 1214，`"messages 参数非法"`，`isRetryable: false`），冻结会话。v1.13.2 的 `preserve-last-user` 修复在消息数组中搜索被剪枝的用户消息来恢复 —— 但 OpenCode 压缩移除被剪枝的消息后，搜索找不到任何内容，零用户请求仍然漏过。
+
+**修复**：（1）PR #184 —— 在 `lib/state/state.ts` 引入 `SessionStateRegistry`：一个 `Map<sessionID, SessionState>`，带共享 `compressionTiming` 追踪器和软上限驱逐（32 个会话）。每个会话通过 `registry.getOrCreate(sessionID)` 解析自己的状态，将子代理状态与父会话隔离。系统提示钩子优雅处理缺失状态（提前返回）。同时将过于激进的 `baseline = 0` 改回 `baseline = currentTokens`（系统提示不算增长）。851 项测试通过。（2）PR #193 —— 移除 `lib/compress/decompress.ts` 和 `/acp decompress` 斜杠命令中的 "not active" 拒绝；独立的失活块（用户解压、GC 回收、孤立）现在可以成功解压。`acp_status` 压缩作用域现在列出所有块（活跃 + 失活），带 `[inactive]` 标记和"N active, M inactive/consumed"汇总行。修复 `toFile` 回退使用 `targets[0].blocks[0].summary` 而非未定义的 `activeBlocks[0].summary`。经 3 轮双 Agent 审查后 859 项测试通过。（3）PR #196 —— 在 `lib/messages/prune.ts` 用 `preserve-first-user` 替换 `preserve-last-user`：首条用户消息（会话的原始任务，始终存在于数组中）被无条件强制保留（`survive[firstUserIdx] = true`），无论剪枝状态如何。更简单、更可靠 —— 不依赖于被剪枝消息在 OpenCode 压缩后仍留在数组中。权衡：可能产生两个相邻的用户消息（首条用户 + 后续存活的用户），所有主流 provider 均可接受。经双 Agent 审查（Oracle + General，均 APPROVE）。846 项测试通过。
+
+文件：`lib/state/state.ts`、`lib/hooks.ts`、`lib/compress/types.ts`、`lib/compress/decompress.ts`、`lib/compress/status.ts`、`lib/commands/decompress.ts`、`lib/messages/prune.ts`、`lib/messages/inject/inject.ts`。测试：`tests/registry.test.ts`、`tests/inactive-block-decompress.test.ts`、`tests/acp-status.test.ts`、`tests/decompress-logic.test.ts`、`tests/prune.test.ts`、`tests/e2e-message-transform.test.ts`。
+
 ### v1.13.7-dev.1 — Dev 预发布同步（master @ v1.13.6）
 
 **目的**：将 npm `dev` 标签（卡在 `1.12.10-dev.1`）同步到当前 master。`dev` 标签已远远落后于 `latest`（1.13.6），导致早期采用者无法通过 `opencode-acp@dev` 测试最新修复。
