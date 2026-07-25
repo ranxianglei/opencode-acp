@@ -74,7 +74,6 @@ export function applyCompressionState(
 ): AppliedCompressionResult {
     const messagesState = state.prune.messages
     const consumed = [...new Set(consumedBlockIds.filter((id) => Number.isInteger(id) && id > 0))]
-    const included = [...consumed]
 
     const effectiveMessageIds = new Set<string>(selection.messageIds)
     const effectiveToolIds = new Set<string>(selection.toolIds)
@@ -114,13 +113,11 @@ export function applyCompressionState(
 
     const createdAt = Date.now()
 
-    let maxConsumedTier = 0
     let minConsumedTier = consumed.length === 0 ? 0 : 3
     for (const consumedBlockId of consumed) {
         const cb = messagesState.blocksById.get(consumedBlockId)
         if (cb) {
             const cbTier = cb.tier ?? 1
-            if (cbTier > maxConsumedTier) maxConsumedTier = cbTier
             if (cbTier < minConsumedTier) minConsumedTier = cbTier
         }
     }
@@ -148,7 +145,7 @@ export function applyCompressionState(
         anchorMessageId,
         compressMessageId: input.compressMessageId,
         compressCallId: input.compressCallId,
-    includedBlockIds: consumed.filter((id) => {
+        includedBlockIds: consumed.filter((id) => {
             const cb = messagesState.blocksById.get(id)
             return cb && (cb.tier ?? 1) === targetTierForConsumption
         }),
