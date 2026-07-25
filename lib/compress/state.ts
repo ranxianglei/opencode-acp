@@ -115,16 +115,21 @@ export function applyCompressionState(
     const createdAt = Date.now()
 
     let maxConsumedTier = 0
+    let minConsumedTier = consumed.length === 0 ? 0 : 3
     for (const consumedBlockId of consumed) {
         const cb = messagesState.blocksById.get(consumedBlockId)
         if (cb) {
             const cbTier = cb.tier ?? 1
-            if (cbTier > maxConsumedTier) {
-                maxConsumedTier = cbTier
-            }
+            if (cbTier > maxConsumedTier) maxConsumedTier = cbTier
+            if (cbTier < minConsumedTier) minConsumedTier = cbTier
         }
     }
-    const outputTier = Math.min(3, maxConsumedTier + 1) as CompressionTier
+    // Use minConsumedTier for output — if the range accidentally includes a
+    // higher-tier block (cross-tier contamination), the output stays at the
+    // intended escalation level rather than jumping an extra tier.
+    // Non-target-tier consumed blocks are NOT deactivated (handled below).
+    const outputTier = Math.min(3, minConsumedTier + 1) as CompressionTier
+    const targetTierForConsumption = minConsumedTier
 
     const block: CompressionBlock = {
         blockId,
@@ -143,8 +148,14 @@ export function applyCompressionState(
         anchorMessageId,
         compressMessageId: input.compressMessageId,
         compressCallId: input.compressCallId,
-        includedBlockIds: included,
-        consumedBlockIds: consumed,
+    includedBlockIds: consumed.filter((id) => {
+            const cb = messagesState.blocksById.get(id)
+            return cb && (cb.tier ?? 1) === targetTierForConsumption
+        }),
+        consumedBlockIds: consumed.filter((id) => {
+            const cb = messagesState.blocksById.get(id)
+            return cb && (cb.tier ?? 1) === targetTierForConsumption
+        }),
         parentBlockIds: [],
         directMessageIds: [],
         directToolIds: [],
@@ -177,6 +188,13 @@ export function applyCompressionState(
             continue
         }
 
+        // Skip non-target-tier blocks — leave them active so their summaries
+        // remain visible. Only the lowest-tier blocks (the trigger target)
+        // should be consumed.
+        if ((consumedBlock.tier ?? 1) !== targetTierForConsumption) {
+            continue
+        }
+
         consumedBlock.active = false
         consumedBlock.deactivatedAt = deactivatedAt
         consumedBlock.deactivatedByBlockId = blockId
@@ -206,6 +224,9 @@ export function applyCompressionState(
     for (const consumedBlockId of consumed) {
         const consumedBlock = messagesState.blocksById.get(consumedBlockId)
         if (!consumedBlock) {
+            continue
+        }
+        if ((consumedBlock.tier ?? 1) !== targetTierForConsumption) {
             continue
         }
         for (const messageId of consumedBlock.effectiveMessageIds) {
@@ -285,12 +306,24 @@ export function applyCompressionState(
 
     block.compressedTokens = compressedTokens
 
-    state.stats.pruneTokenCounter += compressedTokens
+    // Effective compressed tokens = direct tokens + sum of consumed blocks'
+    // effective tokens. For T1 blocks this equals compressedTokens (no
+    // consumed blocks). For T2+ it captures the full coverage.
+    let effectiveTokens = compressedTokens
+    for (const consumedBlockId of consumed) {
+        const cb = messagesState.blocksById.get(consumedBlockId)
+        if (cb && (cb.tier ?? 1) === targetTierForConsumption) {
+            effectiveTokens += cb.effectiveCompressedTokens ?? cb.compressedTokens
+        }
+    }
+    block.effectiveCompressedTokens = effectiveTokens
+
+    state.stats.pruneTokenCounter += effectiveTokens
     state.stats.totalPruneTokens += state.stats.pruneTokenCounter
     state.stats.pruneTokenCounter = 0
 
     return {
-        compressedTokens,
+        compressedTokens: effectiveTokens,
         messageIds: selection.messageIds,
         newlyCompressedMessageIds,
         newlyCompressedToolIds,

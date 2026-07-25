@@ -40,6 +40,13 @@ export interface CompressionBlock {
     active: boolean
     deactivatedByUser: boolean
     compressedTokens: number
+    /**
+     * Total tokens this block represents, including tokens from consumed
+     * blocks. For tier 1 blocks: equals compressedTokens. For tier 2+:
+     * compressedTokens + sum of consumed blocks' effectiveCompressedTokens.
+     * Undefined on old state files — callers should fall back to compressedTokens.
+     */
+    effectiveCompressedTokens?: number
     summaryTokens: number
     durationMs: number
     mode?: CompressionMode

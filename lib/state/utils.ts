@@ -263,6 +263,11 @@ export function loadPruneMessagesState(
                     block.tier === 1 || block.tier === 2 || block.tier === 3
                         ? block.tier
                         : undefined,
+                effectiveCompressedTokens:
+                    typeof block.effectiveCompressedTokens === "number" &&
+                    Number.isFinite(block.effectiveCompressedTokens)
+                        ? Math.max(0, block.effectiveCompressedTokens)
+                        : undefined,
             })
         }
     }

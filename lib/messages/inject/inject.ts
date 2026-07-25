@@ -392,10 +392,76 @@ export const injectCompressNudges = (
 
         if (tierCadenceMet && triggerTier !== null) {
             const targetTier = (triggerTier - 1) as 1 | 2
-            const candidates = [...state.prune.messages.activeBlockIds]
+            // Sort by blockId ascending — block order follows creation order,
+            // which follows message order. This gives a monotonic range for
+            // the compress suggestion.
+            let candidates = [...state.prune.messages.activeBlockIds]
                 .map((id) => state.prune.messages.blocksById.get(id))
                 .filter((b): b is NonNullable<typeof b> => b !== undefined && b.active && (b.tier ?? 1) === targetTier)
-                .sort((a, b) => (b.survivedCount || 0) - (a.survivedCount || 0))
+                .sort((a, b) => a.blockId - b.blockId)
+
+            // ── Cross-tier safety ──────────────────────────────────────
+            // When we suggest `compress(b5, b20)`, search.ts resolves the
+            // range by ANCHOR MESSAGE POSITION and consumes ALL active blocks
+            // whose anchors fall in that range — including non-target-tier
+            // blocks. This would cause unintended tier escalation (e.g., T2
+            // trigger consuming a T2 block → output T3).
+            //
+            // In normal operation this cannot happen: T2/T3 block anchors sit
+            // at the position of their FIRST consumed block, which is always
+            // before any remaining target-tier candidates. But as a safety
+            // net, we narrow the suggested range to exclude any non-target
+            // active blocks that fall between candidates by blockId.
+            if (candidates.length >= 2) {
+                const firstId = candidates[0].blockId
+                const lastId = candidates[candidates.length - 1].blockId
+                const nonTargetInIdRange = new Set(
+                    [...state.prune.messages.activeBlockIds]
+                        .map((id) => state.prune.messages.blocksById.get(id))
+                        .filter(
+                            (b) =>
+                                b !== undefined &&
+                                b.active &&
+                                (b.tier ?? 1) !== targetTier &&
+                                b.blockId > firstId &&
+                                b.blockId < lastId,
+                        )
+                        .map((b) => b!.blockId),
+                )
+
+                if (nonTargetInIdRange.size > 0) {
+                    // Find the largest contiguous sub-group (no non-target
+                    // active block between consecutive candidates by blockId).
+                    let bestStart = 0
+                    let bestLen = 1
+                    let curStart = 0
+                    for (let i = 1; i < candidates.length; i++) {
+                        const prevId = candidates[i - 1].blockId
+                        const currId = candidates[i].blockId
+                        let hasGap = false
+                        for (const nid of nonTargetInIdRange) {
+                            if (nid > prevId && nid < currId) {
+                                hasGap = true
+                                break
+                            }
+                        }
+                        if (hasGap) {
+                            const curLen = i - curStart
+                            if (curLen > bestLen) {
+                                bestLen = curLen
+                                bestStart = curStart
+                            }
+                            curStart = i
+                        }
+                    }
+                    const finalLen = candidates.length - curStart
+                    if (finalLen > bestLen) {
+                        bestLen = finalLen
+                        bestStart = curStart
+                    }
+                    candidates = candidates.slice(bestStart, bestStart + bestLen)
+                }
+            }
 
             const candidateTokens = candidates.reduce((s, b) => s + b.summaryTokens, 0)
             const minCandidatesForTierEscalation = 2
