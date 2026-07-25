@@ -206,21 +206,17 @@ const filterCompressedRanges = (
         return false
     })
 
-    // [FIX preserve-last-user] zhipuai-lb rejects requests with zero user-role
-    // messages (code 1214, "The messages parameter is illegal"), freezing the
-    // session. Trigger: compress range extends past the most recent user msg
-    // and no newer user msg has arrived yet (right after a compress tool call).
-    // Restore the most recent pruned user msg in that case.
-    const anyUserSurvives = messages.some(
-        (msg, i) => survive[i] && msg.info.role === "user",
-    )
-    if (!anyUserSurvives) {
-        for (let i = messages.length - 1; i >= 0; i--) {
-            if (messages[i]!.info.role === "user" && !survive[i]) {
-                survive[i] = true
-                break
-            }
-        }
+    // [FIX preserve-first-user] zhipuai-lb (and most providers) reject requests
+    // with zero user-role messages (code 1214, "The messages parameter is
+    // illegal"), freezing the session. The first user message is the session's
+    // original task — it must always survive compression to guarantee API
+    // validity. This is simpler and more reliable than the previous
+    // "restore most recent pruned user" approach, which depended on the
+    // pruned message still being in the messages array (not guaranteed after
+    // OpenCode compaction).
+    const firstUserIdx = messages.findIndex((msg) => msg.info.role === "user")
+    if (firstUserIdx >= 0) {
+        survive[firstUserIdx] = true
     }
 
     const result: WithParts[] = []
