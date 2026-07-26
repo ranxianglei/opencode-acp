@@ -139,7 +139,7 @@ export function deactivateCompressionTarget(
                 visited.add(consumedId)
                 const consumedBlock = messagesState.blocksById.get(consumedId)
                 if (consumedBlock) {
-                    consumedBlock.deactivatedByUser = true
+                    consumedBlock.deactivatedByUserDeep = true
                     queue.push(...consumedBlock.consumedBlockIds)
                 }
             }

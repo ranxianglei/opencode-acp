@@ -24,6 +24,7 @@ export function hideConsumedCompressCalls(state: SessionState, messages: WithPar
     for (const block of state.prune.messages.blocksById.values()) {
         if (block.active) continue
         if (block.deactivatedByUser) continue
+        if (block.deactivatedByUserDeep) continue
         if (block.deactivatedByBlockId === undefined) continue
         if (!block.compressMessageId) continue
         consumedMessageIds.add(block.compressMessageId)

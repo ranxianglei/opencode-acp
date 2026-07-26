@@ -33,7 +33,6 @@ export const syncCompressionBlocks = (
     messagesState.activeByAnchorMessageId.clear()
 
     const now = Date.now()
-    const missingOriginBlockIds: number[] = []
     const orderedBlocks = Array.from(messagesState.blocksById.values()).sort(sortBlocksByCreation)
 
     // [PATCH Bug 3] Removed compressMessageId presence check.
@@ -41,7 +40,7 @@ export const syncCompressionBlocks = (
     // removed by opencode's internal compaction. The block's existence IS proof
     // that compression happened.
     for (const block of orderedBlocks) {
-        if (block.deactivatedByUser) {
+        if (block.deactivatedByUser || block.deactivatedByUserDeep) {
             block.active = false
             if (block.deactivatedAt === undefined) {
                 block.deactivatedAt = now
@@ -105,9 +104,8 @@ export const syncCompressionBlocks = (
         }
     }
 
-    if (missingOriginBlockIds.length > 0 || deactivatedCount > 0 || reactivatedCount > 0) {
+    if (deactivatedCount > 0 || reactivatedCount > 0) {
         logger.info("Synced compress block state", {
-            missingOriginCount: missingOriginBlockIds.length,
             deactivatedCount,
             reactivatedCount,
         })
