@@ -39,6 +39,7 @@ export interface CompressionBlock {
     runId: number
     active: boolean
     deactivatedByUser: boolean
+    deactivatedByUserDeep?: boolean
     compressedTokens: number
     /**
      * Total tokens this block represents, including tokens from consumed

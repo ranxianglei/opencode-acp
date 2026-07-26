@@ -204,6 +204,8 @@ export function loadPruneMessagesState(
                         : blockId,
                 active: block.active === true,
                 deactivatedByUser: block.deactivatedByUser === true,
+                deactivatedByUserDeep:
+                    block.deactivatedByUserDeep === true ? true : undefined,
                 compressedTokens:
                     typeof block.compressedTokens === "number" &&
                     Number.isFinite(block.compressedTokens)

@@ -75,12 +75,34 @@ export function applyCompressionState(
     const messagesState = state.prune.messages
     const consumed = [...new Set(consumedBlockIds.filter((id) => Number.isInteger(id) && id > 0))]
 
+    const createdAt = Date.now()
+
+    let minConsumedTier: number | undefined
+    for (const consumedBlockId of consumed) {
+        const cb = messagesState.blocksById.get(consumedBlockId)
+        if (cb) {
+            const cbTier = cb.tier ?? 1
+            if (minConsumedTier === undefined || cbTier < minConsumedTier) {
+                minConsumedTier = cbTier
+            }
+        }
+    }
+    const effectiveMinTier = minConsumedTier ?? 0
+    // Cross-tier contamination: if range accidentally includes a higher-tier
+    // block, output stays at the intended escalation level. Non-target-tier
+    // consumed blocks are NOT deactivated (handled below).
+    const outputTier = Math.min(3, effectiveMinTier + 1) as CompressionTier
+    const targetTierForConsumption = effectiveMinTier
+
     const effectiveMessageIds = new Set<string>(selection.messageIds)
     const effectiveToolIds = new Set<string>(selection.toolIds)
 
     for (const consumedBlockId of consumed) {
         const consumedBlock = messagesState.blocksById.get(consumedBlockId)
         if (!consumedBlock) {
+            continue
+        }
+        if ((consumedBlock.tier ?? 1) !== targetTierForConsumption) {
             continue
         }
         for (const messageId of consumedBlock.effectiveMessageIds) {
@@ -111,23 +133,6 @@ export function applyCompressionState(
         }
     }
 
-    const createdAt = Date.now()
-
-    let minConsumedTier = consumed.length === 0 ? 0 : 3
-    for (const consumedBlockId of consumed) {
-        const cb = messagesState.blocksById.get(consumedBlockId)
-        if (cb) {
-            const cbTier = cb.tier ?? 1
-            if (cbTier < minConsumedTier) minConsumedTier = cbTier
-        }
-    }
-    // Use minConsumedTier for output — if the range accidentally includes a
-    // higher-tier block (cross-tier contamination), the output stays at the
-    // intended escalation level rather than jumping an extra tier.
-    // Non-target-tier consumed blocks are NOT deactivated (handled below).
-    const outputTier = Math.min(3, minConsumedTier + 1) as CompressionTier
-    const targetTierForConsumption = minConsumedTier
-
     const block: CompressionBlock = {
         blockId,
         runId: input.runId,
@@ -145,10 +150,7 @@ export function applyCompressionState(
         anchorMessageId,
         compressMessageId: input.compressMessageId,
         compressCallId: input.compressCallId,
-        includedBlockIds: consumed.filter((id) => {
-            const cb = messagesState.blocksById.get(id)
-            return cb && (cb.tier ?? 1) === targetTierForConsumption
-        }),
+        includedBlockIds: [...consumed],
         consumedBlockIds: consumed.filter((id) => {
             const cb = messagesState.blocksById.get(id)
             return cb && (cb.tier ?? 1) === targetTierForConsumption
