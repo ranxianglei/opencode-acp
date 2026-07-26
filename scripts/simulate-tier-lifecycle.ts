@@ -34,6 +34,9 @@ interface SimState {
     t1Count: number
     t2Count: number
     t3Count: number
+    totalT1Throughput: number
+    totalT2Throughput: number
+    totalT3Throughput: number
     events: { day: number; type: string; details: string }[]
 }
 
@@ -50,6 +53,9 @@ function simulate(): SimState {
         t1Count: 0,
         t2Count: 0,
         t3Count: 0,
+        totalT1Throughput: 0,
+        totalT2Throughput: 0,
+        totalT3Throughput: 0,
         events: [],
     }
 
@@ -68,6 +74,7 @@ function simulate(): SimState {
                 s.t1Summaries += summary
                 s.lastT1Trigger = s.visibleTokens
                 s.t1Count++
+                s.totalT1Throughput += compressed
                 s.events.push({ day, type: "T1", details: `${(compressed/1000).toFixed(1)}K→${summary}tok` })
             }
 
@@ -78,6 +85,7 @@ function simulate(): SimState {
                 s.t1Summaries = 0
                 s.t2Summaries += summary
                 s.t2Count++
+                s.totalT2Throughput += compressed
                 s.events.push({ day, type: "T2", details: `${(compressed/1000).toFixed(1)}K→${summary}tok` })
             }
 
@@ -88,6 +96,7 @@ function simulate(): SimState {
                 s.t2Summaries = 0
                 s.t3Summaries += summary
                 s.t3Count++
+                s.totalT3Throughput += compressed
                 s.events.push({ day, type: "T3", details: `${(compressed/1000).toFixed(1)}K→${summary}tok` })
             }
         }
@@ -187,6 +196,53 @@ function main() {
         const msavings = cumNoACP - cumACP
         const mpct = (msavings / cumNoACP * 100)
         console.log("  " + m.label.padEnd(12) + fmt(cumNoACP).padStart(14) + fmt(cumACP).padStart(14) + fmt(msavings).padStart(10) + `${mpct.toFixed(0)}%`.padStart(7))
+    }
+    console.log()
+
+    // ── Compression Throughput ──────────────────────────────────────────
+    console.log("─".repeat(80))
+    console.log("  Compression Throughput (Total Content Processed)")
+    console.log("─".repeat(80))
+    console.log()
+    const totalThroughput = s.totalT1Throughput + s.totalT2Throughput + s.totalT3Throughput
+    console.log(`  T1 (raw → summary):     ${fmt(s.totalT1Throughput)} tokens (${s.t1Count} compressions)`)
+    console.log(`  T2 (T1 → T2 distilled): ${fmt(s.totalT2Throughput)} tokens (${s.t2Count} compressions)`)
+    if (s.t3Count > 0) {
+        console.log(`  T3 (T2 → T3 condensed): ${fmt(s.totalT3Throughput)} tokens (${s.t3Count} compressions)`)
+    } else {
+        console.log(`  T3: not triggered`)
+    }
+    console.log(`  Total throughput:       ${fmt(totalThroughput)} tokens`)
+    console.log()
+    console.log("  Throughput at milestones:")
+    console.log()
+    console.log("  " + "Period".padEnd(12) + "T1 compressed".padStart(16) + "T2 compressed".padStart(16) + "Total".padStart(16))
+    console.log("  " + "─".repeat(60))
+
+    for (const m of milestones) {
+        if (m.days > PARAMS.maxDays) continue
+        let t1tp = 0, t2tp = 0
+        let visTok = 0, lastT1 = 0, t1Sum = 0
+        for (let d = 1; d <= m.days; d++) {
+            for (let t = 0; t < TURNS_PER_DAY; t++) {
+                visTok += TOKENS_PER_TURN
+                const growth = visTok - lastT1
+                if (growth >= PARAMS.nudgeGrowthTokens) {
+                    t1tp += growth
+                    const summary = Math.round(growth / PARAMS.t1Ratio)
+                    visTok -= growth - summary
+                    t1Sum += summary
+                    lastT1 = visTok
+                }
+                if (t1Sum >= PARAMS.nudgeGrowthTokens) {
+                    t2tp += t1Sum
+                    const summary = Math.round(t1Sum / PARAMS.t2Ratio)
+                    visTok -= t1Sum - summary
+                    t1Sum = 0
+                }
+            }
+        }
+        console.log("  " + m.label.padEnd(12) + fmt(t1tp).padStart(16) + fmt(t2tp).padStart(16) + fmt(t1tp + t2tp).padStart(16))
     }
     console.log()
 

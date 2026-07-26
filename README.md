@@ -134,36 +134,27 @@ T1 has priority via a `!shouldInject` guard: if T1 fires, T2/T3 wait until next
 turn. This ensures raw context compression happens first (it has the biggest
 impact).
 
-**Lifecycle projection** (5-year simulation from empty session, 1M context window):
+**Session capacity** — total tokens a single session can process from empty → T1 →
+T2 → T3 → context limit (real-calibrated: 500 API calls/day, ~9.6K new tokens/call,
+T1=45x/T2=10x/T3=3x):
 
-| Tier | Frequency | Compressions in 5 years | Summary tokens at year 5 |
-|------|-----------|------------------------|--------------------------|
-| T1 | Every ~7 days | ~255 | 39K (pending, oscillates 0–50K) |
-| T2 | Every ~12 months | ~5 | 25K (accumulated) |
-| T3 | Every ~8.5 years | 0 (not reached) | 0 |
+| Context limit | 1 month | 3 months | At limit | Limit reached |
+|---------------|---------|----------|----------|---------------|
+| 1M | 1.9B tok | 10.5B tok | **68.9B tok** | day 259 (~8.6 mo) |
+| 400K | 1.9B tok | 10.3B tok | **10.3B tok** | day 89 (~3 mo) |
+| 400K (200 calls/day) | 559M tok | 2.5B tok | **9.5B tok** | day 212 (~7 mo) |
 
-At year 5, total summary overhead ≈ **64K tokens**, but visible context ≈
-**327K** (32.7% of 1M) — the difference is pending raw content (~37K, oscillates
-between T1 compressions) and system overhead (~22K). Net growth: **179 tokens/day**.
-Context fills 1M in ~15 years — effectively unlimited for any real session.
+**Token savings** — without ACP, context grows unbounded and the session crashes
+after ~100 API calls (~0.2 days). With ACP, context is bounded by compression:
 
-**Cumulative token savings** (the billing metric — total tokens sent to the API
-across all calls in the session):
+| Metric | Without ACP | With ACP (1M model) |
+|--------|-------------|---------------------|
+| Session lifetime | ~0.2 days | 259 days (**1295x** longer) |
+| Total tokens processed | ~52M | 68.9B (**1325x** more work) |
 
-| Session length | Without ACP | With ACP | Savings |
-|----------------|-------------|----------|---------|
-| 1 week | 1.0M | 889K | 14% |
-| 1 month | 15.5M | 4.2M | 73% |
-| 3 months | 133M | 14.8M | 89% |
-| 6 months | 525M | 35.5M | 93% |
-| 1 year | 2.1B | 95M | 96% |
-| 5 years | 53.4B | 1.4B | 97% |
-
-Without ACP, cumulative token consumption grows **quadratically** O(n²) — context
-size increases linearly with each turn, and every API call re-sends the full
-context. With ACP, context is bounded by compression, so cumulative grows
-**linearly** O(n). The savings ratio increases with session length: a 1-month
-session saves 73%, but a 1-year session saves 96%.
+The core value: ACP doesn't just reduce per-call token cost — it enables a single
+session to process **1000x more total work** by keeping context bounded across
+the full session lifetime.
 
 The model uses the **same `compress` tool** for all tiers. T2/T3 compressions
 use block IDs as boundaries (`compress({ content: [{ startId: "b5", endId: "b20", summary: "..." }] })`). Tier is auto-detected from consumed blocks.
@@ -194,7 +185,7 @@ later work.
 
 ### GC safety net
 
-When context reaches 100%, the system automatically truncates old-gen block summaries to prevent overflow. This is a last-resort safety net — with three-tier compression, the GC rarely activates because T2/T3 distillation keeps summary overhead bounded (179 tokens/day net growth in the 5-year projection).
+When context reaches 100%, the system automatically truncates old-gen block summaries to prevent overflow. This is a last-resort safety net — with three-tier compression, the GC rarely activates because T2/T3 distillation keeps summary overhead bounded.
 
 ### Quality gate (non-blocking, off by default)
 
