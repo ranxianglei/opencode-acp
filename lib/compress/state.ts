@@ -113,7 +113,7 @@ export function applyCompressionState(
 
     const createdAt = Date.now()
 
-    let minConsumedTier = consumed.length === 0 ? 0 : 3
+    let minConsumedTier = consumed.length === 0 ? 0 : 1
     for (const consumedBlockId of consumed) {
         const cb = messagesState.blocksById.get(consumedBlockId)
         if (cb) {
@@ -315,12 +315,12 @@ export function applyCompressionState(
     }
     block.effectiveCompressedTokens = effectiveTokens
 
-    state.stats.pruneTokenCounter += effectiveTokens
+    state.stats.pruneTokenCounter += compressedTokens
     state.stats.totalPruneTokens += state.stats.pruneTokenCounter
     state.stats.pruneTokenCounter = 0
 
     return {
-        compressedTokens: effectiveTokens,
+        compressedTokens,
         messageIds: selection.messageIds,
         newlyCompressedMessageIds,
         newlyCompressedToolIds,

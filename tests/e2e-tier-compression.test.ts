@@ -201,8 +201,8 @@ function getSuffixText(output: { messages: WithParts[] }): string {
     const suffix = output.messages.find((m: WithParts) => isSyntheticMessage(m))
     if (!suffix) return ""
     return suffix.parts
-        .filter((p: any) => p.type === "text")
-        .map((p: any) => p.text || "")
+        .filter((p): p is { type: "text"; text: string } => p.type === "text")
+        .map((p) => p.text || "")
         .join("\n")
 }
 
@@ -563,8 +563,7 @@ test("getTierTokenUsage: blocks without tier field default to tier 1", async () 
     const { state } = setupPipeline()
 
     const block = makeCompressionBlock(1, 5000, "Legacy block")
-    // @ts-expect-error — intentionally remove tier to simulate pre-feature blocks
-    delete block.tier
+    block.tier = undefined
     state.prune.messages.blocksById.set(1, block)
     state.prune.messages.activeBlockIds.add(1)
 
@@ -739,11 +738,10 @@ test("applyCompressionState: T2 block gets effectiveCompressedTokens = consumed 
         "effectiveCompressedTokens should be 60000+40000=100000",
     )
 
-    // Stats should use effective tokens
     assert.equal(
         state.stats.totalPruneTokens,
-        100000,
-        "totalPruneTokens should reflect effective tokens, not 0",
+        0,
+        "totalPruneTokens uses direct compressedTokens (0 for T2 — raw tokens counted at T1 creation)",
     )
 })
 

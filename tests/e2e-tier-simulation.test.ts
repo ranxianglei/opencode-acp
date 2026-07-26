@@ -147,8 +147,8 @@ function getSuffixText(output: { messages: WithParts[] }): string {
     const suffix = output.messages.find((m: WithParts) => isSyntheticMessage(m))
     if (!suffix) return ""
     return suffix.parts
-        .filter((p: any) => p.type === "text")
-        .map((p: any) => p.text || "")
+        .filter((p): p is { type: "text"; text: string } => p.type === "text")
+        .map((p) => p.text || "")
         .join("\n")
 }
 
@@ -308,8 +308,10 @@ test("SIM 1: 30-turn session — T1 fires, blocks accumulate, T2 escalates", asy
             `At least 1 trigger expected. Events: ${JSON.stringify(triggered.slice(0, 10).map(e => ({ t: e.turn, ty: e.type, ctx: e.contextTokens })))}`)
 
         for (const e of events) {
-            assert.notEqual(e.type, "T1" as any && e.type === "T2",
-                `Turn ${e.turn}: simultaneous T1+T2`)
+            assert.ok(
+                e.type === "none" || e.type === "T1" || e.type === "T2" || e.type === "T3",
+                `Turn ${e.turn}: unexpected trigger type "${e.type}"`,
+            )
         }
     } finally {
         rmSync(tempDir, { recursive: true, force: true })
