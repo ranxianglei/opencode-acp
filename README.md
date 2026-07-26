@@ -136,15 +136,17 @@ impact).
 
 **Lifecycle projection** (5-year simulation from empty session, 1M context window):
 
-| Tier | Frequency | Compressions in 5 years | Net context growth |
-|------|-----------|------------------------|--------------------|
-| T1 | Every ~7 days | ~255 | — |
-| T2 | Every ~10 months | ~5 | 179 tokens/day |
-| T3 | Every ~8.5 years | 0 (not reached) | — |
+| Tier | Frequency | Compressions in 5 years | Summary tokens at year 5 | Net context growth |
+|------|-----------|------------------------|--------------------------|--------------------|
+| T1 | Every ~7 days | ~255 | ~87K tok | — |
+| T2 | Every ~10 months | ~5 | ~9K tok | 179 tokens/day |
+| T3 | Every ~8.5 years | 0 (not reached) | 0 tok | — |
 
-The compression ratio naturally controls frequency: T1 summaries grow ~45×
-slower than raw content, T2 summaries grow ~10× slower than T1. Context fills
-1M in ~15 years — effectively unlimited for any real session.
+At year 5, total summary overhead ≈ **96K tokens** (9.6% of 1M context). The
+compression ratio naturally controls frequency: T1 summaries grow ~45× slower
+than raw content, T2 summaries grow ~10× slower than T1. Context fills 1M in
+~15 years (~150K summary tokens at that point) — effectively unlimited for any
+real session.
 
 The model uses the **same `compress` tool** for all tiers. T2/T3 compressions
 use block IDs as boundaries (`compress({ content: [{ startId: "b5", endId: "b20", summary: "..." }] })`). Tier is auto-detected from consumed blocks.
