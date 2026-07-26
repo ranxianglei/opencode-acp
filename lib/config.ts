@@ -475,6 +475,9 @@ export function mergeCompress(
     maxVisibleSegments: override.maxVisibleSegments ?? base.maxVisibleSegments,
     keepEmbedMaxChars: override.keepEmbedMaxChars ?? base.keepEmbedMaxChars,
     lastSegmentSoftBlock: override.lastSegmentSoftBlock ?? base.lastSegmentSoftBlock,
+    preserveRecentMessages: override.preserveRecentMessages ?? base.preserveRecentMessages,
+    preserveRecentTokens: override.preserveRecentTokens ?? base.preserveRecentTokens,
+    preserveLastUserMessage: override.preserveLastUserMessage ?? base.preserveLastUserMessage,
     }
 }
 
