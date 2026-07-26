@@ -118,7 +118,10 @@ cat > "$FAKE_HOME/.config/opencode/acp.jsonc" <<'ACPJSON'
     "experimental": { "allowSubAgents": true },
     "compress": {
         "minCompressRange": 0,
-        "maxSummaryLengthHard": 20000
+        "maxSummaryLengthHard": 20000,
+        "preserveRecentMessages": 0,
+        "preserveRecentTokens": 0,
+        "preserveLastUserMessage": false
     },
     "qualityGate": {
         "enabled": true,

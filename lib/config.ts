@@ -40,6 +40,12 @@ export interface CompressConfig {
     maxVisibleSegments: number
     keepEmbedMaxChars: number
     lastSegmentSoftBlock?: boolean
+    /** Protect the last N visible messages from compression (default: 20). */
+    preserveRecentMessages?: number
+    /** Protect the last ~N tokens of visible messages (default: 20000). */
+    preserveRecentTokens?: number
+    /** Always protect the most recent user message (default: true). */
+    preserveLastUserMessage?: boolean
 }
 
 export interface Commands {
@@ -235,6 +241,9 @@ const defaultConfig: PluginConfig = {
         maxVisibleSegments: 50,
         keepEmbedMaxChars: 2000,
         lastSegmentSoftBlock: true,
+        preserveRecentMessages: 20,
+        preserveRecentTokens: 20000,
+        preserveLastUserMessage: true,
     },
     strategies: {
         deduplication: {
@@ -466,6 +475,9 @@ export function mergeCompress(
     maxVisibleSegments: override.maxVisibleSegments ?? base.maxVisibleSegments,
     keepEmbedMaxChars: override.keepEmbedMaxChars ?? base.keepEmbedMaxChars,
     lastSegmentSoftBlock: override.lastSegmentSoftBlock ?? base.lastSegmentSoftBlock,
+    preserveRecentMessages: override.preserveRecentMessages ?? base.preserveRecentMessages,
+    preserveRecentTokens: override.preserveRecentTokens ?? base.preserveRecentTokens,
+    preserveLastUserMessage: override.preserveLastUserMessage ?? base.preserveLastUserMessage,
     }
 }
 

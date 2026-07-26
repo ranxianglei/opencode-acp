@@ -8,7 +8,7 @@ import {
     prepareSession,
     snapshotCompressionState,
     restoreCompressionState,
-    checkLastSegmentDangerous,
+    checkProtectedRange,
     checkPhantomBlock,
     type NotificationEntry,
 } from "./pipeline"
@@ -138,7 +138,7 @@ export function createCompressMessageTool(factoryCtx: ToolFactoryContext): Retur
             const dangerous =
                 (args as { dangerous?: boolean }).dangerous === true
 
-            const lastSegmentError = checkLastSegmentDangerous(
+            const lastSegmentError = checkProtectedRange(
                 ctx,
                 plans.map((p) => p.selection.messageIds),
                 rawMessages,

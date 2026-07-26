@@ -51,6 +51,9 @@ function buildConfig(overrides: Partial<PluginConfig> = {}): PluginConfig {
             protectedTools: ["task"],
             protectTags: false,
             protectUserMessages: false,
+            preserveRecentMessages: 0,
+            preserveRecentTokens: 0,
+            preserveLastUserMessage: false,
         },
         strategies: {
             deduplication: { enabled: true, protectedTools: [] },

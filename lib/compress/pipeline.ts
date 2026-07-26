@@ -226,11 +226,72 @@ export function checkPhantomBlock(
 }
 
 /**
- * Stateless check: if any plan covers the most recent visible message,
- * the caller must pass `dangerous: true` to proceed. Returns an Error
- * to throw if the caller did not opt in.
+ * Compute the set of protected message raw IDs based on recent-message,
+ * recent-token, and last-user-message rules. These IDs cannot be included
+ * in a compression plan unless the caller passes `dangerous: true`.
  */
-export function checkLastSegmentDangerous(
+export function computeProtectedRawIds(
+    rawMessages: WithParts[],
+    state: SessionState,
+    compress: import("../config").CompressConfig,
+): Set<string> {
+    const preserveN = compress.preserveRecentMessages ?? 20
+    const preserveTokens = compress.preserveRecentTokens ?? 20000
+    const preserveLastUser = compress.preserveLastUserMessage ?? true
+
+    const result = new Set<string>()
+
+    const visible: { id: string; tokens: number; isUser: boolean }[] = []
+    for (const msg of rawMessages) {
+        const id = msg?.info?.id
+        if (!id || typeof id !== "string") continue
+        if (isSyntheticMessage(msg)) continue
+        if (isIgnoredUserMessage(msg)) continue
+        if (state.prune.messages.byMessageId.has(id)) continue
+        let tokens = 0
+        for (const part of msg.parts || []) {
+            if (part.type === "text" && typeof (part as any).text === "string") {
+                tokens += Math.round(((part as any).text as string).length / 4)
+            } else if (part.type !== "text" && part.type !== "reasoning") {
+                tokens += Math.round(JSON.stringify(part).length / 4)
+            }
+        }
+        visible.push({ id, tokens, isUser: msg.info.role === "user" })
+    }
+
+    if (preserveN > 0) {
+        for (const m of visible.slice(-preserveN)) {
+            result.add(m.id)
+        }
+    }
+
+    if (preserveTokens > 0) {
+        let tokenAccum = 0
+        for (let i = visible.length - 1; i >= 0 && tokenAccum < preserveTokens; i--) {
+            result.add(visible[i]!.id)
+            tokenAccum += visible[i]!.tokens
+        }
+    }
+
+    if (preserveLastUser) {
+        for (let i = visible.length - 1; i >= 0; i--) {
+            if (visible[i]!.isUser) {
+                result.add(visible[i]!.id)
+                break
+            }
+        }
+    }
+
+    return result
+}
+
+/**
+ * Reject compression plans that cover protected messages (last N messages,
+ * last N tokens, or the most recent user message). The caller must pass
+ * `dangerous: true` to proceed. Returns an Error to throw if the caller
+ * did not opt in.
+ */
+export function checkProtectedRange(
     ctx: ToolContext,
     allPlanMessageIds: string[][],
     rawMessages: WithParts[],
@@ -238,17 +299,30 @@ export function checkLastSegmentDangerous(
 ): Error | null {
     if (ctx.config.compress.lastSegmentSoftBlock === false) return null
 
-    const lastVisibleId = getLastVisibleMessageId(rawMessages, ctx.state)
-    if (!lastVisibleId) return null
+    const protectedIds = computeProtectedRawIds(rawMessages, ctx.state, ctx.config.compress)
+    if (protectedIds.size === 0) return null
 
-    const coversLast = allPlanMessageIds.some((ids) => ids.includes(lastVisibleId))
-    if (!coversLast) return null
+    const coveredProtected: string[] = []
+    for (const ids of allPlanMessageIds) {
+        for (const id of ids) {
+            if (protectedIds.has(id)) {
+                coveredProtected.push(id)
+            }
+        }
+    }
 
+    if (coveredProtected.length === 0) return null
     if (dangerous) return null
 
+    const sample = coveredProtected.slice(0, 3).join(", ")
+    const nMsgs = ctx.config.compress.preserveRecentMessages ?? 20
+    const nToks = ctx.config.compress.preserveRecentTokens ?? 20000
     return new Error(
-        `This range includes the most recent message (${lastVisibleId}), which is likely still needed for the current task step.\n\n` +
-            `If you are certain this content is genuinely consumed and must be compressed, re-issue the call with \`dangerous: true\`.\n` +
-            `Otherwise, compress older ranges that do not include the tail of the conversation.`,
+        `This range includes ${coveredProtected.length} protected recent message(s) (${sample}), ` +
+            "which are likely still needed for the current task step.\n\n" +
+            `Protected zone: last ${nMsgs} messages + last ${nToks >= 1000 ? `${nToks / 1000}K` : nToks} tokens + most recent user message.\n` +
+            "If you are certain this content is genuinely consumed and must be compressed, " +
+            "re-issue the call with `dangerous: true`.\n" +
+            "Otherwise, compress older ranges that do not include the tail of the conversation.",
     )
 }

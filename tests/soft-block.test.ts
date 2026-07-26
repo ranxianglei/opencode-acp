@@ -37,6 +37,9 @@ function buildConfig(): PluginConfig {
             protectTags: false,
             protectUserMessages: false,
             lastSegmentSoftBlock: true,
+            preserveRecentMessages: 20,
+            preserveRecentTokens: 20000,
+            preserveLastUserMessage: true,
         },
         strategies: {
             deduplication: { enabled: true, protectedTools: [] },
@@ -57,41 +60,23 @@ function textPart(messageID: string, sessionID: string, id: string, text: string
     return { id, messageID, sessionID, type: "text" as const, text }
 }
 
-function buildMessages(sessionID: string): WithParts[] {
-    return [
-        {
+function buildMessages(sessionID: string, count = 50): WithParts[] {
+    const msgs: WithParts[] = []
+    for (let i = 1; i <= count; i++) {
+        const role = i % 2 === 1 ? "user" : "assistant"
+        msgs.push({
             info: {
-                id: "msg-user-1",
-                role: "user",
+                id: `msg-${i}`,
+                role,
                 sessionID,
                 agent: "assistant",
-                model: { providerID: "anthropic", modelID: "claude-test" },
-                time: { created: 1 },
+                ...(role === "user" ? { model: { providerID: "anthropic", modelID: "claude-test" } } : {}),
+                time: { created: i },
             } as WithParts["info"],
-            parts: [textPart("msg-user-1", sessionID, "p1", "x".repeat(6000))],
-        },
-        {
-            info: {
-                id: "msg-assistant-1",
-                role: "assistant",
-                sessionID,
-                agent: "assistant",
-                time: { created: 2 },
-            } as WithParts["info"],
-            parts: [textPart("msg-assistant-1", sessionID, "p2", "x".repeat(6000))],
-        },
-        {
-            info: {
-                id: "msg-user-2",
-                role: "user",
-                sessionID,
-                agent: "assistant",
-                model: { providerID: "anthropic", modelID: "claude-test" },
-                time: { created: 3 },
-            } as WithParts["info"],
-            parts: [textPart("msg-user-2", sessionID, "p3", "x".repeat(6000))],
-        },
-    ]
+            parts: [textPart(`msg-${i}`, sessionID, `p${i}`, "x".repeat(2000))],
+        })
+    }
+    return msgs
 }
 
 function createTool(state: any, rawMessages: WithParts[], sessionID: string, configOverrides?: Partial<PluginConfig>) {
@@ -121,8 +106,10 @@ const toolCtx = {
     messageID: "msg-compress",
 }
 
-test("dangerous: compressing last segment without dangerous flag fails", async () => {
-    const sessionID = `ses_dangerous_1_${Date.now()}`
+const ref = (n: number) => `m${String(n).padStart(5, "0")}`
+
+test("protected: compressing recent messages fails without dangerous", async () => {
+    const sessionID = `ses_protected_1_${Date.now()}`
     const rawMessages = buildMessages(sessionID)
     const state = createSessionState()
     const tool = createTool(state, rawMessages, sessionID)
@@ -133,20 +120,20 @@ test("dangerous: compressing last segment without dangerous flag fails", async (
                 {
                     topic: "Test",
                     content: [
-                        { startId: "m00001", endId: "m00003", summary: "x".repeat(2000) },
+                        { startId: ref(25), endId: ref(30), summary: "x".repeat(2000) },
                     ],
                 },
                 { ...toolCtx, sessionID },
             ),
         (err: Error) => {
-            assert.ok(err.message.includes("dangerous"), `error should mention dangerous, got: ${err.message}`)
+            assert.ok(err.message.includes("protected"), `error should mention protected, got: ${err.message}`)
             return true
         },
     )
 })
 
-test("dangerous: compressing last segment WITH dangerous: true succeeds", async () => {
-    const sessionID = `ses_dangerous_2_${Date.now()}`
+test("protected: compressing recent messages WITH dangerous: true succeeds", async () => {
+    const sessionID = `ses_protected_2_${Date.now()}`
     const rawMessages = buildMessages(sessionID)
     const state = createSessionState()
     const tool = createTool(state, rawMessages, sessionID)
@@ -154,7 +141,7 @@ test("dangerous: compressing last segment WITH dangerous: true succeeds", async 
     const result = await tool.execute(
         {
             topic: "Test",
-            content: [{ startId: "m00001", endId: "m00003", summary: "x".repeat(2000) }],
+            content: [{ startId: ref(25), endId: ref(30), summary: "x".repeat(2000) }],
             dangerous: true,
         },
         { ...toolCtx, sessionID },
@@ -162,8 +149,8 @@ test("dangerous: compressing last segment WITH dangerous: true succeeds", async 
     assert.ok(typeof result === "string" && result.includes("Compressed"), "dangerous: true should succeed")
 })
 
-test("dangerous: range not covering last message succeeds without dangerous", async () => {
-    const sessionID = `ses_dangerous_3_${Date.now()}`
+test("protected: compressing old messages (outside 20-msg window) succeeds without dangerous", async () => {
+    const sessionID = `ses_protected_3_${Date.now()}`
     const rawMessages = buildMessages(sessionID)
     const state = createSessionState()
     const tool = createTool(state, rawMessages, sessionID)
@@ -171,15 +158,15 @@ test("dangerous: range not covering last message succeeds without dangerous", as
     const result = await tool.execute(
         {
             topic: "Test",
-            content: [{ startId: "m00001", endId: "m00002", summary: "x".repeat(2000) }],
+            content: [{ startId: ref(1), endId: ref(5), summary: "x".repeat(2000) }],
         },
         { ...toolCtx, sessionID },
     )
-    assert.ok(typeof result === "string" && result.includes("Compressed"), "non-tail range should succeed without dangerous")
+    assert.ok(typeof result === "string" && result.includes("Compressed"), "old range should succeed without dangerous")
 })
 
-test("dangerous: lastSegmentSoftBlock disabled bypasses the check entirely", async () => {
-    const sessionID = `ses_dangerous_4_${Date.now()}`
+test("protected: lastSegmentSoftBlock disabled bypasses protection entirely", async () => {
+    const sessionID = `ses_protected_4_${Date.now()}`
     const rawMessages = buildMessages(sessionID)
     const state = createSessionState()
     const tool = createTool(state, rawMessages, sessionID, {
@@ -189,15 +176,15 @@ test("dangerous: lastSegmentSoftBlock disabled bypasses the check entirely", asy
     const result = await tool.execute(
         {
             topic: "Test",
-            content: [{ startId: "m00001", endId: "m00003", summary: "x".repeat(2000) }],
+            content: [{ startId: ref(25), endId: ref(30), summary: "x".repeat(2000) }],
         },
         { ...toolCtx, sessionID },
     )
-    assert.ok(typeof result === "string" && result.includes("Compressed"), "disabled check should succeed without dangerous")
+    assert.ok(typeof result === "string" && result.includes("Compressed"), "disabled protection should succeed")
 })
 
-test("dangerous: error message mentions the specific last message id", async () => {
-    const sessionID = `ses_dangerous_5_${Date.now()}`
+test("protected: error message mentions protected message IDs", async () => {
+    const sessionID = `ses_protected_5_${Date.now()}`
     const rawMessages = buildMessages(sessionID)
     const state = createSessionState()
     const tool = createTool(state, rawMessages, sessionID)
@@ -207,13 +194,88 @@ test("dangerous: error message mentions the specific last message id", async () 
             tool.execute(
                 {
                     topic: "Test",
-                    content: [{ startId: "m00001", endId: "m00003", summary: "x".repeat(2000) }],
+                    content: [{ startId: ref(28), endId: ref(30), summary: "x".repeat(2000) }],
                 },
                 { ...toolCtx, sessionID },
             ),
         (err: Error) => {
-            assert.ok(err.message.includes("msg-user-2"), "error should reference the last message id")
+            assert.ok(err.message.includes("msg-28"), "error should reference a protected message id")
             return true
         },
     )
+})
+
+test("protected: last user message is always protected even outside message window", async () => {
+    const sessionID = `ses_protected_6_${Date.now()}`
+    const rawMessages = buildMessages(sessionID, 30)
+    const state = createSessionState()
+    const tool = createTool(state, rawMessages, sessionID, {
+        compress: {
+            ...buildConfig().compress,
+            preserveRecentMessages: 1,
+            preserveRecentTokens: 100,
+            preserveLastUserMessage: true,
+        },
+    })
+
+    await assert.rejects(
+        () =>
+            tool.execute(
+                {
+                    topic: "Test",
+                    content: [{ startId: ref(28), endId: ref(29), summary: "x".repeat(2000) }],
+                },
+                { ...toolCtx, sessionID },
+            ),
+        (err: Error) => {
+            assert.ok(err.message.includes("msg-29"), `should be blocked by user message protection: ${err.message}`)
+            return true
+        },
+    )
+})
+
+test("protected: custom preserveRecentMessages=5 only protects last 5", async () => {
+    const sessionID = `ses_protected_7_${Date.now()}`
+    const rawMessages = buildMessages(sessionID, 30)
+    const state = createSessionState()
+    const tool = createTool(state, rawMessages, sessionID, {
+        compress: {
+            ...buildConfig().compress,
+            preserveRecentMessages: 5,
+            preserveRecentTokens: 100,
+            preserveLastUserMessage: false,
+        },
+    })
+
+    const result = await tool.execute(
+        {
+            topic: "Test",
+            content: [{ startId: ref(1), endId: ref(20), summary: "x".repeat(2000) }],
+        },
+        { ...toolCtx, sessionID },
+    )
+    assert.ok(typeof result === "string" && result.includes("Compressed"), "range ending before last 5 should succeed")
+})
+
+test("protected: lastSegmentSoftBlock=true with preserveRecentMessages=0 disables message-count protection", async () => {
+    const sessionID = `ses_protected_8_${Date.now()}`
+    const rawMessages = buildMessages(sessionID, 30)
+    const state = createSessionState()
+    const tool = createTool(state, rawMessages, sessionID, {
+        compress: {
+            ...buildConfig().compress,
+            preserveRecentMessages: 0,
+            preserveRecentTokens: 0,
+            preserveLastUserMessage: false,
+        },
+    })
+
+    const result = await tool.execute(
+        {
+            topic: "Test",
+            content: [{ startId: ref(25), endId: ref(30), summary: "x".repeat(2000) }],
+        },
+        { ...toolCtx, sessionID },
+    )
+    assert.ok(typeof result === "string" && result.includes("Compressed"), "no protection should allow recent compression")
 })

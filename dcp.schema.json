@@ -313,6 +313,28 @@
                     "type": ["number", "string"],
                     "default": "98%",
                     "description": "Context usage threshold at which the growth floor is bypassed and nudges fire unconditionally (emergency override). Accepts absolute token count or percentage string (e.g. \"98%\")."
+                },
+                "lastSegmentSoftBlock": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Master switch for recent-message protection. When false, all protection (preserveRecentMessages, preserveRecentTokens, preserveLastUserMessage) is disabled."
+                },
+                "preserveRecentMessages": {
+                    "type": "number",
+                    "default": 20,
+                    "minimum": 0,
+                    "description": "Minimum number of recent messages always protected from compression, regardless of nudge recommendation."
+                },
+                "preserveRecentTokens": {
+                    "type": "number",
+                    "default": 20000,
+                    "minimum": 0,
+                    "description": "Minimum token window of recent messages always protected from compression. The protection zone is the union of preserveRecentMessages count and preserveRecentTokens window."
+                },
+                "preserveLastUserMessage": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Always protect the most recent user message from compression."
                 }
             },
             "default": {
@@ -334,7 +356,11 @@
                 "minCompressRange": 5000,
                 "minNudgeGrowthRatio": 0.45,
                 "minNudgeGrowthFloor": 5000,
-                "emergencyThresholdPercent": "98%"
+                "emergencyThresholdPercent": "98%",
+                "lastSegmentSoftBlock": true,
+                "preserveRecentMessages": 20,
+                "preserveRecentTokens": 20000,
+                "preserveLastUserMessage": true
             }
         },
         "gc": {

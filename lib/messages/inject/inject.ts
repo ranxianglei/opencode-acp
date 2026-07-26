@@ -26,9 +26,11 @@ import {
     applyAnchoredNudges,
     buildCompressibleRanges,
     buildContextUsageGuidance,
+    computeProtectedRefs,
     computeShouldNudge,
     countMessagesAfterIndex,
     estimateContextComposition,
+    excludeProtectedRanges,
     filterRecommendedRanges,
     findLastNonIgnoredMessage,
     formatCompressibleRanges,
@@ -322,8 +324,12 @@ export const injectCompressNudges = (
         config.compress.protectedTools,
         config.protectedFilePatterns,
     )
+
+    const protectedRefs = computeProtectedRefs(messages, state, config.compress)
+    const unprotectedCompressible = excludeProtectedRanges(contextRanges.compressible, protectedRefs)
+
     const recommendedRanges = filterRecommendedRanges(
-        contextRanges.compressible,
+        unprotectedCompressible,
         contextRanges.protected,
         { modelContextLimit, growthRatio: 0.05, logger },
     )
