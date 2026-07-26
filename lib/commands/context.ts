@@ -125,7 +125,7 @@ function analyzeTokens(state: SessionState, messages: WithParts[]): TokenBreakdo
     let foundFirstUser = false
     const allToolIds = new Set<string>()
     const activeToolIds = new Set<string>()
-    const prunedByMessageToolIds = new Set<string>()
+    const prunedToolIds = new Set<string>()
     const allMessageIds = new Set<string>()
 
     for (const msg of messages) {
@@ -145,7 +145,7 @@ function analyzeTokens(state: SessionState, messages: WithParts[]): TokenBreakdo
                         activeToolIds.add(toolPart.callID)
                     }
                     if (isMessagePruned) {
-                        prunedByMessageToolIds.add(toolPart.callID)
+                        prunedToolIds.add(toolPart.callID)
                     }
                 }
 
@@ -183,10 +183,7 @@ function analyzeTokens(state: SessionState, messages: WithParts[]): TokenBreakdo
         }
     }
 
-    const prunedByToolIds = new Set<string>()
-
-    const prunedToolIds = new Set<string>([...prunedByToolIds, ...prunedByMessageToolIds])
-    const toolsInContextCount = [...activeToolIds].filter((id) => !prunedByToolIds.has(id)).length
+    const toolsInContextCount = [...activeToolIds].filter((id) => !prunedToolIds.has(id)).length
 
     let prunedMessageCount = 0
     for (const [id, entry] of state.prune.messages.byMessageId) {

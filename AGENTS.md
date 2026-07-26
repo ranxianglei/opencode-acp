@@ -115,16 +115,10 @@ opencode-acp/
 │   ├── gc/
 │   │   └── truncate.ts               # Age-based deactivation + old-gen summary truncation
 │   │
-│   ├── strategies/                   # Automatic pruning strategies
-│   │   ├── deduplication.ts          # Duplicate tool call pruning (same tool + args → keep last)
-│   │   ├── purge-errors.ts           # Errored tool input pruning after N turns
-│   │   └── index.ts                  # Barrel export
-│   │
 │   ├── commands/                     # /acp slash commands
-│   │   ├── index.ts                  # Command barrel (context, stats, sweep, manual, decompress, recompress, help)
+│   │   ├── index.ts                  # Command barrel (context, stats, manual, decompress, recompress, help)
 │   │   ├── context.ts                # /acp context — show current context usage
 │   │   ├── stats.ts                  # /acp stats — show compression statistics
-│   │   ├── sweep.ts                  # /acp sweep — force full context sweep
 │   │   ├── manual.ts                 # /acp manual — toggle/trigger manual mode
 │   │   ├── help.ts                   # /acp help — show available commands
 │   │   ├── decompress.ts             # /acp decompress — restore compressed content
@@ -186,7 +180,7 @@ index.ts (Plugin Entry — registers hooks + tools)
     │       └─► stripStaleMetadata() → clean up removed messages' metadata
     │
     ├─► Command Hook (command.execute.before)
-    │       └─► /acp {context|stats|sweep|manual|decompress|recompress|help}
+    │       └─► /acp {context|stats|manual|decompress|recompress|help}
     │           (also accepts /dcp for backward compatibility)
     │
     ├─► Event Hook (event)
@@ -198,8 +192,6 @@ index.ts (Plugin Entry — registers hooks + tools)
     └─► Compress Tool (registered as "compress")
             │
             ├─► prepareSession() → permission check, fetch messages, init state
-            │       ├─► deduplicate() → mark duplicate tool calls as pruned
-            │       └─► purgeErrors() → remove errored tool inputs
             │
             ├─► [range mode] resolve ranges → map startId/endId to message indices
             │       ├─► Auto-swap reversed boundaries (Bug 34 fix)
@@ -276,7 +268,7 @@ Auto-migration: if `acp.jsonc` doesn't exist but `dcp.jsonc` does, automatically
     pruneNotification: "detailed",
     pruneNotificationType: "toast",
     commands: { enabled: true, protectedTools: ["task", "skill", "todowrite", "todoread", "compress", "batch", "plan_enter", "plan_exit", "write", "edit"] },
-    manualMode: { enabled: false, automaticStrategies: true },
+    manualMode: { enabled: false },
     turnProtection: { enabled: false, turns: 4 },
     experimental: { allowSubAgents: false, customPrompts: false },
     protectedFilePatterns: [],
@@ -293,10 +285,6 @@ Auto-migration: if `acp.jsonc` doesn't exist but `dcp.jsonc` does, automatically
         protectedTools: ["skill"],       // root default; an explicit array replaces inherited policy (use [] to protect nothing)
         protectTags: false,
         protectUserMessages: false,
-    },
-    strategies: {
-        deduplication: { enabled: true, protectedTools: [] },
-        purgeErrors: { enabled: true, turns: 4, protectedTools: [] },
     },
     gc: {
         algorithm: "truncate",
@@ -371,7 +359,7 @@ CI is configured via GitHub Actions (PR #2): typecheck + test + build on Node 22
 | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- | ------------------------------------ |
 | **Baseline**      | `hooks-permission.test.ts`, `compress-message.test.ts`, `compress-range.test.ts`, `message-priority.test.ts`, `token-counting.test.ts`, `context-limits.test.ts`, `update.test.ts` | 95    | Original DCP tests, adapted for ACP  |
 | **Tier 1 (pure)** | `config-validation.test.ts`, `priority-classify.test.ts`, `shape.test.ts`, `query-pure.test.ts`, `gc-truncate-pure.test.ts`, `state-utils-pure.test.ts`                            | 83    | Pure function tests, no side effects |
-| **Tier 2 (mock)** | `query-mock.test.ts`, `gc-truncate-mock.test.ts`, `strategies-dedup.test.ts`, `strategies-purge-errors.test.ts`                                                                    | 68    | Mock-data unit tests                 |
+| **Tier 2 (mock)** | `query-mock.test.ts`, `gc-truncate-mock.test.ts`                                                                                                                                                      | 68    | Mock-data unit tests                 |
 | **Functional**    | `compress-search.test.ts`, `compress-state.test.ts`, `message-ids.test.ts`                                                                                                         | 77    | Compress pipeline with mock data     |
 | **E2E**           | `e2e-message-transform.test.ts`, `e2e-blocks-nudges.test.ts`                                                                                                                       | 21    | Full message-transform pipeline      |
 
@@ -448,7 +436,7 @@ state/state.ts ← state/persistence.ts
     ↑
 hooks.ts ← messages/inject, messages/prune, messages/sync, gc, prompts, state
     ↑
-compress/pipeline.ts ← strategies/, state, config
+compress/pipeline.ts ← state, config
     ↑
 compress/range.ts ← compress/search, compress/state, compress/pipeline
 compress/message.ts ← compress/search, compress/state, compress/pipeline

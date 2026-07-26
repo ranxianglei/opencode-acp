@@ -111,8 +111,7 @@ test("regression: prune() strips step-start via stripStepMarkers (still works)",
 
 test("regression: Prune type no longer has `tools` field (compile-time check)", () => {
     type HasTools = Prune extends { tools: any } ? true : false
-    const check: HasTools = false as any
-    assert.equal(check, false, "Prune must NOT have a `tools` field")
+    const check: HasTools = false
     assert.ok(state0PruneHasOnlyMessages(), "state.prune has only `messages`")
 })
 
@@ -133,7 +132,7 @@ test("regression: resetSessionState() produces a prune with no tools Map", () =>
     assert.ok(s.prune.messages, "messages state preserved")
 })
 
-test("regression: deduplicate / purgeErrors no longer called in prepareSession", async () => {
+test("regression: prepareSession returns expected shape after strategies removal", async () => {
     const state: SessionState = createSessionState()
     state.sessionId = "ses-regression"
 

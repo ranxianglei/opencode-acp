@@ -120,17 +120,14 @@ Not yet implemented. Will test the complete message transform pipeline from `hoo
 | `lib/config.ts` | Config merging, defaults, validation, DCP migration | ~1125 lines, largest file |
 | `lib/state/persistence.ts` | `saveSessionState`, `loadSessionState`, `ensureSessionInitialized`, DCP migration | ~295 lines, filesystem I/O |
 | `lib/state/utils.ts` (direct) | `isMessageCompacted`, `serializePruneMessagesState`, `deserializePruneMessagesState`, `getActiveSummaryTokenUsage` | ~358 lines |
-| `lib/messages/prune.ts` | `filterCompressedRanges`, `pruneToolOutputs`, `pruneToolInputs`, `pruneToolErrors` | ~263 lines |
+| `lib/messages/prune.ts` | `filterCompressedRanges`, `stripStepMarkers` (post-removal) | ~263 lines |
 | `lib/messages/sync.ts` | `syncCompressionBlocks` — deactivate orphaned blocks | ~130 lines |
 | `lib/messages/inject/inject.ts` | `injectCompressNudges`, `injectMessageIds` | ~280 lines |
 | `lib/gc/truncate.ts` | `runTruncateGC`, `truncateSummary` | ~83 lines, pure logic |
-| `lib/strategies/deduplication.ts` | `deduplicate` — same tool + args pruning | ~127 lines |
-| `lib/strategies/purge-errors.ts` | `purgeErrors` — errored tool input pruning | ~88 lines |
 | `lib/compress-permission.ts` | `compressPermission`, `syncCompressPermissionState` | ~25 lines |
 | `lib/protected-patterns.ts` | `matchesGlob`, `isFilePathProtected`, `isToolNameProtected`, `getFilePathsFromParameters` | ~128 lines, pure logic |
 | `lib/commands/context.ts` | Context usage display command | Slash command handler |
 | `lib/commands/stats.ts` | Compression statistics command | Slash command handler |
-| `lib/commands/sweep.ts` | Force full context sweep command | Slash command handler |
 | `lib/commands/manual.ts` | Manual mode toggle command | Slash command handler |
 | `lib/commands/help.ts` | Help display command | Slash command handler |
 | `lib/ui/notification.ts` | `buildMinimalMessage`, `buildDetailedMessage` | ~357 lines |
@@ -155,7 +152,7 @@ function buildConfig(mode: "message" | "range" = "message"): PluginConfig {
         pruneNotification: "off",
         pruneNotificationType: "toast",
         commands: { enabled: true, protectedTools: [] },
-        manualMode: { enabled: false, automaticStrategies: true },
+        manualMode: { enabled: false },
         turnProtection: { enabled: false, turns: 4 },
         experimental: { allowSubAgents: false, customPrompts: false },
         protectedFilePatterns: [],
@@ -171,10 +168,6 @@ function buildConfig(mode: "message" | "range" = "message"): PluginConfig {
             protectedTools: ["task"],
             protectTags: false,
             protectUserMessages: false,
-        },
-        strategies: {
-            deduplication: { enabled: true, protectedTools: [] },
-            purgeErrors: { enabled: true, turns: 4, protectedTools: [] },
         },
     }
 }
@@ -452,7 +445,7 @@ function buildConfig(): PluginConfig {
         pruneNotification: "off",
         pruneNotificationType: "toast",
         commands: { enabled: true, protectedTools: [] },
-        manualMode: { enabled: false, automaticStrategies: true },
+        manualMode: { enabled: false },
         turnProtection: { enabled: false, turns: 4 },
         experimental: { allowSubAgents: false, customPrompts: false },
         protectedFilePatterns: [],
@@ -468,10 +461,6 @@ function buildConfig(): PluginConfig {
             protectedTools: [],
             protectTags: false,
             protectUserMessages: false,
-        },
-        strategies: {
-            deduplication: { enabled: true, protectedTools: [] },
-            purgeErrors: { enabled: true, turns: 4, protectedTools: [] },
         },
     }
 }
@@ -531,9 +520,7 @@ Need `SessionState`, `PluginConfig`, or `WithParts[]` construction. Still no I/O
 
 | Module | Functions to Test | Mock Data Needed |
 |--------|-------------------|------------------|
-| `lib/strategies/deduplication.ts` | `deduplicate` | `SessionState` + `WithParts[]` with tool parts |
-| `lib/strategies/purge-errors.ts` | `purgeErrors` | `SessionState` + `WithParts[]` with errored tool parts |
-| `lib/messages/prune.ts` | `filterCompressedRanges`, `pruneToolOutputs`, `pruneToolInputs` | `SessionState` with blocks, `WithParts[]`, `Logger` |
+| `lib/messages/prune.ts` | `filterCompressedRanges`, `stripStepMarkers` | `SessionState` with blocks, `WithParts[]`, `Logger` |
 | `lib/messages/sync.ts` | `syncCompressionBlocks` | `SessionState` with blocks, `WithParts[]` (partial message list) |
 | `lib/messages/inject/inject.ts` | `injectCompressNudges` | Full `SessionState` + config + messages + prompts |
 | `lib/state/utils.ts` | `isMessageCompacted`, `serializePruneMessagesState`, `deserializePruneMessagesState` | `SessionState`, plain objects |
