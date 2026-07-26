@@ -190,13 +190,16 @@ test("nudge suppressed when all compressible ranges are in protected zone", () =
     )
 })
 
-test("growth hits protected zone only: nudge suppressed even with large growth", () => {
+test("growth hits protected zone only: nudge suppressed even with real growth", () => {
     const state = createSessionState()
     state.modelContextLimit = 1_000_000
-    state.nudges.lastPerMessageNudgeTokens = 50_000
+    state.nudges.lastPerMessageNudgeTokens = 0
     setupRefs(state, 10)
 
-    const config = buildConfig({ maxContextLimit: 500_000, minContextLimit: 50_000 })
+    // maxContextLimit=100K → growth threshold = max(5000, 100K * 0.45) = 45K
+    // 10 msgs × 20K chars = ~50K tok total → growth = 50K > 45K threshold (passes growth gate)
+    // But all 10 msgs are in last-20 protected zone → no compressible ranges → nudge suppressed
+    const config = buildConfig({ maxContextLimit: 100_000, minContextLimit: 50_000 })
 
     const messages = buildMessages(10, 20_000)
 
@@ -205,7 +208,7 @@ test("growth hits protected zone only: nudge suppressed even with large growth",
     assert.equal(
         state.nudges.shouldInjectThisTurn,
         false,
-        "10 messages × 5K tok = 50K context, all in last 20 → nudge suppressed despite growth",
+        "growth passes threshold (50K > 45K) but all msgs in protected zone → suppressed by protection",
     )
 })
 
@@ -264,4 +267,20 @@ test("edge case: preserveRecentMessages=5 with 8 msgs → only 3 compressible", 
     assert.equal(protectedRefs.size, 5, "exactly 5 messages protected (msg-4 through msg-8)")
     assert.ok(!protectedRefs.has("m00003"), "msg-3 NOT protected")
     assert.ok(protectedRefs.has("m00004"), "msg-4 protected (within last 5)")
+})
+
+test("excludeProtectedRanges: range extending INTO protected zone is filtered", () => {
+    const protectedRefs = new Set(["m00008", "m00009", "m00010"])
+
+    const ranges: CompressibleRange[] = [
+        { startRef: "m00001", endRef: "m00005", count: 5, tokens: 2500, toolPct: 0, textPct: 100 },
+        { startRef: "m00001", endRef: "m00008", count: 8, tokens: 4000, toolPct: 0, textPct: 100 },
+        { startRef: "m00006", endRef: "m00010", count: 5, tokens: 2500, toolPct: 0, textPct: 100 },
+        { startRef: "m00008", endRef: "m00010", count: 3, tokens: 1500, toolPct: 0, textPct: 100 },
+    ]
+
+    const filtered = excludeProtectedRanges(ranges, protectedRefs)
+    assert.equal(filtered.length, 1, "only fully-unprotected range survives")
+    assert.equal(filtered[0].startRef, "m00001")
+    assert.equal(filtered[0].endRef, "m00005")
 })
