@@ -47,6 +47,9 @@ export interface PersistedNudges {
     lastPerMessageNudgeTokens?: number
     lastNudgeShownTokens?: number
     lastToolOutputNudgeTokens?: number
+    lastTier2NudgeTokens?: number
+    lastTier3NudgeTokens?: number
+    /** @deprecated use lastTier2NudgeTokens — migrated on load */
     lastTierNudgeTokens?: number
     compressBaselineSet?: boolean
 }
@@ -151,7 +154,8 @@ export async function saveSessionState(
             lastPerMessageNudgeTokens: sessionState.nudges.lastPerMessageNudgeTokens,
             lastNudgeShownTokens: sessionState.nudges.lastNudgeShownTokens,
             lastToolOutputNudgeTokens: sessionState.nudges.lastToolOutputNudgeTokens,
-            lastTierNudgeTokens: sessionState.nudges.lastTierNudgeTokens,
+            lastTier2NudgeTokens: sessionState.nudges.lastTier2NudgeTokens,
+            lastTier3NudgeTokens: sessionState.nudges.lastTier3NudgeTokens,
             compressBaselineSet: sessionState.nudges.compressBaselineSet,
         },
         stats: sessionState.stats,

@@ -107,7 +107,8 @@ export interface Nudges {
     lastPerMessageNudgeTokens: number | undefined
     lastNudgeShownTokens: number | undefined
     lastToolOutputNudgeTokens: number | undefined
-    lastTierNudgeTokens: number | undefined
+    lastTier2NudgeTokens: number | undefined
+    lastTier3NudgeTokens: number | undefined
     /** Set by injectCompressNudges; read by system prompt handler next turn (1-turn lag). Undefined = first turn. */
     shouldInjectThisTurn: boolean | undefined
     /**

@@ -153,7 +153,8 @@ export function createSessionState(): SessionState {
             lastPerMessageNudgeTokens: undefined,
             lastNudgeShownTokens: undefined,
             lastToolOutputNudgeTokens: undefined,
-            lastTierNudgeTokens: undefined,
+            lastTier2NudgeTokens: undefined,
+            lastTier3NudgeTokens: undefined,
             shouldInjectThisTurn: undefined,
             compressBaselineSet: false,
         },
@@ -198,7 +199,8 @@ export function resetSessionState(state: SessionState): void {
         lastPerMessageNudgeTokens: undefined,
         lastNudgeShownTokens: undefined,
         lastToolOutputNudgeTokens: undefined,
-        lastTierNudgeTokens: undefined,
+        lastTier2NudgeTokens: undefined,
+        lastTier3NudgeTokens: undefined,
         shouldInjectThisTurn: undefined,
         compressBaselineSet: false,
     }
@@ -272,7 +274,8 @@ export async function ensureSessionInitialized(
     state.nudges.lastPerMessageNudgeTokens = persisted.nudges.lastPerMessageNudgeTokens
     state.nudges.lastNudgeShownTokens = persisted.nudges.lastNudgeShownTokens
     state.nudges.lastToolOutputNudgeTokens = persisted.nudges.lastToolOutputNudgeTokens
-    state.nudges.lastTierNudgeTokens = persisted.nudges.lastTierNudgeTokens
+    state.nudges.lastTier2NudgeTokens = persisted.nudges.lastTier2NudgeTokens ?? persisted.nudges.lastTierNudgeTokens
+    state.nudges.lastTier3NudgeTokens = persisted.nudges.lastTier3NudgeTokens
     state.nudges.compressBaselineSet = persisted.nudges.compressBaselineSet ?? false
     state.stats = {
         pruneTokenCounter: persisted.stats?.pruneTokenCounter || 0,

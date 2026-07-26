@@ -403,7 +403,8 @@ export function resetOnCompaction(state: SessionState): void {
         lastPerMessageNudgeTokens: undefined,
         lastNudgeShownTokens: undefined,
         lastToolOutputNudgeTokens: undefined,
-        lastTierNudgeTokens: undefined,
+        lastTier2NudgeTokens: undefined,
+        lastTier3NudgeTokens: undefined,
         shouldInjectThisTurn: undefined,
         compressBaselineSet: false,
     }
