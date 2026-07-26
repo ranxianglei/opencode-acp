@@ -145,3 +145,75 @@ After code review by Oracle (ses_066c46be), fixed 2 BLOCKERs + 2 MEDIUMs:
 
 ### Verification
 - typecheck ✅ | 875 tests pass ✅ (869 + 6 new)
+
+## Phase 7: Independent Tier Trigger Refactor + E2E Simulation
+
+### Trigger redesign
+- **Problem**: Previous design used `lastTierNudgeTokens` as a single counter. User feedback: each tier needs independent cadence.
+- **Fix**: `lib/messages/inject/inject.ts:366-465` — Split into `lastTier2NudgeTokens` and `lastTier3NudgeTokens`. Unified tier trigger loop: checks T2 (tier1Tokens >= threshold) and T3 (tier2Tokens >= threshold) independently. T1 has priority via `!shouldInject` guard.
+- Removed dead code from cross-tier fix (`maxConsumedTier`, unused variable)
+
+### E2E simulation tests
+- `tests/e2e-tier-simulation.test.ts` — 8 tests: 30-turn real session, T2/T3 priority, cadence, cross-tier narrowing, independent counters
+- `scripts/simulate-tier-lifecycle.ts` — 5-year lifecycle simulation (T1 every 7d, T2 every 309d, T3 every 3091d)
+
+### cc-alg version pin
+- Pinned to exact `1.2.1` (was `^1.0.0`)
+
+### Verification
+- typecheck ✅ | 905 tests pass ✅
+
+## Phase 8: Tier-Aware Decompress + E2E Round-Trip Tests
+
+### Tier-aware decompress
+- **Problem**: `decompress({blockId})` always restored to raw messages. For T2/T3 blocks, this is extremely expensive.
+- **Fix**: `lib/compress/decompress-logic.ts:120-148` — `deactivateCompressionTarget(state, target, {full?})`
+  - Default (no options): does NOT mark consumed blocks → sync reactivates them (one level up)
+  - `{full:true}`: recursive BFS walk marks ALL descendants as `deactivatedByUserDeep`
+
+### E2E round-trip tests
+- `tests/e2e-tier-compression.test.ts` — 4 new tests:
+  1. compress→decompress→deepEqual content identical
+  2. decompress→recompress→exactly 1 active block, no duplicate
+  3. T3 default decompress→T2 reactivated, T1 stays inactive
+  4. T3 full:true→all descendants deactivatedByUserDeep
+
+### Dual-agent review fixes (commit 3e090aa)
+- M1: full:true recursive BFS for T3+
+- M2: stats use compressedTokens (not effectiveCompressedTokens) — no double-count
+- M3: Fixed broken SIM 1 assertion + type guards
+- M4: minConsumedTier default REVERTED (3→1 broke T3, back to 3)
+- M5: Removed @ts-expect-error
+
+### Verification
+- typecheck ✅ | 919 tests pass ✅
+
+## Phase 9: sync.ts Anchor-Survival Fix
+
+### Problem
+- `syncCompressionBlocks` deactivated blocks when `anchorMessageId` not in current messages
+- Caused **1137 blocks across 21 sessions** to be incorrectly deactivated when opencode compaction removed old compress tool calls
+
+### Fix
+- `lib/messages/sync.ts`: Removed anchor-missing check entirely. Block existence IS proof (same as Bug 3 for compressMessageId).
+- 4 tests updated: blocks now stay active when anchor gone
+
+## Phase 10: Full-Branch Dual-Agent Review Fixes
+
+### Review results
+- **Oracle** (8m25s): APPROVE — 2 MEDIUM + 6 LOW
+- **General** (11m50s): All findings fixed (1 HIGH downgraded to LOW + 6 MEDIUM + 3 LOW)
+
+### Fixes (4 commits: 66739d5, 7f60893, 51b1142, b818090)
+- **M1**: `minConsumedTier` uses `undefined` sentinel instead of magic init=3. Consumed IDs that don't resolve → T1 safe default.
+- **M2**: `effectiveMessageIds` filtered by `targetTierForConsumption`. Non-target-tier blocks don't pollute effective set.
+- **M3**: Phantom carve-out requires homogeneous tier (`tiers.size === 1`). Mixed-tier no longer bypasses rejection.
+- **M4**: `deactivatedByUserDeep` field for `full:true` recursive decompress. Recompress clears it recursively.
+- **M5**: Test renamed to match actual behavior (T1 priority, not independent).
+- **M6**: `parentBlockIds` fixed from reversed to `[]`.
+- **L1**: Removed `missingOriginBlockIds` dead code.
+- **L2**: `includedBlockIds` stores ALL consumed (unfiltered). Status display uses it.
+- **L3**: No actual mismatch — README and WORKLOG consistent.
+
+### Verification
+- typecheck ✅ | **919 tests pass** ✅ | build ✅
