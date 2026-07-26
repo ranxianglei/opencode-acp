@@ -156,7 +156,10 @@ export function isContextOverLimits(
     messages: WithParts[],
 ) {
     const summaryTokenExtension = config.compress.summaryBuffer
-        ? getActiveSummaryTokenUsage(state)
+        ? getActiveSummaryTokenUsage(
+              state,
+              new Set(messages.map((m) => m.info.id)),
+          )
         : 0
     const resolvedMaxContextLimit = resolveContextTokenLimit(
         config,

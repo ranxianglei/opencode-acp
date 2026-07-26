@@ -253,7 +253,9 @@ test("isContextOverLimits extends the max threshold by active summary tokens", (
     state.lastCompaction = 2
 
     const storedSummary = wrapCompressedSummary(7, repeatedWord("summary", 120))
-    state.prune.messages.blocksById.set(7, createActiveBlock(7, storedSummary, 1000))
+    const block7 = createActiveBlock(7, storedSummary, 1000)
+    block7.compressMessageId = "msg-assistant-post-compaction"
+    state.prune.messages.blocksById.set(7, block7)
     state.prune.messages.activeBlockIds.add(7)
 
     const freshReportedTotal = 2400 + 600 + 150 + 300
@@ -287,7 +289,9 @@ test("isContextOverLimits does not extend the max threshold when summaryBuffer i
     state.lastCompaction = 2
 
     const storedSummary = wrapCompressedSummary(7, repeatedWord("summary", 120))
-    state.prune.messages.blocksById.set(7, createActiveBlock(7, storedSummary, 1000))
+    const block7b = createActiveBlock(7, storedSummary, 1000)
+    block7b.compressMessageId = "msg-assistant-post-compaction"
+    state.prune.messages.blocksById.set(7, block7b)
     state.prune.messages.activeBlockIds.add(7)
 
     const freshReportedTotal = 2400 + 600 + 150 + 300

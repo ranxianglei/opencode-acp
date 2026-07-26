@@ -75,11 +75,16 @@ function collectVisibleMessages(
     const result: VisibleMessageInfo[] = []
     let summaryTokens = 0
 
+    const visibleMessageIds = new Set(rawMessages.map((m) => m.info.id))
+
     const activeBlocks = Array.from(ctx.state.prune.messages.activeBlockIds)
         .map((id) => ctx.state.prune.messages.blocksById.get(id))
         .filter((b): b is NonNullable<typeof b> => b !== undefined && b.active)
 
     for (const block of activeBlocks) {
+        if (block.compressMessageId && !visibleMessageIds.has(block.compressMessageId)) {
+            continue
+        }
         summaryTokens += block.summaryTokens || 0
     }
 

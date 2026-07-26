@@ -335,12 +335,26 @@ export function collectTurnNudgeAnchors(messages: WithParts[]): Set<string> {
     return anchors
 }
 
-export function getActiveSummaryTokenUsage(state: SessionState): number {
+/**
+ * Sum summary tokens of active blocks.
+ * When visibleMessageIds is provided, only counts blocks whose compressMessageId
+ * is still in the context (prevents over-counting from blocks whose compress
+ * calls scrolled out via opencode compaction).
+ */
+export function getActiveSummaryTokenUsage(
+    state: SessionState,
+    visibleMessageIds?: Set<string>,
+): number {
     let total = 0
     for (const blockId of state.prune.messages.activeBlockIds) {
         const block = state.prune.messages.blocksById.get(blockId)
         if (!block || !block.active) {
             continue
+        }
+        if (visibleMessageIds && block.compressMessageId) {
+            if (!visibleMessageIds.has(block.compressMessageId)) {
+                continue
+            }
         }
         total += block.summaryTokens
     }

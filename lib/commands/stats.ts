@@ -94,8 +94,12 @@ export async function handleStatsCommand(ctx: StatsCommandContext): Promise<void
 
     // Session stats from in-memory state
     const sessionTokens = state.stats.totalPruneTokens
+    const visibleMessageIds = new Set(messages.map((m) => m.info.id))
     const sessionSummaryTokens = Array.from(state.prune.messages.blocksById.values()).reduce(
-        (total, block) => (block.active ? total + block.summaryTokens : total),
+        (total, block) =>
+            block.active && visibleMessageIds.has(block.compressMessageId ?? "")
+                ? total + block.summaryTokens
+                : total,
         0,
     )
     const sessionDurationMs = getActiveCompressionTargets(state.prune.messages).reduce(
