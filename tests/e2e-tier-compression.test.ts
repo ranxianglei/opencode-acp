@@ -296,9 +296,9 @@ test("T2 trigger: does NOT fire when T1 summaries below nudgeGrowthTokens", asyn
     )
 })
 
-// ─── T2 Trigger: fires INDEPENDENTLY (not gated by T1 nudge) ────────────────
+// ─── T2 Trigger: fires when T1 summaries exceed threshold (T1 priority) ─────
 
-test("T2 trigger: fires even when T1 nudge would also fire (independent)", async () => {
+test("T2 trigger: fires when T1 summaries exceed threshold even with large context", async () => {
     const { state, handler } = setupPipeline({
         compress: {
             ...buildConfig().compress!,
@@ -317,7 +317,6 @@ test("T2 trigger: fires even when T1 nudge would also fire (independent)", async
     }
     populateBlocks(state, blocks)
 
-    // Set up so T1 nudge would also fire (large context)
     state.nudges.lastPerMessageNudgeTokens = 0
 
     const output = {
@@ -345,12 +344,9 @@ test("T2 trigger: fires even when T1 nudge would also fire (independent)", async
     await handler({}, output)
 
     const suffixText = getSuffixText(output)
-    // T1 nudge should fire (context is large)
-    // T2 nudge should ALSO fire (T1 summaries exceed threshold)
-    // Both can appear in the same suffix message
     assert.ok(
         suffixText.includes("[Tier 2 Trigger]"),
-        "T2 trigger should fire INDEPENDENTLY of T1 nudge status",
+        "T2 trigger should fire when T1 summaries (60K) exceed threshold (50K)",
     )
 })
 
@@ -862,7 +858,7 @@ test("tier-aware decompress: full:true restores to original (T2→raw)", async (
 
     assert.equal(t2.active, false, "T2 should be inactive after decompress")
     assert.equal(t1.active, false, "T1 should stay inactive (full decompress to original)")
-    assert.equal(t1.deactivatedByUser, true, "T1 marked deactivatedByUser for full mode")
+    assert.equal(t1.deactivatedByUserDeep, true, "T1 marked deactivatedByUserDeep for full mode")
 
     rmSync(tmpDir, { recursive: true, force: true })
 })
@@ -1157,11 +1153,11 @@ test("E2E T3 decompress: full:true recursively deactivates to raw", async () => 
     assert.equal(t3.active, false, "T3 inactive")
     assert.equal(t3.deactivatedByUser, true)
     assert.equal(t2.active, false, "T2 stays inactive (full recursive)")
-    assert.equal(t2.deactivatedByUser, true, "T2 marked by recursive full:true")
+    assert.equal(t2.deactivatedByUserDeep, true, "T2 marked by recursive full:true")
     assert.equal(t1a.active, false, "T1a stays inactive (full recursive)")
-    assert.equal(t1a.deactivatedByUser, true, "T1a marked by recursive full:true")
+    assert.equal(t1a.deactivatedByUserDeep, true, "T1a marked by recursive full:true")
     assert.equal(t1b.active, false, "T1b stays inactive")
-    assert.equal(t1b.deactivatedByUser, true, "T1b marked by recursive full:true")
+    assert.equal(t1b.deactivatedByUserDeep, true, "T1b marked by recursive full:true")
 
     rmSync(state.sessionId, { recursive: true, force: true })
 })

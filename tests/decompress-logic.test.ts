@@ -261,7 +261,7 @@ test("deactivateCompressionTarget default (one-level-up) does NOT mark consumed 
     assert.equal(consumedBlock.deactivatedByUser, false)
 })
 
-test("deactivateCompressionTarget full:true marks consumed blocks deactivatedByUser", () => {
+test("deactivateCompressionTarget full:true marks consumed blocks deactivatedByUserDeep", () => {
     const consumedBlock = makeBlock({ blockId: 2, deactivatedByUser: false })
     const block = makeBlock({ blockId: 1, consumedBlockIds: [2] })
     const ms = makeMessagesState({
@@ -273,7 +273,7 @@ test("deactivateCompressionTarget full:true marks consumed blocks deactivatedByU
     const target = makeTarget({ blocks: [block] })
     deactivateCompressionTarget(ms, target, { full: true })
     assert.equal(block.deactivatedByUser, true)
-    assert.equal(consumedBlock.deactivatedByUser, true)
+    assert.equal(consumedBlock.deactivatedByUserDeep, true)
 })
 
 test("deactivateCompressionTarget handles target with multiple blocks", () => {

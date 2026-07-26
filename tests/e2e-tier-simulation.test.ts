@@ -180,7 +180,7 @@ function makeBlock(
         compressCallId: `call-comp-${blockId}`,
         includedBlockIds: [],
         consumedBlockIds,
-        parentBlockIds: consumedBlockIds.length > 0 ? [...consumedBlockIds] : [],
+        parentBlockIds: [],
         directMessageIds: consumedBlockIds.length > 0 ? [] : [`msg-${blockId}`],
         directToolIds: [],
         effectiveMessageIds: [`msg-${blockId}`],
