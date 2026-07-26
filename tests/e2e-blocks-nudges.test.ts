@@ -34,7 +34,7 @@ function buildConfig(overrides: Partial<PluginConfig> = {}): PluginConfig {
         pruneNotification: "off",
         pruneNotificationType: "chat",
         commands: { enabled: true, protectedTools: [] },
-        manualMode: { enabled: false, automaticStrategies: true },
+        manualMode: { enabled: false },
         turnProtection: { enabled: false, turns: 4 },
         experimental: { allowSubAgents: false, customPrompts: false },
         protectedFilePatterns: [],
@@ -54,10 +54,6 @@ function buildConfig(overrides: Partial<PluginConfig> = {}): PluginConfig {
             preserveRecentMessages: 0,
             preserveRecentTokens: 0,
             preserveLastUserMessage: false,
-        },
-        strategies: {
-            deduplication: { enabled: true, protectedTools: [] },
-            purgeErrors: { enabled: true, turns: 4, protectedTools: [] },
         },
         gc: {
             algorithm: "truncate",
@@ -377,39 +373,6 @@ test("oversized block: summary > 6000 chars is NOT truncated below 100% context"
         !block?.summary.includes("[GC truncated]"),
         "summary must not contain GC truncation marker",
     )
-})
-
-// ─── Test: Tool error input pruning ─────────────────────────────────────────
-
-test("tool error pruning: error tool inputs are preserved (prefix cache fix)", async () => {
-    const { state, handler } = setupPipeline()
-
-    const callID = "call-bash-err"
-    state.prune.tools.set(callID, Date.now())
-
-    const errorTool = makeToolPart(
-        callID, "bash", "error", "error output",
-        { command: "rm -rf /", cwd: "/home/user" },
-        SID_A, "a1",
-    )
-    const output = {
-        messages: [
-            makeUserMessage("u1", "Run bad command"),
-            makeAssistantMessage("a1", "Trying...", [errorTool]),
-        ],
-    }
-
-    await handler({}, output)
-
-    const assistantMsg = output.messages.find((m: WithParts) => m.info.id === "a1")
-    assert.ok(assistantMsg, "assistant message should survive")
-    const tool = assistantMsg!.parts.find((p: any) => p.type === "tool")
-    assert.ok(tool, "tool part should be present")
-
-    const toolState = (tool as any).state
-    assert.equal(toolState.status, "error")
-    assert.equal(toolState.input.command, "rm -rf /")
-    assert.equal(toolState.input.cwd, "/home/user")
 })
 
 // ─── Test: Session switch resets state ──────────────────────────────────────

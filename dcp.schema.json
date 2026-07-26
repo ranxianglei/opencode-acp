@@ -60,7 +60,7 @@
                         "type": "string"
                     },
                     "default": [],
-                    "description": "Additional tool names or wildcard patterns to protect from pruning via commands (e.g., /dcp sweep). Supports glob wildcards: * matches any characters, ? matches a single character (e.g., \"mcp_*\", \"my_tool_?\")"
+                    "description": "Additional tool names or wildcard patterns to protect from pruning via commands. Supports glob wildcards: * matches any characters, ? matches a single character (e.g., \"mcp_*\", \"my_tool_?\")"
                 }
             },
             "default": {
@@ -77,16 +77,10 @@
                     "type": "boolean",
                     "default": false,
                     "description": "Start new sessions with manual mode enabled"
-                },
-                "automaticStrategies": {
-                    "type": "boolean",
-                    "default": true,
-                    "description": "When manual mode is enabled, keep automatic deduplication/purge strategies running"
                 }
             },
             "default": {
-                "enabled": false,
-                "automaticStrategies": true
+                "enabled": false
             }
         },
         "turnProtection": {
@@ -442,58 +436,6 @@
                                     "pattern": "^\\d+(?:\\.\\d+)?%$"
                                 }
                             ]
-                        }
-                    }
-                }
-            }
-        },
-        "strategies": {
-            "type": "object",
-            "description": "Automatic pruning strategies",
-            "additionalProperties": false,
-            "properties": {
-                "deduplication": {
-                    "type": "object",
-                    "description": "Remove duplicate tool outputs",
-                    "additionalProperties": false,
-                    "properties": {
-                        "enabled": {
-                            "type": "boolean",
-                            "default": true,
-                            "description": "Enable deduplication strategy"
-                        },
-                        "protectedTools": {
-                            "type": "array",
-                            "items": {
-                                "type": "string"
-                            },
-                            "default": [],
-                            "description": "Tool names or wildcard patterns excluded from deduplication. Supports glob wildcards: * matches any characters, ? matches a single character (e.g., \"mcp_*\", \"my_tool_?\")"
-                        }
-                    }
-                },
-                "purgeErrors": {
-                    "type": "object",
-                    "description": "Remove tool outputs that resulted in errors",
-                    "additionalProperties": false,
-                    "properties": {
-                        "enabled": {
-                            "type": "boolean",
-                            "default": true,
-                            "description": "Enable purge errors strategy"
-                        },
-                        "turns": {
-                            "type": "number",
-                            "default": 4,
-                            "description": "Number of turns after which errors are purged"
-                        },
-                        "protectedTools": {
-                            "type": "array",
-                            "items": {
-                                "type": "string"
-                            },
-                            "default": [],
-                            "description": "Tool names or wildcard patterns excluded from error purging. Supports glob wildcards: * matches any characters, ? matches a single character (e.g., \"mcp_*\", \"my_tool_?\")"
                         }
                     }
                 }

@@ -107,7 +107,7 @@ export async function handleStatsCommand(ctx: StatsCommandContext): Promise<void
         0,
     )
 
-    const prunedToolIds = new Set<string>(state.prune.tools.keys())
+    const prunedToolIds = new Set<string>()
     for (const block of state.prune.messages.blocksById.values()) {
         if (block.active) {
             for (const toolId of block.effectiveToolIds) {

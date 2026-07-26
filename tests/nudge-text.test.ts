@@ -26,7 +26,7 @@ function buildConfig(): PluginConfig {
         pruneNotification: "off",
         pruneNotificationType: "chat",
         commands: { enabled: true, protectedTools: [] },
-        manualMode: { enabled: false, automaticStrategies: true },
+        manualMode: { enabled: false },
         turnProtection: { enabled: false, turns: 4 },
         experimental: { allowSubAgents: false, customPrompts: false },
         protectedFilePatterns: [],
@@ -43,10 +43,6 @@ function buildConfig(): PluginConfig {
             protectedTools: [],
             protectTags: false,
             protectUserMessages: false,
-        },
-        strategies: {
-            deduplication: { enabled: true, protectedTools: [] },
-            purgeErrors: { enabled: true, turns: 4, protectedTools: [] },
         },
         gc: {
             algorithm: "truncate",

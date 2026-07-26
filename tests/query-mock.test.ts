@@ -81,7 +81,6 @@ function makeState(overrides: Partial<SessionState> = {}): SessionState {
         compressPermission: "allow",
         pendingManualTrigger: null,
         prune: {
-            tools: new Map(),
             messages: {
                 byMessageId: new Map<string, PrunedMessageEntry>(),
                 blocksById: new Map(),
@@ -117,7 +116,7 @@ function makeConfig(overrides: Partial<PluginConfig> = {}): PluginConfig {
         pruneNotification: "detailed",
         pruneNotificationType: "chat",
         commands: { enabled: true, protectedTools: [] },
-        manualMode: { enabled: false, automaticStrategies: true },
+        manualMode: { enabled: false },
         turnProtection: { enabled: false, turns: 4 },
         experimental: { allowSubAgents: false, customPrompts: false },
         protectedFilePatterns: [],
@@ -142,10 +141,6 @@ function makeConfig(overrides: Partial<PluginConfig> = {}): PluginConfig {
             maxOldGenSummaryLength: 3000,
             majorGcThresholdPercent: "100%",
             batchCleanup: { lowThreshold: "60%", highThreshold: "75%", forceThreshold: "90%" },
-        },
-        strategies: {
-            deduplication: { enabled: true, protectedTools: [] },
-            purgeErrors: { enabled: true, turns: 4, protectedTools: [] },
         },
         ...overrides,
     }

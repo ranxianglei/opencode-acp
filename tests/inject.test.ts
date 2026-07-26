@@ -20,7 +20,7 @@ function buildConfig(mode: "message" | "range" = "range"): PluginConfig {
         pruneNotification: "off",
         pruneNotificationType: "chat",
         commands: { enabled: true, protectedTools: [] },
-        manualMode: { enabled: false, automaticStrategies: true },
+        manualMode: { enabled: false },
         turnProtection: { enabled: false, turns: 4 },
         experimental: { allowSubAgents: false, customPrompts: false },
         protectedFilePatterns: [],
@@ -34,10 +34,6 @@ function buildConfig(mode: "message" | "range" = "range"): PluginConfig {
             minNudgeGrowthFloor: 5000, emergencyThresholdPercent: "98%",
             maxVisibleSegments: 50, keepEmbedMaxChars: 2000,
             preserveRecentMessages: 0, preserveRecentTokens: 0, preserveLastUserMessage: false,
-        },
-        strategies: {
-            deduplication: { enabled: true, protectedTools: [] },
-            purgeErrors: { enabled: true, turns: 4, protectedTools: [] },
         },
         gc: { algorithm: "truncate", promotionThreshold: 5, maxBlockAge: 15, maxOldGenSummaryLength: 3000, majorGcThresholdPercent: "100%", batchCleanup: { lowThreshold: "60%", highThreshold: "75%", forceThreshold: "90%" } },
     }

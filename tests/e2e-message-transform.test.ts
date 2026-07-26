@@ -36,7 +36,7 @@ function buildConfig(overrides: Partial<PluginConfig> = {}): PluginConfig {
         pruneNotification: "off",
         pruneNotificationType: "chat",
         commands: { enabled: true, protectedTools: [] },
-        manualMode: { enabled: false, automaticStrategies: true },
+        manualMode: { enabled: false },
         turnProtection: { enabled: false, turns: 4 },
         experimental: { allowSubAgents: false, customPrompts: false },
         protectedFilePatterns: [],
@@ -53,10 +53,6 @@ function buildConfig(overrides: Partial<PluginConfig> = {}): PluginConfig {
             protectedTools: ["task"],
             protectTags: false,
             protectUserMessages: false,
-        },
-        strategies: {
-            deduplication: { enabled: true, protectedTools: [] },
-            purgeErrors: { enabled: true, turns: 4, protectedTools: [] },
         },
         gc: {
             algorithm: "truncate",
@@ -588,36 +584,6 @@ test("compression summary: emits standalone summary when range is last (no user 
             `unexpected adjacent user turns at ${i - 1}/${i}`,
         )
     }
-})
-
-// ─── Test: Tool output pruning ───────────────────────────────────────────────
-
-test("prune: pruned tool outputs are preserved (prefix cache fix)", async () => {
-    const { state, handler } = setupPipeline()
-
-    const callID = "call-read-1"
-    state.prune.tools.set(callID, Date.now())
-
-    const toolPart = makeToolPart(callID, "read", "completed", "Full file contents here...")
-    toolPart.messageID = "a1"
-    const output = {
-        messages: [
-            makeUserMessage("u1", "Read the file"),
-            makeAssistantMessage("a1", "Here it is", [toolPart]),
-        ],
-    }
-
-    await handler({}, output)
-
-    const assistantMsg = output.messages.find((m: WithParts) => m.info.id === "a1")
-    assert.ok(assistantMsg, "assistant message should survive")
-    const tool = assistantMsg!.parts.find((p: any) => p.type === "tool")
-    assert.ok(tool, "tool part should be present")
-    const toolOutput = (tool as any).state.output as string
-    assert.ok(
-        !toolOutput.includes("[Output removed"),
-        `tool output should be preserved, got: ${toolOutput}`,
-    )
 })
 
 // ─── Test: Message IDs after pruning + reassignment ─────────────────────────

@@ -85,7 +85,6 @@ export interface PruneMessagesState {
 }
 
 export interface Prune {
-    tools: Map<string, number>
     messages: PruneMessagesState
 }
 

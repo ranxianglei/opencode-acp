@@ -23,7 +23,6 @@ export const VALID_CONFIG_KEYS = new Set([
     "commands.protectedTools",
     "manualMode",
     "manualMode.enabled",
-    "manualMode.automaticStrategies",
     "compress",
     "compress.mode",
     "compress.permission",
@@ -63,14 +62,6 @@ export const VALID_CONFIG_KEYS = new Set([
     "gc.batchCleanup.lowThreshold",
     "gc.batchCleanup.highThreshold",
     "gc.batchCleanup.forceThreshold",
-    "strategies",
-    "strategies.deduplication",
-    "strategies.deduplication.enabled",
-    "strategies.deduplication.protectedTools",
-    "strategies.purgeErrors",
-    "strategies.purgeErrors.enabled",
-    "strategies.purgeErrors.turns",
-    "strategies.purgeErrors.protectedTools",
     "qualityGate",
     "qualityGate.enabled",
     "qualityGate.algorithm",
@@ -267,17 +258,6 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
                     key: "manualMode.enabled",
                     expected: "boolean",
                     actual: typeof manualMode.enabled,
-                })
-            }
-
-            if (
-                manualMode.automaticStrategies !== undefined &&
-                typeof manualMode.automaticStrategies !== "boolean"
-            ) {
-                errors.push({
-                    key: "manualMode.automaticStrategies",
-                    expected: "boolean",
-                    actual: typeof manualMode.automaticStrategies,
                 })
             }
         }
@@ -796,83 +776,6 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
                     }
                     if (gc.batchCleanup.forceThreshold !== undefined) {
                         validateBatchThreshold("gc.batchCleanup.forceThreshold", gc.batchCleanup.forceThreshold)
-                    }
-                }
-            }
-        }
-    }
-
-    const strategies = config.strategies
-    if (strategies !== undefined) {
-        if (typeof strategies !== "object" || strategies === null || Array.isArray(strategies)) {
-            errors.push({
-                key: "strategies",
-                expected: "object",
-                actual: typeof strategies,
-            })
-        } else {
-            const dedup = strategies.deduplication
-            if (dedup !== undefined) {
-                if (typeof dedup !== "object" || dedup === null || Array.isArray(dedup)) {
-                    errors.push({
-                        key: "strategies.deduplication",
-                        expected: "object",
-                        actual: typeof dedup,
-                    })
-                } else {
-                    if (dedup.enabled !== undefined && typeof dedup.enabled !== "boolean") {
-                        errors.push({
-                            key: "strategies.deduplication.enabled",
-                            expected: "boolean",
-                            actual: typeof dedup.enabled,
-                        })
-                    }
-                    if (dedup.protectedTools !== undefined && !Array.isArray(dedup.protectedTools)) {
-                        errors.push({
-                            key: "strategies.deduplication.protectedTools",
-                            expected: "string[]",
-                            actual: typeof dedup.protectedTools,
-                        })
-                    }
-                }
-            }
-
-            const purge = strategies.purgeErrors
-            if (purge !== undefined) {
-                if (typeof purge !== "object" || purge === null || Array.isArray(purge)) {
-                    errors.push({
-                        key: "strategies.purgeErrors",
-                        expected: "object",
-                        actual: typeof purge,
-                    })
-                } else {
-                    if (purge.enabled !== undefined && typeof purge.enabled !== "boolean") {
-                        errors.push({
-                            key: "strategies.purgeErrors.enabled",
-                            expected: "boolean",
-                            actual: typeof purge.enabled,
-                        })
-                    }
-                    if (purge.turns !== undefined && typeof purge.turns !== "number") {
-                        errors.push({
-                            key: "strategies.purgeErrors.turns",
-                            expected: "number",
-                            actual: typeof purge.turns,
-                        })
-                    }
-                    if (typeof purge.turns === "number" && purge.turns < 1) {
-                        errors.push({
-                            key: "strategies.purgeErrors.turns",
-                            expected: "positive number (>= 1)",
-                            actual: `${purge.turns} (will be clamped to 1)`,
-                        })
-                    }
-                    if (purge.protectedTools !== undefined && !Array.isArray(purge.protectedTools)) {
-                        errors.push({
-                            key: "strategies.purgeErrors.protectedTools",
-                            expected: "string[]",
-                            actual: typeof purge.protectedTools,
-                        })
                     }
                 }
             }

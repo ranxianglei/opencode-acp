@@ -30,7 +30,6 @@ test("saveSessionState writes JSON file to disk", async () => {
     const state = createSessionState()
     state.sessionId = TEST_SESSION
     state.stats.totalPruneTokens = 500
-    state.prune.tools.set("call-1", 1)
 
     await saveSessionState(state, logger)
 
@@ -38,7 +37,6 @@ test("saveSessionState writes JSON file to disk", async () => {
     assert.ok(existsSync(filePath), "state file should exist")
     const content = JSON.parse(await fs.readFile(filePath, "utf-8"))
     assert.equal(content.stats.totalPruneTokens, 500)
-    assert.equal(content.prune.tools["call-1"], 1)
     await cleanup()
 })
 
@@ -59,8 +57,6 @@ test("loadSessionState round-trips saved state", async () => {
     const state = createSessionState()
     state.sessionId = TEST_SESSION
     state.stats.totalPruneTokens = 999
-    state.prune.tools.set("tool-a", 1)
-    state.prune.tools.set("tool-b", 2)
     state.nudges.contextLimitAnchors.add("anchor-1")
     state.nudges.contextLimitAnchors.add("anchor-2")
 
@@ -69,8 +65,6 @@ test("loadSessionState round-trips saved state", async () => {
 
     assert.ok(loaded, "loaded state should not be null")
     assert.equal(loaded!.stats.totalPruneTokens, 999)
-    assert.equal(loaded!.prune.tools!["tool-a"], 1)
-    assert.equal(loaded!.prune.tools!["tool-b"], 2)
     assert.ok(loaded!.nudges.contextLimitAnchors.includes("anchor-1"))
     assert.ok(loaded!.nudges.contextLimitAnchors.includes("anchor-2"))
     await cleanup()

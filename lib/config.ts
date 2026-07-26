@@ -9,11 +9,6 @@ import { VALID_CONFIG_KEYS, getInvalidConfigKeys, validateConfigTypes, type Vali
 type Permission = "ask" | "allow" | "deny"
 type CompressMode = "range" | "message"
 
-export interface Deduplication {
-    enabled: boolean
-    protectedTools: string[]
-}
-
 export interface CompressConfig {
     mode: CompressMode
     permission: Permission
@@ -55,13 +50,6 @@ export interface Commands {
 
 export interface ManualModeConfig {
     enabled: boolean
-    automaticStrategies: boolean
-}
-
-export interface PurgeErrors {
-    enabled: boolean
-    turns: number
-    protectedTools: string[]
 }
 
 export interface TurnProtection {
@@ -112,10 +100,6 @@ export interface PluginConfig {
     protectedFilePatterns: string[]
     compress: CompressConfig
     gc: GCConfig
-    strategies: {
-        deduplication: Deduplication
-        purgeErrors: PurgeErrors
-    }
     qualityGate: QualityGateConfig
 }
 
@@ -208,7 +192,6 @@ const defaultConfig: PluginConfig = {
     },
     manualMode: {
         enabled: false,
-        automaticStrategies: true,
     },
     turnProtection: {
         enabled: false,
@@ -244,17 +227,6 @@ const defaultConfig: PluginConfig = {
         preserveRecentMessages: 20,
         preserveRecentTokens: 20000,
         preserveLastUserMessage: true,
-    },
-    strategies: {
-        deduplication: {
-            enabled: true,
-            protectedTools: [],
-        },
-        purgeErrors: {
-            enabled: true,
-            turns: 4,
-            protectedTools: [],
-        },
     },
     gc: {
         algorithm: "truncate",
@@ -408,37 +380,6 @@ function loadConfigFile(configPath: string): ConfigLoadResult {
     }
 }
 
-function mergeStrategies(
-    base: PluginConfig["strategies"],
-    override?: Partial<PluginConfig["strategies"]>,
-): PluginConfig["strategies"] {
-    if (!override) {
-        return base
-    }
-
-    return {
-        deduplication: {
-            enabled: override.deduplication?.enabled ?? base.deduplication.enabled,
-            protectedTools: [
-                ...new Set([
-                    ...base.deduplication.protectedTools,
-                    ...(override.deduplication?.protectedTools ?? []),
-                ]),
-            ],
-        },
-        purgeErrors: {
-            enabled: override.purgeErrors?.enabled ?? base.purgeErrors.enabled,
-            turns: override.purgeErrors?.turns ?? base.purgeErrors.turns,
-            protectedTools: [
-                ...new Set([
-                    ...base.purgeErrors.protectedTools,
-                    ...(override.purgeErrors?.protectedTools ?? []),
-                ]),
-            ],
-        },
-    }
-}
-
 export function mergeCompress(
     base: PluginConfig["compress"],
     override?: CompressOverride,
@@ -503,7 +444,6 @@ function mergeManualMode(
 
     return {
         enabled: override.enabled ?? base.enabled,
-        automaticStrategies: override.automaticStrategies ?? base.automaticStrategies,
     }
 }
 
@@ -528,7 +468,6 @@ function deepCloneConfig(config: PluginConfig): PluginConfig {
         },
         manualMode: {
             enabled: config.manualMode.enabled,
-            automaticStrategies: config.manualMode.automaticStrategies,
         },
         turnProtection: { ...config.turnProtection },
         experimental: { ...config.experimental },
@@ -538,16 +477,6 @@ function deepCloneConfig(config: PluginConfig): PluginConfig {
             modelMaxLimits: { ...config.compress.modelMaxLimits },
             modelMinLimits: { ...config.compress.modelMinLimits },
             protectedTools: [...config.compress.protectedTools],
-        },
-        strategies: {
-            deduplication: {
-                ...config.strategies.deduplication,
-                protectedTools: [...config.strategies.deduplication.protectedTools],
-            },
-            purgeErrors: {
-                ...config.strategies.purgeErrors,
-                protectedTools: [...config.strategies.purgeErrors.protectedTools],
-            },
         },
         gc: {
             ...config.gc,
@@ -604,7 +533,6 @@ function mergeLayer(config: PluginConfig, data: Record<string, any>): PluginConf
         ],
         compress: mergeCompress(config.compress, data.compress as CompressOverride),
         gc: mergeGC(config.gc, data.gc as Partial<GCConfig>),
-        strategies: mergeStrategies(config.strategies, data.strategies as any),
         qualityGate: mergeQualityGate(config.qualityGate, data.qualityGate as Partial<QualityGateConfig>),
     }
 }

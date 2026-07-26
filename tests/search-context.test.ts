@@ -51,7 +51,6 @@ function makeState(blocks: Map<number, CompressionBlock>): SessionState {
         compressPermission: "allow",
         pendingManualTrigger: null,
         prune: {
-            tools: new Map(),
             messages: {
                 byMessageId: new Map<string, PrunedMessageEntry>(),
                 blocksById: blocks,

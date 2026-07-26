@@ -149,8 +149,7 @@ function analyzeTokens(state: SessionState, messages: WithParts[]): TokenBreakdo
                     }
                 }
 
-                const isPruned = toolPart.callID && state.prune.tools.has(toolPart.callID)
-                if (!isCompacted && !isPruned) {
+                if (!isCompacted) {
                     if (toolPart.state?.input) {
                         const inputStr =
                             typeof toolPart.state.input === "string"
@@ -185,11 +184,6 @@ function analyzeTokens(state: SessionState, messages: WithParts[]): TokenBreakdo
     }
 
     const prunedByToolIds = new Set<string>()
-    for (const id of allToolIds) {
-        if (state.prune.tools.has(id)) {
-            prunedByToolIds.add(id)
-        }
-    }
 
     const prunedToolIds = new Set<string>([...prunedByToolIds, ...prunedByMessageToolIds])
     const toolsInContextCount = [...activeToolIds].filter((id) => !prunedByToolIds.has(id)).length
