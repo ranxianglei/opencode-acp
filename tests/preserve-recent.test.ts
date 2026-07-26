@@ -97,6 +97,15 @@ function setupRefs(state: ReturnType<typeof createSessionState>, count: number) 
 
 const logger = new Logger(false)
 
+function suffixText(messages: WithParts[]): string | null {
+    const last = messages[messages.length - 1]
+    if (!last) return null
+    const parts = (last as any).parts as Array<{ type: string; text?: string }> | undefined
+    if (!parts) return null
+    const texts = parts.filter((p) => p.type === "text" && p.text).map((p) => p.text!)
+    return texts.length > 0 ? texts.join("") : null
+}
+
 // 50 msgs × 2000 chars = 500 tokens each
 // preserveRecentMessages=20 → last 20 protected (m00031–m00050)
 // preserveRecentTokens=20000 → 20000/500 = 40 msgs → last 40 protected (m00011–m00050)
@@ -179,4 +188,80 @@ test("nudge suppressed when all compressible ranges are in protected zone", () =
         false,
         "all 5 messages in protected zone (last 20) → nudge suppressed",
     )
+})
+
+test("growth hits protected zone only: nudge suppressed even with large growth", () => {
+    const state = createSessionState()
+    state.modelContextLimit = 1_000_000
+    state.nudges.lastPerMessageNudgeTokens = 50_000
+    setupRefs(state, 10)
+
+    const config = buildConfig({ maxContextLimit: 500_000, minContextLimit: 50_000 })
+
+    const messages = buildMessages(10, 20_000)
+
+    injectCompressNudges(state, config, logger, messages, {} as any)
+
+    assert.equal(
+        state.nudges.shouldInjectThisTurn,
+        false,
+        "10 messages × 5K tok = 50K context, all in last 20 → nudge suppressed despite growth",
+    )
+})
+
+test("partial protection: few unprotected messages → very small compressible list", () => {
+    const state = createSessionState()
+    setupRefs(state, 25)
+
+    const messages = buildMessages(25, 2000)
+
+    const compress = buildCompress({ preserveRecentMessages: 20, preserveRecentTokens: 0 })
+    const protectedRefs = computeProtectedRefs(messages, state, compress)
+
+    assert.equal(protectedRefs.size, 20, "20 of 25 messages protected")
+    assert.ok(!protectedRefs.has("m00001"), "msg-1 NOT protected")
+    assert.ok(!protectedRefs.has("m00005"), "msg-5 NOT protected")
+    assert.ok(protectedRefs.has("m00006"), "msg-6 protected (within last 20)")
+})
+
+test("partial protection: all messages protected → empty compressible after filtering", () => {
+    const state = createSessionState()
+    setupRefs(state, 10)
+
+    const messages = buildMessages(10, 2000)
+
+    const compress = buildCompress()
+    const protectedRefs = computeProtectedRefs(messages, state, compress)
+
+    const allRanges: CompressibleRange[] = [
+        { startRef: "m00001", endRef: "m00005", count: 5, tokens: 2500, toolPct: 0, textPct: 100 },
+        { startRef: "m00006", endRef: "m00010", count: 5, tokens: 2500, toolPct: 0, textPct: 100 },
+    ]
+
+    const filtered = excludeProtectedRanges(allRanges, protectedRefs)
+    assert.equal(filtered.length, 0, "all ranges filtered when all messages are protected")
+})
+
+test("edge case: preserveRecentMessages=5 with 8 msgs → only 3 compressible", () => {
+    const state = createSessionState()
+    state.modelContextLimit = 1_000_000
+    state.nudges.lastPerMessageNudgeTokens = 0
+    setupRefs(state, 8)
+
+    const config = buildConfig({
+        maxContextLimit: 500_000,
+        minContextLimit: 50_000,
+        preserveRecentMessages: 5,
+        preserveRecentTokens: 0,
+        preserveLastUserMessage: false,
+    })
+
+    const messages = buildMessages(8, 30_000)
+
+    injectCompressNudges(state, config, logger, messages, {} as any)
+
+    const protectedRefs = computeProtectedRefs(messages, state, config.compress)
+    assert.equal(protectedRefs.size, 5, "exactly 5 messages protected (msg-4 through msg-8)")
+    assert.ok(!protectedRefs.has("m00003"), "msg-3 NOT protected")
+    assert.ok(protectedRefs.has("m00004"), "msg-4 protected (within last 5)")
 })
