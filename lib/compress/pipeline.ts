@@ -215,7 +215,14 @@ export function checkPhantomBlock(
 
         if (!hasNew) {
             if (plan.consumedBlockIds.length >= 2) {
-                continue
+                const tiers = new Set(
+                    plan.consumedBlockIds.map(
+                        (id) => state.prune.messages.blocksById.get(id)?.tier ?? 1,
+                    ),
+                )
+                if (tiers.size === 1) {
+                    continue
+                }
             }
             return new Error(
                 `Compression range ${i + 1} contains only already-compressed messages ` +

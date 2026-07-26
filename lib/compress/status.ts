@@ -419,8 +419,8 @@ function renderCompressedDrilldown(
         const gen = b.generation ?? "young"
         const effCount = b.effectiveMessageIds?.length ?? 0
         const consumed =
-            b.consumedBlockIds && b.consumedBlockIds.length > 0
-                ? ` nested=[${b.consumedBlockIds.map((n) => `b${n}`).join(",")}]`
+            b.includedBlockIds && b.includedBlockIds.length > 0
+                ? ` nested=[${b.includedBlockIds.map((n) => `b${n}`).join(",")}]`
                 : ""
         const topic = b.topic || "(no topic)"
         const tier = tierLabel(b)
