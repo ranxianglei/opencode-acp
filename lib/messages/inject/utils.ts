@@ -1058,3 +1058,80 @@ export function formatCompressibleRanges(
 
     return `Compressible ranges (oldest first):\n${lines.join("\n")}`
 }
+
+/**
+ * Compute the set of protected message refs (mNNNNN) that should be excluded
+ * from compression recommendations. Combines three rules:
+ *   1. Last N messages (preserveRecentMessages, default 20)
+ *   2. Last N tokens expanding backward (preserveRecentTokens, default 20000)
+ *   3. Most recent user message (preserveLastUserMessage, default true)
+ *
+ * Only considers visible, non-synthetic, non-pruned messages.
+ */
+export function computeProtectedRefs(
+    messages: WithParts[],
+    state: SessionState,
+    compress: PluginConfig["compress"],
+): Set<string> {
+    const preserveN = compress.preserveRecentMessages ?? 20
+    const preserveTokens = compress.preserveRecentTokens ?? 20000
+    const preserveLastUser = compress.preserveLastUserMessage ?? true
+
+    const result = new Set<string>()
+
+    const visible: { ref: string; tokens: number; isUser: boolean }[] = []
+    for (const msg of messages) {
+        if (isSyntheticMessage(msg)) continue
+        const ref = state.messageIds.byRawId.get(msg.info.id)
+        if (!ref) continue
+        if (state.prune.messages.byMessageId.has(msg.info.id)) continue
+
+        let tokens = 0
+        for (const part of msg.parts || []) {
+            if (part.type === "text" && typeof (part as any).text === "string") {
+                tokens += Math.round(((part as any).text as string).length / 4)
+            } else if (part.type !== "text" && part.type !== "reasoning") {
+                tokens += Math.round(JSON.stringify(part).length / 4)
+            }
+        }
+        visible.push({ ref, tokens, isUser: msg.info.role === "user" })
+    }
+
+    if (preserveN > 0) {
+        for (const m of visible.slice(-preserveN)) {
+            result.add(m.ref)
+        }
+    }
+
+    if (preserveTokens > 0) {
+        let tokenAccum = 0
+        for (let i = visible.length - 1; i >= 0 && tokenAccum < preserveTokens; i--) {
+            result.add(visible[i]!.ref)
+            tokenAccum += visible[i]!.tokens
+        }
+    }
+
+    if (preserveLastUser) {
+        for (let i = visible.length - 1; i >= 0; i--) {
+            if (visible[i]!.isUser) {
+                result.add(visible[i]!.ref)
+                break
+            }
+        }
+    }
+
+    return result
+}
+
+/**
+ * Filter compressible ranges to exclude those that start within the protected
+ * zone. Since the protected zone is always at the tail of the conversation,
+ * a range whose startRef is protected is entirely within the protected zone.
+ */
+export function excludeProtectedRanges(
+    ranges: CompressibleRange[],
+    protectedRefs: Set<string>,
+): CompressibleRange[] {
+    if (protectedRefs.size === 0) return ranges
+    return ranges.filter((r) => !protectedRefs.has(r.startRef))
+}

@@ -33,6 +33,7 @@ function buildConfig(mode: "message" | "range" = "range"): PluginConfig {
             minCompressRange: 5000, minNudgeGrowthRatio: 0.45,
             minNudgeGrowthFloor: 5000, emergencyThresholdPercent: "98%",
             maxVisibleSegments: 50, keepEmbedMaxChars: 2000,
+            preserveRecentMessages: 0, preserveRecentTokens: 0, preserveLastUserMessage: false,
         },
         strategies: {
             deduplication: { enabled: true, protectedTools: [] },
