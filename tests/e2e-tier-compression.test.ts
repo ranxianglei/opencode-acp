@@ -866,3 +866,302 @@ test("tier-aware decompress: full:true restores to original (T2→raw)", async (
 
     rmSync(tmpDir, { recursive: true, force: true })
 })
+
+function extractMsgText(msg: WithParts): string {
+    const texts: string[] = []
+    for (const part of msg.parts) {
+        if (typeof part === "object" && part !== null && "text" in part && typeof part.text === "string") {
+            texts.push(part.text)
+        }
+    }
+    return texts.join(" ")
+}
+
+function cloneMessages(msgs: WithParts[]): WithParts[] {
+    return msgs.map((m) => ({ ...m, parts: [...m.parts], info: { ...m.info } }))
+}
+
+function registerMessages(state: SessionState, msgs: WithParts[]): void {
+    for (const msg of msgs) {
+        state.prune.messages.byMessageId.set(msg.info.id, {
+            tokenCount: 100,
+            allBlockIds: [],
+            activeBlockIds: [],
+        })
+    }
+}
+
+test("E2E round-trip: compress → decompress → content identical", async () => {
+    const { state, logger, config } = setupPipeline()
+    const { applyCompressionState } = await import("../lib/compress/state")
+    const { deactivateCompressionTarget } = await import("../lib/compress/decompress-logic")
+    const { syncCompressionBlocks } = await import("../lib/messages/sync")
+    const { prune } = await import("../lib/messages/prune")
+
+    const messages = [
+        makeUserMessage("u1", "Fix the login bug in auth.ts"),
+        makeAssistantMessage("a1", "I will investigate the login bug."),
+        makeAssistantMessage("a2", "Found the issue in auth.ts line 42: missing null check."),
+        makeAssistantMessage("a3", "Fixed. The bug was a missing null check on the token."),
+    ]
+    registerMessages(state, messages)
+
+    const originalTexts = messages.map(extractMsgText)
+
+    applyCompressionState(state, {
+        runId: 1, mode: "range", topic: "Bug fix", batchTopic: "Bug fix",
+        startId: "a1", endId: "a3", summaryTokens: 200,
+        summary: "Investigated and fixed login bug",
+        compressMessageId: "msg-comp-1",
+    }, {
+        messageIds: ["a1", "a2", "a3"], toolIds: [],
+        messageTokenById: new Map([["a1", 100], ["a2", 100], ["a3", 100]]),
+    }, "msg-comp-1", 1, "Bug fix", [])
+
+    const afterCompress = cloneMessages(messages)
+    prune(state, logger as any, config, afterCompress)
+    assert.equal(afterCompress.length, 1, "Only user message visible after compression")
+    assert.equal(afterCompress[0].info.id, "u1")
+
+    const block = state.prune.messages.blocksById.get(1)!
+    deactivateCompressionTarget(state.prune.messages, { displayId: 1, blocks: [block] })
+    syncCompressionBlocks(state, logger as any, messages)
+
+    const afterDecompress = cloneMessages(messages)
+    prune(state, logger as any, config, afterDecompress)
+    assert.equal(afterDecompress.length, 4, "All 4 messages visible after decompress")
+
+    const restoredTexts = afterDecompress.map(extractMsgText)
+    assert.deepEqual(restoredTexts, originalTexts,
+        "Content must be identical after compress → decompress round-trip")
+
+    rmSync(state.sessionId, { recursive: true, force: true })
+})
+
+test("E2E round-trip: decompress → recompress → no redundancy", async () => {
+    const { state, logger, config } = setupPipeline()
+    const { applyCompressionState } = await import("../lib/compress/state")
+    const { deactivateCompressionTarget } = await import("../lib/compress/decompress-logic")
+    const { syncCompressionBlocks } = await import("../lib/messages/sync")
+    const { prune } = await import("../lib/messages/prune")
+
+    const messages = [
+        makeUserMessage("u1", "Task description"),
+        makeAssistantMessage("a1", "Step 1 content"),
+        makeAssistantMessage("a2", "Step 2 content"),
+    ]
+    registerMessages(state, messages)
+
+    applyCompressionState(state, {
+        runId: 1, mode: "range", topic: "Work", batchTopic: "Work",
+        startId: "a1", endId: "a2", summaryTokens: 100,
+        summary: "Did step 1 and 2",
+        compressMessageId: "msg-comp-1",
+    }, {
+        messageIds: ["a1", "a2"], toolIds: [],
+        messageTokenById: new Map([["a1", 100], ["a2", 100]]),
+    }, "msg-comp-1", 1, "Work", [])
+
+    const block1 = state.prune.messages.blocksById.get(1)!
+    assert.equal(block1.active, true)
+
+    deactivateCompressionTarget(state.prune.messages, { displayId: 1, blocks: [block1] })
+    syncCompressionBlocks(state, logger as any, messages)
+
+    assert.equal(block1.active, false, "Block 1 deactivated after decompress")
+
+    const activeBeforeRecompress = new Set(state.prune.messages.activeBlockIds)
+    assert.equal(activeBeforeRecompress.size, 0, "No active blocks after decompress")
+
+    const afterDecompress = cloneMessages(messages)
+    prune(state, logger as any, config, afterDecompress)
+    assert.equal(afterDecompress.length, 3, "All messages visible after decompress")
+
+    applyCompressionState(state, {
+        runId: 2, mode: "range", topic: "Work v2", batchTopic: "Work v2",
+        startId: "a1", endId: "a2", summaryTokens: 100,
+        summary: "Did step 1 and 2 (recompressed)",
+        compressMessageId: "msg-comp-2",
+    }, {
+        messageIds: ["a1", "a2"], toolIds: [],
+        messageTokenById: new Map([["a1", 100], ["a2", 100]]),
+    }, "msg-comp-2", 2, "Work v2", [])
+
+    const block2 = state.prune.messages.blocksById.get(2)!
+    assert.equal(block2.active, true, "New block 2 is active")
+    assert.equal(block1.active, false, "Old block 1 stays inactive")
+
+    const activeAfterRecompress = Array.from(state.prune.messages.activeBlockIds)
+    assert.equal(activeAfterRecompress.length, 1, "Exactly 1 active block (no redundancy)")
+    assert.ok(activeAfterRecompress.includes(2), "Active block is block 2")
+
+    const entry = state.prune.messages.byMessageId.get("a1")!
+    assert.equal(
+        entry.activeBlockIds.length, 1,
+        "Message a1 has exactly 1 active block (no duplicate coverage)",
+    )
+    assert.equal(entry.activeBlockIds[0], 2, "Active block for a1 is block 2")
+
+    const afterRecompress = cloneMessages(messages)
+    prune(state, logger as any, config, afterRecompress)
+    assert.equal(afterRecompress.length, 1, "Only user message visible after recompress")
+    assert.equal(afterRecompress[0].info.id, "u1")
+
+    rmSync(state.sessionId, { recursive: true, force: true })
+})
+
+test("E2E T3 decompress: default restores T2 summaries", async () => {
+    const { state, logger } = setupPipeline()
+    const { applyCompressionState } = await import("../lib/compress/state")
+    const { deactivateCompressionTarget } = await import("../lib/compress/decompress-logic")
+    const { syncCompressionBlocks } = await import("../lib/messages/sync")
+
+    const messages = [
+        makeUserMessage("u1", "Task"),
+        makeAssistantMessage("a1", "Content 1"),
+        makeAssistantMessage("a2", "Content 2"),
+        makeAssistantMessage("a3", "T1 compress anchor 1"),
+        makeAssistantMessage("a4", "T1 compress anchor 2"),
+        makeAssistantMessage("a5", "T2 compress anchor"),
+    ]
+    registerMessages(state, messages)
+
+    applyCompressionState(state, {
+        runId: 1, mode: "range", topic: "T1-a", batchTopic: "T1-a",
+        startId: "a1", endId: "a1", summaryTokens: 500,
+        summary: "T1 summary A",
+        compressMessageId: "a3",
+    }, {
+        messageIds: ["a1"], toolIds: [],
+        messageTokenById: new Map([["a1", 30000]]),
+    }, "a3", 1, "T1-a", [])
+
+    applyCompressionState(state, {
+        runId: 2, mode: "range", topic: "T1-b", batchTopic: "T1-b",
+        startId: "a2", endId: "a2", summaryTokens: 500,
+        summary: "T1 summary B",
+        compressMessageId: "a4",
+    }, {
+        messageIds: ["a2"], toolIds: [],
+        messageTokenById: new Map([["a2", 30000]]),
+    }, "a4", 2, "T1-b", [])
+
+    applyCompressionState(state, {
+        runId: 3, mode: "range", topic: "T2 distill", batchTopic: "T2 distill",
+        startId: "b1", endId: "b2", summaryTokens: 200,
+        summary: "T2 distilled summary",
+        compressMessageId: "a5",
+    }, {
+        messageIds: [], toolIds: [],
+        messageTokenById: new Map(),
+    }, "a5", 3, "T2 distill", [1, 2])
+
+    const t1a = state.prune.messages.blocksById.get(1)!
+    const t1b = state.prune.messages.blocksById.get(2)!
+    const t2 = state.prune.messages.blocksById.get(3)!
+    assert.equal(t1a.tier, 1)
+    assert.equal(t1b.tier, 1)
+    assert.equal(t2.tier, 2)
+
+    const messagesT2Anchor = [
+        makeAssistantMessage("a6", "T3 compress anchor"),
+    ]
+    registerMessages(state, messagesT2Anchor)
+
+    applyCompressionState(state, {
+        runId: 4, mode: "range", topic: "T3 condense", batchTopic: "T3 condense",
+        startId: "b3", endId: "b3", summaryTokens: 100,
+        summary: "T3 condensed",
+        compressMessageId: "a6",
+    }, {
+        messageIds: [], toolIds: [],
+        messageTokenById: new Map(),
+    }, "a6", 4, "T3 condense", [3])
+
+    const t3 = state.prune.messages.blocksById.get(4)!
+    assert.equal(t3.tier, 3, "Block 4 should be T3")
+    assert.equal(t2.active, false, "T2 consumed by T3")
+    assert.equal(t1a.active, false, "T1a consumed by T2")
+
+    deactivateCompressionTarget(
+        state.prune.messages,
+        { displayId: 4, blocks: [t3] },
+    )
+    syncCompressionBlocks(state, logger as any, [...messages, ...messagesT2Anchor])
+
+    assert.equal(t3.active, false, "T3 inactive after decompress")
+    assert.equal(t2.active, true, "T2 reactivated (one level up)")
+    assert.equal(t1a.active, false, "T1a stays inactive (consumed by T2)")
+    assert.equal(t1b.active, false, "T1b stays inactive (consumed by T2)")
+
+    rmSync(state.sessionId, { recursive: true, force: true })
+})
+
+test("E2E T3 decompress: full:true recursively deactivates to raw", async () => {
+    const { state, logger } = setupPipeline()
+    const { applyCompressionState } = await import("../lib/compress/state")
+    const { deactivateCompressionTarget } = await import("../lib/compress/decompress-logic")
+    const { syncCompressionBlocks } = await import("../lib/messages/sync")
+
+    const messages = [
+        makeUserMessage("u1", "Task"),
+        makeAssistantMessage("a1", "Raw content 1"),
+        makeAssistantMessage("a2", "Raw content 2"),
+        makeAssistantMessage("a3", "T1 anchor 1"),
+        makeAssistantMessage("a4", "T1 anchor 2"),
+        makeAssistantMessage("a5", "T2 anchor"),
+        makeAssistantMessage("a6", "T3 anchor"),
+    ]
+    registerMessages(state, messages)
+
+    applyCompressionState(state, {
+        runId: 1, mode: "range", topic: "T1-a", batchTopic: "T1-a",
+        startId: "a1", endId: "a1", summaryTokens: 500,
+        summary: "T1 A", compressMessageId: "a3",
+    }, { messageIds: ["a1"], toolIds: [], messageTokenById: new Map([["a1", 30000]]) },
+       "a3", 1, "T1-a", [])
+
+    applyCompressionState(state, {
+        runId: 2, mode: "range", topic: "T1-b", batchTopic: "T1-b",
+        startId: "a2", endId: "a2", summaryTokens: 500,
+        summary: "T1 B", compressMessageId: "a4",
+    }, { messageIds: ["a2"], toolIds: [], messageTokenById: new Map([["a2", 30000]]) },
+       "a4", 2, "T1-b", [])
+
+    applyCompressionState(state, {
+        runId: 3, mode: "range", topic: "T2", batchTopic: "T2",
+        startId: "b1", endId: "b2", summaryTokens: 200,
+        summary: "T2 summary", compressMessageId: "a5",
+    }, { messageIds: [], toolIds: [], messageTokenById: new Map() },
+       "a5", 3, "T2", [1, 2])
+
+    applyCompressionState(state, {
+        runId: 4, mode: "range", topic: "T3", batchTopic: "T3",
+        startId: "b3", endId: "b3", summaryTokens: 100,
+        summary: "T3 summary", compressMessageId: "a6",
+    }, { messageIds: [], toolIds: [], messageTokenById: new Map() },
+       "a6", 4, "T3", [3])
+
+    const t1a = state.prune.messages.blocksById.get(1)!
+    const t1b = state.prune.messages.blocksById.get(2)!
+    const t2 = state.prune.messages.blocksById.get(3)!
+    const t3 = state.prune.messages.blocksById.get(4)!
+
+    deactivateCompressionTarget(
+        state.prune.messages,
+        { displayId: 4, blocks: [t3] },
+        { full: true },
+    )
+    syncCompressionBlocks(state, logger as any, messages)
+
+    assert.equal(t3.active, false, "T3 inactive")
+    assert.equal(t3.deactivatedByUser, true)
+    assert.equal(t2.active, false, "T2 stays inactive (full recursive)")
+    assert.equal(t2.deactivatedByUser, true, "T2 marked by recursive full:true")
+    assert.equal(t1a.active, false, "T1a stays inactive (full recursive)")
+    assert.equal(t1a.deactivatedByUser, true, "T1a marked by recursive full:true")
+    assert.equal(t1b.active, false, "T1b stays inactive")
+    assert.equal(t1b.deactivatedByUser, true, "T1b marked by recursive full:true")
+
+    rmSync(state.sessionId, { recursive: true, force: true })
+})

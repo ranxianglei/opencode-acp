@@ -113,7 +113,7 @@ export function applyCompressionState(
 
     const createdAt = Date.now()
 
-    let minConsumedTier = consumed.length === 0 ? 0 : 1
+    let minConsumedTier = consumed.length === 0 ? 0 : 3
     for (const consumedBlockId of consumed) {
         const cb = messagesState.blocksById.get(consumedBlockId)
         if (cb) {
