@@ -246,6 +246,7 @@ export function computeProtectedRawIds(
         const id = msg?.info?.id
         if (!id || typeof id !== "string") continue
         if (isSyntheticMessage(msg)) continue
+        if (isIgnoredUserMessage(msg)) continue
         if (state.prune.messages.byMessageId.has(id)) continue
         let tokens = 0
         for (const part of msg.parts || []) {
