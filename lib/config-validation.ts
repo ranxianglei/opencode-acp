@@ -49,6 +49,10 @@ export const VALID_CONFIG_KEYS = new Set([
     "compress.emergencyThresholdPercent",
     "compress.maxVisibleSegments",
     "compress.keepEmbedMaxChars",
+    "compress.lastSegmentSoftBlock",
+    "compress.preserveRecentMessages",
+    "compress.preserveRecentTokens",
+    "compress.preserveLastUserMessage",
     "gc",
     "gc.algorithm",
     "gc.promotionThreshold",
@@ -540,6 +544,72 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
                     key: "compress.keepEmbedMaxChars",
                     expected: "positive number (>= 100)",
                     actual: `${compress.keepEmbedMaxChars}`,
+                })
+            }
+
+            if (
+                compress.lastSegmentSoftBlock !== undefined &&
+                typeof compress.lastSegmentSoftBlock !== "boolean"
+            ) {
+                errors.push({
+                    key: "compress.lastSegmentSoftBlock",
+                    expected: "boolean",
+                    actual: typeof compress.lastSegmentSoftBlock,
+                })
+            }
+
+            if (
+                compress.preserveRecentMessages !== undefined &&
+                typeof compress.preserveRecentMessages !== "number"
+            ) {
+                errors.push({
+                    key: "compress.preserveRecentMessages",
+                    expected: "number",
+                    actual: typeof compress.preserveRecentMessages,
+                })
+            }
+
+            if (
+                typeof compress.preserveRecentMessages === "number" &&
+                compress.preserveRecentMessages < 0
+            ) {
+                errors.push({
+                    key: "compress.preserveRecentMessages",
+                    expected: "non-negative number (>= 0)",
+                    actual: `${compress.preserveRecentMessages}`,
+                })
+            }
+
+            if (
+                compress.preserveRecentTokens !== undefined &&
+                typeof compress.preserveRecentTokens !== "number"
+            ) {
+                errors.push({
+                    key: "compress.preserveRecentTokens",
+                    expected: "number",
+                    actual: typeof compress.preserveRecentTokens,
+                })
+            }
+
+            if (
+                typeof compress.preserveRecentTokens === "number" &&
+                compress.preserveRecentTokens < 0
+            ) {
+                errors.push({
+                    key: "compress.preserveRecentTokens",
+                    expected: "non-negative number (>= 0)",
+                    actual: `${compress.preserveRecentTokens}`,
+                })
+            }
+
+            if (
+                compress.preserveLastUserMessage !== undefined &&
+                typeof compress.preserveLastUserMessage !== "boolean"
+            ) {
+                errors.push({
+                    key: "compress.preserveLastUserMessage",
+                    expected: "boolean",
+                    actual: typeof compress.preserveLastUserMessage,
                 })
             }
 
