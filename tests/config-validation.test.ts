@@ -199,3 +199,67 @@ test("validateConfigTypes rejects percentage > 100 in emergencyThresholdPercent"
     assert.equal(result.length, 1)
     assert.equal(result[0].key, "compress.emergencyThresholdPercent")
 })
+
+test("validateConfigTypes catches wrong type for compress.lastSegmentSoftBlock", () => {
+    const result = validateConfigTypes({
+        compress: { lastSegmentSoftBlock: "yes" },
+    })
+    assert.equal(result.length, 1)
+    assert.equal(result[0].key, "compress.lastSegmentSoftBlock")
+    assert.equal(result[0].expected, "boolean")
+})
+
+test("validateConfigTypes catches wrong type for compress.preserveRecentMessages", () => {
+    const result = validateConfigTypes({
+        compress: { preserveRecentMessages: "20" },
+    })
+    assert.equal(result.length, 1)
+    assert.equal(result[0].key, "compress.preserveRecentMessages")
+    assert.equal(result[0].expected, "number")
+})
+
+test("validateConfigTypes rejects negative compress.preserveRecentMessages", () => {
+    const result = validateConfigTypes({
+        compress: { preserveRecentMessages: -5 },
+    })
+    assert.equal(result.length, 1)
+    assert.equal(result[0].key, "compress.preserveRecentMessages")
+})
+
+test("validateConfigTypes catches wrong type for compress.preserveRecentTokens", () => {
+    const result = validateConfigTypes({
+        compress: { preserveRecentTokens: true },
+    })
+    assert.equal(result.length, 1)
+    assert.equal(result[0].key, "compress.preserveRecentTokens")
+    assert.equal(result[0].expected, "number")
+})
+
+test("validateConfigTypes rejects negative compress.preserveRecentTokens", () => {
+    const result = validateConfigTypes({
+        compress: { preserveRecentTokens: -100 },
+    })
+    assert.equal(result.length, 1)
+    assert.equal(result[0].key, "compress.preserveRecentTokens")
+})
+
+test("validateConfigTypes catches wrong type for compress.preserveLastUserMessage", () => {
+    const result = validateConfigTypes({
+        compress: { preserveLastUserMessage: 1 },
+    })
+    assert.equal(result.length, 1)
+    assert.equal(result[0].key, "compress.preserveLastUserMessage")
+    assert.equal(result[0].expected, "boolean")
+})
+
+test("getInvalidConfigKeys accepts new preserveRecent* keys", () => {
+    const result = getInvalidConfigKeys({
+        compress: {
+            lastSegmentSoftBlock: true,
+            preserveRecentMessages: 20,
+            preserveRecentTokens: 20000,
+            preserveLastUserMessage: true,
+        },
+    })
+    assert.equal(result.length, 0)
+})
