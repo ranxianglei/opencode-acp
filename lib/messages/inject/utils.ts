@@ -1073,6 +1073,8 @@ export function computeProtectedRefs(
     state: SessionState,
     compress: PluginConfig["compress"],
 ): Set<string> {
+    if (compress.lastSegmentSoftBlock === false) return new Set()
+
     const preserveN = compress.preserveRecentMessages ?? 20
     const preserveTokens = compress.preserveRecentTokens ?? 20000
     const preserveLastUser = compress.preserveLastUserMessage ?? true
@@ -1082,6 +1084,7 @@ export function computeProtectedRefs(
     const visible: { ref: string; tokens: number; isUser: boolean }[] = []
     for (const msg of messages) {
         if (isSyntheticMessage(msg)) continue
+        if (isIgnoredUserMessage(msg)) continue
         const ref = state.messageIds.byRawId.get(msg.info.id)
         if (!ref) continue
         if (state.prune.messages.byMessageId.has(msg.info.id)) continue
@@ -1124,14 +1127,18 @@ export function computeProtectedRefs(
 }
 
 /**
- * Filter compressible ranges to exclude those that start within the protected
- * zone. Since the protected zone is always at the tail of the conversation,
- * a range whose startRef is protected is entirely within the protected zone.
+ * Filter compressible ranges to exclude those overlapping the protected zone.
+ * Since the protected zone is always at the tail of the conversation, a range
+ * whose startRef or endRef is protected is partially or fully within the zone.
+ * Compressing such a range would either be rejected by the enforcement check
+ * or waste model effort — exclude it preemptively.
  */
 export function excludeProtectedRanges(
     ranges: CompressibleRange[],
     protectedRefs: Set<string>,
 ): CompressibleRange[] {
     if (protectedRefs.size === 0) return ranges
-    return ranges.filter((r) => !protectedRefs.has(r.startRef))
+    return ranges.filter(
+        (r) => !protectedRefs.has(r.startRef) && !protectedRefs.has(r.endRef),
+    )
 }
