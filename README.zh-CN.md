@@ -482,6 +482,14 @@ ACP 在首次启动时自动将配置从 `dcp.jsonc` 迁移到 `acp.jsonc`，将
 
 ## 更新日志
 
+### v1.14.0 — 三级压缩 + 保留近期消息 + 摘要可见性修复（PR #200, #201, #202）
+
+**问题**：长会话稳定性三个关键问题。(1) **摘要累积**（PR #200）：摘要块无限累积（v1.13.5+ 强制保护后），以每天约 7.3K token 增长，会话在约 3 天内触及 100K 摘要上限。92.5% 的旧块是已发布/历史工作，零可操作价值。(2) **活跃任务丢失**（PR #201）：`lastSegmentSoftBlock` 仅保护最后 1 条消息不被压缩。当模型压缩包含当前任务上下文的范围时，活跃工作丢失——推荐列表本身可能指向应该被保护的消息。(3) **summaryBuffer 过度计数**（PR #202）：`getActiveSummaryTokenUsage()` 计算了所有活跃块（如 448 块 = 151K token），但只有约 26 块的 compress 调用在可见上下文窗口中。虚高的计数导致错误的 T2/T3 触发和误导性的 `acp stats` 输出（"摘要 146%"）。
+
+**修复**：(1) PR #200 — 实现了 **三级 LSM-tree 压缩架构**（T1 捕获 → T2 蒸馏 → T3 压缩）。每层压缩前一层输出，细节递减。独立触发器：每层在其输入摘要达到 `nudgeGrowthTokens` 时触发。T1 通过 `!shouldInject` 守卫具有优先级。从消耗的块自动检测层级。层级感知解压（默认 = 向上一级，`full:true` = 递归到原始消息）。新增 `block.tier` 字段、`getTierTokenUsage()`、`hideConsumedCompressCalls()`、`effectiveCompressedTokens`、`deactivatedByUserDeep` 标志。修复 `syncCompressionBlocks` 在锚点消息滚动出上下文时不再错误停用块（21 个会话中 1137 块被错误停用）。919 测试通过。cc-alg v1.2.1（精确锁定）。会话容量：1M 模型处理 68.9B token 持续 259 天；400K 模型 10.3B 持续 89 天。6 轮双代理审查（所有发现已修复）。(2) PR #201 — 在 `compress` 配置中添加 `preserveRecentMessages`（默认 20）、`preserveRecentTokens`（默认 20000）、`preserveLastUserMessage`（默认 true）。`computeProtectedRawIds`/`computeProtectedRefs` 计算保护区；`excludeProtectedRanges` 过滤推荐列表；`checkProtectedRange` 拒绝压缩受保护消息。当所有范围落在保护区内时自动抑制 nudge。880 测试通过。(3) PR #202 — `getActiveSummaryTokenUsage(state, visibleMessageIds?)` 现在接受可选过滤器。`isContextOverLimits` 和 `handleStatsCommand` 传递 `new Set(messages.map(m => m.info.id))`，因此仅计算 `compressMessageId` 在可见窗口中的块。同样修复应用于 `lib/compress/status.ts` 中的 `collectVisibleMessages`。880 测试通过。
+
+文件：`lib/state/{types,utils,state}.ts`、`lib/compress/{state,pipeline,decompress-logic,decompress,hide-consumed,status}.ts`、`lib/messages/inject/{inject,utils}.ts`、`lib/messages/sync.ts`、`lib/messages/prune.ts`、`lib/commands/{recompress,stats}.ts`、`lib/config.ts`、`lib/config-validation.ts`、`lib/prompts/system.ts`、`dcp.schema.json`。测试：`tests/e2e-tier-{compression,simulation}.test.ts`、`tests/preserve-recent.test.ts`、`tests/summary-buffer-visibility.test.ts`、`tests/acp-status.test.ts`、`tests/decompress-logic.test.ts`、`tests/soft-block.test.ts`。
+
 ### v1.13.9-dev.1 — 移除子代理历史重写（PR #180）
 
 **问题**：`injectExtendedSubAgentResults` 在 `experimental.allowSubAgents: true` 时，每次消息变换都会重写父代理历史中的 `<task_result>` 工具输出。`subAgentResultCache` 在每次父↔子会话切换时被清空且从不持久化，导致每次变换都重新获取子代理会话并生成新的历史消息体 —— 使 provider prefix cache 失效（观察到的命中率约 56%，健康水平为 96-98%，prefix 冻结在约 22K tokens）。
