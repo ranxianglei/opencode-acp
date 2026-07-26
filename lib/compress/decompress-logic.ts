@@ -120,6 +120,7 @@ export function snapshotActiveMessages(messagesState: PruneMessagesState): Map<s
 export function deactivateCompressionTarget(
     messagesState: PruneMessagesState,
     target: CompressionTarget,
+    options?: { full?: boolean },
 ): void {
     const deactivatedAt = Date.now()
 
@@ -129,11 +130,12 @@ export function deactivateCompressionTarget(
         block.deactivatedAt = deactivatedAt
         block.deactivatedByBlockId = undefined
 
-        // [FIX Bug 10] Mark consumed inner blocks so syncCompressionBlocks won't re-activate them
-        for (const consumedId of block.consumedBlockIds) {
-            const consumedBlock = messagesState.blocksById.get(consumedId)
-            if (consumedBlock) {
-                consumedBlock.deactivatedByUser = true
+        if (options?.full) {
+            for (const consumedId of block.consumedBlockIds) {
+                const consumedBlock = messagesState.blocksById.get(consumedId)
+                if (consumedBlock) {
+                    consumedBlock.deactivatedByUser = true
+                }
             }
         }
     }

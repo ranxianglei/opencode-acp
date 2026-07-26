@@ -792,3 +792,79 @@ test("applyCompressionState: T1 block gets effectiveCompressedTokens = compresse
         "T1 effectiveCompressedTokens should equal compressedTokens",
     )
 })
+
+test("tier-aware decompress: default restores one level up (T2→T1)", async () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), "acp-tier-decomp-"))
+    const registry = createTestRegistry(tmpDir)
+    const logger = new Logger({ level: "error" })
+    const config = buildConfig()
+
+    const t1 = makeCompressionBlock(1, 1000, "T1 work", 1, 10, "u1")
+    const t2 = makeCompressionBlock(2, 100, "T2 distill", 2, 10, "u2")
+    t2.consumedBlockIds = [1]
+    t2.directMessageIds = ["msg-comp-1"]
+    t2.effectiveMessageIds = [...t1.effectiveMessageIds, "msg-comp-1"]
+    t1.active = false
+
+    const state = createSessionState(SID, "test-model", 1_000_000)
+    state.prune.messages.blocksById.set(1, t1)
+    state.prune.messages.blocksById.set(2, t2)
+    state.prune.messages.activeBlockIds.add(2)
+
+    const messages: WithParts[] = [
+        makeUserMessage("u1", "original user message"),
+        makeAssistantMessage("u2", "t2 compress call"),
+    ]
+
+    const { deactivateCompressionTarget } = await import("../lib/compress/decompress-logic")
+    const { syncCompressionBlocks } = await import("../lib/messages/sync")
+
+    const target = { displayId: 2, blocks: [t2] }
+    deactivateCompressionTarget(state.prune.messages, target)
+
+    syncCompressionBlocks(state, logger, messages)
+
+    assert.equal(t2.active, false, "T2 should be inactive after decompress")
+    assert.equal(t1.active, true, "T1 should be reactivated by sync (one level up)")
+    assert.equal(t1.deactivatedByUser, false, "T1 should not be deactivatedByUser")
+
+    rmSync(tmpDir, { recursive: true, force: true })
+})
+
+test("tier-aware decompress: full:true restores to original (T2→raw)", async () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), "acp-tier-decomp-full-"))
+    const registry = createTestRegistry(tmpDir)
+    const logger = new Logger({ level: "error" })
+    const config = buildConfig()
+
+    const t1 = makeCompressionBlock(1, 1000, "T1 work", 1, 10, "u1")
+    const t2 = makeCompressionBlock(2, 100, "T2 distill", 2, 10, "u2")
+    t2.consumedBlockIds = [1]
+    t2.directMessageIds = ["msg-comp-1"]
+    t2.effectiveMessageIds = [...t1.effectiveMessageIds, "msg-comp-1"]
+    t1.active = false
+
+    const state = createSessionState(SID, "test-model", 1_000_000)
+    state.prune.messages.blocksById.set(1, t1)
+    state.prune.messages.blocksById.set(2, t2)
+    state.prune.messages.activeBlockIds.add(2)
+
+    const messages: WithParts[] = [
+        makeUserMessage("u1", "original user message"),
+        makeAssistantMessage("u2", "t2 compress call"),
+    ]
+
+    const { deactivateCompressionTarget } = await import("../lib/compress/decompress-logic")
+    const { syncCompressionBlocks } = await import("../lib/messages/sync")
+
+    const target = { displayId: 2, blocks: [t2] }
+    deactivateCompressionTarget(state.prune.messages, target, { full: true })
+
+    syncCompressionBlocks(state, logger, messages)
+
+    assert.equal(t2.active, false, "T2 should be inactive after decompress")
+    assert.equal(t1.active, false, "T1 should stay inactive (full decompress to original)")
+    assert.equal(t1.deactivatedByUser, true, "T1 marked deactivatedByUser for full mode")
+
+    rmSync(tmpDir, { recursive: true, force: true })
+})
