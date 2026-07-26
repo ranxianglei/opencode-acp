@@ -113,7 +113,8 @@ export const injectCompressNudges = (
         state.nudges.iterationNudgeAnchors.clear()
         state.nudges.lastNudgeShownTokens = undefined
         state.nudges.lastToolOutputNudgeTokens = undefined
-        state.nudges.lastTierNudgeTokens = undefined
+        state.nudges.lastTier2NudgeTokens = undefined
+        state.nudges.lastTier3NudgeTokens = undefined
 
         // Proportional baseline adjustment: if nudge-triggered compress, adjust
         // baseline by how much was actually compressed. >50% of growth compressed
@@ -369,49 +370,29 @@ export const injectCompressNudges = (
         state.nudges.lastNudgeShownTokens = undefined
     }
 
-    // ── Tier 2/3 triggers (INDEPENDENT of Tier 1) ────────────────────
-    // Each tier triggers when its input summaries reach nudgeGrowthTokens.
-    // Frequency naturally decreases via compression ratio: T1 every few turns
-    // (raw grows fast), T2 every few dozen (T1 summaries grow ~60x slower),
-    // T3 every few hundred (T2 summaries grow ~12x slower than T1).
-    if (suffixMessage) {
+    // ── Tier 2/3 triggers — only if T1 didn't already fire ────────────
+    // Priority: T1 > T2 > T3. T1 compression reduces raw context first.
+    // Each tier has independent cadence counters — T2 firing doesn't block T3.
+    if (suffixMessage && !shouldInject) {
         const tierUsage = getTierTokenUsage(state)
 
-        const tierCadenceMet =
-            state.nudges.lastTierNudgeTokens === undefined ||
-            (currentTokens !== undefined &&
-                currentTokens - state.nudges.lastTierNudgeTokens >= growthFloor)
+        const tierChecks = [
+            { triggerTier: 2 as const, targetTier: 1 as const, tokens: tierUsage.tier1Tokens, lastNudge: state.nudges.lastTier2NudgeTokens },
+            { triggerTier: 3 as const, targetTier: 2 as const, tokens: tierUsage.tier2Tokens, lastNudge: state.nudges.lastTier3NudgeTokens },
+        ]
 
-        // Priority: T2 > T3 (only one per turn). T2 checks tier1Tokens, T3 checks tier2Tokens.
-        let triggerTier: 2 | 3 | null = null
-        if (tierUsage.tier1Tokens >= nudgeGrowthTokens) {
-            triggerTier = 2
-        } else if (tierUsage.tier2Tokens >= nudgeGrowthTokens) {
-            triggerTier = 3
-        }
+        for (const tc of tierChecks) {
+            if (tc.tokens < nudgeGrowthTokens) continue
+            const cadenceMet = tc.lastNudge === undefined ||
+                (currentTokens !== undefined && currentTokens - tc.lastNudge >= growthFloor)
+            if (!cadenceMet) continue
 
-        if (tierCadenceMet && triggerTier !== null) {
-            const targetTier = (triggerTier - 1) as 1 | 2
-            // Sort by blockId ascending — block order follows creation order,
-            // which follows message order. This gives a monotonic range for
-            // the compress suggestion.
             let candidates = [...state.prune.messages.activeBlockIds]
                 .map((id) => state.prune.messages.blocksById.get(id))
-                .filter((b): b is NonNullable<typeof b> => b !== undefined && b.active && (b.tier ?? 1) === targetTier)
+                .filter((b): b is NonNullable<typeof b> => b !== undefined && b.active && (b.tier ?? 1) === tc.targetTier)
                 .sort((a, b) => a.blockId - b.blockId)
 
-            // ── Cross-tier safety ──────────────────────────────────────
-            // When we suggest `compress(b5, b20)`, search.ts resolves the
-            // range by ANCHOR MESSAGE POSITION and consumes ALL active blocks
-            // whose anchors fall in that range — including non-target-tier
-            // blocks. This would cause unintended tier escalation (e.g., T2
-            // trigger consuming a T2 block → output T3).
-            //
-            // In normal operation this cannot happen: T2/T3 block anchors sit
-            // at the position of their FIRST consumed block, which is always
-            // before any remaining target-tier candidates. But as a safety
-            // net, we narrow the suggested range to exclude any non-target
-            // active blocks that fall between candidates by blockId.
+            // Cross-tier safety: narrow to exclude non-target active blocks by blockId.
             if (candidates.length >= 2) {
                 const firstId = candidates[0].blockId
                 const lastId = candidates[candidates.length - 1].blockId
@@ -422,7 +403,7 @@ export const injectCompressNudges = (
                             (b) =>
                                 b !== undefined &&
                                 b.active &&
-                                (b.tier ?? 1) !== targetTier &&
+                                (b.tier ?? 1) !== tc.targetTier &&
                                 b.blockId > firstId &&
                                 b.blockId < lastId,
                         )
@@ -430,8 +411,6 @@ export const injectCompressNudges = (
                 )
 
                 if (nonTargetInIdRange.size > 0) {
-                    // Find the largest contiguous sub-group (no non-target
-                    // active block between consecutive candidates by blockId).
                     let bestStart = 0
                     let bestLen = 1
                     let curStart = 0
@@ -463,30 +442,32 @@ export const injectCompressNudges = (
                 }
             }
 
+            if (candidates.length < 2) continue
+
+            const rules = tc.triggerTier === 2 ? TIER2_DISTILL_RULES : TIER3_CONDENSE_RULES
             const candidateTokens = candidates.reduce((s, b) => s + b.summaryTokens, 0)
-            const minCandidatesForTierEscalation = 2
-            const enoughCandidates = candidates.length >= minCandidatesForTierEscalation
+            const firstBlock = candidates[0]
+            const lastBlock = candidates[candidates.length - 1]
+            const fmt = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n))
+            const sourceTier = tc.triggerTier === 2 ? "Tier 1" : "Tier 2"
+            const action = tc.triggerTier === 2 ? "Distill" : "Condense"
 
-            if (enoughCandidates) {
-                const rules = triggerTier === 2 ? TIER2_DISTILL_RULES : TIER3_CONDENSE_RULES
-                const firstBlock = candidates[0]
-                const lastBlock = candidates[candidates.length - 1]
-                const fmt = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n))
-                const sourceTier = triggerTier === 2 ? "Tier 1" : "Tier 2"
-                const action = triggerTier === 2 ? "Distill" : "Condense"
+            const blockList = candidates
+                .slice(0, 10)
+                .map((b) => `b${b.blockId} (age=${b.survivedCount}, ${fmt(b.summaryTokens)}tok): "${b.topic}"`)
+                .join("\n")
+            const extraCount = candidates.length > 10 ? `\n...and ${candidates.length - 10} more` : ""
 
-                const blockList = candidates
-                    .slice(0, 10)
-                    .map((b) => `b${b.blockId} (age=${b.survivedCount}, ${fmt(b.summaryTokens)}tok): "${b.topic}"`)
-                    .join("\n")
-                const extraCount = candidates.length > 10 ? `\n...and ${candidates.length - 10} more` : ""
+            const tierText = `\n\n[Tier ${tc.triggerTier} Trigger] ${sourceTier} summaries accumulated (${fmt(candidateTokens)} tokens across ${candidates.length} blocks). ${action} them to free context.\n\nTarget blocks (oldest first):\n${blockList}${extraCount}\n\nCompress range: \`content: [{ startId: "b${firstBlock.blockId}", endId: "b${lastBlock.blockId}", summary: "..." }]\`\n\n${rules}`
 
-                const tierText = `\n\n[Tier ${triggerTier} Trigger] ${sourceTier} summaries accumulated (${fmt(candidateTokens)} tokens across ${candidates.length} blocks). ${action} them to free context.\n\nTarget blocks (oldest first):\n${blockList}${extraCount}\n\nCompress range: \`content: [{ startId: "b${firstBlock.blockId}", endId: "b${lastBlock.blockId}", summary: "..." }]\`\n\n${rules}`
-
-                appendToLastTextPart(suffixMessage, tierText)
-                shouldInject = true
-                state.nudges.lastTierNudgeTokens = currentTokens
+            appendToLastTextPart(suffixMessage, tierText)
+            shouldInject = true
+            if (tc.triggerTier === 2) {
+                state.nudges.lastTier2NudgeTokens = currentTokens
+            } else {
+                state.nudges.lastTier3NudgeTokens = currentTokens
             }
+            break
         }
     }
 

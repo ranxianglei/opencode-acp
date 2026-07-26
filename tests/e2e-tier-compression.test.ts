@@ -236,7 +236,7 @@ test("T2 trigger: fires when T1 summaries exceed nudgeGrowthTokens", async () =>
     }
     populateBlocks(state, blocks)
 
-    // Allow tier nudge (lastTierNudgeTokens undefined = first time)
+    // Allow tier nudge (lastTier2NudgeTokens undefined = first time)
     state.nudges.lastPerMessageNudgeTokens = 100000
 
     const output = {
@@ -356,7 +356,7 @@ test("T2 trigger: fires even when T1 nudge would also fire (independent)", async
 
 // ─── T2 Trigger: respects cadence (growthFloor) ─────────────────────────────
 
-test("T2 trigger: suppressed by cadence when lastTierNudgeTokens too recent", async () => {
+test("T2 trigger: suppressed by cadence when lastTier2NudgeTokens too recent", async () => {
     const { state, handler } = setupPipeline({
         compress: {
             ...buildConfig().compress!,
@@ -373,10 +373,10 @@ test("T2 trigger: suppressed by cadence when lastTierNudgeTokens too recent", as
     }
     populateBlocks(state, blocks)
 
-    // Current context at 200K, but last tier nudge was at 195K
+    // Current context at 200K, but last T2 nudge was at 195K
     // growthFloor = max(5000, 0.45 * 50000) = 22500
     // Growth since last = 200K - 195K = 5K < 22500 → cadence NOT met
-    state.nudges.lastTierNudgeTokens = 195000
+    state.nudges.lastTier2NudgeTokens = 195000
     state.nudges.lastPerMessageNudgeTokens = 100000
 
     const output = {
