@@ -36,6 +36,51 @@ function formatIdRange(block: CompressionBlock): string {
     return count > 0 ? `${count} msg${count !== 1 ? "s" : ""}` : "—"
 }
 
+function getEffectiveCompressedTokens(
+    block: CompressionBlock,
+    blocksById: Map<number, CompressionBlock>,
+    visited: Set<number> = new Set(),
+): number {
+    if (block.effectiveCompressedTokens !== undefined) {
+        return block.effectiveCompressedTokens
+    }
+    if (visited.has(block.blockId)) return 0
+    visited.add(block.blockId)
+    let total = block.compressedTokens || 0
+    for (const consumedId of block.consumedBlockIds || []) {
+        const consumed = blocksById.get(consumedId)
+        if (consumed) {
+            total += getEffectiveCompressedTokens(consumed, blocksById, visited)
+        }
+    }
+    return total
+}
+
+function tierLabel(block: CompressionBlock): string {
+    const tier = block.tier ?? 1
+    return `T${tier}`
+}
+
+function tierBreakdown(blocks: CompressionBlock[]): string | null {
+    const tierTokens: Record<number, number> = {}
+    for (const b of blocks) {
+        const t = b.tier ?? 1
+        tierTokens[t] = (tierTokens[t] || 0) + (b.summaryTokens || 0)
+    }
+    const tiers = Object.keys(tierTokens)
+        .map(Number)
+    if (tiers.length <= 1 && (!tierTokens[2] || tierTokens[2] === 0) && (!tierTokens[3] || tierTokens[3] === 0)) {
+        return null
+    }
+    const parts: string[] = []
+    for (const t of [1, 2, 3]) {
+        if (tierTokens[t]) {
+            parts.push(`T${t}: ${formatTokens(tierTokens[t])}`)
+        }
+    }
+    return parts.join(" | ")
+}
+
 function describeToolMessage(msg: WithParts): string {
     for (const part of msg.parts || []) {
         if (part.type === "tool") {
@@ -173,19 +218,32 @@ function renderOverview(
         lines.push("COMPRESSED BLOCKS")
         lines.push("  No compressed blocks.")
     } else {
+        const blocksById = ctx.state.prune.messages.blocksById
         const totalSummary = blocks.reduce((s, b) => s + (b.summaryTokens || 0), 0)
-        const totalCompressed = blocks.reduce((s, b) => s + (b.compressedTokens || 0), 0)
-        lines.push(
-            `COMPRESSED BLOCKS — ${blocks.length} active (${formatTokens(totalSummary)} summary, ${formatTokens(totalCompressed)} original)`,
+        const totalEffective = blocks.reduce(
+            (s, b) => s + getEffectiveCompressedTokens(b, blocksById),
+            0,
         )
+        const header = `COMPRESSED BLOCKS — ${blocks.length} active (${formatTokens(totalSummary)} summary, ${formatTokens(totalEffective)} original)`
+        lines.push(header)
+        const breakdown = tierBreakdown(blocks)
+        if (breakdown) {
+            lines.push(`  Tier usage: ${breakdown}`)
+        }
         lines.push("")
-        const sorted = [...blocks].sort((a, b) => b.createdAt - a.createdAt)
+        const sorted = [...blocks].sort((a, b) => {
+            const effA = getEffectiveCompressedTokens(a, blocksById)
+            const effB = getEffectiveCompressedTokens(b, blocksById)
+            return effB - effA || b.createdAt - a.createdAt
+        })
         for (const b of sorted.slice(0, 30)) {
             const ageStr = formatAge(b.createdAt)
             const range = formatIdRange(b)
             const topic = b.topic || "(no topic)"
+            const tier = tierLabel(b)
+            const effTokens = getEffectiveCompressedTokens(b, blocksById)
             lines.push(
-                `  b${b.blockId}  ${formatTokens(b.compressedTokens)}→${formatTokens(b.summaryTokens)}  ${ageStr}  ${range}  "${topic}"`,
+                `  b${b.blockId} (${tier})  ${formatTokens(effTokens)}→${formatTokens(b.summaryTokens)}  ${ageStr}  ${range}  "${topic}"`,
             )
         }
     }
@@ -321,6 +379,7 @@ function renderCompressedDrilldown(
     blocks: CompressionBlock[],
     sort: string,
     limit: number,
+    blocksById: Map<number, CompressionBlock>,
 ): string[] {
     const lines: string[] = []
     let sorted = [...blocks]
@@ -330,15 +389,27 @@ function renderCompressedDrilldown(
     } else if (sort === "age") {
         sorted.sort((a, b) => (b.survivedCount || 0) - (a.survivedCount || 0))
     } else {
-        sorted.sort((a, b) => (b.compressedTokens || 0) - (a.compressedTokens || 0))
+        sorted.sort(
+            (a, b) =>
+                getEffectiveCompressedTokens(b, blocksById) -
+                    getEffectiveCompressedTokens(a, blocksById) ||
+                b.createdAt - a.createdAt,
+        )
     }
 
     const totalSummary = sorted.reduce((s, b) => s + (b.summaryTokens || 0), 0)
-    const totalCompressed = sorted.reduce((s, b) => s + (b.compressedTokens || 0), 0)
+    const totalEffective = sorted.reduce(
+        (s, b) => s + getEffectiveCompressedTokens(b, blocksById),
+        0,
+    )
 
     lines.push(
-        `COMPRESSED — ${sorted.length} blocks | ${formatTokens(totalCompressed)} original → ${formatTokens(totalSummary)} summary`,
+        `COMPRESSED — ${sorted.length} blocks | ${formatTokens(totalEffective)} original → ${formatTokens(totalSummary)} summary`,
     )
+    const breakdown = tierBreakdown(sorted)
+    if (breakdown) {
+        lines.push(`Tier usage: ${breakdown}`)
+    }
     lines.push(`Sorted by ${sort === "time" ? "time" : sort === "age" ? "age" : "size"}`)
     lines.push("")
 
@@ -348,12 +419,14 @@ function renderCompressedDrilldown(
         const gen = b.generation ?? "young"
         const effCount = b.effectiveMessageIds?.length ?? 0
         const consumed =
-            b.consumedBlockIds && b.consumedBlockIds.length > 0
-                ? ` nested=[${b.consumedBlockIds.map((n) => `b${n}`).join(",")}]`
+            b.includedBlockIds && b.includedBlockIds.length > 0
+                ? ` nested=[${b.includedBlockIds.map((n) => `b${n}`).join(",")}]`
                 : ""
         const topic = b.topic || "(no topic)"
+        const tier = tierLabel(b)
+        const effTokens = getEffectiveCompressedTokens(b, blocksById)
         lines.push(
-            `  b${b.blockId}  ${formatTokens(b.compressedTokens)}→${formatTokens(b.summaryTokens)}  ${formatAge(b.createdAt)}  ${formatIdRange(b)}  age=${survived} ${gen} eff=${effCount}${consumed}`,
+            `  b${b.blockId} (${tier})  ${formatTokens(effTokens)}→${formatTokens(b.summaryTokens)}  ${formatAge(b.createdAt)}  ${formatIdRange(b)}  age=${survived} ${gen} eff=${effCount}${consumed}`,
         )
         lines.push(`    "${topic}"`)
     }
@@ -447,7 +520,14 @@ export function createAcpStatusTool(factoryCtx: ToolFactoryContext): ReturnType<
             const lines: string[] = []
 
             if (scope === "compressed") {
-                lines.push(...renderCompressedDrilldown(allBlocks, sort, limit))
+                lines.push(
+                    ...renderCompressedDrilldown(
+                        allBlocks,
+                        sort,
+                        limit,
+                        msgState.blocksById,
+                    ),
+                )
                 return lines.join("\n")
             }
 

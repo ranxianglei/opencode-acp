@@ -246,7 +246,7 @@ test("deactivateCompressionTarget clears block.deactivatedByBlockId", () => {
     assert.equal(block.deactivatedByBlockId, undefined)
 })
 
-test("deactivateCompressionTarget marks consumed inner blocks deactivatedByUser = true", () => {
+test("deactivateCompressionTarget default (one-level-up) does NOT mark consumed blocks", () => {
     const consumedBlock = makeBlock({ blockId: 2, deactivatedByUser: false })
     const block = makeBlock({ blockId: 1, consumedBlockIds: [2] })
     const ms = makeMessagesState({
@@ -257,7 +257,23 @@ test("deactivateCompressionTarget marks consumed inner blocks deactivatedByUser 
     })
     const target = makeTarget({ blocks: [block] })
     deactivateCompressionTarget(ms, target)
-    assert.equal(consumedBlock.deactivatedByUser, true)
+    assert.equal(block.deactivatedByUser, true)
+    assert.equal(consumedBlock.deactivatedByUser, false)
+})
+
+test("deactivateCompressionTarget full:true marks consumed blocks deactivatedByUserDeep", () => {
+    const consumedBlock = makeBlock({ blockId: 2, deactivatedByUser: false })
+    const block = makeBlock({ blockId: 1, consumedBlockIds: [2] })
+    const ms = makeMessagesState({
+        blocksById: new Map([
+            [1, block],
+            [2, consumedBlock],
+        ]),
+    })
+    const target = makeTarget({ blocks: [block] })
+    deactivateCompressionTarget(ms, target, { full: true })
+    assert.equal(block.deactivatedByUser, true)
+    assert.equal(consumedBlock.deactivatedByUserDeep, true)
 })
 
 test("deactivateCompressionTarget handles target with multiple blocks", () => {

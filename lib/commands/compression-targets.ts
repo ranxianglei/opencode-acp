@@ -26,7 +26,10 @@ function buildTarget(blocks: CompressionBlock[]): CompressionTarget {
         displayId: first.blockId,
         runId: first.runId,
         topic: grouped ? first.batchTopic || first.topic : first.topic,
-        compressedTokens: ordered.reduce((total, block) => total + block.compressedTokens, 0),
+        compressedTokens: ordered.reduce(
+            (total, block) => total + (block.effectiveCompressedTokens ?? block.compressedTokens),
+            0,
+        ),
         durationMs: ordered.reduce((total, block) => Math.max(total, block.durationMs), 0),
         grouped,
         blocks: ordered,

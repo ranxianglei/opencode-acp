@@ -182,8 +182,22 @@ export async function handleRecompressCommand(ctx: RecompressCommandContext): Pr
 
     for (const block of target.blocks) {
         block.deactivatedByUser = false
+        block.deactivatedByUserDeep = false
         block.deactivatedAt = undefined
         block.deactivatedByBlockId = undefined
+
+        const queue = [...block.consumedBlockIds]
+        const visited = new Set<number>()
+        while (queue.length > 0) {
+            const consumedId = queue.shift()!
+            if (visited.has(consumedId)) continue
+            visited.add(consumedId)
+            const consumedBlock = messagesState.blocksById.get(consumedId)
+            if (consumedBlock) {
+                consumedBlock.deactivatedByUserDeep = false
+                queue.push(...consumedBlock.consumedBlockIds)
+            }
+        }
     }
 
     syncCompressionBlocks(state, logger, messages)

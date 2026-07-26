@@ -165,7 +165,7 @@ export async function sendCompressNotification(
         .map((e) => state.prune.messages.blocksById.get(e.blockId)?.topic ?? "?")
     const logCompressedTokens = entries.reduce((sum, e) => {
         const block = state.prune.messages.blocksById.get(e.blockId)
-        return sum + (block?.compressedTokens ?? 0)
+        return sum + (block?.effectiveCompressedTokens ?? block?.compressedTokens ?? 0)
     }, 0)
     const logSummaryTokens = entries.reduce((sum, e) => sum + e.summaryTokens, 0)
     logger.info("Compression completed", {

@@ -196,6 +196,7 @@ test("acp_status: scope=compressed shows detailed block info", async () => {
             survivedCount: 3,
             generation: "old",
             effectiveMessageIds: ["a", "b", "c", "d"],
+            includedBlockIds: [2, 3],
             consumedBlockIds: [2, 3],
         }),
     )

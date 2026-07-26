@@ -90,23 +90,76 @@ Or add to your opencode config:
 ACP hands the context-compression tool directly to the model. The model is
 **100% responsible** for context compression. The model's primary tools are
 **compress** and **decompress**, supported by **acp_status** (context monitoring)
-and **search_context** (search compressed content). A hardcoded 100% GC fallback
-acts as a safety net when the context window is completely full.
+and **search_context** (search compressed content). Compression uses a
+**three-tier LSM-tree architecture** (T1 capture → T2 distill → T3 condense)
+that keeps context bounded for years. A hardcoded 100% GC fallback acts as a
+safety net when the context window is completely full.
 
-### Lifecycle
+### Lifecycle — Three-Tier Compression
 
-Two operations: **compress** and **decompress**. Content loops between raw and
-compressed. When context hits 100%, old-gen block summaries are truncated as
-a last resort:
+ACP uses a **three-tier LSM-tree compression architecture**, inspired by
+database storage engines. Each tier compresses the previous tier's output,
+creating progressively denser summaries with natural frequency decrease:
 
 ```mermaid
 stateDiagram-v2
-    Raw --> Compressed : compress
-    Compressed --> Raw : decompress
-    Compressed --> Truncated : GC at 100%
+    Raw --> Tier1 : compress (every ~7 turns)
+    Tier1 --> Tier2 : distill (every ~250 turns)
+    Tier2 --> Tier3 : condense (every ~2500 turns)
+    Tier1 --> Raw : decompress
+    Tier2 --> Raw : decompress (recursive)
+    Tier3 --> Raw : decompress (recursive)
+    Tier1 --> GC_Truncated : GC at 100% context
 ```
 
-### Compression strategy
+| Tier | Name | Input | Output | Compression ratio | When it fires |
+|------|------|-------|--------|-------------------|---------------|
+| **T1** | Capture | Raw conversation | Detailed summary | ~45× | Context exceeds `maxContextLimit` |
+| **T2** | Distill | T1 summaries (≥ `nudgeGrowthTokens`) | Condensed decisions/outcomes | ~10× | T1 summaries accumulate past threshold |
+| **T3** | Condense | T2 summaries (≥ `nudgeGrowthTokens`) | Bare facts (1-3 per block) | ~5× | T2 summaries accumulate past threshold |
+
+**How triggers work:**
+
+- **T1** fires when raw context exceeds the configured limit. The model sees
+  compressible ranges and writes a detailed summary preserving file paths,
+  signatures, decisions, and rationale.
+- **T2** fires when T1 summary tokens reach `nudgeGrowthTokens` (default 5% of
+  context window). The model distills old T1 blocks — keeping decisions and
+  outcomes, dropping verbose process details.
+- **T3** fires when T2 summary tokens reach the same threshold. The model
+  condenses to bare facts (shipped releases, key bugs, architecture decisions).
+
+Each tier has an **independent cadence counter** — T2 firing doesn't block T3.
+T1 has priority via a `!shouldInject` guard: if T1 fires, T2/T3 wait until next
+turn. This ensures raw context compression happens first (it has the biggest
+impact).
+
+**Session capacity** — total tokens a single session can process from empty → T1 →
+T2 → T3 → context limit (real-calibrated: 500 API calls/day, ~9.6K new tokens/call,
+T1=45x/T2=10x/T3=3x):
+
+| Context limit | 1 month | 3 months | At limit | Limit reached |
+|---------------|---------|----------|----------|---------------|
+| 1M | 1.9B tok | 10.5B tok | **68.9B tok** | day 259 (~8.6 mo) |
+| 400K | 1.9B tok | 10.3B tok | **10.3B tok** | day 89 (~3 mo) |
+| 400K (200 calls/day) | 559M tok | 2.5B tok | **9.5B tok** | day 212 (~7 mo) |
+
+**Token savings** — without ACP, context grows unbounded and the session crashes
+after ~100 API calls (~0.2 days). With ACP, context is bounded by compression:
+
+| Metric | Without ACP | With ACP (1M model) |
+|--------|-------------|---------------------|
+| Session lifetime | ~0.2 days | 259 days (**1295x** longer) |
+| Total tokens processed | ~52M | 68.9B (**1325x** more work) |
+
+The core value: ACP doesn't just reduce per-call token cost — it enables a single
+session to process **1000x more total work** by keeping context bounded across
+the full session lifetime.
+
+The model uses the **same `compress` tool** for all tiers. T2/T3 compressions
+use block IDs as boundaries (`compress({ content: [{ startId: "b5", endId: "b20", summary: "..." }] })`). Tier is auto-detected from consumed blocks.
+
+### Compression strategy (Tier 1)
 
 The system injects a prompt telling the model the current context ratio, the
 compression ratio, whether context is idle, and compression suggestions. When the
@@ -132,7 +185,7 @@ later work.
 
 ### GC safety net
 
-When context reaches 100%, the system automatically truncates old-gen block summaries to prevent overflow. This is a last-resort safety net and does not interfere with the model's normal compress/decompress operations.
+When context reaches 100%, the system automatically truncates old-gen block summaries to prevent overflow. This is a last-resort safety net — with three-tier compression, the GC rarely activates because T2/T3 distillation keeps summary overhead bounded.
 
 ### Quality gate (non-blocking, off by default)
 

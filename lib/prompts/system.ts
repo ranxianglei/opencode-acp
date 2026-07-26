@@ -24,7 +24,7 @@ TOOLS
 You have five context-management tools:
 
 - \`compress\` — Replace a contiguous range of older conversation with a single detailed summary you write. Use when content is genuinely consumed (no longer needed for the current task step). Single range: \`compress({ topic: "API exploration", content: [{ startId: "m00150", endId: "m00220", summary: "..." }] })\`. Batch (multiple unrelated ranges, each with its own topic): \`compress({ content: [{ topic: "Auth", startId: "m00150", endId: "m00220", summary: "..." }, { topic: "Deploy", startId: "m00300", endId: "m00350", summary: "..." }] })\`.
-- \`decompress\` — Restore a previously compressed block's full original content, optionally to a file for large blocks. Use when a summary lacks the exact detail you need. Example: \`decompress({ blockId: "b5" })\` or \`decompress({ blockId: "b5", toFile: "path" })\`.
+- \`decompress\` — Restore a previously compressed block's content. By default restores one tier up (T2→T1 summaries, not raw messages). Use \`full: true\` to restore all the way to original messages. Use \`toFile\` to write to file instead of inflating context. Example: \`decompress({ blockId: "b5" })\` or \`decompress({ blockId: "b5", toFile: "path" })\` or \`decompress({ blockId: "b5", full: true })\`.
 - \`search_context\` — Search compressed block summaries (and optionally visible messages) by keyword. Use BEFORE decompressing to find the right block. Example: \`search_context({ query: "auth token refresh" })\`.
 - \`prune\` — Remove old tool outputs by tool type, keeping only recent calls. Unlike compress (which creates summaries), prune directly strips outputs. Use for disposable outputs like old todowrite states or edit echoes. Example: \`prune({ toolType: "todowrite", keepLatest: 3 })\`.
 - \`acp_status\` — Context status with compressible ranges. No args = overview + ranges. \`scope:"uncompressed"\` for range view; add \`view:"messages"\` for per-message listing with \`tool\`/\`sort\` filters. \`scope:"compressed"\` for block details.
@@ -57,6 +57,16 @@ WHEN NOT TO COMPRESS
 - Protected tool outputs (default: \`skill\` only) — hard-excluded from compression ranges, survive intact in visible context.
 
 ${HOW_TO_COMPRESS_RULES}
+
+MULTI-TIER COMPRESSION
+
+Summaries accumulate as the session grows. When tier-1 summaries pile up, the system injects a [Tier 2 Trigger] prompting you to DISTILL old blocks into a single tier-2 summary. If tier-2 summaries also accumulate, a [Tier 3 Trigger] asks you to CONDENSE them further.
+
+- Tier 1 (default): Full-detail compression of conversation ranges. Uses HOW TO COMPRESS rules above.
+- Tier 2: Distillation of old tier-1 block summaries. Uses TIER 2 DISTILLATION rules (decisions/outcomes only, drop paths/code/process).
+- Tier 3: Ultra-condensation of tier-2 summaries. Uses TIER 3 CONDENSATION rules (bare facts, 1-3 lines per block).
+
+To compress blocks: use block IDs as boundaries: \`compress({ content: [{ startId: "b3", endId: "b15", summary: "..." }] })\`. This deactivates the consumed blocks and creates a new higher-tier block. The system prompt at the trigger tells you which rules to follow.
 
 PERIODIC CONTEXT STATUS
 

@@ -224,7 +224,10 @@ ARGUMENTS:
 IMPORTANT:
 - Decompressing inflates context. Check context usage before decompressing.
 - Message-mode blocks from the same batch (same runId) are restored together.
-- After decompression, the restored messages will appear in full in your next context window.
+- TIER-AWARE: by default, decompressing a multi-tier block restores the PREVIOUS tier's
+  summaries (e.g., decompress T2 → T1 summaries visible, not raw messages). Use full:true
+  to restore all the way to original messages (can be very expensive for T2/T3 blocks).
+- After decompression, the restored content will appear in full in your next context window.
 - Do NOT call this tool in parallel with compress — their state mutations may conflict.`
 
 function buildSchema() {
@@ -245,6 +248,10 @@ function buildSchema() {
             .string()
             .optional()
             .describe("If provided, writes restored content to this file path instead of inflating context. Block stays compressed. Path must be under /tmp or ~/.cache/opencode/. Example: '/tmp/block52.txt'"),
+        full: tool.schema
+            .boolean()
+            .optional()
+            .describe("If true, restores ALL content down to original messages (multi-level decompress). Default: false — restores one tier up (e.g., decompressing a T2 block restores T1 summaries, not raw messages). Use full:true only when you need the exact original content and have context budget for it."),
     }
 }
 
@@ -336,7 +343,7 @@ export function createDecompressTool(factoryCtx: ToolFactoryContext): ReturnType
             const activeBlockIdsBefore = new Set(messagesState.activeBlockIds)
 
             for (const target of targets) {
-                deactivateCompressionTarget(messagesState, target)
+                deactivateCompressionTarget(messagesState, target, { full: args.full === true })
             }
 
             syncCompressionBlocks(ctx.state, ctx.logger, rawMessages)

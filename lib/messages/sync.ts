@@ -33,7 +33,6 @@ export const syncCompressionBlocks = (
     messagesState.activeByAnchorMessageId.clear()
 
     const now = Date.now()
-    const missingOriginBlockIds: number[] = []
     const orderedBlocks = Array.from(messagesState.blocksById.values()).sort(sortBlocksByCreation)
 
     // [PATCH Bug 3] Removed compressMessageId presence check.
@@ -41,33 +40,11 @@ export const syncCompressionBlocks = (
     // removed by opencode's internal compaction. The block's existence IS proof
     // that compression happened.
     for (const block of orderedBlocks) {
-        if (block.deactivatedByUser) {
+        if (block.deactivatedByUser || block.deactivatedByUserDeep) {
             block.active = false
             if (block.deactivatedAt === undefined) {
                 block.deactivatedAt = now
             }
-            block.deactivatedByBlockId = undefined
-            continue
-        }
-
-        // Deactivate block when its anchor message is gone from the current
-        // message list. This handles both OpenCode compaction (which removes old
-        // messages) and external message deletion.
-        //
-        // [FIX issue #125] Previous code had a carve-out that kept blocks active
-        // when the anchor was tracked in byMessageId. This was intended to handle
-        // anchors hidden by ACP compression, but syncCompressionBlocks runs on
-        // the RAW message list (before filterCompressedRanges), so ACP-hidden
-        // anchors are still present and never reach this branch. The carve-out
-        // only triggered for externally-deleted anchors, causing messages to be
-        // hidden with no anchor → empty LLM requests.
-        if (
-            typeof block.anchorMessageId === "string" &&
-            block.anchorMessageId.length > 0 &&
-            !messageIds.has(block.anchorMessageId)
-        ) {
-            block.active = false
-            block.deactivatedAt = now
             block.deactivatedByBlockId = undefined
             continue
         }
@@ -127,9 +104,8 @@ export const syncCompressionBlocks = (
         }
     }
 
-    if (missingOriginBlockIds.length > 0 || deactivatedCount > 0 || reactivatedCount > 0) {
+    if (deactivatedCount > 0 || reactivatedCount > 0) {
         logger.info("Synced compress block state", {
-            missingOriginCount: missingOriginBlockIds.length,
             deactivatedCount,
             reactivatedCount,
         })

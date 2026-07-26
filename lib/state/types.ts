@@ -32,15 +32,26 @@ export type CompressionMode = "range" | "message"
 
 export type BlockGeneration = "young" | "old"
 
+export type CompressionTier = 1 | 2 | 3
+
 export interface CompressionBlock {
     blockId: number
     runId: number
     active: boolean
     deactivatedByUser: boolean
+    deactivatedByUserDeep?: boolean
     compressedTokens: number
+    /**
+     * Total tokens this block represents, including tokens from consumed
+     * blocks. For tier 1 blocks: equals compressedTokens. For tier 2+:
+     * compressedTokens + sum of consumed blocks' effectiveCompressedTokens.
+     * Undefined on old state files — callers should fall back to compressedTokens.
+     */
+    effectiveCompressedTokens?: number
     summaryTokens: number
     durationMs: number
     mode?: CompressionMode
+    tier?: CompressionTier
     topic: string
     batchTopic?: string
     startId: string
@@ -97,6 +108,8 @@ export interface Nudges {
     lastPerMessageNudgeTokens: number | undefined
     lastNudgeShownTokens: number | undefined
     lastToolOutputNudgeTokens: number | undefined
+    lastTier2NudgeTokens: number | undefined
+    lastTier3NudgeTokens: number | undefined
     /** Set by injectCompressNudges; read by system prompt handler next turn (1-turn lag). Undefined = first turn. */
     shouldInjectThisTurn: boolean | undefined
     /**
