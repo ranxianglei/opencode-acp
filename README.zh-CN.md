@@ -482,6 +482,14 @@ ACP 在首次启动时自动将配置从 `dcp.jsonc` 迁移到 `acp.jsonc`，将
 
 ## 更新日志
 
+### v1.14.1 — 日志版本信息 + 增长基线修复（PR #205, #207）
+
+**问题**：v1.14.0 之后的两个问题。(1) **日志无法识别版本**（PR #205）：ACP daily 日志和每请求 context 日志没有任何版本标记，用户分享调试日志时无法判断是哪个 ACP 版本产生的 —— 跨版本回归排查只能靠猜。(2) **短会话中的增长基线反馈循环**（PR #207）：当增长阈值已满足（`nudgeAllowed`）但所有可压缩范围都被过滤掉时（`nothingToCompress`，例如短会话或子代理中所有范围都在保护区内），旧代码会重置 `state.nudges.lastPerMessageNudgeTokens = currentTokens`。这会每轮吃掉累积增长，基线一路追逐当前上下文，即使上下文早已远超阈值，模型也永远等不到 nudge。
+
+**修复**：(1) PR #205 —— `lib/logger.ts` 现在在每行 daily 日志末尾追加 `| v={version}`，并在每个每请求 context 日志目录下写一个一次性 `_version` 文件。版本通过新的 `tsup.config.ts` `define: { ACP_VERSION: JSON.stringify(pkg.version) }`（从 `package.json` 读取）在构建时注入，`logger.ts` 中有 `declare const ACP_VERSION` 环境声明。当 define 缺失时（例如 tsx 跑测试）回退为 `"dev"`。(2) PR #207 —— 移除了 `lib/messages/inject/inject.ts` 中 `nothingToCompress` 分支的 `lastPerMessageNudgeTokens = currentTokens` 重置；现在只清空 `lastNudgeShownTokens`。增长会在多个 `nothingToCompress` 轮次之间累积，直到确实有内容可压缩时 nudge 才触发。测试覆盖：删除了 3 个 taautological 的 baseline-reset 测试（这些测试从不调用 `injectCompressNudges`，违反 AGENTS.md §5.6）；`tests/inject.test.ts` 中新增真实 E2E 增长场景，验证基线在 `nothingToCompress` 轮次间被保留、内容离开保护区后 nudge 触发。与 Sisyphus 合作完成（co-authored-by 署名）。
+
+文件：`lib/logger.ts`、`tsup.config.ts`、`lib/messages/inject/inject.ts`。测试：`tests/inject.test.ts`（新增 E2E 增长场景，`tests/baseline-reset.test.ts` 删除 3 个 tautological 测试）。无持久化 state schema 变更，无配置变更。
+
 ### v1.14.0 — 三级压缩 + 保留近期消息 + 摘要可见性修复（PR #200, #201, #202）
 
 **问题**：长会话稳定性三个关键问题。(1) **摘要累积**（PR #200）：摘要块无限累积（v1.13.5+ 强制保护后），以每天约 7.3K token 增长，会话在约 3 天内触及 100K 摘要上限。92.5% 的旧块是已发布/历史工作，零可操作价值。(2) **活跃任务丢失**（PR #201）：`lastSegmentSoftBlock` 仅保护最后 1 条消息不被压缩。当模型压缩包含当前任务上下文的范围时，活跃工作丢失——推荐列表本身可能指向应该被保护的消息。(3) **summaryBuffer 过度计数**（PR #202）：`getActiveSummaryTokenUsage()` 计算了所有活跃块（如 448 块 = 151K token），但只有约 26 块的 compress 调用在可见上下文窗口中。虚高的计数导致错误的 T2/T3 触发和误导性的 `acp stats` 输出（"摘要 146%"）。
