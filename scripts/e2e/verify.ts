@@ -9,6 +9,9 @@ interface VerifyExpectations {
     summaryContains?: string
     childBlockCount?: number
     nudgeBaselineSet?: boolean
+    compressedCount?: number
+    minCompressedCount?: number
+    maxCompressedCount?: number
 }
 
 interface VerifyScenario {
@@ -146,6 +149,36 @@ if (expect.nudgeBaselineSet !== undefined) {
         `nudgeBaselineSet === ${expect.nudgeBaselineSet}`,
         isSet === expect.nudgeBaselineSet,
         `got ${nudgeBaseline ?? "null"}`,
+    )
+}
+
+function getCompressedMessageIds(s: any): string[] {
+    return Object.keys(s?.prune?.messages?.byMessageId ?? {})
+}
+
+const compressedIds = getCompressedMessageIds(state)
+
+if (expect.compressedCount !== undefined) {
+    assert(
+        `compressedCount === ${expect.compressedCount}`,
+        compressedIds.length === expect.compressedCount,
+        `got ${compressedIds.length} compressed message IDs`,
+    )
+}
+
+if (expect.minCompressedCount !== undefined) {
+    assert(
+        `compressedCount >= ${expect.minCompressedCount}`,
+        compressedIds.length >= expect.minCompressedCount,
+        `got ${compressedIds.length} compressed message IDs`,
+    )
+}
+
+if (expect.maxCompressedCount !== undefined) {
+    assert(
+        `compressedCount <= ${expect.maxCompressedCount}`,
+        compressedIds.length <= expect.maxCompressedCount,
+        `got ${compressedIds.length} compressed message IDs`,
     )
 }
 

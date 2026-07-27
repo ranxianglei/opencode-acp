@@ -1,0 +1,69 @@
+{
+    "name": "protection-filtered",
+    "description": "Production config (preserveRecentMessages:5, preserveLastUserMessage:true) — compress 'all' should soft-filter protected messages, not hard-reject. Verifies block created AND protected messages excluded from compressed set.",
+    "acpConfig": {
+        "experimental": { "allowSubAgents": true },
+        "compress": {
+            "minCompressRange": 0,
+            "maxSummaryLengthHard": 20000,
+            "preserveRecentMessages": 5,
+            "preserveRecentTokens": 0,
+            "preserveLastUserMessage": true,
+            "maxContextLimit": 20000,
+            "minContextLimit": 10000
+        },
+        "qualityGate": {
+            "enabled": true,
+            "algorithm": "rouge-recall-v1"
+        }
+    },
+    "turns": [
+        {
+            "respond": "text",
+            "text": "Topic one: Redis caching architecture. Redis is an in-memory key-value store used for caching session management and message queues. It supports data structures like strings hashes lists sets and sorted sets. Persistence options include RDB snapshots and AOF logs. The eviction policy uses LRU least recently used to remove stale entries when memory is full. The Redis client is initialized at src/cache/redis.ts line 10 with connection pooling configured for maximum 50 connections. Cache invalidation strategies include TTL-based expiration write-through caching and explicit invalidation via DEL command. The cache layer sits between the application and PostgreSQL database reducing query latency from 50ms to 2ms for hot paths."
+        },
+        {
+            "respond": "text",
+            "text": "Topic two: Kafka event streaming. Apache Kafka is a distributed event streaming platform for building real-time data pipelines. Core concepts include producers which publish messages to topics consumers which subscribe to topics partitions which enable parallelism and consumer groups which enable scalable consumption. The Kafka producer is configured at src/messaging/kafka.ts line 20 with acks set to all for maximum durability. Message ordering is guaranteed within a partition but not across partitions. The consumer group coordinator at src/messaging/consumer.ts line 35 manages rebalancing when consumers join or leave the group."
+        },
+        {
+            "respond": "text",
+            "text": "Topic three: GraphQL API design. GraphQL provides a query language for APIs that lets clients request exactly the data they need. Key concepts include schema definition language resolvers mutations for writes and subscriptions for real-time updates. Unlike REST a single endpoint handles all queries. The schema is defined at src/api/graphql.ts line 15 using type definitions for Query Mutation and Subscription types. N+1 query prevention uses DataLoader at src/api/dataloader.ts line 8 which batches and caches database requests within a single request cycle. Authorization is enforced via field-level resolvers that check user permissions before returning sensitive data."
+        },
+        {
+            "respond": "text",
+            "text": "Topic four: Docker containerization. Docker containers package applications with their dependencies for consistent deployment across environments. Multi-stage builds reduce final image size by separating build dependencies from runtime dependencies. Docker Compose orchestrates multi-container applications defining services networks and volumes in a single YAML file. Key practices include using non-root users in containers minimal base images like alpine or distroless health checks for orchestration integration and layer caching for faster builds. The Dockerfile at Dockerfile line 1 defines a multi-stage build starting from node 22 alpine building the TypeScript source and copying only the compiled output to the final image."
+        },
+        {
+            "respond": "text",
+            "text": "Topic five: Kubernetes orchestration. Kubernetes manages containerized applications across clusters of machines. Key resources include Pods which are the smallest deployable units Deployments which manage replica sets and Services which provide stable network endpoints. ConfigMaps and Secrets manage configuration and sensitive data separately from container images. Horizontal Pod Autoscaler scales replicas based on CPU memory or custom metrics. The deployment manifest at k8s/deployment.yaml defines 3 replicas with resource limits of 512Mi memory and 500m CPU. Rolling updates are configured with maxSurge 1 and maxUnavailable 0 ensuring zero downtime during deployments."
+        },
+        {
+            "respond": "text",
+            "text": "Topic six: Observability and monitoring. The monitoring stack uses Prometheus for metrics collection Grafana for visualization and Loki for log aggregation. Prometheus scrapes metrics from application endpoints at /metrics every 15 seconds. Custom business metrics are instrumented at src/metrics/business.ts using prom-client library. Grafana dashboards at grafana/dashboards/ display service health request latency error rates and business KPIs. Distributed tracing uses OpenTelemetry with traces exported to Jaeger. Alert rules at grafana/alerts/ trigger PagerDuty notifications for critical issues like error rate above 5 percent or p99 latency above 500ms."
+        },
+        {
+            "respond": "text",
+            "text": "Topic seven: CI CD pipeline. The CI CD pipeline uses GitHub Actions for continuous integration and ArgoCD for continuous deployment. On every pull request the CI workflow runs lint typecheck unit tests and integration tests. On merge to main the build workflow creates a Docker image pushes it to the registry and updates the Kubernetes manifest repository. ArgoCD detects the manifest change and syncs the new version to the cluster using a blue-green deployment strategy. Rollback is automated if health checks fail within the first 5 minutes. The pipeline configuration lives at .github/workflows/ci.yml and .github/workflows/deploy.yml."
+        },
+        {
+            "respond": "text",
+            "text": "Topic eight: Database migrations. Database schema changes are managed through versioned migration files using a tool called golang-migrate. Each migration is numbered sequentially and can include both up and down scripts for forward and rollback operations. Migration files live at db/migrations/ with naming convention 001_initial_schema_up.sql and 001_initial_schema_down.sql. The migration runner at scripts/migrate.ts applies pending migrations on application startup before the server begins accepting traffic. Zero-downtime migrations require careful planning including expand-then-contract patterns where new columns are added first then backfilled then old columns are removed in a subsequent deployment."
+        },
+        {
+            "respond": "compress",
+            "topic": "Infrastructure Discussion",
+            "summary": "## Infrastructure Discussion\n\nDiscussed eight infrastructure topics:\n\n### Redis Caching\nIn-memory key-value store for caching sessions and queues. Supports strings hashes lists sets sorted sets. Persistence via RDB and AOF. Client init at src/cache/redis.ts:10 with 50 connection pool. LRU eviction. TTL write-through and DEL invalidation. Reduces query latency from 50ms to 2ms.\n\n### Kafka Event Streaming\nDistributed event streaming. Producers publish to topics consumers subscribe partitions for parallelism consumer groups for scalable consumption. Producer at src/messaging/kafka.ts:20 with acks=all. Ordering guaranteed within partition. Consumer coordinator at src/messaging/consumer.ts:35.\n\n### GraphQL API Design\nQuery language for precise data fetching. Schema at src/api/graphql.ts:15. DataLoader at src/api/dataloader.ts:8 prevents N+1. Field-level resolvers enforce authorization.\n\n### Docker Containerization\nMulti-stage builds separate build from runtime deps. Dockerfile at Dockerfile:1 uses node 22 alpine. Non-root users minimal base images health checks layer caching.\n\n### Kubernetes Orchestration\nPods Deployments Services ConfigMaps Secrets. HPA scales on CPU memory custom metrics. k8s/deployment.yaml defines 3 replicas 512Mi 500m limits. Rolling updates maxSurge 1 maxUnavailable 0.\n\n### Observability\nPrometheus metrics Grafana dashboards Loki logs OpenTelemetry traces to Jaeger. Custom metrics at src/metrics/business.ts. Alerts trigger PagerDuty for error rate above 5 percent or p99 above 500ms.\n\n### CI CD Pipeline\nGitHub Actions for CI lint typecheck tests. ArgoCD for CD blue-green deployment. Config at .github/workflows/ci.yml and deploy.yml. Automated rollback if health checks fail within 5 minutes.\n\n### Database Migrations\ngolang-migrate with versioned files at db/migrations/. Naming 001_initial_schema_up.sql. Runner at scripts/migrate.ts applies on startup. Zero-downtime via expand-then-contract pattern.",
+            "range": "all"
+        },
+        {
+            "respond": "text",
+            "text": "Compression complete with protection filtering applied.",
+            "auto": true
+        }
+    ],
+    "verify": {
+        "blockCount": 1,
+        "maxCompressedCount": 14
+    }
+}

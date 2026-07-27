@@ -49,7 +49,11 @@ jobs:
                     scripts/e2e/scenarios/01-basic-compress.json \
                     scripts/e2e/scenarios/02-quality-reject.json \
                     scripts/e2e/scenarios/03-quality-acknowledge.json \
-                    scripts/e2e/scenarios/04-batch-compress.json
+                    scripts/e2e/scenarios/04-batch-compress.json \
+                    scripts/e2e/scenarios/05-subagent-compress.json \
+                    scripts/e2e/scenarios/06-nudge-triggered.json \
+                    scripts/e2e/scenarios/07-protection-filtered.json \
+                    scripts/e2e/scenarios/08-nudge-with-protection.json
             - name: Dump diagnostics on failure
               if: failure()
               run: |
