@@ -1325,3 +1325,70 @@ test("ensureSessionInitialized restores persisted modelContextLimit after restar
     await cleanupModelLimitSession()
 })
 
+test("E2E growth: baseline preserved through nothingToCompress, nudge fires when content exits protected zone", () => {
+    const state = createSessionState()
+    state.modelContextLimit = 1_000_000
+
+    const config = buildConfig()
+    config.compress.maxContextLimit = 500_000
+    config.compress.minContextLimit = 200_000
+    config.compress.protectedTools = ["skill"]
+    config.compress.preserveRecentMessages = 20
+    config.compress.preserveRecentTokens = 0
+    config.compress.preserveLastUserMessage = false
+
+    for (let i = 1; i <= 5; i++) {
+        state.messageIds.byRawId.set(`a${i}`, `m0000${i}`)
+    }
+
+    state.nudges.lastPerMessageNudgeTokens = 200_000
+    const turn1: WithParts[] = [
+        userMsg("u1", "Review this PR"),
+        assistantMsgWithTokens("a1", "Reading", { input: 200_000, output: 55_000 }, [
+            { id: "s1", messageID: "a1", sessionID: SID, type: "tool" as const, tool: "skill", callID: "sc1",
+              state: { status: "completed" as const, input: {}, output: "x".repeat(80_000) } },
+        ]),
+    ]
+    injectCompressNudges(state, config, logger, turn1, {} as any)
+
+    assert.equal(state.nudges.shouldInjectThisTurn, false, "all protected → suppressed")
+    assert.equal(
+        state.nudges.lastPerMessageNudgeTokens, 200_000,
+        "baseline PRESERVED — growth not eaten",
+    )
+
+    for (let i = 6; i <= 10; i++) {
+        state.messageIds.byRawId.set(`a${i}`, `m000${10 + i}`)
+    }
+    const turn2: WithParts[] = [
+        userMsg("u2", "Check more files"),
+        assistantMsgWithTokens("a2", "Done", { input: 240_000, output: 15_000 }, [
+            { id: "s2", messageID: "a2", sessionID: SID, type: "tool" as const, tool: "skill", callID: "sc2",
+              state: { status: "completed" as const, input: {}, output: "x".repeat(20_000) } },
+        ]),
+    ]
+    injectCompressNudges(state, config, logger, turn2, {} as any)
+
+    assert.equal(state.nudges.shouldInjectThisTurn, false, "still all protected → suppressed")
+    assert.equal(
+        state.nudges.lastPerMessageNudgeTokens, 200_000,
+        "baseline STILL preserved — 55K growth accumulated",
+    )
+
+    for (let i = 11; i <= 25; i++) {
+        state.messageIds.byRawId.set(`m${i}`, `m000${20 + i}`)
+    }
+    const turn3: WithParts[] = [
+        userMsg("u3", "Final check"),
+        assistantMsgWithTokens("a3", "Response", { input: 250_000, output: 5_000 }, [
+            toolPart("bash1", "x".repeat(100_000)),
+        ]),
+    ]
+    injectCompressNudges(state, config, logger, turn3, {} as any)
+
+    assert.ok(
+        state.nudges.lastPerMessageNudgeTokens !== 255_000,
+        "baseline NOT advanced to currentTokens (old bug behavior)",
+    )
+})
+
