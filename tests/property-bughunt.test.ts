@@ -12,7 +12,9 @@ import {
 } from "../lib/message-ids"
 import type { SessionState, WithParts } from "../lib/state/types"
 import { syncCompressionBlocks } from "../lib/messages/sync"
+import { prune } from "../lib/messages/prune"
 import type { Logger } from "../lib/logger"
+import type { PluginConfig } from "../lib/config"
 
 const noopLogger: Logger = {
     debug: () => {},
@@ -400,7 +402,7 @@ test("Sync: empty messages array doesn't crash", () => {
 // === GC EDGE CASES ===
 
 test("GC: summary with only newlines doesn't crash", () => {
-    const summary = "\n\n\n\n\n".repeat(100)
+    const summary = "\n\n\n\n".repeat(100)
     const block = makeBlock({ summary })
 
     runTruncateGC([block], {
@@ -410,4 +412,119 @@ test("GC: summary with only newlines doesn't crash", () => {
     })
 
     assert.ok(block.summary.length > 0)
+})
+
+// === PRUNE PROPERTY TESTS ===
+
+const noopConfig = {
+    enabled: true,
+    compress: { showCompression: false },
+} as unknown as PluginConfig
+
+function markCompressed(state: SessionState, messageIds: string[], blockId: number) {
+    for (const id of messageIds) {
+        const entry = state.prune.messages.byMessageId.get(id) ?? {
+            tokenCount: 100,
+            allBlockIds: [],
+            activeBlockIds: [],
+        }
+        entry.allBlockIds = [...new Set([...entry.allBlockIds, blockId])]
+        entry.activeBlockIds = [...entry.allBlockIds]
+        state.prune.messages.byMessageId.set(id, entry)
+    }
+}
+
+test("Prune: compressed messages are removed, uncompressed survive", () => {
+    const state = makeEmptyState()
+    const messages = [
+        makeMessage("msg-1", "user", "first user"),
+        makeMessage("msg-2", "assistant", "response"),
+        makeMessage("msg-3", "user", "second user"),
+        makeMessage("msg-4", "assistant", "response 2"),
+    ]
+
+    markCompressed(state, ["msg-2", "msg-3"], 1)
+
+    prune(state, noopLogger, noopConfig, messages)
+
+    const survivingIds = messages.map((m) => m.info.id)
+    assert.ok(survivingIds.includes("msg-1"), "First user must survive")
+    assert.ok(!survivingIds.includes("msg-2"), "Compressed msg-2 should be removed")
+    assert.ok(!survivingIds.includes("msg-3"), "Compressed msg-3 should be removed")
+    assert.ok(survivingIds.includes("msg-4"), "Uncompressed msg-4 must survive")
+})
+
+test("Prune: first user message survives even when compressed", () => {
+    const state = makeEmptyState()
+    const messages = [
+        makeMessage("msg-1", "user", "first user"),
+        makeMessage("msg-2", "assistant", "response"),
+    ]
+
+    markCompressed(state, ["msg-1"], 1)
+
+    prune(state, noopLogger, noopConfig, messages)
+
+    assert.equal(messages.length, 2, "Both survive: msg-1 forced + msg-2 uncompressed")
+    assert.equal(messages[0]!.info.id, "msg-1")
+})
+
+test("Prune: all compressed + no user messages = empty result", () => {
+    const state = makeEmptyState()
+    const messages = [
+        makeMessage("msg-1", "assistant", "response"),
+        makeMessage("msg-2", "assistant", "response 2"),
+    ]
+
+    markCompressed(state, ["msg-1", "msg-2"], 1)
+
+    prune(state, noopLogger, noopConfig, messages)
+
+    assert.equal(messages.length, 0, "All messages removed — no user to preserve")
+})
+
+test("Prune property: uncompressed messages always survive", () => {
+    fc.assert(
+        fc.property(
+            fc.array(
+                fc.record({
+                    id: fc.string({ minLength: 1, maxLength: 20 }).map((s) => `msg-${s}`),
+                    role: fc.constantFrom("user", "assistant"),
+                    compressed: fc.boolean(),
+                }),
+                { minLength: 1, maxLength: 20 },
+            ),
+            (specs) => {
+                const state = makeEmptyState()
+                const messages = specs.map((s) => makeMessage(s.id, s.role, "text"))
+
+                const compressedIds = specs.filter((s) => s.compressed).map((s) => s.id)
+                if (compressedIds.length > 0) {
+                    markCompressed(state, compressedIds, 1)
+                }
+
+                prune(state, noopLogger, noopConfig, messages)
+
+                const survivingIds = new Set(messages.map((m) => m.info.id))
+
+                for (const spec of specs) {
+                    if (!spec.compressed) {
+                        assert.ok(
+                            survivingIds.has(spec.id),
+                            `Uncompressed ${spec.id} should survive`,
+                        )
+                    }
+                }
+
+                const firstUser = specs.find((s) => s.role === "user")
+                if (firstUser) {
+                    assert.ok(
+                        survivingIds.has(firstUser.id),
+                        "First user message must always survive",
+                    )
+                }
+            },
+        ),
+        { numRuns: 50 },
+    )
 })
