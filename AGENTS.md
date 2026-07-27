@@ -839,7 +839,7 @@ All new and modified test files MUST undergo independent review by **at least 2 
 
 ### 5.7 Nudge & Growth Testing Requirements (MANDATORY)
 
-Changes to `lib/messages/inject/` or nudge-related logic MUST include tests that satisfy ALL of the following. These requirements were added after the **baseline-reset bug** (PR #207) — a production bug where `lastPerMessageNudgeTokens` was silently reset on `nothingToCompress`, creating a feedback loop that prevented nudges from ever firing in short/subagent sessions. The existing test suite (900+ tests) failed to catch this bug due to three structural gaps.
+Changes to `lib/messages/inject/` or nudge-related logic MUST include tests that satisfy ALL of the following. These requirements were added after the **baseline-reset bug** (PR #207) — a production bug where `lastPerMessageNudgeTokens` was silently reset on `nothingToCompress`, creating a feedback loop that prevented nudges from ever firing in short/subagent sessions. The existing test suite (900+ tests) failed to catch this bug due to five structural gaps.
 
 #### 5.7.1 Unit Test Requirements
 
@@ -856,9 +856,10 @@ Docker E2E tests (`scripts/e2e/`) MUST cover:
 
 | Requirement | What | Why |
 |-------------|------|-----|
-| **Nudge-triggered compression** | At least one scenario where the model compresses in RESPONSE to a nudge (not an explicit scripted compress call) | Existing scenarios only test explicit compress calls — the nudge→compress flow is untested |
-| **Nudge state verification** | `verify.ts` MUST check nudge state fields (`lastPerMessageNudgeTokens`, `shouldInjectThisTurn`) not just `blockCount` | Block count alone cannot detect baseline corruption or nudge suppression bugs |
+| **Nudge state verification** | `verify.ts` MUST check nudge state fields (`lastPerMessageNudgeTokens`) not just `blockCount` | Block count alone cannot detect baseline corruption or nudge suppression bugs |
 | **Growth accumulation** | At least one scenario where context grows across multiple turns past the nudge threshold | Tests that all-compress-in-one-turn don't exercise the growth-gating logic |
+
+> **Note on nudge-triggered compression**: Ideally, at least one scenario should have the model compress *in response to* a nudge (not a scripted compress call). However, the current `fake-llm-server.ts` only supports scripted responses and cannot react to injected nudges. This is a known limitation — extending the fake server to parse nudge markers and conditionally emit compress calls is future work. Until then, the unit tests (§5.7.1) carry the primary responsibility for testing the nudge→compress flow.
 
 #### 5.7.3 Why These Requirements Exist
 

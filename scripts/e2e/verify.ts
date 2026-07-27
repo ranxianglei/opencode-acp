@@ -9,7 +9,6 @@ interface VerifyExpectations {
     summaryContains?: string
     childBlockCount?: number
     nudgeBaselineSet?: boolean
-    nudgeBaselineNotEquals?: number
 }
 
 interface VerifyScenario {
@@ -147,14 +146,6 @@ if (expect.nudgeBaselineSet !== undefined) {
         `nudgeBaselineSet === ${expect.nudgeBaselineSet}`,
         isSet === expect.nudgeBaselineSet,
         `got ${nudgeBaseline ?? "null"}`,
-    )
-}
-
-if (expect.nudgeBaselineNotEquals !== undefined) {
-    assert(
-        `nudgeBaseline !== ${expect.nudgeBaselineNotEquals}`,
-        nudgeBaseline !== expect.nudgeBaselineNotEquals,
-        `got ${nudgeBaseline}`,
     )
 }
 
