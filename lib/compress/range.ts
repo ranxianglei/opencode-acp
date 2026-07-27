@@ -7,7 +7,6 @@ import {
     prepareSession,
     snapshotCompressionState,
     restoreCompressionState,
-    checkProtectedRange,
     checkPhantomBlock,
     type NotificationEntry,
 } from "./pipeline"
@@ -16,6 +15,7 @@ import {
     appendProtectedTools,
     appendProtectedUserMessages,
     filterLastUserMessage,
+    filterProtectedRecentMessages,
     filterProtectedToolMessages,
 } from "./protected-content"
 import {
@@ -148,6 +148,15 @@ export function createCompressRangeTool(factoryCtx: ToolFactoryContext): ReturnT
                         ctx.config.compress,
                     ),
                 }))
+                .map((plan) => ({
+                    ...plan,
+                    selection: filterProtectedRecentMessages(
+                        plan.selection,
+                        searchContext,
+                        ctx.state,
+                        ctx.config.compress,
+                    ),
+                }))
                 .filter((plan) => plan.selection.messageIds.length > 0)
 
             if (filteredPlans.length === 0) {
@@ -179,17 +188,6 @@ export function createCompressRangeTool(factoryCtx: ToolFactoryContext): ReturnT
                     )
                 }
             }
-
-            const dangerous =
-                (args as { dangerous?: boolean }).dangerous === true
-
-            const lastSegmentError = checkProtectedRange(
-                ctx,
-                filteredPlans.map((p) => p.selection.messageIds),
-                rawMessages,
-                dangerous,
-            )
-            if (lastSegmentError) throw lastSegmentError
 
             const notifications: NotificationEntry[] = []
             const preparedPlans: Array<{

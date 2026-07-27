@@ -241,7 +241,7 @@ const defaultConfig: PluginConfig = {
         maxVisibleSegments: 50,
         keepEmbedMaxChars: 2000,
         lastSegmentSoftBlock: true,
-        preserveRecentMessages: 20,
+        preserveRecentMessages: 5,
         preserveRecentTokens: 20000,
         preserveLastUserMessage: true,
     },

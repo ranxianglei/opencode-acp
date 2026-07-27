@@ -108,7 +108,7 @@ const toolCtx = {
 
 const ref = (n: number) => `m${String(n).padStart(5, "0")}`
 
-test("protected: compressing recent messages fails without dangerous", async () => {
+test("protected: compressing all-protected range fails (soft-filter removes everything)", async () => {
     const sessionID = `ses_protected_1_${Date.now()}`
     const rawMessages = buildMessages(sessionID)
     const state = createSessionState()
@@ -132,7 +132,7 @@ test("protected: compressing recent messages fails without dangerous", async () 
     )
 })
 
-test("protected: compressing recent messages WITH dangerous: true succeeds", async () => {
+test("protected: compressing mix of protected+unprotected: unprotected compressed, protected filtered", async () => {
     const sessionID = `ses_protected_2_${Date.now()}`
     const rawMessages = buildMessages(sessionID)
     const state = createSessionState()
@@ -141,12 +141,13 @@ test("protected: compressing recent messages WITH dangerous: true succeeds", asy
     const result = await tool.execute(
         {
             topic: "Test",
-            content: [{ startId: ref(25), endId: ref(30), summary: "x".repeat(2000) }],
-            dangerous: true,
+            content: [{ startId: ref(5), endId: ref(30), summary: "x".repeat(2000) }],
         },
         { ...toolCtx, sessionID },
     )
-    assert.ok(typeof result === "string" && result.includes("Compressed"), "dangerous: true should succeed")
+    assert.ok(typeof result === "string" && result.includes("Compressed"), "should succeed with unprotected part")
+    assert.ok(state.prune.messages.byMessageId.has("msg-5"), "msg-5 (unprotected) compressed")
+    assert.ok(!state.prune.messages.byMessageId.has("msg-30"), "msg-30 (protected) NOT compressed — soft-filtered")
 })
 
 test("protected: compressing old messages (outside 20-msg window) succeeds without dangerous", async () => {
@@ -183,7 +184,7 @@ test("protected: lastSegmentSoftBlock disabled bypasses protection entirely", as
     assert.ok(typeof result === "string" && result.includes("Compressed"), "disabled protection should succeed")
 })
 
-test("protected: error message mentions protected message IDs", async () => {
+test("protected: compressing ALL-protected range: filtered out error", async () => {
     const sessionID = `ses_protected_5_${Date.now()}`
     const rawMessages = buildMessages(sessionID)
     const state = createSessionState()
@@ -199,7 +200,7 @@ test("protected: error message mentions protected message IDs", async () => {
                 { ...toolCtx, sessionID },
             ),
         (err: Error) => {
-            assert.ok(err.message.includes("msg-28"), "error should reference a protected message id")
+            assert.ok(err.message.includes("filtered out"), `error should mention filtered out, got: ${err.message}`)
             return true
         },
     )
