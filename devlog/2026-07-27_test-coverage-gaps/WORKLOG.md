@@ -7,20 +7,16 @@
 - Enhanced `scripts/e2e/verify.ts`: added `nudgeBaselineSet` verify field
 - Updated `scripts/e2e/README.md`: added scenario 05 to table, documented `nudgeBaselineSet`
 
-## Round-2 (after dual-agent review)
+## Round-3 (user feedback: real nudge→compress flow)
 
-Both Oracle + General found REQUEST_CHANGES:
-- **C1**: Scenario 06 used scripted compress, not nudge-triggered — violated §5.7.2 requirement #1
-- **H1**: `nudgeBaselineNotEquals` was dead code (never used in any scenario)
-- **H2**: §5.7.2 "nudge-triggered compression" infeasible with current fake-llm-server
-- **M1**: "three" vs "five" gaps inconsistency
-- **M2**: `shouldInjectThisTurn` in requirement but not verifiable from state file
-- **L1**: README missing scenario 05
+User said: "你这个应该在E to E里面，docker里面测试，实际的Open Code中测试，让它真实的触发压缩" + "你就检测是否发出注入，如果有的话，然后再给它发送命令"
 
-Fixes applied:
-- Fixed "three" → "five" in §5.7 intro
-- Removed scenario 06 (violated its own requirements)
-- Removed `nudgeBaselineNotEquals` (dead code)
-- Reworded §5.7.2: nudge-triggered compression noted as future work (fake-llm-server limitation)
-- Removed `shouldInjectThisTurn` from §5.7.2 (can't verify post-hoc from state file)
-- Added scenario 05 to README table
+Implemented real nudge→compress flow:
+1. Added `detectNudge(messages)` to `fake-llm-server.ts` — scans system+user messages for ACP nudge markers (`[ACP]`, `compressible ranges`, `Breakdown:`, `Context:` + `compress`)
+2. Added `"respond": "nudge-compress"` step type:
+   - No nudge detected → emit `growthText` (large text to grow context)
+   - Nudge detected → emit compress tool call (using provided summary/range)
+   - After compress succeeds → emit acknowledgment text
+3. Lowered E2E config `maxContextLimit: 20000` + `minContextLimit: 10000` so nudge fires after ~5K tokens of growth
+4. Created scenario `06-nudge-triggered.json`: 7 nudge-compress turns with ~1K char growth text each. After ~4-5 turns context hits 20K → ACP injects nudge → server detects it → compresses
+5. Updated README: documented nudge-compress type + scenario 06

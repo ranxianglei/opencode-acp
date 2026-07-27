@@ -33,7 +33,7 @@ if (!SCENARIO_PATH) {
 }
 
 interface ScenarioStep {
-    respond: "text" | "compress" | "task" | "tool"
+    respond: "text" | "compress" | "task" | "tool" | "nudge-compress"
     text?: string
     summary?: string
     topic?: string
@@ -57,6 +57,8 @@ interface ScenarioStep {
     /** For tool: arbitrary tool_use call */
     tool?: string
     toolArgs?: Record<string, unknown>
+    /** For nudge-compress: text to emit when no nudge detected (grows context) */
+    growthText?: string
 }
 
 interface Scenario {
@@ -191,6 +193,14 @@ async function handleChatCompletion(req: Request): Promise<Response> {
                 )
             }
         }
+
+        const currentIdx = readTurnCounter() - 1
+        const currentStep = scenario.turns[currentIdx]
+        if (currentStep?.respond === "nudge-compress" && toolText.includes("Compressed")) {
+            log("  → nudge-compress: compress succeeded, emitting acknowledgment")
+            return textResponse(model, "Compression complete.", isStream)
+        }
+
         log("  → tool result received, emitting text acknowledgment")
         return textResponse(model, "Understood, continuing.", isStream)
     }
@@ -213,6 +223,10 @@ async function handleChatCompletion(req: Request): Promise<Response> {
 
     if (step.respond === "compress") {
         return handleCompressStep(model, messages, step, isStream)
+    }
+
+    if (step.respond === "nudge-compress") {
+        return handleNudgeCompressStep(model, messages, step, isStream)
     }
 
     // Text response
@@ -283,6 +297,54 @@ function handleCompressStep(
 
     log(`  → compress: ${startId}..${endId}, summary=${(step.summary ?? "").length} chars, ack=${step.acknowledgeRisk ?? false}`)
     return compressResponse(model, { content }, step.acknowledgeRisk ?? false, isStream)
+}
+
+function detectNudge(messages: any[]): boolean {
+    const nudgeMarkers = ["[ACP]", "compressible ranges", "Breakdown:", "Context:"]
+    for (const msg of messages) {
+        if (msg?.role === "system" || msg?.role === "user") {
+            const text = extractMessageText(msg)
+            const hasCompress = text.includes("compress")
+            const hasNudgeMarker = nudgeMarkers.some((m) => text.includes(m))
+            if (hasCompress && hasNudgeMarker) return true
+        }
+    }
+    return false
+}
+
+function handleNudgeCompressStep(
+    model: string,
+    messages: any[],
+    step: ScenarioStep,
+    isStream: boolean,
+): Response {
+    const nudgeDetected = detectNudge(messages)
+
+    if (!nudgeDetected) {
+        const growthText = step.growthText ?? "Working on the task. Generating content to fill the context window with meaningful discussion about software architecture and implementation details."
+        log(`  → nudge-compress: no nudge detected, emitting ${growthText.length} chars of growth text`)
+        return textResponse(model, growthText, isStream)
+    }
+
+    log(`  → nudge-compress: nudge DETECTED, emitting compress call`)
+    const refs = parseMessageRefs(messages)
+    if (refs.length === 0) {
+        log("  ⚠ no mNNNNN refs found — emitting fallback text")
+        return textResponse(model, "No messages to compress.", isStream)
+    }
+
+    const [startId, endId] = resolveRange(refs, step.range ?? "all")
+    const content = [
+        {
+            topic: step.topic ?? "Nudge-triggered compression",
+            startId,
+            endId,
+            summary: step.summary ?? "Summary of compressed content generated during nudge-triggered E2E test.",
+        },
+    ]
+
+    log(`  → compress: ${startId}..${endId}, summary=${(step.summary ?? "").length} chars`)
+    return compressResponse(model, { content }, false, isStream)
 }
 
 function handleChildRequest(

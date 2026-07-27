@@ -1,0 +1,52 @@
+{
+    "name": "nudge-triggered-compress",
+    "description": "Real nudge→compress flow: text turns grow context past 20K threshold, ACP auto-injects nudge, fake LLM detects it and compresses. Verifies block count + nudge baseline.",
+    "turns": [
+        {
+            "respond": "nudge-compress",
+            "growthText": "Authentication system design. JWT tokens encode user claims with header payload signature. The header specifies the signing algorithm. The payload contains user ID role and expiration. The signature prevents tampering. File src/auth/jwt.ts handles token creation and verification. The verifyToken function at line 42 checks signature validity and expiration. Refresh tokens allow obtaining new access tokens without re-authentication. The refresh endpoint at src/routes/auth.ts line 78 validates the refresh token and issues a new access token. Token storage uses httpOnly cookies for security. CSRF protection is implemented via double-submit cookies at src/middleware/csrf.ts line 15. Rate limiting middleware at src/middleware/ratelimit.ts line 30 limits login attempts to 5 per minute per IP address.",
+            "topic": "Auth System",
+            "summary": "## Auth System Discussion\n\nDiscussed JWT authentication: token structure (header.payload.signature), verifyToken at src/auth/jwt.ts:42, refresh endpoint at src/routes/auth.ts:78. Security: httpOnly cookies, CSRF at src/middleware/csrf.ts:15, rate limiting at src/middleware/ratelimit.ts:30."
+        },
+        {
+            "respond": "nudge-compress",
+            "growthText": "Database layer for user management. Users table stores id email password_hash created_at updated_at. The password is hashed with bcrypt using cost factor 12. Sessions table stores token user_id expires_at with index on token for fast lookup. Migration 001 creates users table. Migration 002 adds sessions table. Model User at src/models/user.ts defines the schema and relationships. The findByEmail query at src/db/queries/user.ts line 25 fetches user by email for login. The createSession query at src/db/queries/session.ts line 18 inserts a new session row. Password verification uses bcrypt compare which is constant-time to prevent timing attacks. The session cleanup job runs hourly to delete expired sessions.",
+            "topic": "Auth System",
+            "summary": "## Auth System Discussion\n\nDiscussed JWT authentication: token structure (header.payload.signature), verifyToken at src/auth/jwt.ts:42, refresh endpoint at src/routes/auth.ts:78. Security: httpOnly cookies, CSRF at src/middleware/csrf.ts:15, rate limiting at src/middleware/ratelimit.ts:30."
+        },
+        {
+            "respond": "nudge-compress",
+            "growthText": "API endpoints design. POST /api/auth/login accepts email and password returns JWT access token and set refresh token in httpOnly cookie. POST /api/auth/refresh validates refresh token returns new access token. POST /api/auth/logout clears cookies and invalidates session. GET /api/auth/me returns current user profile. All endpoints use JSON request and response. Input validation at src/middleware/validate.ts line 20 checks required fields and formats. Error responses follow RFC 7807 problem details format. The login rate limiter allows 5 attempts per minute. The refresh endpoint has a separate rate limiter of 30 per minute. Authentication middleware at src/middleware/auth.ts line 45 verifies JWT and attaches user to request object. Protected routes use authMiddleware. Public routes skip it.",
+            "topic": "Auth System",
+            "summary": "## Auth System Discussion\n\nDiscussed JWT authentication: token structure (header.payload.signature), verifyToken at src/auth/jwt.ts:42, refresh endpoint at src/routes/auth.ts:78. Security: httpOnly cookies, CSRF at src/middleware/csrf.ts:15, rate limiting at src/middleware/ratelimit.ts:30."
+        },
+        {
+            "respond": "nudge-compress",
+            "growthText": "Testing strategy for authentication. Unit tests for JWT creation and verification at tests/auth/jwt.test.ts. Integration tests for login refresh and logout at tests/auth/endpoints.test.ts. The test suite uses an in-memory database for isolation. Mock bcrypt for unit tests to avoid slow hashing. Test fixtures create test users with known credentials. The login test verifies correct token structure and cookie settings. The refresh test verifies new token issuance and old token invalidation. The logout test verifies cookie clearing. Edge cases tested: expired token rejected invalid signature rejected malformed token rejected. Load testing uses k6 scripts at tests/load/auth.js targeting 1000 concurrent logins.",
+            "topic": "Auth System",
+            "summary": "## Auth System Discussion\n\nDiscussed JWT authentication: token structure (header.payload.signature), verifyToken at src/auth/jwt.ts:42, refresh endpoint at src/routes/auth.ts:78. Security: httpOnly cookies, CSRF at src/middleware/csrf.ts:15, rate limiting at src/middleware/ratelimit.ts:30."
+        },
+        {
+            "respond": "nudge-compress",
+            "growthText": "Deployment and monitoring. The auth service runs in Docker container with Node.js 22. Health check endpoint at /health returns 200 if database connected. Metrics exported at /metrics in Prometheus format. Key metrics: auth_requests_total auth_errors_total auth_latency_seconds. Alerts configured for error rate above 5 percent and latency p99 above 500ms. The service connects to PostgreSQL 16 for user data and Redis for session caching. Database connection pool size 10 with 30 second timeout. Redis used for rate limiting counters with TTL matching the window. Logs structured as JSON with correlation IDs for tracing. The CI pipeline runs all tests before building the Docker image. The image is pushed to registry and deployed via Kubernetes rolling update.",
+            "topic": "Auth System",
+            "summary": "## Auth System Discussion\n\nDiscussed JWT authentication: token structure (header.payload.signature), verifyToken at src/auth/jwt.ts:42, refresh endpoint at src/routes/auth.ts:78. Security: httpOnly cookies, CSRF at src/middleware/csrf.ts:15, rate limiting at src/middleware/ratelimit.ts:30."
+        },
+        {
+            "respond": "nudge-compress",
+            "growthText": "Additional context for growth.",
+            "topic": "Auth System",
+            "summary": "## Auth System Discussion\n\nDiscussed JWT authentication: token structure (header.payload.signature), verifyToken at src/auth/jwt.ts:42, refresh endpoint at src/routes/auth.ts:78. Security: httpOnly cookies, CSRF at src/middleware/csrf.ts:15, rate limiting at src/middleware/ratelimit.ts:30."
+        },
+        {
+            "respond": "nudge-compress",
+            "growthText": "More content.",
+            "topic": "Auth System",
+            "summary": "## Auth System Discussion\n\nDiscussed JWT authentication: token structure (header.payload.signature), verifyToken at src/auth/jwt.ts:42, refresh endpoint at src/routes/auth.ts:78. Security: httpOnly cookies, CSRF at src/middleware/csrf.ts:15, rate limiting at src/middleware/ratelimit.ts:30."
+        }
+    ],
+    "verify": {
+        "minBlockCount": 1,
+        "nudgeBaselineSet": true
+    }
+}
