@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { messageHasCompress, isIgnoredUserMessage } from "../lib/messages/query"
+import { messageHasCompress, messageHasCompressAttempt, isIgnoredUserMessage } from "../lib/messages/query"
 
 function makeAssistant(overrides: Record<string, any> = {}) {
     return {
@@ -64,6 +64,42 @@ test("messageHasCompress returns false for message with no parts", () => {
     const msg = makeAssistant()
     msg.parts = []
     assert.equal(messageHasCompress(msg as any), false)
+})
+
+test("messageHasCompressAttempt returns true for completed compress", () => {
+    const msg = makeAssistant()
+    msg.parts = [{ type: "tool", tool: "compress", state: { status: "completed" } }]
+    assert.equal(messageHasCompressAttempt(msg as any), true)
+})
+
+test("messageHasCompressAttempt returns true for errored compress", () => {
+    const msg = makeAssistant()
+    msg.parts = [{ type: "tool", tool: "compress", state: { status: "error" } }]
+    assert.equal(messageHasCompressAttempt(msg as any), true)
+})
+
+test("messageHasCompressAttempt returns true for pending compress", () => {
+    const msg = makeAssistant()
+    msg.parts = [{ type: "tool", tool: "compress", state: { status: "pending" } }]
+    assert.equal(messageHasCompressAttempt(msg as any), true)
+})
+
+test("messageHasCompressAttempt returns true for compress with no state", () => {
+    const msg = makeAssistant()
+    msg.parts = [{ type: "tool", tool: "compress" }]
+    assert.equal(messageHasCompressAttempt(msg as any), true)
+})
+
+test("messageHasCompressAttempt returns false for non-compress tool", () => {
+    const msg = makeAssistant()
+    msg.parts = [{ type: "tool", tool: "read", state: { status: "completed" } }]
+    assert.equal(messageHasCompressAttempt(msg as any), false)
+})
+
+test("messageHasCompressAttempt returns false for user message", () => {
+    const msg = makeUser()
+    msg.parts = [{ type: "tool", tool: "compress", state: { status: "completed" } }]
+    assert.equal(messageHasCompressAttempt(msg as any), false)
 })
 
 test("isIgnoredUserMessage returns true for user message with no parts", () => {

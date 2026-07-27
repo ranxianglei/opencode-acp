@@ -274,6 +274,50 @@ test("compress followed by continuation assistant sets baseline to continuation 
     assert.equal(state.nudges.contextLimitAnchors.size, 0, "anchors must be cleared")
 })
 
+test("failed compress (status=error) clears nudge state but does NOT adjust baseline", () => {
+    const state = createSessionState()
+    state.modelContextLimit = 1_000_000
+    state.nudges.lastPerMessageNudgeTokens = 200_000
+    state.nudges.lastNudgeShownTokens = 200_000
+    state.nudges.contextLimitAnchors.add("anchor-1")
+    const config = buildConfig()
+    const messages: WithParts[] = [
+        userMsg("u1", "hello"),
+        assistantMsgWithTokens("a1", "tried compress", { input: 200_000, output: 50_000 }, [
+            {
+                id: "a1-tool", messageID: "a1", sessionID: SID,
+                type: "tool", tool: "compress", callID: "compress-fail",
+                state: { status: "error", input: {}, output: "Error: all messages filtered" },
+            },
+        ]),
+    ]
+    injectCompressNudges(state, config, logger, messages, {} as any)
+    assert.equal(state.nudges.lastNudgeShownTokens, undefined, "lastNudgeShownTokens must be cleared on failed compress")
+    assert.equal(state.nudges.contextLimitAnchors.size, 0, "anchors must be cleared on failed compress")
+    assert.equal(state.nudges.lastPerMessageNudgeTokens, 200_000, "baseline must NOT change on failed compress")
+    assert.equal(state.nudges.compressBaselineSet, false, "compressBaselineSet must NOT be set on failed compress")
+})
+
+test("no nudge text injected when nothingToCompress despite nudgeAllowed (defect 1)", () => {
+    const state = createSessionState()
+    state.modelContextLimit = 1_000_000
+    state.nudges.lastPerMessageNudgeTokens = 50_000
+    state.messageIds.byRawId.set("u1", "m00001")
+    state.messageIds.byRef.set("m00001", "u1")
+    state.messageIds.byRawId.set("a1", "m00002")
+    state.messageIds.byRef.set("m00002", "a1")
+    const config = buildConfig()
+    config.compress.preserveRecentMessages = 100
+    config.compress.preserveRecentTokens = 1_000_000
+    const messages: WithParts[] = [
+        userMsg("u1", "hello"),
+        assistantMsgWithTokens("a1", "response", { input: 200_000, output: 50_000 }),
+    ]
+    const originalLength = messages.length
+    injectCompressNudges(state, config, logger, messages, {} as any)
+    assert.equal(messages.length, originalLength, "no suffix message should persist when nothingToCompress")
+})
+
 test("formatMessageIdTag produces dcp-message-id tag", () => {
     const tag = formatMessageIdTag("m00001")
     assert.ok(tag.includes("m00001"))

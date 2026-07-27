@@ -11,6 +11,7 @@ import {
     isIgnoredUserMessage,
     isProtectedUserMessage,
     messageHasCompress,
+    messageHasCompressAttempt,
 } from "../query"
 import { saveSessionState } from "../../state/persistence"
 import {
@@ -101,11 +102,15 @@ export const injectCompressNudges = (
         (m) => m.info.role === "user" && !isIgnoredUserMessage(m),
     )
     const currentTurnStart = lastUserIdx >= 0 ? lastUserIdx + 1 : 0
-    const currentTurnHasCompress = messages
-        .slice(currentTurnStart)
-        .some((m) => m.info.role === "assistant" && messageHasCompress(m))
+    const currentTurnMessages = messages.slice(currentTurnStart)
+    const currentTurnHasCompress = currentTurnMessages.some(
+        (m) => m.info.role === "assistant" && messageHasCompress(m),
+    )
+    const currentTurnHasCompressAttempt = currentTurnMessages.some(
+        (m) => m.info.role === "assistant" && messageHasCompressAttempt(m),
+    )
 
-    if (currentTurnHasCompress) {
+    if (currentTurnHasCompressAttempt) {
         const wasNudgeTriggered = state.nudges.lastNudgeShownTokens !== undefined
 
         state.nudges.contextLimitAnchors.clear()
@@ -116,14 +121,7 @@ export const injectCompressNudges = (
         state.nudges.lastTier2NudgeTokens = undefined
         state.nudges.lastTier3NudgeTokens = undefined
 
-        // Proportional baseline adjustment: if nudge-triggered compress, adjust
-        // baseline by how much was actually compressed. >50% of growth compressed
-        // → full baseline update. 20-30% → partial update. This prevents both
-        // baseline leak (small compress → full reset → growth forgotten) and
-        // over-compression (model gets re-nudged too soon after a small compress).
-        //
-        // Voluntary compress (no nudge shown) keeps the original baseline entirely.
-        if (wasNudgeTriggered && !state.nudges.compressBaselineSet) {
+        if (currentTurnHasCompress && wasNudgeTriggered && !state.nudges.compressBaselineSet) {
             const baseline = state.nudges.lastPerMessageNudgeTokens
             const postCompress = currentTokens
             // preCompressTokens is captured in hooks.ts BEFORE prune() runs
@@ -302,10 +300,6 @@ export const injectCompressNudges = (
 
     const effectiveTipsVariant = emergencyOverride ? "maxLimit" : decision.tipsVariant
 
-    if (nudgeAllowed) {
-        applyAnchoredNudges(state, config, messages, prompts, compressionPriorities, currentTokens, modelContextLimit, suffixMessage)
-    }
-
     if (state.nudges.lastPerMessageNudgeTokens === undefined && currentTokens !== undefined) {
         // Growth is measured from the session's starting context — the system
         // prompt is always present and is NOT growth.
@@ -369,6 +363,10 @@ export const injectCompressNudges = (
     const allInProtectedZone = protectedRefs.size > 0 && unprotectedCompressible.length === 0
     const nothingToCompress = filterSuppressed || allProtected || allInProtectedZone
     let shouldInject = nudgeAllowed && (!nothingToCompress || emergencyOverride)
+
+    if (shouldInject) {
+        applyAnchoredNudges(state, config, messages, prompts, compressionPriorities, currentTokens, modelContextLimit, suffixMessage)
+    }
 
     // [FIX baseline-reset] Do NOT reset the growth baseline when nothingToCompress
     // is true. The old code reset lastPerMessageNudgeTokens = currentTokens here,
