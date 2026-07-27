@@ -11,6 +11,7 @@ import {
     isIgnoredUserMessage,
     isProtectedUserMessage,
     messageHasCompress,
+    messageHasCompressAttempt,
 } from "../query"
 import { saveSessionState } from "../../state/persistence"
 import {
@@ -103,7 +104,7 @@ export const injectCompressNudges = (
     const currentTurnStart = lastUserIdx >= 0 ? lastUserIdx + 1 : 0
     const currentTurnHasCompress = messages
         .slice(currentTurnStart)
-        .some((m) => m.info.role === "assistant" && messageHasCompress(m))
+        .some((m) => m.info.role === "assistant" && messageHasCompressAttempt(m))
 
     if (currentTurnHasCompress) {
         const wasNudgeTriggered = state.nudges.lastNudgeShownTokens !== undefined
@@ -302,10 +303,6 @@ export const injectCompressNudges = (
 
     const effectiveTipsVariant = emergencyOverride ? "maxLimit" : decision.tipsVariant
 
-    if (nudgeAllowed) {
-        applyAnchoredNudges(state, config, messages, prompts, compressionPriorities, currentTokens, modelContextLimit, suffixMessage)
-    }
-
     if (state.nudges.lastPerMessageNudgeTokens === undefined && currentTokens !== undefined) {
         // Growth is measured from the session's starting context — the system
         // prompt is always present and is NOT growth.
@@ -324,7 +321,8 @@ export const injectCompressNudges = (
     // groups at the boundary so the unprotected head survives as a range.
     const protectedRefs = computeProtectedRefs(messages, state, config.compress)
 
-    // Compute recommendation filter early — the result gates the nudge below.
+    // Compute recommendation filter BEFORE applyAnchoredNudges — the result
+    // gates whether the nudge text is injected at all (Issue #216 Defect 1).
     const contextRanges = buildCompressibleRanges(
         messages,
         state,
@@ -368,18 +366,26 @@ export const injectCompressNudges = (
     const allProtected = contextRanges.compressible.length === 0 && contextRanges.protected.length > 0
     const allInProtectedZone = protectedRefs.size > 0 && unprotectedCompressible.length === 0
     const nothingToCompress = filterSuppressed || allProtected || allInProtectedZone
-    let shouldInject = nudgeAllowed && (!nothingToCompress || emergencyOverride)
+    const shouldInjectNudge = nudgeAllowed && (!nothingToCompress || emergencyOverride)
+    let shouldInject = shouldInjectNudge
 
-    // [FIX baseline-reset] Do NOT reset the growth baseline when nothingToCompress
-    // is true. The old code reset lastPerMessageNudgeTokens = currentTokens here,
-    // which "ate" accumulated growth every time the growth threshold was met but
-    // there was nothing to compress (e.g., all ranges in the protected zone for a
-    // short session). This created a feedback loop: growth → nudgeAllowed →
-    // nothingToCompress → baseline reset → growth forgotten → model never sees a
-    // nudge even though context grew well past the threshold. Instead, preserve
-    // the baseline so growth accumulates until there IS something to compress.
     if (nudgeAllowed && nothingToCompress && !emergencyOverride) {
         state.nudges.lastNudgeShownTokens = undefined
+    }
+
+    // Issue #216 Defect 1: only apply anchored nudge text when there IS something
+    // to compress. Previously applyAnchoredNudges ran before nothingToCompress was
+    // computed, injecting the full nudge text (with HOW_TO_COMPRESS rules) even
+    // when the filter said "nothing to compress".
+    if (shouldInjectNudge) {
+        applyAnchoredNudges(state, config, messages, prompts, compressionPriorities, currentTokens, modelContextLimit, suffixMessage)
+    }
+
+    if (state.nudges.lastPerMessageNudgeTokens === undefined && currentTokens !== undefined) {
+        // Growth is measured from the session's starting context — the system
+        // prompt is always present and is NOT growth.
+        state.nudges.lastPerMessageNudgeTokens = currentTokens
+        baselineReEstablished = true
     }
 
     // ── Tier 2/3 triggers — only if T1 didn't already fire ────────────
@@ -521,7 +527,10 @@ export const injectCompressNudges = (
             breakdown += `\nUse \`acp_status({scope:"uncompressed"})\` to re-fetch compressible ranges after compressing, or \`acp_status\` for compressed block details.`
 
             if (effectiveTipsVariant !== "maxLimit") {
-                breakdown += `\n\n${HOW_TO_COMPRESS_RULES}`
+                if (!state.nudges.compressRulesShown) {
+                    breakdown += `\n\n${HOW_TO_COMPRESS_RULES}`
+                    state.nudges.compressRulesShown = true
+                }
             }
             appendToLastTextPart(suffixMessage, breakdown)
         }

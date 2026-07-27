@@ -157,6 +157,7 @@ export function createSessionState(): SessionState {
             lastTier3NudgeTokens: undefined,
             shouldInjectThisTurn: undefined,
             compressBaselineSet: false,
+    compressRulesShown: false,
         },
         stats: {
             pruneTokenCounter: 0,
@@ -203,6 +204,7 @@ export function resetSessionState(state: SessionState): void {
         lastTier3NudgeTokens: undefined,
         shouldInjectThisTurn: undefined,
         compressBaselineSet: false,
+    compressRulesShown: false,
     }
     state.stats = {
         pruneTokenCounter: 0,
@@ -277,6 +279,7 @@ export async function ensureSessionInitialized(
     state.nudges.lastTier2NudgeTokens = persisted.nudges.lastTier2NudgeTokens ?? persisted.nudges.lastTierNudgeTokens
     state.nudges.lastTier3NudgeTokens = persisted.nudges.lastTier3NudgeTokens
     state.nudges.compressBaselineSet = persisted.nudges.compressBaselineSet ?? false
+    state.nudges.compressRulesShown = persisted.nudges.compressRulesShown ?? false
     state.stats = {
         pruneTokenCounter: persisted.stats?.pruneTokenCounter || 0,
         totalPruneTokens: persisted.stats?.totalPruneTokens || 0,
