@@ -90,12 +90,14 @@ cat > "$FAKE_HOME/.config/opencode/opencode.json" <<OCJSON
       "options": {
         "baseURL": "http://127.0.0.1:$FAKE_LLM_PORT/v1"
       },
-   "models": {
-     "fake-model": {
-       "name": "Fake Model",
-       "limit": { "context": 100000 }
-     }
-   },
+      "models": {
+        "fake-model": {
+          "name": "Fake Model",
+          "limit": { "context": 100000 }
+        }
+      }
+    }
+  },
   "agent": {
     "general": {
       "model": "fake/fake-model",
