@@ -14,11 +14,9 @@ New `messageHasCompressAttempt()` function: detects ANY compress tool call (rega
 
 `messageHasCompress` (completed-only) retained for priority.ts and utils.ts — those only care about successful compressions.
 
-### Fix 3: compressRulesShown flag (state types + inject.ts)
+### Fix 3: compressRulesShown flag — REVERTED
 
-Added `compressRulesShown: boolean` to `Nudges` state type. Initialized `false` in `createSessionState`, `resetSessionState`, `resetOnCompaction`, and loaded from persisted state.
-
-In inject.ts, `HOW_TO_COMPRESS_RULES` is only appended when `!state.nudges.compressRulesShown`. After first append, flag is set to `true`. Subsequent nudges omit the full rules text.
+Initially implemented `compressRulesShown` flag to send HOW_TO_COMPRESS_RULES only once per session. Reverted per user feedback: "这个短输入是不行的，会影响效果" — rules are needed every time for compression quality. Fixes 1+2 break the loop that caused rules to repeat every ~10s; without the loop, per-nudge overhead is acceptable.
 
 ## Files Changed
 

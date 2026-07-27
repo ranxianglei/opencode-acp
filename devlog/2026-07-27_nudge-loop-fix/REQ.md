@@ -25,6 +25,6 @@ From issue #216 debug logs:
 
 - [x] Nudge text NOT injected when `nothingToCompress === true` (unless emergency override)
 - [x] Failed compress calls reset `lastNudgeShownTokens` (threshold not permanently halved)
-- [x] HOW_TO_COMPRESS_RULES sent only once per session
 - [x] All existing tests pass
 - [x] New regression tests for Defect 2
+- [~] ~~HOW_TO_COMPRESS_RULES sent only once per session~~ — REVERTED per user feedback ("会影响效果")

@@ -1383,3 +1383,88 @@ test("E2E growth: baseline preserved through nothingToCompress, nudge fires when
     )
 })
 
+// ── §5.7 Integration tests for Issue #216 (nudge loop fix) ──────────
+
+function failedCompressToolPart(callID: string): any {
+    return {
+        id: `${callID}-part`, messageID: "msg", sessionID: SID,
+        type: "tool", tool: "compress", callID,
+        state: { status: "error", input: {}, output: "failed" },
+    }
+}
+
+test("§5.7: failed compress clears anchors + lastNudgeShownTokens (Defect 2)", () => {
+    const state = createSessionState()
+    state.modelContextLimit = 1_000_000
+    state.nudges.lastPerMessageNudgeTokens = 100_000
+    state.nudges.lastNudgeShownTokens = 120_000
+    state.nudges.contextLimitAnchors.add("anchor-1")
+    const messages: WithParts[] = [
+        userMsg("u1", "hello"),
+        assistantMsgWithTokens("a1", "trying compress", { input: 150_000, output: 1000 }, [
+            failedCompressToolPart("compress-err"),
+        ]),
+    ]
+    const config = buildConfig()
+    injectCompressNudges(state, config, logger, messages, {} as any)
+    assert.equal(state.nudges.contextLimitAnchors.size, 0, "anchors must be cleared on failed compress")
+    assert.equal(state.nudges.lastNudgeShownTokens, undefined, "lastNudgeShownTokens must be cleared")
+    assert.equal(state.nudges.lastPerMessageNudgeTokens, 100_000, "baseline must NOT be advanced (Option B)")
+})
+
+test("§5.7: nothingToCompress suppresses nudge text injection (Defect 1)", () => {
+    const state = createSessionState()
+    state.modelContextLimit = 100_000
+    const config = buildConfig()
+    config.compress.maxContextLimit = 10_000
+    config.compress.minContextLimit = 5_000
+    config.compress.preserveRecentMessages = 100
+    config.compress.preserveLastUserMessage = true
+    const messages: WithParts[] = [
+        userMsg("u1", "hello"),
+        assistantMsgWithTokens("a1", "response", { input: 50_000, output: 5000 }),
+    ]
+    injectCompressNudges(state, config, logger, messages, {} as any)
+    assert.equal(state.nudges.shouldInjectThisTurn, false, "nudge must NOT fire when nothing to compress")
+    assert.equal(state.nudges.lastNudgeShownTokens, undefined, "lastNudgeShownTokens cleared (not permanently halved)")
+})
+
+test("§5.7: growth cycle — nudge → failed compress → re-nudge on full threshold", () => {
+    const state = createSessionState()
+    state.modelContextLimit = 1_000_000
+    const config = buildConfig()
+    config.compress.maxContextLimit = 200_000
+    config.compress.minContextLimit = 100_000
+
+    // Turn 1: growth triggers nudge
+    const msgs1: WithParts[] = [
+        userMsg("u1", "hello"),
+        assistantMsgWithTokens("a1", "text", { input: 150_000, output: 50_000 }),
+    ]
+    state.nudges.lastPerMessageNudgeTokens = 0
+    injectCompressNudges(state, config, logger, msgs1, {} as any)
+    assert.equal(state.nudges.shouldInjectThisTurn, true, "turn 1: nudge should fire (growth > threshold)")
+    assert.ok(state.nudges.lastNudgeShownTokens !== undefined, "turn 1: lastNudgeShownTokens set")
+    const baselineBefore = state.nudges.lastPerMessageNudgeTokens
+
+    // Turn 2: failed compress — anchors cleared, baseline preserved
+    const msgs2: WithParts[] = [
+        ...msgs1,
+        assistantMsgWithTokens("a2", "trying", { input: 200_000, output: 1000 }, [
+            failedCompressToolPart("compress-err-1"),
+        ]),
+    ]
+    injectCompressNudges(state, config, logger, msgs2, {} as any)
+    assert.equal(state.nudges.contextLimitAnchors.size, 0, "turn 2: anchors cleared by failed compress")
+    assert.equal(state.nudges.lastNudgeShownTokens, undefined, "turn 2: lastNudgeShownTokens cleared")
+    assert.equal(state.nudges.lastPerMessageNudgeTokens, baselineBefore, "turn 2: baseline unchanged (Option B)")
+
+    // Turn 3: more growth — nudge should fire at FULL threshold (not halved)
+    const msgs3: WithParts[] = [
+        ...msgs2,
+        assistantMsgWithTokens("a3", "more content", { input: 250_000, output: 50_000 }),
+    ]
+    injectCompressNudges(state, config, logger, msgs3, {} as any)
+    assert.equal(state.nudges.shouldInjectThisTurn, true, "turn 3: nudge fires at full threshold after failed compress")
+})
+

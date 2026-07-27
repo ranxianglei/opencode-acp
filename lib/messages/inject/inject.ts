@@ -384,13 +384,6 @@ export const injectCompressNudges = (
         applyAnchoredNudges(state, config, messages, prompts, compressionPriorities, currentTokens, modelContextLimit, suffixMessage)
     }
 
-    if (state.nudges.lastPerMessageNudgeTokens === undefined && currentTokens !== undefined) {
-        // Growth is measured from the session's starting context — the system
-        // prompt is always present and is NOT growth.
-        state.nudges.lastPerMessageNudgeTokens = currentTokens
-        baselineReEstablished = true
-    }
-
     // ── Tier 2/3 triggers — only if T1 didn't already fire ────────────
     // Priority: T1 > T2 > T3. T1 compression reduces raw context first.
     // Each tier has independent cadence counters — T2 firing doesn't block T3.
