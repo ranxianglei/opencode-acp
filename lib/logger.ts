@@ -3,6 +3,11 @@ import { join } from "path"
 import { existsSync } from "fs"
 import { homedir } from "os"
 
+/** ACP version, injected at build time by tsup define */
+declare const ACP_VERSION: string | undefined
+
+const LOG_VERSION = typeof ACP_VERSION !== "undefined" ? ACP_VERSION : "dev"
+
 export class Logger {
     private logDir: string
     public enabled: boolean
@@ -76,7 +81,7 @@ export class Logger {
             const timestamp = new Date().toISOString()
             const dataStr = this.formatData(data)
 
-            const logLine = `${timestamp} ${level.padEnd(5)} ${component}: ${message}${dataStr ? " | " + dataStr : ""}\n`
+            const logLine = `${timestamp} ${level.padEnd(5)} ${component}: ${message}${dataStr ? " | " + dataStr : ""} | v=${LOG_VERSION}\n`
 
             const dailyLogDir = join(this.logDir, "daily")
             if (!existsSync(dailyLogDir)) {
@@ -225,6 +230,11 @@ export class Logger {
             const timestamp = new Date().toISOString().replace(/[:.]/g, "-")
             const contextFile = join(contextDir, `${timestamp}.json`)
             await writeFile(contextFile, JSON.stringify(minimized, null, 2))
+
+            const versionFile = join(contextDir, "_version")
+            if (!existsSync(versionFile)) {
+                await writeFile(versionFile, LOG_VERSION)
+            }
         } catch (error) {}
     }
 }
