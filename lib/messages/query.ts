@@ -40,6 +40,30 @@ export const messageHasCompress = (message: WithParts): boolean => {
     )
 }
 
+/**
+ * Detects ANY compress tool call — including failed/rejected ones.
+ *
+ * Used for nudge state management: a failed compress attempt means the model
+ * DID respond to the nudge (it tried to compress), so the pending-nudge state
+ * should be cleared. Without this, the threshold stays permanently halved
+ * after a rejected compress, creating a self-accelerating nudge loop.
+ *
+ * For priority/state queries that only care about SUCCESSFUL compressions
+ * (e.g. message priority classification), use `messageHasCompress` instead.
+ */
+export const messageHasCompressAttempt = (message: WithParts): boolean => {
+    if (!isMessageWithInfo(message)) {
+        return false
+    }
+
+    if (message.info.role !== "assistant") {
+        return false
+    }
+
+    const parts = Array.isArray(message.parts) ? message.parts : []
+    return parts.some((part) => part.type === "tool" && part.tool === "compress")
+}
+
 export const isIgnoredUserMessage = (message: WithParts): boolean => {
     if (!isMessageWithInfo(message)) {
         return false
