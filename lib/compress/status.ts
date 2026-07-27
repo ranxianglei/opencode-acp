@@ -5,6 +5,7 @@ import type { CompressionBlock, WithParts } from "../state/types"
 import {
     estimateContextComposition,
     buildCompressibleRanges,
+    computeProtectedRefs,
     formatCompressibleRanges,
 } from "../messages/inject/utils"
 import { fetchSessionMessages } from "./search"
@@ -255,11 +256,15 @@ function renderOverview(
             const entry = pruneMap.get(msgId)
             return !entry || entry.activeBlockIds.length === 0
         })
+        const protectedRefs = ctx.config?.compress
+            ? computeProtectedRefs(visibleRaw, ctx.state, ctx.config.compress)
+            : new Set<string>()
         const contextRanges = buildCompressibleRanges(
             visibleRaw,
             ctx.state,
             ctx.config?.compress?.protectedTools ?? [],
             ctx.config?.protectedFilePatterns ?? [],
+            protectedRefs,
         )
         if (contextRanges.compressible.length > 0 || contextRanges.protected.length > 0) {
             lines.push("")
@@ -287,11 +292,15 @@ function renderUncompressedRanges(rawMessages: WithParts[], ctx: ToolContext): s
         return !entry || entry.activeBlockIds.length === 0
     })
 
+    const protectedRefs = ctx.config?.compress
+        ? computeProtectedRefs(visibleMessages, ctx.state, ctx.config.compress)
+        : new Set<string>()
     const contextRanges = buildCompressibleRanges(
         visibleMessages,
         ctx.state,
         ctx.config?.compress?.protectedTools ?? [],
         ctx.config?.protectedFilePatterns ?? [],
+        protectedRefs,
     )
     const compressible = contextRanges.compressible
     const totalTokens = compressible.reduce((s, r) => s + r.tokens, 0)

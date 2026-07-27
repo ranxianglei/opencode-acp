@@ -1,5 +1,6 @@
 import type { SessionState, WithParts } from "../state"
-import { isIgnoredUserMessage } from "../messages/query"
+import type { CompressConfig } from "../config"
+import { isIgnoredUserMessage, isSyntheticMessage } from "../messages/query"
 import {
     getFilePathsFromParameters,
     isFilePathProtected,
@@ -229,5 +230,48 @@ export function filterProtectedToolMessages(
         messageIds: filteredMessageIds,
         messageTokenById: filteredMessageTokenById,
         toolIds: filteredToolIds,
+    }
+}
+
+export function filterLastUserMessage(
+    selection: SelectionResolution,
+    searchContext: SearchContext,
+    state: SessionState,
+    compress: CompressConfig,
+): SelectionResolution {
+    if (compress.lastSegmentSoftBlock === false) return selection
+    if (!(compress.preserveLastUserMessage ?? true)) return selection
+
+    let lastUserMessageId: string | null = null
+    for (let i = searchContext.rawMessages.length - 1; i >= 0; i--) {
+        const msg = searchContext.rawMessages[i]
+        const id = msg?.info?.id
+        if (!id || typeof id !== "string") continue
+        if (isSyntheticMessage(msg)) continue
+        if (isIgnoredUserMessage(msg)) continue
+        if (state.prune.messages.byMessageId.has(id)) continue
+        if (msg.info.role === "user") {
+            lastUserMessageId = id
+            break
+        }
+    }
+
+    if (!lastUserMessageId || !selection.messageIds.includes(lastUserMessageId)) {
+        return selection
+    }
+
+    const filteredMessageIds = selection.messageIds.filter((id) => id !== lastUserMessageId)
+    const filteredMessageTokenById = new Map<string, number>()
+    for (const id of filteredMessageIds) {
+        const tokens = selection.messageTokenById.get(id)
+        if (tokens !== undefined) {
+            filteredMessageTokenById.set(id, tokens)
+        }
+    }
+
+    return {
+        ...selection,
+        messageIds: filteredMessageIds,
+        messageTokenById: filteredMessageTokenById,
     }
 }

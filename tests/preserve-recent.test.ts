@@ -3,7 +3,7 @@ import test from "node:test"
 import { createSessionState, type WithParts } from "../lib/state"
 import type { PluginConfig } from "../lib/config"
 import { Logger } from "../lib/logger"
-import { computeProtectedRefs, excludeProtectedRanges, type CompressibleRange } from "../lib/messages/inject/utils"
+import { buildCompressibleRanges, computeProtectedRefs, excludeProtectedRanges, type CompressibleRange } from "../lib/messages/inject/utils"
 import { injectCompressNudges } from "../lib/messages/inject/inject"
 
 const SID = "ses-preserve-test"
@@ -120,14 +120,14 @@ test("computeProtectedRefs: default config protects last 40 msgs (token rule bro
     assert.ok(!protectedRefs.has("m00010"), "msg-10 NOT protected (outside token window)")
 })
 
-test("computeProtectedRefs: last user message always protected even with count=1", () => {
+test("computeProtectedRefs: last user message NOT in hard-protected set (soft-filtered in pipeline)", () => {
     const state = createSessionState()
     setupRefs(state, 50)
     const messages = buildMessages(50, 2000)
     const compress = buildCompress({ preserveRecentMessages: 1, preserveRecentTokens: 0 })
     const protectedRefs = computeProtectedRefs(messages, state, compress)
     assert.ok(protectedRefs.has("m00050"), "last message protected by count")
-    assert.ok(protectedRefs.has("m00049"), "last user message (msg-49) protected by user-msg rule")
+    assert.ok(!protectedRefs.has("m00049"), "last user message (msg-49) NOT in hard-protected set — soft-filtered by filterLastUserMessage in compress pipeline")
     assert.ok(!protectedRefs.has("m00048"), "msg-48 NOT protected")
 })
 
@@ -283,4 +283,56 @@ test("excludeProtectedRanges: range extending INTO protected zone is filtered", 
     assert.equal(filtered.length, 1, "only fully-unprotected range survives")
     assert.equal(filtered[0].startRef, "m00001")
     assert.equal(filtered[0].endRef, "m00005")
+})
+
+test("buildCompressibleRanges: splits giant group at protected-zone boundary (autonomous session)", () => {
+    const state = createSessionState()
+    const messages: WithParts[] = []
+    for (let i = 1; i <= 50; i++) {
+        const id = `msg-${i}`
+        state.messageIds.byRawId.set(id, `m${String(i).padStart(5, "0")}`)
+        const role: "user" | "assistant" = i === 1 ? "user" : "assistant"
+        messages.push(msg(id, role, "x".repeat(2000)))
+    }
+
+    const compress = buildCompress({ preserveRecentMessages: 20, preserveRecentTokens: 0 })
+    const protectedRefs = computeProtectedRefs(messages, state, compress)
+    assert.ok(protectedRefs.has("m00031"), "msg-31 is first protected (last 20)")
+    assert.ok(protectedRefs.has("m00050"), "msg-50 is protected")
+
+    const withoutZone = buildCompressibleRanges(messages, state, [], [])
+    const lastRangeWithout = withoutZone.compressible[withoutZone.compressible.length - 1]
+    assert.ok(
+        lastRangeWithout && protectedRefs.has(lastRangeWithout.endRef),
+        "without protectedZoneRefs, last range extends into protected zone (the bug)",
+    )
+
+    const withZone = buildCompressibleRanges(messages, state, [], [], protectedRefs)
+    for (const r of withZone.compressible) {
+        assert.ok(!protectedRefs.has(r.endRef), `range endRef ${r.endRef} must NOT be in protected zone after splitting`)
+        assert.ok(!protectedRefs.has(r.startRef), `range startRef ${r.startRef} must NOT be in protected zone after splitting`)
+    }
+    assert.ok(withZone.compressible.length > 0, "unprotected head produces at least one range")
+    assert.ok(
+        withZone.compressible.some((r) => r.count >= 10),
+        "unprotected head contains a substantial range (10+ msgs)",
+    )
+})
+
+test("buildCompressibleRanges: all messages in protected zone → no compressible ranges", () => {
+    const state = createSessionState()
+    const messages: WithParts[] = []
+    for (let i = 1; i <= 10; i++) {
+        const id = `msg-${i}`
+        state.messageIds.byRawId.set(id, `m${String(i).padStart(5, "0")}`)
+        const role: "user" | "assistant" = i === 1 ? "user" : "assistant"
+        messages.push(msg(id, role, "x".repeat(2000)))
+    }
+
+    const compress = buildCompress({ preserveRecentMessages: 20, preserveRecentTokens: 0 })
+    const protectedRefs = computeProtectedRefs(messages, state, compress)
+    assert.equal(protectedRefs.size, 10, "all 10 messages in protected zone (last 20)")
+
+    const result = buildCompressibleRanges(messages, state, [], [], protectedRefs)
+    assert.equal(result.compressible.length, 0, "no compressible ranges when all messages protected")
 })

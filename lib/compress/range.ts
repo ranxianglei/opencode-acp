@@ -15,6 +15,7 @@ import {
     appendProtectedPromptInfo,
     appendProtectedTools,
     appendProtectedUserMessages,
+    filterLastUserMessage,
     filterProtectedToolMessages,
 } from "./protected-content"
 import {
@@ -136,6 +137,15 @@ export function createCompressRangeTool(factoryCtx: ToolFactoryContext): ReturnT
                         searchContext,
                         ctx.config.compress.protectedTools,
                         ctx.config.protectedFilePatterns,
+                    ),
+                }))
+                .map((plan) => ({
+                    ...plan,
+                    selection: filterLastUserMessage(
+                        plan.selection,
+                        searchContext,
+                        ctx.state,
+                        ctx.config.compress,
                     ),
                 }))
                 .filter((plan) => plan.selection.messageIds.length > 0)

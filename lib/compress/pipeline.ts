@@ -236,9 +236,12 @@ export function checkPhantomBlock(
 }
 
 /**
- * Compute the set of protected message raw IDs based on recent-message,
- * recent-token, and last-user-message rules. These IDs cannot be included
- * in a compression plan unless the caller passes `dangerous: true`.
+ * Compute the set of protected message raw IDs based on recent-message and
+ * recent-token rules. These IDs cannot be included in a compression plan
+ * unless the caller passes `dangerous: true`.
+ *
+ * Note: preserveLastUserMessage is handled by soft filtering in the compress
+ * pipeline (filterLastUserMessage), not here.
  */
 export function computeProtectedRawIds(
     rawMessages: WithParts[],
@@ -247,7 +250,6 @@ export function computeProtectedRawIds(
 ): Set<string> {
     const preserveN = compress.preserveRecentMessages ?? 20
     const preserveTokens = compress.preserveRecentTokens ?? 20000
-    const preserveLastUser = compress.preserveLastUserMessage ?? true
 
     const result = new Set<string>()
 
@@ -280,15 +282,6 @@ export function computeProtectedRawIds(
         for (let i = visible.length - 1; i >= 0 && tokenAccum < preserveTokens; i--) {
             result.add(visible[i]!.id)
             tokenAccum += visible[i]!.tokens
-        }
-    }
-
-    if (preserveLastUser) {
-        for (let i = visible.length - 1; i >= 0; i--) {
-            if (visible[i]!.isUser) {
-                result.add(visible[i]!.id)
-                break
-            }
         }
     }
 
