@@ -109,6 +109,9 @@ export const injectCompressNudges = (
     if (currentTurnHasCompress) {
         const wasNudgeTriggered = state.nudges.lastNudgeShownTokens !== undefined
 
+        // Clear anchors regardless of success/failure — a failed attempt still
+        // means the model responded to the nudge, so we stop the halved-threshold
+        // loop (Issue #216 Defect 2).
         state.nudges.contextLimitAnchors.clear()
         state.nudges.turnNudgeAnchors.clear()
         state.nudges.iterationNudgeAnchors.clear()
@@ -117,14 +120,14 @@ export const injectCompressNudges = (
         state.nudges.lastTier2NudgeTokens = undefined
         state.nudges.lastTier3NudgeTokens = undefined
 
-        // Proportional baseline adjustment: if nudge-triggered compress, adjust
-        // baseline by how much was actually compressed. >50% of growth compressed
-        // → full baseline update. 20-30% → partial update. This prevents both
-        // baseline leak (small compress → full reset → growth forgotten) and
-        // over-compression (model gets re-nudged too soon after a small compress).
-        //
-        // Voluntary compress (no nudge shown) keeps the original baseline entirely.
-        if (wasNudgeTriggered && !state.nudges.compressBaselineSet) {
+        // Proportional baseline adjustment: ONLY when compress actually succeeded
+        // (something was compressed). For failed/rejected attempts, baseline stays
+        // unchanged — growth accumulates until there's genuinely more to compress.
+        const currentTurnHasSuccessfulCompress = messages
+            .slice(currentTurnStart)
+            .some((m) => m.info.role === "assistant" && messageHasCompress(m))
+
+        if (currentTurnHasSuccessfulCompress && wasNudgeTriggered && !state.nudges.compressBaselineSet) {
             const baseline = state.nudges.lastPerMessageNudgeTokens
             const postCompress = currentTokens
             // preCompressTokens is captured in hooks.ts BEFORE prune() runs
@@ -527,10 +530,7 @@ export const injectCompressNudges = (
             breakdown += `\nUse \`acp_status({scope:"uncompressed"})\` to re-fetch compressible ranges after compressing, or \`acp_status\` for compressed block details.`
 
             if (effectiveTipsVariant !== "maxLimit") {
-                if (!state.nudges.compressRulesShown) {
-                    breakdown += `\n\n${HOW_TO_COMPRESS_RULES}`
-                    state.nudges.compressRulesShown = true
-                }
+                breakdown += `\n\n${HOW_TO_COMPRESS_RULES}`
             }
             appendToLastTextPart(suffixMessage, breakdown)
         }

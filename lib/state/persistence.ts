@@ -52,7 +52,6 @@ export interface PersistedNudges {
     /** @deprecated use lastTier2NudgeTokens — migrated on load */
     lastTierNudgeTokens?: number
     compressBaselineSet?: boolean
-    compressRulesShown?: boolean
 }
 
 export interface PersistedMessageIds {
