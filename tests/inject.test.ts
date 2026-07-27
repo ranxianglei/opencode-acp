@@ -840,6 +840,11 @@ test("nudge suppressed when all content is protected (nothing to compress)", () 
         false,
         "55K growth triggers nudgeAllowed but ALL tool output is protected (skill) → nothing to compress → nudge suppressed",
     )
+    assert.equal(
+        state.nudges.lastPerMessageNudgeTokens,
+        200_000,
+        "baseline PRESERVED — not advanced to currentTokens on nothingToCompress",
+    )
 })
 
 test("emergency override fires even when all content is protected", () => {
@@ -872,7 +877,7 @@ test("emergency override fires even when all content is protected", () => {
     )
 })
 
-test("baseline advances when nudge suppressed — discrete 5% intervals (all protected)", () => {
+test("baseline preserved when nudge suppressed — growth accumulates (all protected)", () => {
     const state = createSessionState()
     state.modelContextLimit = 1_000_000
     state.messageIds.byRawId.set("a1", "m00001")
@@ -896,8 +901,8 @@ test("baseline advances when nudge suppressed — discrete 5% intervals (all pro
     assert.equal(state.nudges.shouldInjectThisTurn, false, "55K growth but all protected → suppressed")
     assert.equal(
         state.nudges.lastPerMessageNudgeTokens,
-        255_000,
-        "baseline advanced to currentTokens (200K input + 55K output)",
+        200_000,
+        "baseline preserved — not advanced on nothingToCompress",
     )
 
     state.messageIds.byRawId.set("a2", "m00002")
@@ -914,16 +919,16 @@ test("baseline advances when nudge suppressed — discrete 5% intervals (all pro
     assert.equal(
         state.nudges.shouldInjectThisTurn,
         false,
-        "5K growth from advanced baseline (260K - 255K) < 50K threshold → no nudge",
+        "still all protected → suppressed (growth 60K from preserved baseline)",
     )
     assert.equal(
         state.nudges.lastPerMessageNudgeTokens,
-        255_000,
-        "baseline NOT advanced when nudgeAllowed is false (growth below threshold)",
+        200_000,
+        "baseline still preserved — growth accumulates until compressible content exists",
     )
 })
 
-test("baseline advances when filter suppressed — compressible too small", () => {
+test("baseline preserved when filter suppressed — compressible too small", () => {
     const state = createSessionState()
     state.modelContextLimit = 1_000_000
     state.messageIds.byRawId.set("u1", "m00001")
@@ -944,8 +949,8 @@ test("baseline advances when filter suppressed — compressible too small", () =
     assert.equal(state.nudges.shouldInjectThisTurn, false, "55K growth but 20K compressible < 100K floor → suppressed")
     assert.equal(
         state.nudges.lastPerMessageNudgeTokens,
-        255_000,
-        "baseline advanced when filter suppressed (too small to recommend)",
+        200_000,
+        "baseline preserved — growth accumulates until compressible content exists",
     )
 })
 
@@ -979,8 +984,8 @@ test("pending nudge cleared when suppressed — threshold resets to full", () =>
     )
     assert.equal(
         state.nudges.lastPerMessageNudgeTokens,
-        255_000,
-        "baseline advanced to currentTokens",
+        200_000,
+        "baseline preserved — growth accumulates for next turn",
     )
 })
 
@@ -1006,7 +1011,7 @@ test("voluntary compress after suppression does not trigger proportional baselin
     ]
     injectCompressNudges(state, config, logger, turn1, {} as any)
     assert.equal(state.nudges.shouldInjectThisTurn, false, "turn 1: all protected → suppressed")
-    assert.equal(state.nudges.lastPerMessageNudgeTokens, 255_000, "turn 1: baseline advanced")
+    assert.equal(state.nudges.lastPerMessageNudgeTokens, 200_000, "turn 1: baseline preserved")
     assert.equal(state.nudges.lastNudgeShownTokens, undefined, "turn 1: pending nudge cleared")
 
     state.messageIds.byRawId.set("a2", "m00002")
@@ -1018,7 +1023,7 @@ test("voluntary compress after suppression does not trigger proportional baselin
     injectCompressNudges(state, config, logger, turn2, {} as any)
     assert.equal(
         state.nudges.lastPerMessageNudgeTokens,
-        255_000,
+        200_000,
         "turn 2: voluntary compress (wasNudgeTriggered=false) keeps suppression baseline — no proportional adjustment",
     )
     assert.equal(state.nudges.compressBaselineSet, false, "lock not set for voluntary compress")
@@ -1323,5 +1328,58 @@ test("ensureSessionInitialized restores persisted modelContextLimit after restar
         "persisted modelContextLimit must be restored so adaptive thresholds use the real limit, not the 6K floor",
     )
     await cleanupModelLimitSession()
+})
+
+test("E2E growth: baseline preserved through nothingToCompress, nudge fires when content exits protected zone", () => {
+    const state = createSessionState()
+    state.modelContextLimit = 1_000_000
+
+    const config = buildConfig()
+    config.compress.maxContextLimit = 500_000
+    config.compress.minContextLimit = 200_000
+    config.compress.protectedTools = ["skill"]
+    config.compress.preserveRecentMessages = 20
+    config.compress.preserveRecentTokens = 0
+    config.compress.preserveLastUserMessage = false
+
+    function buildMessages(n: number, toolOutputSize: number = 200_000): WithParts[] {
+        const msgs: WithParts[] = []
+        for (let i = 1; i <= n; i++) {
+            const uid = `u${i}`
+            const aid = `a${i}`
+            if (!state.messageIds.byRawId.has(uid)) state.messageIds.byRawId.set(uid, `m${String(i * 2 - 1).padStart(5, "0")}`)
+            if (!state.messageIds.byRawId.has(aid)) state.messageIds.byRawId.set(aid, `m${String(i * 2).padStart(5, "0")}`)
+            msgs.push(userMsg(uid, `task ${i}`))
+            msgs.push(assistantMsgWithTokens(aid, `result ${i}`, { input: 200_000, output: 80_000 }, [
+                toolPart(`tp${i}`, "x".repeat(toolOutputSize)),
+            ]))
+        }
+        return msgs
+    }
+
+    state.nudges.lastPerMessageNudgeTokens = 200_000
+
+    const turn1 = buildMessages(5)
+    injectCompressNudges(state, config, logger, turn1, {} as any)
+    assert.equal(state.nudges.shouldInjectThisTurn, false, "turn 1: 5 msgs, all within 20-msg protection → suppressed")
+    assert.equal(state.nudges.lastPerMessageNudgeTokens, 200_000, "turn 1: baseline PRESERVED")
+
+    const turn2 = buildMessages(10)
+    injectCompressNudges(state, config, logger, turn2, {} as any)
+    assert.equal(state.nudges.shouldInjectThisTurn, false, "turn 2: 10 msgs, still within 20-msg protection → suppressed")
+    assert.equal(state.nudges.lastPerMessageNudgeTokens, 200_000, "turn 2: baseline STILL PRESERVED — growth accumulating")
+
+    const turn3 = buildMessages(25)
+    injectCompressNudges(state, config, logger, turn3, {} as any)
+    assert.equal(
+        state.nudges.shouldInjectThisTurn,
+        true,
+        "turn 3: 50 msgs, first 30 outside 20-msg protection, large outputs → nudge FIRES",
+    )
+    assert.equal(
+        state.nudges.lastPerMessageNudgeTokens,
+        200_000,
+        "turn 3: baseline still at original — growth accumulated correctly, not eaten by old bug",
+    )
 })
 

@@ -365,8 +365,15 @@ export const injectCompressNudges = (
     const nothingToCompress = filterSuppressed || allProtected
     let shouldInject = nudgeAllowed && (!nothingToCompress || emergencyOverride)
 
-    if (nudgeAllowed && nothingToCompress && !emergencyOverride && currentTokens !== undefined) {
-        state.nudges.lastPerMessageNudgeTokens = currentTokens
+    // [FIX baseline-reset] Do NOT reset the growth baseline when nothingToCompress
+    // is true. The old code reset lastPerMessageNudgeTokens = currentTokens here,
+    // which "ate" accumulated growth every time the growth threshold was met but
+    // there was nothing to compress (e.g., all ranges in the protected zone for a
+    // short session). This created a feedback loop: growth → nudgeAllowed →
+    // nothingToCompress → baseline reset → growth forgotten → model never sees a
+    // nudge even though context grew well past the threshold. Instead, preserve
+    // the baseline so growth accumulates until there IS something to compress.
+    if (nudgeAllowed && nothingToCompress && !emergencyOverride) {
         state.nudges.lastNudgeShownTokens = undefined
     }
 
