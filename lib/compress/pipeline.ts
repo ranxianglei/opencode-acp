@@ -248,8 +248,8 @@ export function computeProtectedRawIds(
     state: SessionState,
     compress: import("../config").CompressConfig,
 ): Set<string> {
-    const preserveN = compress.preserveRecentMessages ?? 20
-    const preserveTokens = compress.preserveRecentTokens ?? 20000
+    const preserveN = compress.preserveRecentMessages ?? 5
+    const preserveTokens = compress.preserveRecentTokens ?? 5000
 
     const result = new Set<string>()
 
@@ -318,7 +318,7 @@ export function checkProtectedRange(
 
     const sample = coveredProtected.slice(0, 3).join(", ")
     const nMsgs = ctx.config.compress.preserveRecentMessages ?? 20
-    const nToks = ctx.config.compress.preserveRecentTokens ?? 20000
+    const nToks = ctx.config.compress.preserveRecentTokens ?? 5000
     return new Error(
         `This range includes ${coveredProtected.length} protected recent message(s) (${sample}), ` +
             "which are likely still needed for the current task step.\n\n" +

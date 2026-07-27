@@ -275,3 +275,67 @@ export function filterLastUserMessage(
         messageTokenById: filteredMessageTokenById,
     }
 }
+
+export function filterProtectedRecentMessages(
+    selection: SelectionResolution,
+    searchContext: SearchContext,
+    state: SessionState,
+    compress: CompressConfig,
+): SelectionResolution {
+    if (compress.lastSegmentSoftBlock === false) return selection
+
+    const preserveN = compress.preserveRecentMessages ?? 5
+    const preserveTokens = compress.preserveRecentTokens ?? 5000
+    if (preserveN <= 0 && preserveTokens <= 0) return selection
+
+    const protectedIds = new Set<string>()
+    const visible: { id: string; tokens: number }[] = []
+    for (const msg of searchContext.rawMessages) {
+        const id = msg?.info?.id
+        if (!id || typeof id !== "string") continue
+        if (isSyntheticMessage(msg)) continue
+        if (isIgnoredUserMessage(msg)) continue
+        if (state.prune.messages.byMessageId.has(id)) continue
+        let tokens = 0
+        for (const part of msg.parts || []) {
+            if (part.type === "text" && typeof (part as any).text === "string") {
+                tokens += Math.round(((part as any).text as string).length / 4)
+            } else if (part.type !== "text" && part.type !== "reasoning") {
+                tokens += Math.round(JSON.stringify(part).length / 4)
+            }
+        }
+        visible.push({ id, tokens })
+    }
+
+    if (preserveN > 0) {
+        for (const m of visible.slice(-preserveN)) {
+            protectedIds.add(m.id)
+        }
+    }
+    if (preserveTokens > 0) {
+        let tokenAccum = 0
+        for (let i = visible.length - 1; i >= 0 && tokenAccum < preserveTokens; i--) {
+            protectedIds.add(visible[i]!.id)
+            tokenAccum += visible[i]!.tokens
+        }
+    }
+
+    if (protectedIds.size === 0) return selection
+    const hasProtected = selection.messageIds.some((id) => protectedIds.has(id))
+    if (!hasProtected) return selection
+
+    const filteredMessageIds = selection.messageIds.filter((id) => !protectedIds.has(id))
+    const filteredMessageTokenById = new Map<string, number>()
+    for (const id of filteredMessageIds) {
+        const tokens = selection.messageTokenById.get(id)
+        if (tokens !== undefined) {
+            filteredMessageTokenById.set(id, tokens)
+        }
+    }
+
+    return {
+        ...selection,
+        messageIds: filteredMessageIds,
+        messageTokenById: filteredMessageTokenById,
+    }
+}
