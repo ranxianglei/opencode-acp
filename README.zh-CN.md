@@ -482,6 +482,14 @@ ACP 在首次启动时自动将配置从 `dcp.jsonc` 迁移到 `acp.jsonc`，将
 
 ## 更新日志
 
+### v1.14.4 — Tier 检测 + E2E 测试 + Debug 通知 + Nudge 循环修复（PRs #215, #214, #217, #218）
+
+**问题**：自 v1.14.3 以来积累的 4 个问题。(1) **Tier 误分类**（PR #215）：`applyCompressionState` 从 `consumedBlockIds` 判断压缩层级——只要消费了任何已有 block 就会提升层级。这导致那些恰好覆盖了已有 T1 block 的 T1 压缩被错误分类为 T2（在一个真实 session 中，18 个标记为 T2 的 block 里有 6 个被误分类）。(2) **E2E 测试缺口**（PR #214）：E2E 测试禁用了所有保护（`preserveRecentMessages: 0`），CI 只运行 4/6 个场景，`verify.ts` 只检查 `blockCount`——v1.14.x 修了 3 次的保护机制在 E2E 里完全没有覆盖。(3) **Debug 通知不可见**（PR #217）：开启 `debug: true` 时，压缩通知只发到 toast——用户无法在 chat session 里看到用于调试的通知。(4) **Nudge 注入循环**（PR #218，issue #216）：`applyAnchoredNudges` 在 `nothingToCompress` 计算之前就触发，导致即使没有可压缩内容，nudge 文本（"compress now"）也被注入——模型看到 nudge 但推荐列表为空，尝试随机压缩、失败、循环。此外 `messageHasCompress` 只识别 `status === "completed"`，失败的压缩不会重置被减半的 nudge 阈值，循环持续。
+
+**修复**：(1) PR #215——层级改由 `selection.startReference.kind` / `endReference.kind` 判断：消息边界 → T1，block 边界 → T2+（消费的最高层级 + 1）。T1 消费旧 T1 block 时，旧 block 仍会被停用（被取代），但新 block 正确得到 `tier=1`。新增 7 个回归测试。(2) PR #214——在 `run-e2e.sh` 中增加按场景的配置覆盖，`verify.ts` 增加 `compressedCount`/`minCompressedCount`/`maxCompressedCount` 检查，新增 2 个场景（07: protection-filtered、08: nudge-with-protection）使用生产配置（`preserveRecentMessages: 5`、`preserveLastUserMessage: true`），CI 场景从 4 个增加到 8 个。(3) PR #217——当 `config.debug` 开启时，`sendCompressNotification` 在 toast 之外额外调用 `sendIgnoredMessage()` 把通知注入到 chat session（用户可见、模型不可见，通过 `ignored: true`）。`dropEmptyMessages`（FIX #20）作为纵深防御在下次 LLM 调用前剥离 ignored-only 消息。Debug 关闭：仅 toast（不变）。(4) PR #218——把 `applyAnchoredNudges` 移到 `shouldInject` 计算之后并用 `if (shouldInject)` 守卫，没有可压缩内容时不注入 nudge 文本。新增 `messageHasCompressAttempt`（识别任何状态的 compress 调用）用于提前返回 / nudge 状态清理，而 baseline 调整仍要求 `messageHasCompress`（仅 completed）。失败的压缩现在会清除被减半的阈值，但不会错误地调整 baseline。
+
+文件：`lib/compress/state.ts`（PR #215），`scripts/e2e/{run-e2e.sh,verify.ts}` + `scripts/e2e/scenarios/{07-protection-filtered,08-nudge-with-protection}.json` + `.github/workflows/ci.yml`（PR #214），`lib/ui/notification.ts`（PR #217），`lib/messages/{query,inject/inject}.ts`（PR #218）。测试：`tests/e2e-tier-compression.test.ts`、`tests/query-pure.test.ts`、`tests/inject.test.ts`。936 个测试通过。
+
 ### v1.14.3 — 软化保护区 + 减小默认值（PR #212）
 
 **问题**：`checkProtectedRange` 硬拒绝任何覆盖保护区最近消息的压缩调用（最后 N 条消息 + 最后 N tokens）。模型收到错误后必须换范围重试或使用 `dangerous: true`。此外，默认 `preserveRecentMessages: 20` 和 `preserveRecentTokens: 20000`（约 40 条消息）过于激进 —— 在自主会话中保护了近一半的对话。
