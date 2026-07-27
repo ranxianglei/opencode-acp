@@ -635,6 +635,8 @@ test("applyCompressionState: mixed-tier consumption produces minTier+1, not maxT
     // Simulate a compression that "consumes" all three (as search.ts would
     // if their anchors fell in range)
     const selection = {
+        startReference: { kind: "compressed-block" as const, rawIndex: 0, blockId: 5 },
+        endReference: { kind: "compressed-block" as const, rawIndex: 2, blockId: 12 },
         messageIds: ["msg-5", "msg-10", "msg-12"],
         toolIds: [] as string[],
         messageTokenById: new Map([
@@ -700,6 +702,8 @@ test("applyCompressionState: T2 block gets effectiveCompressedTokens = consumed 
     populateBlocks(state, [t1a, t1b])
 
     const selection = {
+        startReference: { kind: "compressed-block" as const, rawIndex: 0, blockId: 1 },
+        endReference: { kind: "compressed-block" as const, rawIndex: 1, blockId: 2 },
         messageIds: [],
         toolIds: [],
         messageTokenById: new Map(),
@@ -1048,6 +1052,8 @@ test("E2E T3 decompress: default restores T2 summaries", async () => {
         summary: "T2 distilled summary",
         compressMessageId: "a5",
     }, {
+        startReference: { kind: "compressed-block" as const, rawIndex: 0, blockId: 1 },
+        endReference: { kind: "compressed-block" as const, rawIndex: 1, blockId: 2 },
         messageIds: [], toolIds: [],
         messageTokenById: new Map(),
     }, "a5", 3, "T2 distill", [1, 2])
@@ -1070,6 +1076,8 @@ test("E2E T3 decompress: default restores T2 summaries", async () => {
         summary: "T3 condensed",
         compressMessageId: "a6",
     }, {
+        startReference: { kind: "compressed-block" as const, rawIndex: 0, blockId: 3 },
+        endReference: { kind: "compressed-block" as const, rawIndex: 0, blockId: 3 },
         messageIds: [], toolIds: [],
         messageTokenById: new Map(),
     }, "a6", 4, "T3 condense", [3])
@@ -1128,14 +1136,18 @@ test("E2E T3 decompress: full:true recursively deactivates to raw", async () => 
         runId: 3, mode: "range", topic: "T2", batchTopic: "T2",
         startId: "b1", endId: "b2", summaryTokens: 200,
         summary: "T2 summary", compressMessageId: "a5",
-    }, { messageIds: [], toolIds: [], messageTokenById: new Map() },
+    }, { startReference: { kind: "compressed-block" as const, rawIndex: 0, blockId: 1 },
+         endReference: { kind: "compressed-block" as const, rawIndex: 1, blockId: 2 },
+         messageIds: [], toolIds: [], messageTokenById: new Map() },
        "a5", 3, "T2", [1, 2])
 
     applyCompressionState(state, {
         runId: 4, mode: "range", topic: "T3", batchTopic: "T3",
         startId: "b3", endId: "b3", summaryTokens: 100,
         summary: "T3 summary", compressMessageId: "a6",
-    }, { messageIds: [], toolIds: [], messageTokenById: new Map() },
+    }, { startReference: { kind: "compressed-block" as const, rawIndex: 0, blockId: 3 },
+         endReference: { kind: "compressed-block" as const, rawIndex: 0, blockId: 3 },
+         messageIds: [], toolIds: [], messageTokenById: new Map() },
        "a6", 4, "T3", [3])
 
     const t1a = state.prune.messages.blocksById.get(1)!

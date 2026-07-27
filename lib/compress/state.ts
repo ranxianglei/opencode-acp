@@ -77,6 +77,14 @@ export function applyCompressionState(
 
     const createdAt = Date.now()
 
+    // Tier detection: use boundary KIND (message vs block), not consumedBlockIds.
+    // A compress call with m-prefix startId/endId is always T1 (capturing raw
+    // messages), even if the range incidentally overlaps existing T1 blocks.
+    // A compress call with b-prefix startId/endId is T2+ (distilling summaries).
+    const isBlockBoundary =
+        selection.startReference?.kind === "compressed-block" ||
+        selection.endReference?.kind === "compressed-block"
+
     let minConsumedTier: number | undefined
     for (const consumedBlockId of consumed) {
         const cb = messagesState.blocksById.get(consumedBlockId)
@@ -87,12 +95,14 @@ export function applyCompressionState(
             }
         }
     }
-    const effectiveMinTier = minConsumedTier ?? 0
-    // Cross-tier contamination: if range accidentally includes a higher-tier
-    // block, output stays at the intended escalation level. Non-target-tier
-    // consumed blocks are NOT deactivated (handled below).
-    const outputTier = Math.min(3, effectiveMinTier + 1) as CompressionTier
-    const targetTierForConsumption = effectiveMinTier
+
+    const outputTier: CompressionTier = isBlockBoundary
+        ? (Math.min(3, (minConsumedTier ?? 1) + 1) as CompressionTier)
+        : 1
+    // For T1 compressions, consume existing T1 blocks (their messages are now
+    // covered by the new T1 block). For T2+ compressions, only consume blocks
+    // of the target tier.
+    const targetTierForConsumption = isBlockBoundary ? (minConsumedTier ?? 1) : 1
 
     const effectiveMessageIds = new Set<string>(selection.messageIds)
     const effectiveToolIds = new Set<string>(selection.toolIds)
