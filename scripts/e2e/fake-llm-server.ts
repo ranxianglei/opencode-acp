@@ -153,18 +153,20 @@ async function handleChatCompletion(req: Request): Promise<Response> {
     const lastMsg = messages[messages.length - 1]
     const lastRole = lastMsg?.role
 
+    const inputTokens = computeInputTokens(messages)
+
     log(
         `  body: stream=${isStream} msgs=${messages.length} ` +
-            `lastRole=${lastRole} tools=${tools.length}${isChild ? " [CHILD]" : ""}`,
+            `lastRole=${lastRole} tools=${tools.length} inputTok=${inputTokens}${isChild ? " [CHILD]" : ""}`,
     )
 
     if (tools.length === 0) {
         log("  → auxiliary call (tools=0), emitting generic text")
-        return textResponse(model, "Session summary.", isStream)
+        return textResponse(model, "Session summary.", isStream, inputTokens)
     }
 
     if (isChild) {
-        return handleChildRequest(model, messages, lastRole, lastMsg, isStream)
+        return handleChildRequest(model, messages, lastRole, lastMsg, isStream, inputTokens)
     }
 
     if (lastRole === "tool" || lastRole === "function") {
@@ -190,6 +192,7 @@ async function handleChatCompletion(req: Request): Promise<Response> {
                     },
                     currentStep.retryOnReject.acknowledgeRisk ?? true,
                     isStream,
+                    inputTokens,
                 )
             }
         }
@@ -198,11 +201,11 @@ async function handleChatCompletion(req: Request): Promise<Response> {
         const currentStep = scenario.turns[currentIdx]
         if (currentStep?.respond === "nudge-compress" && toolText.includes("Compressed")) {
             log("  → nudge-compress: compress succeeded, emitting acknowledgment")
-            return textResponse(model, "Compression complete.", isStream)
+            return textResponse(model, "Compression complete.", isStream, inputTokens)
         }
 
         log("  → tool result received, emitting text acknowledgment")
-        return textResponse(model, "Understood, continuing.", isStream)
+        return textResponse(model, "Understood, continuing.", isStream, inputTokens)
     }
 
     // Real conversation turn: increment file-based counter for stateful tracking
@@ -212,26 +215,26 @@ async function handleChatCompletion(req: Request): Promise<Response> {
 
     if (!step) {
         log(`  → no scenario step for turn ${turnIdx + 1}, emitting default text`)
-        return textResponse(model, "Done.", isStream)
+        return textResponse(model, "Done.", isStream, inputTokens)
     }
 
     log(`  → turn ${turnIdx + 1}: respond=${step.respond}`)
 
     if (step.respond === "task") {
-        return handleTaskStep(model, step, isStream)
+        return handleTaskStep(model, step, isStream, inputTokens)
     }
 
     if (step.respond === "compress") {
-        return handleCompressStep(model, messages, step, isStream)
+        return handleCompressStep(model, messages, step, isStream, inputTokens)
     }
 
     if (step.respond === "nudge-compress") {
-        return handleNudgeCompressStep(model, messages, step, isStream)
+        return handleNudgeCompressStep(model, messages, step, isStream, inputTokens)
     }
 
     // Text response
     const text = step.text ?? "(empty)"
-    return textResponse(model, text, isStream)
+    return textResponse(model, text, isStream, inputTokens)
 }
 
 function incrementTurnCounter(): number {
@@ -258,6 +261,7 @@ function handleCompressStep(
     messages: any[],
     step: ScenarioStep,
     isStream: boolean,
+    inputTokens: number,
 ): Response {
     // Parse all mNNNNN refs from the conversation.
     // ACP injects <dcp-message-id tokens="..." type="...">mNNNNN</dcp-message-id> tags.
@@ -265,7 +269,7 @@ function handleCompressStep(
 
     if (refs.length === 0) {
         log("  ⚠ no mNNNNN refs found — emitting fallback text")
-        return textResponse(model, "No messages to compress.", isStream)
+        return textResponse(model, "No messages to compress.", isStream, inputTokens)
     }
 
     log(`  → found ${refs.length} mNNNNN refs: ${refs[0]}..${refs[refs.length - 1]}`)
@@ -282,7 +286,7 @@ function handleCompressStep(
         })
 
         log(`  → batch compress: ${content.length} ranges`)
-        return compressResponse(model, { topic: "Batch compression", content }, step.acknowledgeRisk ?? false, isStream)
+        return compressResponse(model, { topic: "Batch compression", content }, step.acknowledgeRisk ?? false, isStream, inputTokens)
     }
 
     const [startId, endId] = resolveRange(refs, step.range ?? "all")
@@ -296,17 +300,19 @@ function handleCompressStep(
     ]
 
     log(`  → compress: ${startId}..${endId}, summary=${(step.summary ?? "").length} chars, ack=${step.acknowledgeRisk ?? false}`)
-    return compressResponse(model, { content }, step.acknowledgeRisk ?? false, isStream)
+    return compressResponse(model, { content }, step.acknowledgeRisk ?? false, isStream, inputTokens)
 }
 
 function detectNudge(messages: any[]): boolean {
-    const nudgeMarkers = ["[ACP]", "compressible ranges", "Breakdown:", "Context:"]
+    const nudgePhrases = [
+        "efficiency nudge to compress early",
+        "Context limit reached — compress now",
+        "since last nudge)",
+    ]
     for (const msg of messages) {
-        if (msg?.role === "system" || msg?.role === "user") {
+        if (msg?.role === "user") {
             const text = extractMessageText(msg)
-            const hasCompress = text.includes("compress")
-            const hasNudgeMarker = nudgeMarkers.some((m) => text.includes(m))
-            if (hasCompress && hasNudgeMarker) return true
+            if (nudgePhrases.some((p) => text.includes(p))) return true
         }
     }
     return false
@@ -317,20 +323,21 @@ function handleNudgeCompressStep(
     messages: any[],
     step: ScenarioStep,
     isStream: boolean,
+    inputTokens: number,
 ): Response {
     const nudgeDetected = detectNudge(messages)
 
     if (!nudgeDetected) {
         const growthText = step.growthText ?? "Working on the task. Generating content to fill the context window with meaningful discussion about software architecture and implementation details."
         log(`  → nudge-compress: no nudge detected, emitting ${growthText.length} chars of growth text`)
-        return textResponse(model, growthText, isStream)
+        return textResponse(model, growthText, isStream, inputTokens)
     }
 
     log(`  → nudge-compress: nudge DETECTED, emitting compress call`)
     const refs = parseMessageRefs(messages)
     if (refs.length === 0) {
         log("  ⚠ no mNNNNN refs found — emitting fallback text")
-        return textResponse(model, "No messages to compress.", isStream)
+        return textResponse(model, "No messages to compress.", isStream, inputTokens)
     }
 
     const [startId, endId] = resolveRange(refs, step.range ?? "all")
@@ -344,7 +351,7 @@ function handleNudgeCompressStep(
     ]
 
     log(`  → compress: ${startId}..${endId}, summary=${(step.summary ?? "").length} chars`)
-    return compressResponse(model, { content }, false, isStream)
+    return compressResponse(model, { content }, false, isStream, inputTokens)
 }
 
 function handleChildRequest(
@@ -353,6 +360,7 @@ function handleChildRequest(
     lastRole: string | undefined,
     lastMsg: any,
     isStream: boolean,
+    inputTokens: number,
 ): Response {
     const taskStep = scenario.turns.find((t) => t.respond === "task")
     const childTurns = taskStep?.subagent_turns ?? []
@@ -380,6 +388,7 @@ function handleChildRequest(
                     },
                     step.retryOnReject.acknowledgeRisk ?? true,
                     isStream,
+                    inputTokens,
                 )
             }
         }
@@ -390,25 +399,25 @@ function handleChildRequest(
 
     if (!step) {
         log(`  → [CHILD] turn ${turnIdx + 1}: no step, emitting default text`)
-        return textResponse(model, "Task complete.", isStream)
+        return textResponse(model, "Task complete.", isStream, inputTokens)
     }
 
     log(`  → [CHILD] turn ${turnIdx + 1}: respond=${step.respond}`)
 
     if (step.respond === "compress") {
-        return handleCompressStep(model, messages, step, isStream)
+        return handleCompressStep(model, messages, step, isStream, inputTokens)
     }
 
     if (step.respond === "tool") {
         const toolName = step.tool ?? "bash"
         log(`  → [CHILD] emitting ${toolName} tool call`)
-        return toolUseResponse(model, toolName, step.toolArgs ?? {}, isStream)
+        return toolUseResponse(model, toolName, step.toolArgs ?? {}, isStream, inputTokens)
     }
 
-    return textResponse(model, step.text ?? "Done.", isStream)
+    return textResponse(model, step.text ?? "Done.", isStream, inputTokens)
 }
 
-function handleTaskStep(model: string, step: ScenarioStep, isStream: boolean): Response {
+function handleTaskStep(model: string, step: ScenarioStep, isStream: boolean, inputTokens: number): Response {
     const args: Record<string, unknown> = {
         description: step.description ?? "E2E subagent task",
         prompt: step.prompt ?? "Complete the assigned task.",
@@ -416,7 +425,7 @@ function handleTaskStep(model: string, step: ScenarioStep, isStream: boolean): R
     }
 
     log(`  → emitting task tool call (subagent_type=${args.subagent_type})`)
-    return toolUseResponse(model, "task", args, isStream)
+    return toolUseResponse(model, "task", args, isStream, inputTokens)
 }
 
 /**
@@ -482,11 +491,17 @@ function resolveRange(refs: string[], range: "all" | [number, number]): [string,
 
 // --- Response builders ---
 
-function textResponse(model: string, text: string, isStream: boolean): Response {
+function computeInputTokens(messages: any[]): number {
+    const inputText = messages.map((m) => extractMessageText(m)).join("")
+    return Math.max(1, Math.ceil(inputText.length / 4))
+}
+
+function textResponse(model: string, text: string, isStream: boolean, inputTokens = 0): Response {
+    const outputTokens = Math.max(1, Math.ceil(text.length / 4))
     const usage = {
-        prompt_tokens: Math.max(1, Math.ceil(text.length / 4)),
-        completion_tokens: Math.max(1, Math.ceil(text.length / 4)),
-        total_tokens: Math.max(2, Math.ceil(text.length / 2)),
+        prompt_tokens: inputTokens || outputTokens,
+        completion_tokens: outputTokens,
+        total_tokens: (inputTokens || outputTokens) + outputTokens,
     }
 
     if (!isStream) {
@@ -514,6 +529,7 @@ function compressResponse(
     args: Record<string, unknown>,
     acknowledgeRisk: boolean,
     isStream: boolean,
+    inputTokens = 0,
 ): Response {
     const fullArgs = { ...args }
     if (acknowledgeRisk) {
@@ -522,10 +538,11 @@ function compressResponse(
 
     const argsJson = JSON.stringify(fullArgs)
     const callId = `call_${crypto.randomUUID().replace(/-/g, "").slice(0, 24)}`
+    const outputTokens = Math.max(1, Math.ceil(argsJson.length / 4))
     const usage = {
-        prompt_tokens: Math.max(1, Math.ceil(argsJson.length / 4)),
-        completion_tokens: Math.max(1, Math.ceil(argsJson.length / 4)),
-        total_tokens: Math.max(2, Math.ceil(argsJson.length / 2)),
+        prompt_tokens: inputTokens || outputTokens,
+        completion_tokens: outputTokens,
+        total_tokens: (inputTokens || outputTokens) + outputTokens,
     }
 
     if (!isStream) {
@@ -567,13 +584,15 @@ function toolUseResponse(
     toolName: string,
     args: Record<string, unknown>,
     isStream: boolean,
+    inputTokens = 0,
 ): Response {
     const argsJson = JSON.stringify(args)
     const callId = `call_${crypto.randomUUID().replace(/-/g, "").slice(0, 24)}`
+    const outputTokens = Math.max(1, Math.ceil(argsJson.length / 4))
     const usage = {
-        prompt_tokens: Math.max(1, Math.ceil(argsJson.length / 4)),
-        completion_tokens: Math.max(1, Math.ceil(argsJson.length / 4)),
-        total_tokens: Math.max(2, Math.ceil(argsJson.length / 2)),
+        prompt_tokens: inputTokens || outputTokens,
+        completion_tokens: outputTokens,
+        total_tokens: (inputTokens || outputTokens) + outputTokens,
     }
 
     if (!isStream) {

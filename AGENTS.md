@@ -856,10 +856,11 @@ Docker E2E tests (`scripts/e2e/`) MUST cover:
 
 | Requirement | What | Why |
 |-------------|------|-----|
+| **Nudge-triggered compression** | At least one scenario using `"respond": "nudge-compress"` — the fake LLM detects ACP's nudge injection via `detectNudge()` (scans user-role messages for nudge-unique phrases) and emits a compress call in response | Tests the real nudge→compress flow, not just scripted compress calls |
 | **Nudge state verification** | `verify.ts` MUST check nudge state fields (`lastPerMessageNudgeTokens`) not just `blockCount` | Block count alone cannot detect baseline corruption or nudge suppression bugs |
 | **Growth accumulation** | At least one scenario where context grows across multiple turns past the nudge threshold | Tests that all-compress-in-one-turn don't exercise the growth-gating logic |
 
-> **Note on nudge-triggered compression**: Ideally, at least one scenario should have the model compress *in response to* a nudge (not a scripted compress call). However, the current `fake-llm-server.ts` only supports scripted responses and cannot react to injected nudges. This is a known limitation — extending the fake server to parse nudge markers and conditionally emit compress calls is future work. Until then, the unit tests (§5.7.1) carry the primary responsibility for testing the nudge→compress flow.
+The `fake-llm-server.ts` reports `prompt_tokens` from actual input message sizes (via `computeInputTokens`), so ACP sees realistic token counts for threshold evaluation.
 
 #### 5.7.3 Why These Requirements Exist
 
