@@ -289,10 +289,9 @@ export function computeProtectedRawIds(
 }
 
 /**
- * Reject compression plans that cover protected messages (last N messages,
- * last N tokens, or the most recent user message). The caller must pass
- * `dangerous: true` to proceed. Returns an Error to throw if the caller
- * did not opt in.
+ * Reject compression plans that cover protected messages (last N messages
+ * or last N tokens). The caller must pass `dangerous: true` to proceed.
+ * Returns an Error to throw if the caller did not opt in.
  */
 export function checkProtectedRange(
     ctx: ToolContext,
@@ -323,7 +322,7 @@ export function checkProtectedRange(
     return new Error(
         `This range includes ${coveredProtected.length} protected recent message(s) (${sample}), ` +
             "which are likely still needed for the current task step.\n\n" +
-            `Protected zone: last ${nMsgs} messages + last ${nToks >= 1000 ? `${nToks / 1000}K` : nToks} tokens + most recent user message.\n` +
+            `Protected zone: last ${nMsgs} messages + last ${nToks >= 1000 ? `${nToks / 1000}K` : nToks} tokens.\n` +
             "If you are certain this content is genuinely consumed and must be compressed, " +
             "re-issue the call with `dangerous: true`.\n" +
             "Otherwise, compress older ranges that do not include the tail of the conversation.",

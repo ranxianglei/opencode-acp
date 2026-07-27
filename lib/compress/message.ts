@@ -119,8 +119,12 @@ export function createCompressMessageTool(factoryCtx: ToolFactoryContext): Retur
                 }))
                 .filter((plan) => plan.selection.messageIds.length > 0)
 
-            if (filteredPlans.length === 0 && skippedCount > 0) {
-                throw new Error(formatIssues(skippedIssues, skippedCount))
+            if (filteredPlans.length === 0) {
+                throw new Error(
+                    skippedCount > 0
+                        ? formatIssues(skippedIssues, skippedCount)
+                        : "All selected messages were filtered out (protected tool outputs and/or the last user message). They must remain in visible context.",
+                )
             }
 
             const minCompressRange = ctx.config.compress.minCompressRange
