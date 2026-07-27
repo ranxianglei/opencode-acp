@@ -320,15 +320,19 @@ export const injectCompressNudges = (
         config.protectedFilePatterns,
     )
 
+    // Compute protected zone first — buildCompressibleRanges uses it to split
+    // groups at the boundary so the unprotected head survives as a range.
+    const protectedRefs = computeProtectedRefs(messages, state, config.compress)
+
     // Compute recommendation filter early — the result gates the nudge below.
     const contextRanges = buildCompressibleRanges(
         messages,
         state,
         config.compress.protectedTools,
         config.protectedFilePatterns,
+        protectedRefs,
     )
 
-    const protectedRefs = computeProtectedRefs(messages, state, config.compress)
     const unprotectedCompressible = excludeProtectedRanges(contextRanges.compressible, protectedRefs)
 
     const recommendedRanges = filterRecommendedRanges(
@@ -362,7 +366,8 @@ export const injectCompressNudges = (
 
     const filterSuppressed = contextRanges.compressible.length > 0 && !hasRecommendations
     const allProtected = contextRanges.compressible.length === 0 && contextRanges.protected.length > 0
-    const nothingToCompress = filterSuppressed || allProtected
+    const allInProtectedZone = protectedRefs.size > 0 && unprotectedCompressible.length === 0
+    const nothingToCompress = filterSuppressed || allProtected || allInProtectedZone
     let shouldInject = nudgeAllowed && (!nothingToCompress || emergencyOverride)
 
     // [FIX baseline-reset] Do NOT reset the growth baseline when nothingToCompress

@@ -727,6 +727,7 @@ export function buildCompressibleRanges(
     state: SessionState,
     protectedTools: string[] = [],
     protectedFilePatterns: string[] = [],
+    protectedZoneRefs?: Set<string>,
 ): ContextRanges {
     const msgInfo: {
         ref: string
@@ -797,6 +798,17 @@ export function buildCompressibleRanges(
     let cur: CompressibleRange | null = null
     let prevRefNum = -2
     for (const info of msgInfo) {
+        // Split groups at the protected-zone boundary: close the current group
+        // before skipping protected messages, so the unprotected head survives
+        // as its own range instead of being swallowed by excludeProtectedRanges.
+        if (protectedZoneRefs?.has(info.ref)) {
+            if (cur) {
+                groups.push(cur)
+                cur = null
+            }
+            prevRefNum = info.refNum
+            continue
+        }
         const hasGap = info.refNum > prevRefNum + 1
         if (cur && ((info.isUser && cur.count >= 3) || hasGap)) {
             groups.push(cur)
@@ -1064,10 +1076,14 @@ export function formatCompressibleRanges(
 
 /**
  * Compute the set of protected message refs (mNNNNN) that should be excluded
- * from compression recommendations. Combines three rules:
+ * from compression recommendations. Combines two rules:
  *   1. Last N messages (preserveRecentMessages, default 20)
  *   2. Last N tokens expanding backward (preserveRecentTokens, default 20000)
- *   3. Most recent user message (preserveLastUserMessage, default true)
+ *
+ * Note: preserveLastUserMessage is no longer handled here (moved to soft
+ * filtering in the compress pipeline — see filterLastUserMessage). The last
+ * user message is filtered from the compress plan instead of causing a hard
+ * rejection.
  *
  * Only considers visible, non-synthetic, non-pruned messages.
  */
@@ -1080,7 +1096,6 @@ export function computeProtectedRefs(
 
     const preserveN = compress.preserveRecentMessages ?? 20
     const preserveTokens = compress.preserveRecentTokens ?? 20000
-    const preserveLastUser = compress.preserveLastUserMessage ?? true
 
     const result = new Set<string>()
 
@@ -1114,15 +1129,6 @@ export function computeProtectedRefs(
         for (let i = visible.length - 1; i >= 0 && tokenAccum < preserveTokens; i--) {
             result.add(visible[i]!.ref)
             tokenAccum += visible[i]!.tokens
-        }
-    }
-
-    if (preserveLastUser) {
-        for (let i = visible.length - 1; i >= 0; i--) {
-            if (visible[i]!.isUser) {
-                result.add(visible[i]!.ref)
-                break
-            }
         }
     }
 

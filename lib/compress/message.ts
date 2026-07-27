@@ -12,7 +12,7 @@ import {
     checkPhantomBlock,
     type NotificationEntry,
 } from "./pipeline"
-import { appendProtectedPromptInfo, appendProtectedTools } from "./protected-content"
+import { appendProtectedPromptInfo, appendProtectedTools, filterLastUserMessage } from "./protected-content"
 import {
     allocateBlockId,
     allocateRunId,
@@ -107,15 +107,31 @@ export function createCompressMessageTool(factoryCtx: ToolFactoryContext): Retur
                 ctx.config,
             )
 
-            if (plans.length === 0 && skippedCount > 0) {
-                throw new Error(formatIssues(skippedIssues, skippedCount))
+            const filteredPlans = plans
+                .map((plan) => ({
+                    ...plan,
+                    selection: filterLastUserMessage(
+                        plan.selection,
+                        searchContext,
+                        ctx.state,
+                        ctx.config.compress,
+                    ),
+                }))
+                .filter((plan) => plan.selection.messageIds.length > 0)
+
+            if (filteredPlans.length === 0) {
+                throw new Error(
+                    skippedCount > 0
+                        ? formatIssues(skippedIssues, skippedCount)
+                        : "All selected messages were filtered out (protected tool outputs and/or the last user message). They must remain in visible context.",
+                )
             }
 
             const minCompressRange = ctx.config.compress.minCompressRange
             if (minCompressRange > 0) {
                 let totalChars = 0
                 const counted = new Set<string>()
-                for (const plan of plans) {
+                for (const plan of filteredPlans) {
                     for (const messageId of plan.selection.messageIds) {
                         if (counted.has(messageId)) continue
                         counted.add(messageId)
@@ -140,7 +156,7 @@ export function createCompressMessageTool(factoryCtx: ToolFactoryContext): Retur
 
             const lastSegmentError = checkProtectedRange(
                 ctx,
-                plans.map((p) => p.selection.messageIds),
+                filteredPlans.map((p) => p.selection.messageIds),
                 rawMessages,
                 dangerous,
             )
@@ -149,11 +165,11 @@ export function createCompressMessageTool(factoryCtx: ToolFactoryContext): Retur
             const notifications: NotificationEntry[] = []
 
             const preparedPlans: Array<{
-                plan: (typeof plans)[number]
+                plan: (typeof filteredPlans)[number]
                 summaryWithTools: string
             }> = []
 
-            for (const plan of plans) {
+            for (const plan of filteredPlans) {
                 const summaryWithPromptInfo = appendProtectedPromptInfo(
                     plan.entry.summary,
                     plan.selection,
@@ -276,7 +292,7 @@ export function createCompressMessageTool(factoryCtx: ToolFactoryContext): Retur
                 throw error
             }
 
-            return formatResult(plans.length, skippedIssues, skippedCount)
+            return formatResult(filteredPlans.length, skippedIssues, skippedCount)
         },
     })
 }

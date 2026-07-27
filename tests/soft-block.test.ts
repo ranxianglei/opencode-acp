@@ -205,7 +205,7 @@ test("protected: error message mentions protected message IDs", async () => {
     )
 })
 
-test("protected: last user message is always protected even outside message window", async () => {
+test("protected: last user message soft-filtered (not hard-rejected) even outside message window", async () => {
     const sessionID = `ses_protected_6_${Date.now()}`
     const rawMessages = buildMessages(sessionID, 30)
     const state = createSessionState()
@@ -218,20 +218,16 @@ test("protected: last user message is always protected even outside message wind
         },
     })
 
-    await assert.rejects(
-        () =>
-            tool.execute(
-                {
-                    topic: "Test",
-                    content: [{ startId: ref(28), endId: ref(29), summary: "x".repeat(2000) }],
-                },
-                { ...toolCtx, sessionID },
-            ),
-        (err: Error) => {
-            assert.ok(err.message.includes("msg-29"), `should be blocked by user message protection: ${err.message}`)
-            return true
+    const result = await tool.execute(
+        {
+            topic: "Test",
+            content: [{ startId: ref(28), endId: ref(29), summary: "x".repeat(2000) }],
         },
+        { ...toolCtx, sessionID },
     )
+    assert.ok(typeof result === "string" && result.includes("Compressed"), "compress should succeed — last user message soft-filtered, not hard-rejected")
+    assert.ok(state.prune.messages.byMessageId.has("msg-28"), "msg-28 compressed into block")
+    assert.ok(!state.prune.messages.byMessageId.has("msg-29"), "msg-29 (last user message) NOT compressed — soft-filtered, survives in visible context")
 })
 
 test("protected: custom preserveRecentMessages=5 only protects last 5", async () => {

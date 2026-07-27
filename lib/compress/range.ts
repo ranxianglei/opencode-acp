@@ -15,6 +15,7 @@ import {
     appendProtectedPromptInfo,
     appendProtectedTools,
     appendProtectedUserMessages,
+    filterLastUserMessage,
     filterProtectedToolMessages,
 } from "./protected-content"
 import {
@@ -138,11 +139,20 @@ export function createCompressRangeTool(factoryCtx: ToolFactoryContext): ReturnT
                         ctx.config.protectedFilePatterns,
                     ),
                 }))
+                .map((plan) => ({
+                    ...plan,
+                    selection: filterLastUserMessage(
+                        plan.selection,
+                        searchContext,
+                        ctx.state,
+                        ctx.config.compress,
+                    ),
+                }))
                 .filter((plan) => plan.selection.messageIds.length > 0)
 
             if (filteredPlans.length === 0) {
                 throw new Error(
-                    "All selected messages contain protected tool outputs and cannot be compressed. Protected tools (task, skill, todowrite, etc.) must remain in visible context.",
+                    "All selected messages were filtered out (protected tool outputs and/or the last user message). They must remain in visible context.",
                 )
             }
 
