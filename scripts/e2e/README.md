@@ -65,6 +65,8 @@ the turn counter for real conversation turns.
 | `02-quality-reject.json` | Bad summary → quality gate rejects → verify 0 blocks |
 | `03-quality-acknowledge.json` | Reject → retry with `acknowledgeRisk` → verify 1 block |
 | `04-batch-compress.json` | 4 text turns → batch compress 3 ranges → verify 3 blocks |
+| `05-subagent-compress.json` | Subagent session → compress → verify parent + child blocks |
+| `06-nudge-triggered.json` | Text turns grow context → ACP auto-injects nudge → fake LLM detects nudge and compresses → verify block count + nudge baseline |
 
 ### Scenario Format
 
@@ -94,10 +96,12 @@ the turn counter for real conversation turns.
 ```
 
 **Fields:**
-- `respond`: `"text"` or `"compress"`
+- `respond`: `"text"`, `"compress"`, `"nudge-compress"`, `"task"`, or `"tool"`
 - `auto`: `true` = triggered by tool result, no user message needed
 - `range`: `"all"` (entire conversation) or `[startIdx, endIdx]` (0-indexed into mNNNNN refs)
 - `retryOnReject`: if the compress is rejected by quality gate, retry with this config
 - `ranges`: array for batch compress (multiple ranges in one call)
+- `growthText`: for `nudge-compress` — text emitted when no nudge detected (grows context until ACP injects nudge)
 - `verify.blockCount`: exact block count after scenario
 - `verify.minBlockCount`: minimum block count
+- `verify.nudgeBaselineSet`: `true` = `lastPerMessageNudgeTokens` is set (not null/undefined)

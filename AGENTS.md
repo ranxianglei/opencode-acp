@@ -836,3 +836,40 @@ All new and modified test files MUST undergo independent review by **at least 2 
 - `buildConfig()` missing fields that other test files include
 - Test names that contradict their assertions
 - Tests whose inputs don't match what the test name describes
+
+### 5.7 Nudge & Growth Testing Requirements (MANDATORY)
+
+Changes to `lib/messages/inject/` or nudge-related logic MUST include tests that satisfy ALL of the following. These requirements were added after the **baseline-reset bug** (PR #207) — a production bug where `lastPerMessageNudgeTokens` was silently reset on `nothingToCompress`, creating a feedback loop that prevented nudges from ever firing in short/subagent sessions. The existing test suite (900+ tests) failed to catch this bug due to five structural gaps.
+
+#### 5.7.1 Unit Test Requirements
+
+| Requirement | What | Why |
+|-------------|------|-----|
+| **Multi-turn** | At least 2 consecutive `injectCompressNudges` calls in the same test, sharing `SessionState` | Single-turn tests cannot catch cross-turn state bugs (baseline accumulation, feedback loops, proportional adjustment) |
+| **Side-effect assertions** | Assert BOTH `shouldInjectThisTurn` AND `lastPerMessageNudgeTokens` (and/or `lastNudgeShownTokens`) after each call | Checking only `shouldInject` misses baseline mutations that are invisible until the next turn |
+| **Production config** | At least one test per PR MUST use `preserveRecentMessages > 0` (production default: 20) | All existing tests use `preserveRecentMessages: 0`, which disables protection — the exact scenario that triggers `nothingToCompress` in production is never tested |
+| **Growth cycle** | At least one test covers the full cycle: baseline → growth → nudge → compress → new baseline → growth → nudge | Verifies that the nudge system self-resets correctly after compression and can fire again |
+
+#### 5.7.2 Docker E2E Requirements
+
+Docker E2E tests (`scripts/e2e/`) MUST cover:
+
+| Requirement | What | Why |
+|-------------|------|-----|
+| **Nudge-triggered compression** | At least one scenario using `"respond": "nudge-compress"` — the fake LLM detects ACP's nudge injection via `detectNudge()` (scans user-role messages for nudge-unique phrases) and emits a compress call in response | Tests the real nudge→compress flow, not just scripted compress calls |
+| **Nudge state verification** | `verify.ts` MUST check nudge state fields (`lastPerMessageNudgeTokens`) not just `blockCount` | Block count alone cannot detect baseline corruption or nudge suppression bugs |
+| **Growth accumulation** | At least one scenario where context grows across multiple turns past the nudge threshold | Tests that all-compress-in-one-turn don't exercise the growth-gating logic |
+
+The `fake-llm-server.ts` reports `prompt_tokens` from actual input message sizes (via `computeInputTokens`), so ACP sees realistic token counts for threshold evaluation.
+
+#### 5.7.3 Why These Requirements Exist
+
+The baseline-reset bug (PR #207) was a **1-line production bug** that survived 900+ tests because:
+
+1. All tests checked `shouldInjectThisTurn` but not `lastPerMessageNudgeTokens` → baseline reset was invisible
+2. All tests were single-turn → the feedback loop (baseline eaten each turn) was invisible
+3. All tests used `preserveRecentMessages: 0` → the `nothingToCompress` path (which triggers the bug) was never exercised
+4. Docker E2E only verified `blockCount` → nudge state corruption was invisible
+5. Docker E2E scenarios only used explicit compress calls → the nudge→compress flow was untested
+
+**Lesson**: Tests that pass against buggy code are worse than no tests — they create false confidence. Every nudge/growth test MUST be verified to FAIL when the bug is present (temporarily revert the fix, run the test, confirm it fails, then re-apply the fix).

@@ -1,0 +1,40 @@
+{
+    "name": "nudge-triggered-compress",
+    "description": "Real nudge→compress flow: large text turns grow context past growthFloor, ACP auto-injects nudge, fake LLM detects it and compresses. Verifies block count + nudge baseline.",
+    "turns": [
+        {
+            "respond": "nudge-compress",
+            "growthText": "Authentication system design discussion. JWT tokens encode user claims with three parts: header specifying algorithm, payload containing user ID role expiration and custom claims, and signature computed from header and payload using a secret key. The signature prevents tampering and ensures token integrity. File src/auth/jwt.ts handles token creation at line 15 and verification at line 42. The verifyToken function checks signature validity and expiration timestamp. If the token is expired or has an invalid signature the function throws an AuthenticationError which is caught by the error handling middleware at src/middleware/error.ts line 28. Refresh tokens allow obtaining new access tokens without requiring the user to re-enter credentials. The refresh endpoint at src/routes/auth.ts line 78 validates the refresh token issued during login and generates a new access token with a fresh expiration time. Token storage uses httpOnly secure cookies to prevent XSS attacks from stealing tokens via JavaScript. The cookie attributes include httpOnly true secure true sameSite strict and a maxAge matching the token expiration. CSRF protection is implemented via double-submit cookie pattern at src/middleware/csrf.ts line 15 where a random token is generated per session and validated on every state-changing request. Rate limiting middleware at src/middleware/ratelimit.ts line 30 limits login attempts to 5 per minute per IP address using a sliding window algorithm backed by Redis. Password hashing uses bcrypt with a cost factor of 12 which provides approximately 250 milliseconds computation time per hash making brute force attacks impractical. The user registration flow at src/routes/auth.ts line 120 validates email format password strength minimum 12 characters and username uniqueness before creating the user record.",
+            "topic": "Auth System",
+            "summary": "## Auth System Discussion\n\nDiscussed JWT authentication: token structure (header.payload.signature), verifyToken at src/auth/jwt.ts:42, refresh endpoint at src/routes/auth.ts:78. Security: httpOnly cookies, CSRF at src/middleware/csrf.ts:15, rate limiting at src/middleware/ratelimit.ts:30. Password hashing with bcrypt cost 12. Registration at src/routes/auth.ts:120."
+        },
+        {
+            "respond": "nudge-compress",
+            "growthText": "Database layer for user management and session storage. The users table stores columns id email password_hash created_at updated_at and last_login_at. The id column is a UUID primary key generated using uuid v7 for time-ordered uniqueness. The email column has a unique index for fast lookups during login. The password_hash column stores the bcrypt hash. Migration 001_initial_schema.sql creates the users table with all columns and indexes. Migration 002_add_sessions.sql creates the sessions table with columns id token user_id expires_at created_at and a foreign key to users.id with cascade delete. Migration 003_add_audit_log.sql adds an audit_log table for tracking authentication events. The User model at src/models/user.ts line 25 defines the schema with field types validations and relationships to sessions. The findByEmail query at src/db/queries/user.ts line 25 fetches a user by email address for login verification using parameterized queries to prevent SQL injection. The createSession query at src/db/queries/session.ts line 18 inserts a new session row with the token hash user ID and expiration time. Session cleanup runs as a cron job every hour executing DELETE FROM sessions WHERE expires_at < NOW() to remove expired sessions. The database connection pool is configured with a maximum of 10 connections a 30 second connection timeout and a 5 second idle timeout. Transaction isolation level is set to READ COMMITTED for all authentication queries. The audit log records every login attempt logout session refresh and password change event with timestamp IP address user agent and outcome.",
+            "topic": "Auth System",
+            "summary": "## Auth System Discussion\n\nDiscussed JWT authentication: token structure (header.payload.signature), verifyToken at src/auth/jwt.ts:42, refresh endpoint at src/routes/auth.ts:78. Security: httpOnly cookies, CSRF at src/middleware/csrf.ts:15, rate limiting at src/middleware/ratelimit.ts:30. Password hashing with bcrypt cost 12. Registration at src/routes/auth.ts:120."
+        },
+        {
+            "respond": "nudge-compress",
+            "growthText": "API endpoints design and request handling for the authentication service. POST /api/auth/login accepts a JSON body with email and password fields validates them using zod schema at src/schemas/auth.ts line 10 then calls the login service which verifies credentials and returns JWT access token plus sets refresh token in httpOnly cookie. The response format follows JSON API specification with data and meta fields. POST /api/auth/refresh validates the refresh token from cookie and returns a new access token. The endpoint also rotates the refresh token for security meaning the old refresh token is invalidated. POST /api/auth/logout clears both access and refresh cookies and marks the session as inactive in the database. GET /api/auth/me returns the current user profile including id email role and permissions. The endpoint requires authentication via the auth middleware which verifies the JWT and attaches the user object to the request. Input validation middleware at src/middleware/validate.ts line 20 checks required fields data types string lengths email format and password complexity rules. Error responses follow RFC 7807 problem details format with type title status detail and instance fields. The login rate limiter allows 5 attempts per minute per IP while the refresh endpoint has a separate rate limiter of 30 per minute. Authentication middleware at src/middleware/auth.ts line 45 extracts the Bearer token from the Authorization header verifies it using jwt.verify and attaches the decoded payload to req.user. Protected routes use the authMiddleware while public routes like login and register skip it.",
+            "topic": "Auth System",
+            "summary": "## Auth System Discussion\n\nDiscussed JWT authentication: token structure (header.payload.signature), verifyToken at src/auth/jwt.ts:42, refresh endpoint at src/routes/auth.ts:78. Security: httpOnly cookies, CSRF at src/middleware/csrf.ts:15, rate limiting at src/middleware/ratelimit.ts:30. Password hashing with bcrypt cost 12. Registration at src/routes/auth.ts:120."
+        },
+        {
+            "respond": "nudge-compress",
+            "growthText": "Additional context for context growth and threshold testing.",
+            "topic": "Auth System",
+            "summary": "## Auth System Discussion\n\nDiscussed JWT authentication: token structure (header.payload.signature), verifyToken at src/auth/jwt.ts:42, refresh endpoint at src/routes/auth.ts:78. Security: httpOnly cookies, CSRF at src/middleware/csrf.ts:15, rate limiting at src/middleware/ratelimit.ts:30."
+        },
+        {
+            "respond": "nudge-compress",
+            "growthText": "More context.",
+            "topic": "Auth System",
+            "summary": "## Auth System Discussion\n\nDiscussed JWT authentication: token structure (header.payload.signature), verifyToken at src/auth/jwt.ts:42, refresh endpoint at src/routes/auth.ts:78. Security: httpOnly cookies, CSRF at src/middleware/csrf.ts:15, rate limiting at src/middleware/ratelimit.ts:30."
+        }
+    ],
+    "verify": {
+        "minBlockCount": 1,
+        "nudgeBaselineSet": true
+    }
+}
