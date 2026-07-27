@@ -482,6 +482,14 @@ ACP 在首次启动时自动将配置从 `dcp.jsonc` 迁移到 `acp.jsonc`，将
 
 ## 更新日志
 
+### v1.14.3 — 软化保护区 + 减小默认值（PR #212）
+
+**问题**：`checkProtectedRange` 硬拒绝任何覆盖保护区最近消息的压缩调用（最后 N 条消息 + 最后 N tokens）。模型收到错误后必须换范围重试或使用 `dangerous: true`。此外，默认 `preserveRecentMessages: 20` 和 `preserveRecentTokens: 20000`（约 40 条消息）过于激进 —— 在自主会话中保护了近一半的对话。
+
+**修复**：(1) 将 `checkProtectedRange` 硬拒绝转为 `filterProtectedRecentMessages` 软过滤 —— 保护区消息从压缩计划中过滤掉（与 `filterLastUserMessage` 和 `filterProtectedToolMessages` 同模式），非保护区消息正常压缩。除非所有消息都在保护区内，压缩总能成功。(2) 减小 `preserveRecentMessages` 默认值 20 → 5，`preserveRecentTokens` 默认值 20000 → 5000。(3) `dangerous` 参数现在无实际效果（没有硬拒绝了，不需要 bypass；保留在 schema 中向后兼容）。922 项测试通过。
+
+文件：`lib/config.ts`、`lib/compress/{protected-content,pipeline,range,message}.ts`、`lib/messages/inject/utils.ts`。测试：`tests/soft-block.test.ts`。无持久化状态 schema 变更。配置默认值改变；已设置显式值的配置不受影响。
+
 ### v1.14.2 — 拆分保护区范围 + 软化最后用户消息保护（PR #210）
 
 **问题**：在自主代理会话中（1 条用户消息 + 多条 assistant/tool 消息），`buildCompressibleRanges` 创建了一个巨型可压缩组，因为分组只在用户消息处断开 —— 而 OpenCode 中 tool 结果是 `assistant` 角色。巨型组的 endRef 落在保护区内 → `excludeProtectedRanges` 移除整个范围 → 零推荐 → nudge 被抑制 → 模型永远无法压缩。此外，`preserveLastUserMessage` 硬拒绝任何覆盖最后用户消息的压缩调用，阻塞了对周围 tool 输出的有意压缩。
