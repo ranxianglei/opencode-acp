@@ -79,6 +79,35 @@ mkdir -p "$FAKE_HOME/.config/opencode"
 ACP_DIST="$REPO_ROOT/dist"
 [[ -f "$ACP_DIST/index.js" ]] || fail "ACP dist not found at $ACP_DIST — run npm run build"
 
+# write_acp_config [output-path] [override-jsonc-string] — defaults disable all protection (legacy); scenarios override via "acpConfig" field
+write_acp_config() {
+    local out="${1:-$FAKE_HOME/.config/opencode/acp.jsonc}"
+    local override="${2:-}"
+
+    if [[ -n "$override" ]]; then
+        printf '%s\n' "$override" > "$out"
+    else
+        cat > "$out" <<'ACPJSON'
+{
+    "experimental": { "allowSubAgents": true },
+    "compress": {
+        "minCompressRange": 0,
+        "maxSummaryLengthHard": 20000,
+        "preserveRecentMessages": 0,
+        "preserveRecentTokens": 0,
+        "preserveLastUserMessage": false,
+        "maxContextLimit": 20000,
+        "minContextLimit": 10000
+    },
+    "qualityGate": {
+        "enabled": true,
+        "algorithm": "rouge-recall-v1"
+    }
+}
+ACPJSON
+    fi
+}
+
 cat > "$FAKE_HOME/.config/opencode/opencode.json" <<OCJSON
 {
   "\$schema": "https://opencode.ai/config.json",
@@ -114,24 +143,7 @@ cat > "$FAKE_HOME/.config/opencode/opencode.json" <<OCJSON
 }
 OCJSON
 
-cat > "$FAKE_HOME/.config/opencode/acp.jsonc" <<'ACPJSON'
-{
-    "experimental": { "allowSubAgents": true },
-    "compress": {
-        "minCompressRange": 0,
-        "maxSummaryLengthHard": 20000,
-        "preserveRecentMessages": 0,
-        "preserveRecentTokens": 0,
-        "preserveLastUserMessage": false,
-        "maxContextLimit": 20000,
-        "minContextLimit": 10000
-    },
-    "qualityGate": {
-        "enabled": true,
-        "algorithm": "rouge-recall-v1"
-    }
-}
-ACPJSON
+write_acp_config "$FAKE_HOME/.config/opencode/acp.jsonc"
 pass "opencode config written"
 
 step "warm up opencode DB (migration takes time on first run)"
@@ -144,6 +156,12 @@ TOTAL_FAIL=0
 for scenario in "${SCENARIOS[@]}"; do
     scenario_name=$(basename "$scenario" .json)
     step "scenario: $scenario_name"
+
+    scenario_acp_config=$("$NODE_BIN" -e "
+        const s = JSON.parse(require('fs').readFileSync('$scenario','utf8'));
+        process.stdout.write(s.acpConfig ? JSON.stringify(s.acpConfig, null, 4) : '');
+    " 2>/dev/null || echo "")
+    write_acp_config "$FAKE_HOME/.config/opencode/acp.jsonc" "$scenario_acp_config"
 
     rm -rf "$FAKE_HOME/.local/share/opencode/storage/plugin/acp"
     rm -f "$FAKE_HOME/.local/share/opencode/opencode.db"

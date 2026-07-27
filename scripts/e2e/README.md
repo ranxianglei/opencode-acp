@@ -67,6 +67,8 @@ the turn counter for real conversation turns.
 | `04-batch-compress.json` | 4 text turns → batch compress 3 ranges → verify 3 blocks |
 | `05-subagent-compress.json` | Subagent session → compress → verify parent + child blocks |
 | `06-nudge-triggered.json` | Text turns grow context → ACP auto-injects nudge → fake LLM detects nudge and compresses → verify block count + nudge baseline |
+| `07-protection-filtered.json` | Production config (preserveRecentMessages:5) → compress all → verify protected messages excluded from compressed set (soft-filter, not hard-reject) |
+| `08-nudge-with-protection.json` | Nudge→compress WITH protection enabled → verify compress succeeds despite protected zone, nudge baseline set, protected messages survived |
 
 ### Scenario Format
 
@@ -102,6 +104,9 @@ the turn counter for real conversation turns.
 - `retryOnReject`: if the compress is rejected by quality gate, retry with this config
 - `ranges`: array for batch compress (multiple ranges in one call)
 - `growthText`: for `nudge-compress` — text emitted when no nudge detected (grows context until ACP injects nudge)
+- `acpConfig`: optional — overrides the default `acp.jsonc` for this scenario (enables testing protection behavior)
 - `verify.blockCount`: exact block count after scenario
 - `verify.minBlockCount`: minimum block count
 - `verify.nudgeBaselineSet`: `true` = `lastPerMessageNudgeTokens` is set (not null/undefined)
+- `verify.compressedCount`: exact count of messages in `byMessageId` (compressed set)
+- `verify.minCompressedCount` / `verify.maxCompressedCount`: inclusive bounds on compressed message count
