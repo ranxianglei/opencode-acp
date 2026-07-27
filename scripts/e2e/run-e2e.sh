@@ -93,7 +93,7 @@ cat > "$FAKE_HOME/.config/opencode/opencode.json" <<OCJSON
       "models": {
         "fake-model": {
           "name": "Fake Model",
-          "limit": { "context": 100000 }
+          "limit": { "context": 100000, "output": 4096 }
         }
       }
     }
