@@ -65,6 +65,7 @@ the turn counter for real conversation turns.
 | `02-quality-reject.json` | Bad summary → quality gate rejects → verify 0 blocks |
 | `03-quality-acknowledge.json` | Reject → retry with `acknowledgeRisk` → verify 1 block |
 | `04-batch-compress.json` | 4 text turns → batch compress 3 ranges → verify 3 blocks |
+| `06-nudge-growth-compress.json` | 5 text turns → compress all → verify 1 block + nudge baseline set |
 
 ### Scenario Format
 
@@ -101,3 +102,5 @@ the turn counter for real conversation turns.
 - `ranges`: array for batch compress (multiple ranges in one call)
 - `verify.blockCount`: exact block count after scenario
 - `verify.minBlockCount`: minimum block count
+- `verify.nudgeBaselineSet`: `true` = `lastPerMessageNudgeTokens` is set (not null/undefined)
+- `verify.nudgeBaselineNotEquals`: asserts `lastPerMessageNudgeTokens !== value` (catches baseline reset bugs)

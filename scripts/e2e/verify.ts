@@ -8,6 +8,8 @@ interface VerifyExpectations {
     minBlockCount?: number
     summaryContains?: string
     childBlockCount?: number
+    nudgeBaselineSet?: boolean
+    nudgeBaselineNotEquals?: number
 }
 
 interface VerifyScenario {
@@ -134,6 +136,25 @@ if (expect.childBlockCount !== undefined) {
         `childBlockCount === ${expect.childBlockCount}`,
         childBlockCount === expect.childBlockCount,
         `got ${childBlockCount} across ${childStateFiles.length} child state file(s)`,
+    )
+}
+
+const nudgeBaseline = state?.nudges?.lastPerMessageNudgeTokens
+
+if (expect.nudgeBaselineSet !== undefined) {
+    const isSet = nudgeBaseline !== null && nudgeBaseline !== undefined
+    assert(
+        `nudgeBaselineSet === ${expect.nudgeBaselineSet}`,
+        isSet === expect.nudgeBaselineSet,
+        `got ${nudgeBaseline ?? "null"}`,
+    )
+}
+
+if (expect.nudgeBaselineNotEquals !== undefined) {
+    assert(
+        `nudgeBaseline !== ${expect.nudgeBaselineNotEquals}`,
+        nudgeBaseline !== expect.nudgeBaselineNotEquals,
+        `got ${nudgeBaseline}`,
     )
 }
 
