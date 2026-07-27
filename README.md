@@ -528,6 +528,14 @@ For the complete list with root cause analysis, see the [bug tracker](https://gi
 
 ## Changelog
 
+### v1.14.2 — Split Protected Ranges + Soften Last-User-Message (PR #210)
+
+**Problem**: In autonomous agentic sessions (1 user message + many assistant/tool messages), `buildCompressibleRanges` created one giant compressible group because grouping only breaks on user messages — and tool results are `assistant` role in OpenCode. The giant group's endRef fell in the protected zone → `excludeProtectedRanges` removed the entire range → zero recommendations → nudge suppressed → model could never compress. Additionally, `preserveLastUserMessage` hard-rejected any compress call covering the last user message, blocking deliberate compressions of surrounding tool output.
+
+**Fix**: (1) `buildCompressibleRanges` now accepts `protectedZoneRefs` and splits groups at the protected-zone boundary — the unprotected head survives as a recommended range while the protected tail is excluded. (2) `preserveLastUserMessage` moved from hard-reject (`checkProtectedRange` throw) to soft-filter (`filterLastUserMessage` excludes from compress plan, following Bug 39's `filterProtectedToolMessages` pattern). The last user message survives in visible context; surrounding tool output compresses normally. (3) Added `allInProtectedZone` condition to `nothingToCompress` to cover the case where all messages are in the protected zone. (4) Fixed stale error messages and added empty-plan guard in both range and message modes. Dual-agent reviewed (both APPROVE with minor fixes; all WARNINGs addressed in follow-up commit). 922 tests pass.
+
+Files: `lib/messages/inject/{utils,inject}.ts`, `lib/compress/{pipeline,protected-content,range,message,status}.ts`. Tests: `tests/{preserve-recent,soft-block,protected-tool-exclusion}.test.ts`. No persisted-state schema changes. `preserveLastUserMessage` config semantics changed from hard-reject to soft-filter (intentional fix; `lastSegmentSoftBlock: false` disables all protection including the new soft filter).
+
 ### v1.14.1 — Log Version Info + Growth Baseline Fix (PRs #205, #207)
 
 **Problem**: Two issues since v1.14.0. (1) **Unidentifiable logs** (PR #205): ACP daily logs and per-request context logs carried no version marker, so when users shared debug logs it was impossible to tell which ACP version produced them — making regression triage across versions guesswork. (2) **Growth-baseline feedback loop in short sessions** (PR #207): When the growth threshold was met (`nudgeAllowed`) but every compressible range was filtered out (`nothingToCompress`, e.g. all ranges inside the protected zone in a short session or subagent), the code reset `state.nudges.lastPerMessageNudgeTokens = currentTokens`. This ate the accumulated growth every cycle, so the baseline chased the current context and the model never saw a nudge even though context had grown well past the threshold.
