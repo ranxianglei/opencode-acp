@@ -528,6 +528,14 @@ For the complete list with root cause analysis, see the [bug tracker](https://gi
 
 ## Changelog
 
+### v1.14.3 — Soften Protected Zone + Reduce Defaults (PR #212)
+
+**Problem**: `checkProtectedRange` hard-rejected any compress call covering protected recent messages (last N messages + last N tokens). The model got an error and had to retry with a different range or use `dangerous: true`. Additionally, the default `preserveRecentMessages: 20` and `preserveRecentTokens: 20000` (≈40 messages) were too aggressive — protecting nearly half the conversation in autonomous sessions.
+
+**Fix**: (1) Converted `checkProtectedRange` hard-reject to `filterProtectedRecentMessages` soft-filter — protected messages are filtered from the compress plan (same pattern as `filterLastUserMessage` and `filterProtectedToolMessages`), non-protected messages compress normally. Compress always succeeds unless ALL messages are protected. (2) Reduced `preserveRecentMessages` default 20 → 5 and `preserveRecentTokens` default 20000 → 5000. (3) `dangerous` parameter is now a no-op (no hard-reject to bypass; stays in schema for backward compat). 922 tests pass.
+
+Files: `lib/config.ts`, `lib/compress/{protected-content,pipeline,range,message}.ts`, `lib/messages/inject/utils.ts`. Tests: `tests/soft-block.test.ts`. No persisted-state schema changes. Config defaults changed; existing configs with explicit values are unaffected.
+
 ### v1.14.2 — Split Protected Ranges + Soften Last-User-Message (PR #210)
 
 **Problem**: In autonomous agentic sessions (1 user message + many assistant/tool messages), `buildCompressibleRanges` created one giant compressible group because grouping only breaks on user messages — and tool results are `assistant` role in OpenCode. The giant group's endRef fell in the protected zone → `excludeProtectedRanges` removed the entire range → zero recommendations → nudge suppressed → model could never compress. Additionally, `preserveLastUserMessage` hard-rejected any compress call covering the last user message, blocking deliberate compressions of surrounding tool output.
