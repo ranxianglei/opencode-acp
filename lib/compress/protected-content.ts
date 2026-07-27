@@ -285,7 +285,7 @@ export function filterProtectedRecentMessages(
     if (compress.lastSegmentSoftBlock === false) return selection
 
     const preserveN = compress.preserveRecentMessages ?? 5
-    const preserveTokens = compress.preserveRecentTokens ?? 20000
+    const preserveTokens = compress.preserveRecentTokens ?? 5000
     if (preserveN <= 0 && preserveTokens <= 0) return selection
 
     const protectedIds = new Set<string>()

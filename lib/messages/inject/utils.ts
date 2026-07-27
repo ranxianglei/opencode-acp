@@ -1077,8 +1077,8 @@ export function formatCompressibleRanges(
 /**
  * Compute the set of protected message refs (mNNNNN) that should be excluded
  * from compression recommendations. Combines two rules:
- *   1. Last N messages (preserveRecentMessages, default 20)
- *   2. Last N tokens expanding backward (preserveRecentTokens, default 20000)
+ *   1. Last N messages (preserveRecentMessages, default 5)
+ *   2. Last N tokens expanding backward (preserveRecentTokens, default 5000)
  *
  * Note: preserveLastUserMessage is no longer handled here (moved to soft
  * filtering in the compress pipeline — see filterLastUserMessage). The last
@@ -1094,8 +1094,8 @@ export function computeProtectedRefs(
 ): Set<string> {
     if (compress.lastSegmentSoftBlock === false) return new Set()
 
-    const preserveN = compress.preserveRecentMessages ?? 20
-    const preserveTokens = compress.preserveRecentTokens ?? 20000
+    const preserveN = compress.preserveRecentMessages ?? 5
+    const preserveTokens = compress.preserveRecentTokens ?? 5000
 
     const result = new Set<string>()
 

@@ -242,7 +242,7 @@ const defaultConfig: PluginConfig = {
         keepEmbedMaxChars: 2000,
         lastSegmentSoftBlock: true,
         preserveRecentMessages: 5,
-        preserveRecentTokens: 20000,
+        preserveRecentTokens: 5000,
         preserveLastUserMessage: true,
     },
     strategies: {
