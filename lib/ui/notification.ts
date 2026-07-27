@@ -299,6 +299,13 @@ export async function sendCompressNotification(
     // leaving an empty user message that triggers provider 400 (zhipuai code
     // 1214, isRetryable: false) and freezes the session. Toast bypasses the
     // message stream entirely.
+    //
+    // [DEBUG] When config.debug is on, ALSO inject into the chat session via
+    // sendIgnoredMessage so the notification persists in the transcript (user-
+    // visible, model-invisible). The dropEmptyMessages backstop in the message
+    // transform pipeline strips the ignored-only message before the next LLM
+    // call, preventing the FIX #20 400 error. Toast is still shown alongside
+    // for immediate popup feedback.
     if (config.pruneNotificationType === "chat") {
         logger.warn(
             "compress.pruneNotificationType 'chat' is no longer supported (it injects an empty user message that causes provider 400 errors); falling back to toast. Set pruneNotificationType to 'toast' (or pruneNotification to 'off') to silence this warning.",
@@ -309,6 +316,12 @@ export async function sendCompressNotification(
     let toastMessage = message
     toastMessage =
         config.pruneNotification === "minimal" ? toastMessage : truncateToastBody(toastMessage)
+
+    if (config.debug) {
+        const chatMessage =
+            config.pruneNotification === "minimal" ? message : truncateToastBody(message)
+        await sendIgnoredMessage(client, sessionId, chatMessage, params, logger)
+    }
 
     await client.tui.showToast({
         body: {
