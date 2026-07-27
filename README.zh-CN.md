@@ -482,6 +482,14 @@ ACP 在首次启动时自动将配置从 `dcp.jsonc` 迁移到 `acp.jsonc`，将
 
 ## 更新日志
 
+### v1.14.2 — 拆分保护区范围 + 软化最后用户消息保护（PR #210）
+
+**问题**：在自主代理会话中（1 条用户消息 + 多条 assistant/tool 消息），`buildCompressibleRanges` 创建了一个巨型可压缩组，因为分组只在用户消息处断开 —— 而 OpenCode 中 tool 结果是 `assistant` 角色。巨型组的 endRef 落在保护区内 → `excludeProtectedRanges` 移除整个范围 → 零推荐 → nudge 被抑制 → 模型永远无法压缩。此外，`preserveLastUserMessage` 硬拒绝任何覆盖最后用户消息的压缩调用，阻塞了对周围 tool 输出的有意压缩。
+
+**修复**：(1) `buildCompressibleRanges` 现在接受 `protectedZoneRefs` 参数，在保护区边界处拆分组 —— 非保护区头部保留为推荐范围，保护区尾部被排除。(2) `preserveLastUserMessage` 从硬拒绝（`checkProtectedRange` 抛错）改为软过滤（`filterLastUserMessage` 从压缩计划中排除，遵循 Bug 39 的 `filterProtectedToolMessages` 模式）。最后用户消息保留在可见上下文中；周围的 tool 输出正常压缩。(3) 在 `nothingToCompress` 中添加了 `allInProtectedZone` 条件，覆盖所有消息都在保护区内的情况。(4) 修复了过时的错误消息，在 range 和 message 模式中都添加了空计划守卫。双 agent 审查通过（均 APPROVE WITH MINOR FIXES；所有 WARNING 在后续 commit 中解决）。922 项测试通过。
+
+文件：`lib/messages/inject/{utils,inject}.ts`、`lib/compress/{pipeline,protected-content,range,message,status}.ts`。测试：`tests/{preserve-recent,soft-block,protected-tool-exclusion}.test.ts`。无持久化状态 schema 变更。`preserveLastUserMessage` 配置语义从硬拒绝变为软过滤（有意的修复；`lastSegmentSoftBlock: false` 禁用所有保护包括新的软过滤）。
+
 ### v1.14.1 — 日志版本信息 + 增长基线修复（PR #205, #207）
 
 **问题**：v1.14.0 之后的两个问题。(1) **日志无法识别版本**（PR #205）：ACP daily 日志和每请求 context 日志没有任何版本标记，用户分享调试日志时无法判断是哪个 ACP 版本产生的 —— 跨版本回归排查只能靠猜。(2) **短会话中的增长基线反馈循环**（PR #207）：当增长阈值已满足（`nudgeAllowed`）但所有可压缩范围都被过滤掉时（`nothingToCompress`，例如短会话或子代理中所有范围都在保护区内），旧代码会重置 `state.nudges.lastPerMessageNudgeTokens = currentTokens`。这会每轮吃掉累积增长，基线一路追逐当前上下文，即使上下文早已远超阈值，模型也永远等不到 nudge。
