@@ -840,6 +840,11 @@ test("nudge suppressed when all content is protected (nothing to compress)", () 
         false,
         "55K growth triggers nudgeAllowed but ALL tool output is protected (skill) → nothing to compress → nudge suppressed",
     )
+    assert.equal(
+        state.nudges.lastPerMessageNudgeTokens,
+        200_000,
+        "baseline PRESERVED — not advanced to currentTokens on nothingToCompress",
+    )
 })
 
 test("emergency override fires even when all content is protected", () => {
@@ -1337,58 +1342,44 @@ test("E2E growth: baseline preserved through nothingToCompress, nudge fires when
     config.compress.preserveRecentTokens = 0
     config.compress.preserveLastUserMessage = false
 
-    for (let i = 1; i <= 5; i++) {
-        state.messageIds.byRawId.set(`a${i}`, `m0000${i}`)
+    function buildMessages(n: number, toolOutputSize: number = 200_000): WithParts[] {
+        const msgs: WithParts[] = []
+        for (let i = 1; i <= n; i++) {
+            const uid = `u${i}`
+            const aid = `a${i}`
+            if (!state.messageIds.byRawId.has(uid)) state.messageIds.byRawId.set(uid, `m${String(i * 2 - 1).padStart(5, "0")}`)
+            if (!state.messageIds.byRawId.has(aid)) state.messageIds.byRawId.set(aid, `m${String(i * 2).padStart(5, "0")}`)
+            msgs.push(userMsg(uid, `task ${i}`))
+            msgs.push(assistantMsgWithTokens(aid, `result ${i}`, { input: 200_000, output: 80_000 }, [
+                toolPart(`tp${i}`, "x".repeat(toolOutputSize)),
+            ]))
+        }
+        return msgs
     }
 
     state.nudges.lastPerMessageNudgeTokens = 200_000
-    const turn1: WithParts[] = [
-        userMsg("u1", "Review this PR"),
-        assistantMsgWithTokens("a1", "Reading", { input: 200_000, output: 55_000 }, [
-            { id: "s1", messageID: "a1", sessionID: SID, type: "tool" as const, tool: "skill", callID: "sc1",
-              state: { status: "completed" as const, input: {}, output: "x".repeat(80_000) } },
-        ]),
-    ]
+
+    const turn1 = buildMessages(5)
     injectCompressNudges(state, config, logger, turn1, {} as any)
+    assert.equal(state.nudges.shouldInjectThisTurn, false, "turn 1: 5 msgs, all within 20-msg protection → suppressed")
+    assert.equal(state.nudges.lastPerMessageNudgeTokens, 200_000, "turn 1: baseline PRESERVED")
 
-    assert.equal(state.nudges.shouldInjectThisTurn, false, "all protected → suppressed")
-    assert.equal(
-        state.nudges.lastPerMessageNudgeTokens, 200_000,
-        "baseline PRESERVED — growth not eaten",
-    )
-
-    for (let i = 6; i <= 10; i++) {
-        state.messageIds.byRawId.set(`a${i}`, `m000${10 + i}`)
-    }
-    const turn2: WithParts[] = [
-        userMsg("u2", "Check more files"),
-        assistantMsgWithTokens("a2", "Done", { input: 240_000, output: 15_000 }, [
-            { id: "s2", messageID: "a2", sessionID: SID, type: "tool" as const, tool: "skill", callID: "sc2",
-              state: { status: "completed" as const, input: {}, output: "x".repeat(20_000) } },
-        ]),
-    ]
+    const turn2 = buildMessages(10)
     injectCompressNudges(state, config, logger, turn2, {} as any)
+    assert.equal(state.nudges.shouldInjectThisTurn, false, "turn 2: 10 msgs, still within 20-msg protection → suppressed")
+    assert.equal(state.nudges.lastPerMessageNudgeTokens, 200_000, "turn 2: baseline STILL PRESERVED — growth accumulating")
 
-    assert.equal(state.nudges.shouldInjectThisTurn, false, "still all protected → suppressed")
-    assert.equal(
-        state.nudges.lastPerMessageNudgeTokens, 200_000,
-        "baseline STILL preserved — 55K growth accumulated",
-    )
-
-    for (let i = 11; i <= 25; i++) {
-        state.messageIds.byRawId.set(`m${i}`, `m000${20 + i}`)
-    }
-    const turn3: WithParts[] = [
-        userMsg("u3", "Final check"),
-        assistantMsgWithTokens("a3", "Response", { input: 250_000, output: 5_000 }, [
-            toolPart("bash1", "x".repeat(100_000)),
-        ]),
-    ]
+    const turn3 = buildMessages(25)
     injectCompressNudges(state, config, logger, turn3, {} as any)
-
-    assert.ok(
-        state.nudges.lastPerMessageNudgeTokens !== 255_000,
-        "baseline NOT advanced to currentTokens (old bug behavior)",
+    assert.equal(
+        state.nudges.shouldInjectThisTurn,
+        true,
+        "turn 3: 50 msgs, first 30 outside 20-msg protection, large outputs → nudge FIRES",
+    )
+    assert.equal(
+        state.nudges.lastPerMessageNudgeTokens,
+        200_000,
+        "turn 3: baseline still at original — growth accumulated correctly, not eaten by old bug",
     )
 })
 
