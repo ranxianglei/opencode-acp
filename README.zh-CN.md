@@ -463,6 +463,14 @@ ACP 在首次启动时自动将配置从 `dcp.jsonc` 迁移到 `acp.jsonc`，将
 
 ## 更新日志
 
+### v1.14.6 — Debug Nudge 聊天界面可见性（PR #226）
+
+**问题**：开启 `debug: true` 时，ACP nudge 注入（压缩建议、上下文分类、分层触发器）只能通过 5 秒 toast 和日志文件查看。nudge 后缀消息是临时的——由消息变换 hook 注入但从未持久化到会话数据库——因此用户无法在聊天界面看到模型实际看到的内容。这使得调试 nudge 行为非常困难。
+
+**修复**：当 `config.debug` 开启时，`hooks.ts` 中的 `debugNotify` 回调现在额外调用 `sendIgnoredMessage()`，将完整 nudge 文本以 `ignored: true` 用户消息形式持久化到会话数据库（用户可见，模型不可见）。消息前缀为 `[ACP Debug Nudge]` 便于识别。Toast 通知仍同时显示以保持向后兼容。Debug 关闭：行为不变（无持久化消息）。
+
+文件：`lib/hooks.ts`。无源逻辑变更。无配置变更。无持久化状态架构变更。937 项测试通过。
+
 ### v1.14.5 — GC 模块移除 + 属性测试 + Issue #176 修复 + 配置文档（PRs #222, #206, #221, #223, #224）
 
 **问题**：打包修复 5 个问题。(1) **GC 数据丢失 Bug**（PR #222）：`gc/truncate.ts` 有 4 个已确认的 bug，可能静默丢失摘要——单行截断超过 maxLength 19 字符、刚好超过 maxLength 时静默失败（输出比输入更长）、长 header 输出溢出、标记预留 off-by-one。GC 默认只在 100% 上下文时触发，所以很少触发但触发时是灾难性的。(2) **死代码**（PR #206）：prune 工具、sweep 命令和策略（约 2309 行）从未被使用。(3) **无属性测试**（PR #221）：所有测试都是针对性/单元测试——不变量违反在边界情况下无法检测。(4) **缺少配置文档**（PR #223）：没有完整的配置参考——用户必须读源码才能发现参数。(5) **压缩后 nudge 永久停止**（PR #224，Issue #176）：在自治会话（单条用户消息 + 大量助手/工具消息）中，`injectCompressNudges` 在检测到当前 turn 有压缩时无条件 early return。由于整个会话就是一个 turn，一旦发生压缩，`currentTurnHasCompress` 永远为 true → 函数永远 early return → nudge 不再触发 → 上下文无限增长。
