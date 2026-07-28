@@ -463,6 +463,14 @@ ACP 在首次启动时自动将配置从 `dcp.jsonc` 迁移到 `acp.jsonc`，将
 
 ## 更新日志
 
+### v1.14.7 — 去重 HOW_TO_COMPRESS_RULES（PR #228）
+
+**问题**：`HOW_TO_COMPRESS_RULES`（~1.2K tokens）每次 nudge 注入重复 3-4 次——系统提示词 1 次、nudge 模板 1-2 次、breakdown 块 1 次。非 maxLimit 场景下 suffix 消息单独就包含 2-3 份规则。每次 nudge 浪费 2.4-3.6K tokens。v1.14.6 让 debug 模式持久化 nudge 文本到聊天界面后，重复变得可见。
+
+**修复**：从 breakdown 块（`inject.ts:535-537`）和全部 3 个 nudge 模板（`turn-nudge.ts`、`iteration-nudge.ts`、`context-limit-nudge.ts`）移除 `HOW_TO_COMPRESS_RULES`。保留在 `system.ts`（单一可信源——每轮注入，v1.8.2 不变量）和 `quality-gate/rejection.ts`（重试指导）。Oracle 验证：无任何场景丢失压缩指导。
+
+文件：`lib/messages/inject/inject.ts`、`lib/prompts/{turn,iteration,context-limit}-nudge.ts`。917 项测试通过。
+
 ### v1.14.6 — Debug Nudge 聊天界面可见性（PR #226）
 
 **问题**：开启 `debug: true` 时，ACP nudge 注入（压缩建议、上下文分类、分层触发器）只能通过 5 秒 toast 和日志文件查看。nudge 后缀消息是临时的——由消息变换 hook 注入但从未持久化到会话数据库——因此用户无法在聊天界面看到模型实际看到的内容。这使得调试 nudge 行为非常困难。
