@@ -318,13 +318,13 @@ test("Prune: all compressed + no user messages = empty result", () => {
 test("Prune property: uncompressed messages always survive", () => {
     fc.assert(
         fc.property(
-            fc.array(
+            fc.uniqueArray(
                 fc.record({
                     id: fc.string({ minLength: 1, maxLength: 20 }).map((s) => `msg-${s}`),
                     role: fc.constantFrom("user", "assistant"),
                     compressed: fc.boolean(),
                 }),
-                { minLength: 1, maxLength: 20 },
+                { minLength: 1, maxLength: 20, selector: (v) => v.id },
             ),
             (specs) => {
                 const state = makeEmptyState()

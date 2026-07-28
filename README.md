@@ -257,6 +257,8 @@ If no `acp.jsonc` is found, ACP falls back to `dcp.jsonc` / `dcp.json` (for back
 
 Each level overrides the previous, so project settings take priority over global. Restart OpenCode after making config changes.
 
+> **📖 Full parameter reference:** See [CONFIGURATION.md](./CONFIGURATION.md) for a complete reference of every configurable parameter with type, default value, and description.
+
 > [!IMPORTANT]
 > **Disable OpenCode's built-in auto-compaction.** ACP handles context management itself — OpenCode's compaction conflicts with ACP and can cause issues (re-expanded messages, lost compression state). Add to your `opencode.json`:
 >
