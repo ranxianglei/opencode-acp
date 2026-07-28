@@ -1,5 +1,7 @@
 # ACP Configuration Reference
 
+[English](./CONFIGURATION.md) | [中文](./CONFIGURATION.zh-CN.md)
+
 Complete reference for all configurable parameters in Active Context Pruning (ACP).
 
 ## Config File Locations
