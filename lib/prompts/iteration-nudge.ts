@@ -1,5 +1,3 @@
-import { HOW_TO_COMPRESS_RULES } from "context-compress-algorithms/prompts"
-
 export const ITERATION_NUDGE = `
 <system-reminder>
 You've been iterating for a while. If any earlier work is closed and unlikely to be referenced, compress it now.
@@ -9,8 +7,6 @@ You've been iterating for a while. If any earlier work is closed and unlikely to
   "content": [{ "startId": "<visible message ID>", "endId": "<visible message ID>", "summary": "..." }]
 }
 
-⚠️ ONLY use IDs from <dcp-message-id> tags visible above. Do NOT invent or copy example IDs.
-
-${HOW_TO_COMPRESS_RULES}
+⚠️ ONLY use IDs from  tags visible above. Do NOT invent or copy example IDs.
 </system-reminder>
 `

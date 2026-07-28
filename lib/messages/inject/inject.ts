@@ -42,7 +42,7 @@ import {
     resolveAdaptiveNudgeGrowth,
 } from "./utils"
 import { buildCompressedBlockGuidance } from "../../prompts/extensions/nudge"
-import { HOW_TO_COMPRESS_RULES, COMPRESS_PHILOSOPHY, TIER2_DISTILL_RULES, TIER3_CONDENSE_RULES } from "context-compress-algorithms/prompts"
+import { COMPRESS_PHILOSOPHY, TIER2_DISTILL_RULES, TIER3_CONDENSE_RULES } from "context-compress-algorithms/prompts"
 import { getTierTokenUsage } from "../../state/utils"
 
 /**
@@ -532,9 +532,6 @@ export const injectCompressNudges = (
             }
             breakdown += `\nUse \`acp_status({scope:"uncompressed"})\` to re-fetch compressible ranges after compressing, or \`acp_status\` for compressed block details.`
 
-            if (effectiveTipsVariant !== "maxLimit") {
-                breakdown += `\n\n${HOW_TO_COMPRESS_RULES}`
-            }
             appendToLastTextPart(suffixMessage, breakdown)
         }
 
