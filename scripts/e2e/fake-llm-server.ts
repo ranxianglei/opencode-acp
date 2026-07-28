@@ -33,7 +33,7 @@ if (!SCENARIO_PATH) {
 }
 
 interface ScenarioStep {
-    respond: "text" | "compress" | "task" | "tool" | "nudge-compress"
+    respond: "text" | "compress" | "task" | "tool" | "nudge-compress" | "autonomous-nudge"
     text?: string
     summary?: string
     topic?: string
@@ -199,6 +199,10 @@ async function handleChatCompletion(req: Request): Promise<Response> {
 
         const currentIdx = readTurnCounter() - 1
         const currentStep = scenario.turns[currentIdx]
+        if (currentStep?.respond === "autonomous-nudge") {
+            log("  → autonomous-nudge: continuing autonomous work cycle")
+            return handleAutonomousNudgeStep(model, messages, currentStep, isStream, inputTokens)
+        }
         if (currentStep?.respond === "nudge-compress" && toolText.includes("Compressed")) {
             log("  → nudge-compress: compress succeeded, emitting acknowledgment")
             return textResponse(model, "Compression complete.", isStream, inputTokens)
@@ -230,6 +234,10 @@ async function handleChatCompletion(req: Request): Promise<Response> {
 
     if (step.respond === "nudge-compress") {
         return handleNudgeCompressStep(model, messages, step, isStream, inputTokens)
+    }
+
+    if (step.respond === "autonomous-nudge") {
+        return handleAutonomousNudgeStep(model, messages, step, isStream, inputTokens)
     }
 
     // Text response
@@ -352,6 +360,59 @@ function handleNudgeCompressStep(
 
     log(`  → compress: ${startId}..${endId}, summary=${(step.summary ?? "").length} chars`)
     return compressResponse(model, { content }, false, isStream, inputTokens)
+}
+
+function countCompressCalls(messages: any[]): number {
+    let count = 0
+    for (const msg of messages) {
+        if (Array.isArray(msg?.tool_calls)) {
+            for (const tc of msg.tool_calls) {
+                if (tc?.function?.name === "compress") count++
+            }
+        }
+    }
+    return count
+}
+
+function handleAutonomousNudgeStep(
+    model: string,
+    messages: any[],
+    step: ScenarioStep,
+    isStream: boolean,
+    inputTokens: number,
+): Response {
+    const compressCount = countCompressCalls(messages)
+    const nudgeDetected = detectNudge(messages)
+    const growthText = step.growthText ?? "Autonomous work generating output to fill the context window with meaningful discussion about software architecture patterns dependency injection inversion of control and SOLID principles applied to the authentication module service layer and data access layer with proper separation of concerns and testability through mockable interfaces and dependency injection containers."
+
+    if (compressCount >= 2) {
+        log(`  → autonomous-nudge: compressCount=${compressCount} ≥ 2, task complete`)
+        return textResponse(model, "Task complete.", isStream, inputTokens)
+    }
+
+    if (nudgeDetected) {
+        log(`  → autonomous-nudge: nudge DETECTED (compressCount=${compressCount}), emitting compress call`)
+        const refs = parseMessageRefs(messages)
+        if (refs.length === 0) {
+            log("  ⚠ no mNNNNN refs found — emitting fallback text")
+            return textResponse(model, "No messages to compress.", isStream, inputTokens)
+        }
+        const [startId, endId] = resolveRange(refs, step.range ?? "all")
+        return compressResponse(model, {
+            content: [{
+                topic: step.topic ?? "Autonomous compression",
+                startId,
+                endId,
+                summary: step.summary ?? "Compressed autonomous work output.",
+            }],
+        }, false, isStream, inputTokens)
+    }
+
+    log(`  → autonomous-nudge: no nudge yet (compressCount=${compressCount}), emitting growth bash call`)
+    return toolUseResponse(model, "bash", {
+        command: `echo '${growthText.replace(/'/g, "'\\''")}'`,
+        description: "Generate autonomous work output",
+    }, isStream, inputTokens)
 }
 
 function handleChildRequest(

@@ -53,7 +53,9 @@ jobs:
                     scripts/e2e/scenarios/05-subagent-compress.json \
                     scripts/e2e/scenarios/06-nudge-triggered.json \
                     scripts/e2e/scenarios/07-protection-filtered.json \
-                    scripts/e2e/scenarios/08-nudge-with-protection.json
+                    scripts/e2e/scenarios/08-nudge-with-protection.json \
+                    scripts/e2e/scenarios/09-nudge-refire-after-compress.json \
+                    scripts/e2e/scenarios/10-autonomous-nudge-refire.json
             - name: Dump diagnostics on failure
               if: failure()
               run: |

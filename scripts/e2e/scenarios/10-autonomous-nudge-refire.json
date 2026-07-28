@@ -1,0 +1,27 @@
+{
+    "name": "autonomous-nudge-refire",
+    "description": "Issue #176 regression: Autonomous session (single user message, bash tool calls grow context). Tests that after first nudge→compress, continued growth triggers a SECOND nudge→compress. Before fix: nudge permanently stuck after first compress. After fix: second nudge fires and second compress succeeds.",
+    "acpConfig": {
+        "compress": {
+            "minCompressRange": 0,
+            "maxSummaryLengthHard": 20000,
+            "preserveRecentMessages": 5,
+            "preserveRecentTokens": 0,
+            "preserveLastUserMessage": true,
+            "maxContextLimit": 20000,
+            "minContextLimit": 10000
+        }
+    },
+    "turns": [
+        {
+            "respond": "autonomous-nudge",
+            "growthText": "Software architecture discussion. Dependency injection pattern at src/di/container.ts line 15 registers all service implementations. The AuthService at src/services/auth.ts line 28 depends on UserRepository and TokenService interfaces injected via constructor. Inversion of control container resolves dependencies at startup and validates the dependency graph for circular references. SOLID principles applied throughout. Single responsibility for each service class. Open closed principle via strategy pattern for password hashing at src/services/hash/strategy.ts. Liskov substitution through abstract UserRepository interface at src/repositories/user.ts line 10. Interface segregation with separate ReadRepository and WriteRepository interfaces. Dependency inversion with high level AuthController depending on abstract AuthService not concrete implementation.",
+            "topic": "Architecture Discussion",
+            "summary": "## Architecture Discussion\n\nDI container at src/di/container.ts:15. AuthService at src/services/auth.ts:28 depends on UserRepository + TokenService. SOLID principles: SRP per service, OCP via strategy for hashing, LSP via abstract UserRepository, ISP with Read/Write split, DIP via abstract AuthService."
+        }
+    ],
+    "verify": {
+        "minBlockCount": 2,
+        "nudgeBaselineSet": true
+    }
+}

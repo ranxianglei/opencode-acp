@@ -155,6 +155,7 @@ export function createSessionState(): SessionState {
             lastTier3NudgeTokens: undefined,
             shouldInjectThisTurn: undefined,
             compressBaselineSet: false,
+            lastProcessedCompressMessageId: undefined,
         },
         stats: {
             pruneTokenCounter: 0,
@@ -200,6 +201,7 @@ export function resetSessionState(state: SessionState): void {
         lastTier3NudgeTokens: undefined,
         shouldInjectThisTurn: undefined,
         compressBaselineSet: false,
+        lastProcessedCompressMessageId: undefined,
     }
     state.stats = {
         pruneTokenCounter: 0,

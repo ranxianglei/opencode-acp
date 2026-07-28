@@ -1,0 +1,57 @@
+{
+    "name": "nudge-refire-after-compress",
+    "description": "Regression test for Issue #176: After first nudge→compress, more growth must trigger a SECOND nudge→compress. Tests that the nudge system doesn't get permanently stuck after the first compress. Multi-turn version: each turn is a separate user message.",
+    "acpConfig": {
+        "compress": {
+            "minCompressRange": 0,
+            "maxSummaryLengthHard": 20000,
+            "preserveRecentMessages": 5,
+            "preserveRecentTokens": 0,
+            "preserveLastUserMessage": true,
+            "maxContextLimit": 20000,
+            "minContextLimit": 10000
+        }
+    },
+    "turns": [
+        {
+            "respond": "nudge-compress",
+            "growthText": "Authentication system design discussion. JWT tokens encode user claims with three parts header specifying algorithm payload containing user ID role expiration and custom claims and signature computed from header and payload using a secret key. The signature prevents tampering and ensures token integrity. File src/auth/jwt.ts handles token creation at line 15 and verification at line 42. The verifyToken function checks signature validity and expiration timestamp. If the token is expired or has an invalid signature the function throws an AuthenticationError which is caught by the error handling middleware at src/middleware/error.ts line 28. Refresh tokens allow obtaining new access tokens without requiring the user to re-enter credentials. The refresh endpoint at src/routes/auth.ts line 78 validates the refresh token issued during login and generates a new access token with a fresh expiration time. Token storage uses httpOnly secure cookies to prevent XSS attacks from stealing tokens via JavaScript.",
+            "topic": "Auth System",
+            "summary": "## Auth System Discussion\n\nDiscussed JWT authentication: token structure (header.payload.signature), verifyToken at src/auth/jwt.ts:42, refresh endpoint at src/routes/auth.ts:78. Security: httpOnly cookies, CSRF at src/middleware/csrf.ts:15, rate limiting at src/middleware/ratelimit.ts:30. Password hashing with bcrypt cost 12."
+        },
+        {
+            "respond": "nudge-compress",
+            "growthText": "Database layer for user management and session storage. The users table stores columns id email password_hash created_at updated_at and last_login_at. The id column is a UUID primary key generated using uuid v7 for time-ordered uniqueness. The email column has a unique index for fast lookups during login. The password_hash column stores the bcrypt hash. Migration 001_initial_schema.sql creates the users table with all columns and indexes. Migration 002_add_sessions.sql creates the sessions table with columns id token user_id expires_at created_at and a foreign key to users.id with cascade delete. The User model at src/models/user.ts line 25 defines the schema with field types validations and relationships to sessions. The findByEmail query at src/db/queries/user.ts line 25 fetches a user by email address for login verification using parameterized queries to prevent SQL injection.",
+            "topic": "Auth System",
+            "summary": "## Auth System Discussion\n\nDiscussed JWT authentication: token structure (header.payload.signature), verifyToken at src/auth/jwt.ts:42, refresh endpoint at src/routes/auth.ts:78. Security: httpOnly cookies, CSRF at src/middleware/csrf.ts:15, rate limiting at src/middleware/ratelimit.ts:30."
+        },
+        {
+            "respond": "nudge-compress",
+            "growthText": "API endpoints design and request handling for the authentication service. POST /api/auth/login accepts a JSON body with email and password fields validates them using zod schema at src/schemas/auth.ts line 10 then calls the login service which verifies credentials and returns JWT access token plus sets refresh token in httpOnly cookie. The response format follows JSON API specification with data and meta fields. POST /api/auth/refresh validates the refresh token from cookie and returns a new access token. The endpoint also rotates the refresh token for security meaning the old refresh token is invalidated. POST /api/auth/logout clears both access and refresh cookies and marks the session as inactive in the database.",
+            "topic": "Auth System",
+            "summary": "## Auth System Discussion\n\nDiscussed JWT authentication: token structure (header.payload.signature), verifyToken at src/auth/jwt.ts:42, refresh endpoint at src/routes/auth.ts:78."
+        },
+        {
+            "respond": "nudge-compress",
+            "growthText": "Frontend integration with the authentication backend. The React application uses a custom useAuth hook at src/hooks/useAuth.ts line 15 that manages authentication state including the current user loading state and error state. The hook communicates with the backend API using fetch with credentials include to send cookies. Protected routes are wrapped in an AuthGuard component at src/components/AuthGuard.tsx line 8 that redirects unauthenticated users to the login page. The login form at src/components/LoginForm.tsx line 20 handles form submission validation and error display.",
+            "topic": "Auth System",
+            "summary": "## Auth System Discussion\n\nDiscussed JWT authentication: token structure (header.payload.signature), verifyToken at src/auth/jwt.ts:42, refresh endpoint at src/routes/auth.ts:78."
+        },
+        {
+            "respond": "nudge-compress",
+            "growthText": "After first compress, more content accumulates. This text represents continued autonomous work. The testing strategy for the authentication system. Unit tests at tests/auth.test.ts cover token generation verification and expiration logic using Jest. Integration tests at tests/integration/auth-flow.test.ts test the full authentication flow including login refresh and logout using a test database. E2E tests at tests/e2e/auth.spec.ts use Playwright to test the browser-based login flow including form validation error handling and redirect behavior.",
+            "topic": "Post-Compress Growth",
+            "summary": "## Post-Compress Growth\n\nTesting strategy: unit tests at tests/auth.test.ts, integration at tests/integration/auth-flow.test.ts, E2E at tests/e2e/auth.spec.ts with Playwright. Mock implementations at src/mocks/handlers.ts:10."
+        },
+        {
+            "respond": "nudge-compress",
+            "growthText": "Additional growth to trigger second nudge. Deployment pipeline configuration. The CI/CD pipeline uses GitHub Actions with workflows defined in .github/workflows/ci.yml for continuous integration and .github/workflows/deploy.yml for deployment. The CI workflow runs on every push to main and pull request targeting main. It executes lint typecheck unit tests integration tests and builds the production bundle. The deploy workflow triggers on tag pushes matching v* pattern and deploys to production after manual approval.",
+            "topic": "Post-Compress Growth",
+            "summary": "## Post-Compress Growth\n\nDeployment: CI/CD via GitHub Actions (.github/workflows/ci.yml, deploy.yml). CI runs lint, typecheck, tests, build. Deploy on v* tags."
+        }
+    ],
+    "verify": {
+        "minBlockCount": 2,
+        "nudgeBaselineSet": true
+    }
+}
