@@ -9,7 +9,10 @@
             "preserveRecentTokens": 0,
             "preserveLastUserMessage": true,
             "maxContextLimit": 20000,
-            "minContextLimit": 10000
+            "minContextLimit": 10000,
+            "nudgeGrowthTokens": 200,
+            "minNudgeGrowthFloor": 100,
+            "minNudgeGrowthRatio": 0.01
         }
     },
     "turns": [

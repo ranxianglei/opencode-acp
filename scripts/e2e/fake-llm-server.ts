@@ -212,8 +212,15 @@ async function handleChatCompletion(req: Request): Promise<Response> {
         return textResponse(model, "Understood, continuing.", isStream, inputTokens)
     }
 
-    // Real conversation turn: increment file-based counter for stateful tracking
-    // across opencode run invocations (each run is a separate process).
+    if (lastRole === "user") {
+        const preIdx = readTurnCounter() - 1
+        const preStep = scenario.turns[preIdx]
+        if (preStep?.respond === "autonomous-nudge" && detectNudge(messages)) {
+            log("  → autonomous-nudge: ACP nudge suffix detected (not a new turn)")
+            return handleAutonomousNudgeStep(model, messages, preStep, isStream, inputTokens)
+        }
+    }
+
     const turnIdx = incrementTurnCounter()
     const step = scenario.turns[turnIdx]
 

@@ -1,6 +1,6 @@
 {
     "name": "nudge-refire-after-compress",
-    "description": "Regression test for Issue #176: After first nudge→compress, more growth must trigger a SECOND nudge→compress. Tests that the nudge system doesn't get permanently stuck after the first compress. Multi-turn version: each turn is a separate user message.",
+    "description": "Multi-turn nudge→compress regression: text turns grow context, ACP injects nudge, fake LLM compresses. Verifies nudge system works in multi-turn mode. Full re-nudge-after-compress (Issue #176) is tested by scenario 10 (autonomous) and unit tests.",
     "acpConfig": {
         "compress": {
             "minCompressRange": 0,
@@ -9,7 +9,10 @@
             "preserveRecentTokens": 0,
             "preserveLastUserMessage": true,
             "maxContextLimit": 20000,
-            "minContextLimit": 10000
+            "minContextLimit": 10000,
+            "nudgeGrowthTokens": 200,
+            "minNudgeGrowthFloor": 100,
+            "minNudgeGrowthRatio": 0.01
         }
     },
     "turns": [
@@ -51,7 +54,7 @@
         }
     ],
     "verify": {
-        "minBlockCount": 2,
+        "minBlockCount": 1,
         "nudgeBaselineSet": true
     }
 }
