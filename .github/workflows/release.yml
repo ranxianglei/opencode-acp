@@ -9,9 +9,31 @@ on:
                 description: "Force publish even if not a release branch merge"
                 required: false
                 default: "false"
+            promote_stable:
+                description: "Promote a published version to npm 'stable' tag (e.g. '1.14.7'). Leave empty for normal runs."
+                required: false
+                default: ""
 
 jobs:
+    promote-stable:
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.promote_stable != ''
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 22
+                  registry-url: https://registry.npmjs.org
+
+            - name: Promote to stable tag
+              run: |
+                  VERSION="${{ github.event.inputs.promote_stable }}"
+                  echo "Promoting opencode-acp@$VERSION to 'stable' tag"
+                  npm dist-tag add "opencode-acp@$VERSION" stable
+              env:
+                  NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
     publish:
+        if: github.event.inputs.promote_stable == '' || github.event_name == 'push'
         runs-on: ubuntu-latest
         permissions:
             contents: write
