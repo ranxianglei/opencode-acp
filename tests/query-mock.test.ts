@@ -78,7 +78,6 @@ function makeState(overrides: Partial<SessionState> = {}): SessionState {
         sessionId: SID,
         isSubAgent: false,
         compressPermission: "allow",
-        pendingManualTrigger: null,
         prune: {
             messages: {
                 byMessageId: new Map<string, PrunedMessageEntry>(),
@@ -298,7 +297,7 @@ test("isProtectedUserMessage returns false when mode is range", () => {
 
 test("isProtectedUserMessage returns false when protectUserMessages is false", () => {
     const config = makeConfig({
-        compress: { ...makeConfig().compress, mode: "message", protectUserMessages: false },
+        compress: { ...makeConfig().compress, protectUserMessages: false },
     })
     const msg = makeMessage({ role: "user" })
     assert.equal(isProtectedUserMessage(config, msg), false)
@@ -306,7 +305,7 @@ test("isProtectedUserMessage returns false when protectUserMessages is false", (
 
 test("isProtectedUserMessage returns false for assistant message", () => {
     const config = makeConfig({
-        compress: { ...makeConfig().compress, mode: "message", protectUserMessages: true },
+        compress: { ...makeConfig().compress, protectUserMessages: true },
     })
     const msg = makeMessage({ role: "assistant" })
     assert.equal(isProtectedUserMessage(config, msg), false)
@@ -314,7 +313,7 @@ test("isProtectedUserMessage returns false for assistant message", () => {
 
 test("isProtectedUserMessage returns false for ignored user message", () => {
     const config = makeConfig({
-        compress: { ...makeConfig().compress, mode: "message", protectUserMessages: true },
+        compress: { ...makeConfig().compress, protectUserMessages: true },
     })
     const msg = makeMessage({
         role: "user",

@@ -24,8 +24,6 @@ import { getLastUserMessage, isIgnoredUserMessage, isSyntheticMessage } from "..
 import { getCurrentTokenUsage } from "../../token-utils"
 import { getActiveSummaryTokenUsage } from "../../state/utils"
 
-const MESSAGE_MODE_NUDGE_PRIORITY: MessagePriority = "high"
-
 export interface LastUserModelContext {
     providerId: string | undefined
     modelId: string | undefined
@@ -271,22 +269,6 @@ export function addAnchor(
     return anchorMessageIds.size !== previousSize
 }
 
-function buildMessagePriorityGuidance(
-    messages: WithParts[],
-    compressionPriorities: CompressionPriorityMap | undefined,
-    anchorIndex: number,
-    priority: MessagePriority,
-): string {
-    if (!compressionPriorities || compressionPriorities.size === 0) {
-        return ""
-    }
-
-    const refs = listPriorityRefsBeforeIndex(messages, compressionPriorities, anchorIndex, priority)
-    const priorityLabel = `${priority[0].toUpperCase()}${priority.slice(1)}`
-
-    return renderMessagePriorityGuidance(priorityLabel, refs)
-}
-
 function injectAnchoredNudge(message: WithParts, nudgeText: string): void {
     if (!nudgeText.trim()) {
         return
@@ -378,24 +360,6 @@ function applyRangeModeAnchoredNudge(
     }
 
     for (const { message } of collectAnchoredMessages(anchorMessageIds, messages)) {
-        injectAnchoredNudge(message, nudgeText)
-    }
-}
-
-function applyMessageModeAnchoredNudge(
-    anchorMessageIds: Set<string>,
-    messages: WithParts[],
-    baseNudgeText: string,
-    compressionPriorities?: CompressionPriorityMap,
-): void {
-    for (const { message, index } of collectAnchoredMessages(anchorMessageIds, messages)) {
-        const priorityGuidance = buildMessagePriorityGuidance(
-            messages,
-            compressionPriorities,
-            index,
-            MESSAGE_MODE_NUDGE_PRIORITY,
-        )
-        const nudgeText = appendGuidanceToDcpTag(baseNudgeText, priorityGuidance)
         injectAnchoredNudge(message, nudgeText)
     }
 }

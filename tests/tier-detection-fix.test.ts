@@ -57,7 +57,6 @@ function makeState(): SessionState {
         sessionId: SID,
         isSubAgent: false,
         compressPermission: "allow",
-        pendingManualTrigger: null,
         prune: {
             tools: new Map(),
             messages: {

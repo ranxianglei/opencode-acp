@@ -41,7 +41,6 @@ function makeState(overrides: Partial<SessionState> = {}): SessionState {
         sessionId: "phantom-test",
         isSubAgent: false,
         compressPermission: "allow",
-        pendingManualTrigger: null,
         prune: {
             messages: {
                 byMessageId: new Map<string, PrunedMessageEntry>(),

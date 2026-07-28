@@ -230,8 +230,7 @@ function resolveMessageEntry(
 }
 
 /**
- * Replay a single message-mode compress invocation.
- * Mirrors `createCompressMessageTool.execute` (lib/compress/message.ts):
+ * Replay a single message-mode compress invocation (historical backward-compat).
  *   per-entry resolve → block allocation with consumedBlockIds = [].
  *
  * Returns the number of blocks created.

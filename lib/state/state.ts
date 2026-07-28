@@ -54,7 +54,7 @@ const REGISTRY_SOFT_CAP = 32
 // [FIX #33] Per-session state. Replaces the single shared SessionState singleton
 // whose resetSessionState-on-switch wiped modelContextLimit (set only by
 // system.transform, which fires AFTER messages.transform) and flipped
-// isSubAgent/manualMode across interleaved sessions. Each session now keeps its
+// isSubAgent across interleaved sessions. Each session now keeps its
 // own state for its lifetime — no reset-on-switch.
 //
 // compressionTiming is SHARED (hoisted here) rather than per-session: the `event`

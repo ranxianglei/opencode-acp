@@ -1,8 +1,5 @@
 import type { PluginConfig } from "../config"
-import { countAllMessageTokens } from "../token-utils"
-import { isMessageCompacted } from "../state/utils"
 import type { SessionState, WithParts } from "../state"
-import { isIgnoredUserMessage, isProtectedUserMessage, messageHasCompress } from "./query"
 
 const MEDIUM_PRIORITY_MIN_TOKENS = 500
 const HIGH_PRIORITY_MIN_TOKENS = 5000

@@ -63,7 +63,6 @@ function makeState(overrides: Partial<SessionState> = {}): SessionState {
         sessionId: SID,
         isSubAgent: false,
         compressPermission: "allow",
-        pendingManualTrigger: null,
         prune: {
             messages: {
                 byMessageId: new Map<string, PrunedMessageEntry>(),
