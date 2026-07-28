@@ -17,7 +17,7 @@ The model decides <em>when</em> and <em>what</em> to compress — not a hard lim
 </p>
 
 <p align="center">
-<code>opencode plugin opencode-acp@latest --global</code>
+<code>opencode plugin opencode-acp@stable --global</code>
 </p>
 
 ---
@@ -70,7 +70,7 @@ across all other sessions.
 ## Installation
 
 ```bash
-opencode plugin opencode-acp@latest --global
+opencode plugin opencode-acp@stable --global
 ```
 
 Or add to your opencode config:
@@ -78,7 +78,7 @@ Or add to your opencode config:
 ```json
 {
     "plugin": {
-        "opencode-acp": "latest"
+        "opencode-acp": "stable"
     }
 }
 ```
@@ -446,7 +446,7 @@ For the `compress` tool, `compress.protectedTools` ensures specific tool outputs
 ACP is a drop-in replacement for DCP. To migrate:
 
 1. Remove the old DCP plugin from your `opencode.json`
-2. Install ACP: `opencode plugin install opencode-acp@latest --global`
+2. Install ACP: `opencode plugin install opencode-acp@stable --global`
 3. Restart OpenCode
 
 **What's preserved:**
