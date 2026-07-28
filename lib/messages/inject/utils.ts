@@ -449,84 +449,20 @@ export function applyAnchoredNudges(
     if (suffixMessage) {
         const nudgeParts: string[] = []
 
-        if (config.compress.mode === "message") {
-            if (state.nudges.contextLimitAnchors.size > 0) {
-                for (const { index } of collectAnchoredMessages(
-                    state.nudges.contextLimitAnchors,
-                    messages,
-                )) {
-                    const guidance = buildMessagePriorityGuidance(
-                        messages,
-                        compressionPriorities,
-                        index,
-                        MESSAGE_MODE_NUDGE_PRIORITY,
-                    )
-                    nudgeParts.push(appendGuidanceToDcpTag(prompts.contextLimitNudge, guidance))
-                }
-            }
-            if (turnNudgeAnchors.size > 0) {
-                for (const { index } of collectAnchoredMessages(turnNudgeAnchors, messages)) {
-                    const guidance = buildMessagePriorityGuidance(
-                        messages,
-                        compressionPriorities,
-                        index,
-                        MESSAGE_MODE_NUDGE_PRIORITY,
-                    )
-                    nudgeParts.push(appendGuidanceToDcpTag(prompts.turnNudge, guidance))
-                }
-            }
-            if (state.nudges.iterationNudgeAnchors.size > 0) {
-                for (const { index } of collectAnchoredMessages(
-                    state.nudges.iterationNudgeAnchors,
-                    messages,
-                )) {
-                    const guidance = buildMessagePriorityGuidance(
-                        messages,
-                        compressionPriorities,
-                        index,
-                        MESSAGE_MODE_NUDGE_PRIORITY,
-                    )
-                    nudgeParts.push(appendGuidanceToDcpTag(prompts.iterationNudge, guidance))
-                }
-            }
-        } else {
-            if (state.nudges.contextLimitAnchors.size > 0) {
-                nudgeParts.push(prompts.contextLimitNudge)
-            }
-            if (turnNudgeAnchors.size > 0) {
-                nudgeParts.push(prompts.turnNudge)
-            }
-            if (state.nudges.iterationNudgeAnchors.size > 0) {
-                nudgeParts.push(prompts.iterationNudge)
-            }
+        if (state.nudges.contextLimitAnchors.size > 0) {
+            nudgeParts.push(prompts.contextLimitNudge)
+        }
+        if (turnNudgeAnchors.size > 0) {
+            nudgeParts.push(prompts.turnNudge)
+        }
+        if (state.nudges.iterationNudgeAnchors.size > 0) {
+            nudgeParts.push(prompts.iterationNudge)
         }
 
         const combined = nudgeParts.join("\n\n")
         if (combined.trim()) {
             injectAnchoredNudge(suffixMessage, combined)
         }
-        return
-    }
-
-    if (config.compress.mode === "message") {
-        applyMessageModeAnchoredNudge(
-            state.nudges.contextLimitAnchors,
-            messages,
-            prompts.contextLimitNudge,
-            compressionPriorities,
-        )
-        applyMessageModeAnchoredNudge(
-            turnNudgeAnchors,
-            messages,
-            prompts.turnNudge,
-            compressionPriorities,
-        )
-        applyMessageModeAnchoredNudge(
-            state.nudges.iterationNudgeAnchors,
-            messages,
-            prompts.iterationNudge,
-            compressionPriorities,
-        )
         return
     }
 

@@ -90,7 +90,6 @@ export class SessionStateRegistry {
         client: any,
         sessionId: string,
         messages: WithParts[],
-        manualModeDefault: boolean,
         config?: PluginConfig,
     ): Promise<SessionState> {
         let state = this.states.get(sessionId)
@@ -109,7 +108,6 @@ export class SessionStateRegistry {
                 sessionId,
                 this.logger,
                 messages,
-                manualModeDefault,
                 config,
             )
         } catch (err: any) {
@@ -137,9 +135,7 @@ export function createSessionState(): SessionState {
     return {
         sessionId: null,
         isSubAgent: false,
-        manualMode: false,
         compressPermission: undefined,
-        pendingManualTrigger: null,
         prune: {
             messages: createPruneMessagesState(),
         },
@@ -183,9 +179,7 @@ export function createSessionState(): SessionState {
 export function resetSessionState(state: SessionState): void {
     state.sessionId = null
     state.isSubAgent = false
-    state.manualMode = false
     state.compressPermission = undefined
-    state.pendingManualTrigger = null
     state.prune = {
         messages: createPruneMessagesState(),
     }
@@ -227,7 +221,6 @@ export async function ensureSessionInitialized(
     sessionId: string,
     logger: Logger,
     messages: WithParts[],
-    manualModeEnabled: boolean,
     config?: PluginConfig,
 ): Promise<void> {
     if (state.sessionId === sessionId) {
@@ -235,7 +228,6 @@ export async function ensureSessionInitialized(
     }
 
     resetSessionState(state)
-    state.manualMode = manualModeEnabled ? "active" : false
     state.sessionId = sessionId
 
     const isSubAgent = await isSubAgentSession(client, sessionId)

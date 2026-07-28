@@ -38,7 +38,6 @@ function buildConfig(overrides: Partial<PluginConfig> = {}): PluginConfig {
         pruneNotification: "off",
         pruneNotificationType: "chat",
         commands: { enabled: true, protectedTools: [] },
-        manualMode: { enabled: false },
         turnProtection: { enabled: false, turns: 4 },
         experimental: { allowSubAgents: false, customPrompts: false },
         protectedFilePatterns: [],
@@ -122,7 +121,6 @@ function makeCompressionBlock(
         compressedTokens: summaryTokens * 60,
         summaryTokens,
         durationMs: 5000,
-        mode: "range",
         topic,
         batchTopic: topic,
         startId: `m${String(blockId * 10).padStart(5, "0")}`,
@@ -646,7 +644,6 @@ test("applyCompressionState: mixed-tier consumption produces minTier+1, not maxT
         state,
         {
             runId: 100,
-            mode: "range",
             topic: "T2 compression",
             batchTopic: "T2 compression",
             startId: "b5",
@@ -709,7 +706,6 @@ test("applyCompressionState: T2 block gets effectiveCompressedTokens = consumed 
         state,
         {
             runId: 10,
-            mode: "range",
             topic: "T2 distillation",
             batchTopic: "T2 distillation",
             startId: "b1",
@@ -761,7 +757,6 @@ test("applyCompressionState: T1 block gets effectiveCompressedTokens = compresse
         state,
         {
             runId: 1,
-            mode: "range",
             topic: "T1 compression",
             batchTopic: "T1 compression",
             startId: "m00001",
@@ -905,7 +900,7 @@ test("E2E round-trip: compress → decompress → content identical", async () =
     const originalTexts = messages.map(extractMsgText)
 
     applyCompressionState(state, {
-        runId: 1, mode: "range", topic: "Bug fix", batchTopic: "Bug fix",
+        runId: 1, topic: "Bug fix", batchTopic: "Bug fix",
         startId: "a1", endId: "a3", summaryTokens: 200,
         summary: "Investigated and fixed login bug",
         compressMessageId: "msg-comp-1",
@@ -949,7 +944,7 @@ test("E2E round-trip: decompress → recompress → no redundancy", async () => 
     registerMessages(state, messages)
 
     applyCompressionState(state, {
-        runId: 1, mode: "range", topic: "Work", batchTopic: "Work",
+        runId: 1, topic: "Work", batchTopic: "Work",
         startId: "a1", endId: "a2", summaryTokens: 100,
         summary: "Did step 1 and 2",
         compressMessageId: "msg-comp-1",
@@ -974,7 +969,7 @@ test("E2E round-trip: decompress → recompress → no redundancy", async () => 
     assert.equal(afterDecompress.length, 3, "All messages visible after decompress")
 
     applyCompressionState(state, {
-        runId: 2, mode: "range", topic: "Work v2", batchTopic: "Work v2",
+        runId: 2, topic: "Work v2", batchTopic: "Work v2",
         startId: "a1", endId: "a2", summaryTokens: 100,
         summary: "Did step 1 and 2 (recompressed)",
         compressMessageId: "msg-comp-2",
@@ -1023,7 +1018,7 @@ test("E2E T3 decompress: default restores T2 summaries", async () => {
     registerMessages(state, messages)
 
     applyCompressionState(state, {
-        runId: 1, mode: "range", topic: "T1-a", batchTopic: "T1-a",
+        runId: 1, topic: "T1-a", batchTopic: "T1-a",
         startId: "a1", endId: "a1", summaryTokens: 500,
         summary: "T1 summary A",
         compressMessageId: "a3",
@@ -1033,7 +1028,7 @@ test("E2E T3 decompress: default restores T2 summaries", async () => {
     }, "a3", 1, "T1-a", [])
 
     applyCompressionState(state, {
-        runId: 2, mode: "range", topic: "T1-b", batchTopic: "T1-b",
+        runId: 2, topic: "T1-b", batchTopic: "T1-b",
         startId: "a2", endId: "a2", summaryTokens: 500,
         summary: "T1 summary B",
         compressMessageId: "a4",
@@ -1043,7 +1038,7 @@ test("E2E T3 decompress: default restores T2 summaries", async () => {
     }, "a4", 2, "T1-b", [])
 
     applyCompressionState(state, {
-        runId: 3, mode: "range", topic: "T2 distill", batchTopic: "T2 distill",
+        runId: 3, topic: "T2 distill", batchTopic: "T2 distill",
         startId: "b1", endId: "b2", summaryTokens: 200,
         summary: "T2 distilled summary",
         compressMessageId: "a5",
@@ -1067,7 +1062,7 @@ test("E2E T3 decompress: default restores T2 summaries", async () => {
     registerMessages(state, messagesT2Anchor)
 
     applyCompressionState(state, {
-        runId: 4, mode: "range", topic: "T3 condense", batchTopic: "T3 condense",
+        runId: 4, topic: "T3 condense", batchTopic: "T3 condense",
         startId: "b3", endId: "b3", summaryTokens: 100,
         summary: "T3 condensed",
         compressMessageId: "a6",
@@ -1115,21 +1110,21 @@ test("E2E T3 decompress: full:true recursively deactivates to raw", async () => 
     registerMessages(state, messages)
 
     applyCompressionState(state, {
-        runId: 1, mode: "range", topic: "T1-a", batchTopic: "T1-a",
+        runId: 1, topic: "T1-a", batchTopic: "T1-a",
         startId: "a1", endId: "a1", summaryTokens: 500,
         summary: "T1 A", compressMessageId: "a3",
     }, { messageIds: ["a1"], toolIds: [], messageTokenById: new Map([["a1", 30000]]) },
        "a3", 1, "T1-a", [])
 
     applyCompressionState(state, {
-        runId: 2, mode: "range", topic: "T1-b", batchTopic: "T1-b",
+        runId: 2, topic: "T1-b", batchTopic: "T1-b",
         startId: "a2", endId: "a2", summaryTokens: 500,
         summary: "T1 B", compressMessageId: "a4",
     }, { messageIds: ["a2"], toolIds: [], messageTokenById: new Map([["a2", 30000]]) },
        "a4", 2, "T1-b", [])
 
     applyCompressionState(state, {
-        runId: 3, mode: "range", topic: "T2", batchTopic: "T2",
+        runId: 3, topic: "T2", batchTopic: "T2",
         startId: "b1", endId: "b2", summaryTokens: 200,
         summary: "T2 summary", compressMessageId: "a5",
     }, { startReference: { kind: "compressed-block" as const, rawIndex: 0, blockId: 1 },
@@ -1138,7 +1133,7 @@ test("E2E T3 decompress: full:true recursively deactivates to raw", async () => 
        "a5", 3, "T2", [1, 2])
 
     applyCompressionState(state, {
-        runId: 4, mode: "range", topic: "T3", batchTopic: "T3",
+        runId: 4, topic: "T3", batchTopic: "T3",
         startId: "b3", endId: "b3", summaryTokens: 100,
         summary: "T3 summary", compressMessageId: "a6",
     }, { startReference: { kind: "compressed-block" as const, rawIndex: 0, blockId: 3 },

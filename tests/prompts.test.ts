@@ -101,52 +101,6 @@ test("system prompt overrides handle reminder tags safely", async (t) => {
     })
 })
 
-test("prompt store exposes bundled message-mode compress prompt", () => {
-    const fixture = createPromptStoreFixture()
-
-    try {
-        const runtimePrompts = fixture.store.getRuntimePrompts()
-
-        assert.match(runtimePrompts.compressMessage, /selected individual messages/i)
-        assert.match(
-            runtimePrompts.compressMessage,
-            /Only use raw message IDs of the form `mNNNNN`\./,
-        )
-        assert.match(runtimePrompts.compressMessage, /priority="high"/)
-        assert.match(runtimePrompts.compressMessage, /high-priority messages/i)
-        assert.match(runtimePrompts.compressMessage, /BLOCKED/)
-        assert.match(runtimePrompts.compressMessage, /cannot be compressed/i)
-        assert.doesNotMatch(runtimePrompts.compressMessage, /THE FORMAT OF COMPRESS/)
-    } finally {
-        fixture.cleanup()
-    }
-})
-
-test("compress-message overrides preserve plain-text metadata mentions", () => {
-    const fixture = createPromptStoreFixture(
-        [
-            "Override body.",
-            "",
-            'Each message has an ID inside XML metadata tags like `<dcp-message-id>m00007</dcp-message-id>`.',
-            "Messages marked as `<dcp-message-id>BLOCKED</dcp-message-id>` cannot be compressed.",
-        ].join("\n"),
-        "compress-message.md",
-    )
-
-    try {
-        const runtimePrompts = fixture.store.getRuntimePrompts()
-
-        assert.match(runtimePrompts.compressMessage, /Override body\./)
-        assert.match(
-            runtimePrompts.compressMessage,
-            /<dcp-message-id>m00007<\/dcp-message-id>/,
-        )
-        assert.match(runtimePrompts.compressMessage, /<dcp-message-id>BLOCKED<\/dcp-message-id>/)
-    } finally {
-        fixture.cleanup()
-    }
-})
-
 test("prompt store exposes bundled range-mode compress prompt", () => {
     const fixture = createPromptStoreFixture()
 

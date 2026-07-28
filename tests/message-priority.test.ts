@@ -21,9 +21,6 @@ function buildConfig(mode: "message" | "range" = "message"): PluginConfig {
             enabled: true,
             protectedTools: [],
         },
-        manualMode: {
-            enabled: false,
-        },
         turnProtection: {
             enabled: false,
             turns: 4,
@@ -216,59 +213,6 @@ test("injectMessageIds injects ID into every tool output for assistant messages"
     assert.match((assistantToolTwo as any).state.output, /m00002<\/dcp-message-id>/)
 })
 
-test("injectMessageIds marks every protected user text part as BLOCKED in message mode", () => {
-    const sessionID = "ses_message_blocked_user_tags"
-    const messages: WithParts[] = [
-        {
-            info: {
-                id: "msg-user-1",
-                role: "user",
-                sessionID,
-                agent: "assistant",
-                model: {
-                    providerID: "anthropic",
-                    modelID: "claude-test",
-                },
-                time: { created: 1 },
-            } as WithParts["info"],
-            parts: [
-                textPart(
-                    "msg-user-1",
-                    sessionID,
-                    "msg-user-1-part-1",
-                    repeatedWord("investigate", 6000),
-                ),
-                textPart("msg-user-1", sessionID, "msg-user-1-part-2", "Trailing note."),
-            ],
-        },
-        buildMessage("msg-assistant-1", "assistant", sessionID, "Short follow-up note.", 2),
-    ]
-    const state = createSessionState()
-    const config = buildConfig()
-    config.compress.protectUserMessages = true
-
-    assignMessageRefs(state, messages)
-    const compressionPriorities = buildPriorityMap(config, state, messages)
-
-    injectMessageIds(state, config, messages, compressionPriorities)
-
-    const userTextOne = messages[0]?.parts[0]
-    const userTextTwo = messages[0]?.parts[1]
-    const assistantText = messages[1]?.parts[0]
-
-    assert.equal(userTextOne?.type, "text")
-    assert.equal(userTextTwo?.type, "text")
-    assert.equal(assistantText?.type, "text")
-    assert.match((userTextOne as any).text, /\n\n<dcp-message-id[^>]*>BLOCKED<\/dcp-message-id>/)
-    assert.match((userTextTwo as any).text, /\n\n<dcp-message-id[^>]*>BLOCKED<\/dcp-message-id>/)
-    assert.doesNotMatch((userTextOne as any).text, /priority=/)
-    assert.doesNotMatch((userTextTwo as any).text, /priority=/)
-    assert.match(
-        (assistantText as any).text,
-        /\n\n<dcp-message-id[^>]*>m00002<\/dcp-message-id>/,
-    )
-})
-
 test("injectMessageIds injects ID into every tool output in range mode", () => {
     const sessionID = "ses_range_message_id_tags"
     const messages: WithParts[] = [
@@ -313,136 +257,6 @@ test("injectMessageIds injects ID into every tool output in range mode", () => {
     assert.match((assistantToolTwo as any).state.output, /m00002<\/dcp-message-id>/)
 })
 
-test("message mode marks compress tool messages as high priority even when short", () => {
-    const sessionID = "ses_message_compress_high_priority"
-    const messages: WithParts[] = [
-        buildMessage("msg-user-1", "user", sessionID, "Please compress this chunk.", 1),
-        {
-            info: {
-                id: "msg-assistant-1",
-                role: "assistant",
-                sessionID,
-                agent: "assistant",
-                time: { created: 2 },
-            } as WithParts["info"],
-            parts: [
-                textPart("msg-assistant-1", sessionID, "msg-assistant-1-part-1", "Done."),
-                toolPart(
-                    "msg-assistant-1",
-                    sessionID,
-                    "call-compress-1",
-                    "compress",
-                    "[Compressed conversation section]",
-                ),
-            ],
-        },
-    ]
-    const state = createSessionState()
-    const config = buildConfig()
-
-    assignMessageRefs(state, messages)
-    const compressionPriorities = buildPriorityMap(config, state, messages)
-
-    assert.equal(compressionPriorities.get("msg-assistant-1")?.priority, "high")
-
-    injectMessageIds(state, config, messages, compressionPriorities)
-
-    const assistantText = messages[1]?.parts[0]
-    const assistantTool = messages[1]?.parts[1]
-
-    // ID injected into tool output, not the text part
-    assert.doesNotMatch((assistantText as any).text, /dcp-message-id/)
-    assert.match((assistantTool as any).state.output, /m00002<\/dcp-message-id>/)
-    assert.match(
-        (assistantTool as any).state.output,
-        /<dcp-message-id[^>]*>m00002<\/dcp-message-id>/,
-    )
-})
-
-test("message-mode nudges append to existing text parts and list only earlier visible high-priority message IDs", () => {
-    const sessionID = "ses_message_priority_nudges"
-    const messages: WithParts[] = [
-        buildMessage("msg-user-1", "user", sessionID, repeatedWord("alpha", 6000), 1),
-        buildMessage("msg-assistant-1", "assistant", sessionID, repeatedWord("beta", 6000), 2),
-        buildMessage("msg-user-2", "user", sessionID, repeatedWord("gamma", 6000), 3),
-        buildMessage("msg-assistant-2", "assistant", sessionID, repeatedWord("delta", 6000), 4),
-    ]
-    const state = createSessionState()
-    const config = buildConfig()
-
-    assignMessageRefs(state, messages)
-    state.prune.messages.byMessageId.set("msg-assistant-1", {
-        tokenCount: 999,
-        allBlockIds: [1],
-        activeBlockIds: [1],
-    })
-    state.nudges.contextLimitAnchors.add("msg-user-2")
-
-    const compressionPriorities = buildPriorityMap(config, state, messages)
-
-    applyAnchoredNudges(
-        state,
-        config,
-        messages,
-        {
-            system: "",
-            compressRange: "",
-            compressMessage: "",
-            contextLimitNudge: "<dcp-system-reminder>Base context nudge</dcp-system-reminder>",
-            turnNudge: "<dcp-system-reminder>Base turn nudge</dcp-system-reminder>",
-            iterationNudge: "<dcp-system-reminder>Base iteration nudge</dcp-system-reminder>",
-        },
-        compressionPriorities,
-    )
-
-    assert.equal(messages[2]?.parts.length, 1)
-
-    const injectedNudge = messages[2]?.parts[0]
-    assert.equal(injectedNudge?.type, "text")
-    assert.match((injectedNudge as any).text, /\n\n<dcp-system-reminder>Base context nudge/)
-    assert.match((injectedNudge as any).text, /Message priority context:/)
-    // m00001 (user, 6000 tokens) and m00002 (assistant, 6000 tokens) are both high priority
-    assert.match((injectedNudge as any).text, /High-priority message IDs before this point: m00001, m00002/)
-    assert.doesNotMatch((injectedNudge as any).text, /m00003/)
-    assert.doesNotMatch((injectedNudge as any).text, /m00004/)
-})
-
-test("message-mode nudges exclude protected user messages from priority guidance", () => {
-    const sessionID = "ses_message_blocked_priority_nudges"
-    const messages: WithParts[] = [
-        buildMessage("msg-user-1", "user", sessionID, repeatedWord("alpha", 6000), 1),
-        buildMessage("msg-assistant-1", "assistant", sessionID, repeatedWord("beta", 6000), 2),
-        buildMessage("msg-user-2", "user", sessionID, repeatedWord("gamma", 6000), 3),
-    ]
-    const state = createSessionState()
-    const config = buildConfig()
-    config.compress.protectUserMessages = true
-
-    assignMessageRefs(state, messages)
-    state.nudges.contextLimitAnchors.add("msg-user-2")
-
-    const compressionPriorities = buildPriorityMap(config, state, messages)
-
-    applyAnchoredNudges(
-        state,
-        config,
-        messages,
-        {
-            system: "",
-            compressRange: "",
-            compressMessage: "",
-            contextLimitNudge: "<dcp-system-reminder>Base context nudge</dcp-system-reminder>",
-            turnNudge: "<dcp-system-reminder>Base turn nudge</dcp-system-reminder>",
-            iterationNudge: "<dcp-system-reminder>Base iteration nudge</dcp-system-reminder>",
-        },
-        compressionPriorities,
-    )
-
-    const injectedNudge = messages[2]?.parts[0]
-    assert.equal(injectedNudge?.type, "text")
-    assert.match((injectedNudge as any).text, /High-priority message IDs before this point: m00002/)
-    assert.doesNotMatch((injectedNudge as any).text, /m00001/)
-})
 
 test("range-mode nudges append to existing text parts before tool outputs", () => {
     const sessionID = "ses_range_nudge_injection"

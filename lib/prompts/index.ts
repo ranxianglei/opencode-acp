@@ -4,17 +4,12 @@ export type { PromptStore, RuntimePrompts } from "./store"
 export function renderSystemPrompt(
     prompts: RuntimePrompts,
     protectedToolsExtension?: string,
-    manual?: boolean,
     subagent?: boolean,
 ): string {
     const extensions: string[] = []
 
     if (protectedToolsExtension) {
         extensions.push(protectedToolsExtension.trim())
-    }
-
-    if (manual) {
-        extensions.push(prompts.manualExtension.trim())
     }
 
     if (subagent) {

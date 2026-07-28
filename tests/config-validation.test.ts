@@ -11,7 +11,7 @@ test("getInvalidConfigKeys returns empty array for valid nested keys", () => {
     const result = getInvalidConfigKeys({
         enabled: true,
         turnProtection: { enabled: false, turns: 4 },
-        compress: { mode: "range", nudgeForce: "soft" },
+        compress: { nudgeForce: "soft" },
     })
     assert.deepEqual(result, [])
 })
@@ -112,15 +112,6 @@ test("validateConfigTypes catches negative turns in turnProtection", () => {
     assert.equal(result.length, 1)
     assert.equal(result[0].key, "turnProtection.turns")
     assert.ok(result[0].expected.includes("positive"))
-})
-
-test("validateConfigTypes catches invalid compress.mode enum", () => {
-    const result = validateConfigTypes({
-        compress: { mode: "chunk" },
-    })
-    assert.equal(result.length, 1)
-    assert.equal(result[0].key, "compress.mode")
-    assert.equal(result[0].actual, '"chunk"')
 })
 
 test("validateConfigTypes catches invalid compress.permission enum", () => {

@@ -37,7 +37,6 @@ function buildConfig(overrides: Partial<PluginConfig> = {}): PluginConfig {
         pruneNotification: "off",
         pruneNotificationType: "chat",
         commands: { enabled: true, protectedTools: [] },
-        manualMode: { enabled: false },
         turnProtection: { enabled: false, turns: 4 },
         experimental: { allowSubAgents: false, customPrompts: false },
         protectedFilePatterns: [],
@@ -659,39 +658,6 @@ test("message IDs remain consistent after compression and pruning", async () => 
 })
 
 // ─── Test: Manual trigger applied to last user message ───────────────────────
-
-test("manual trigger: pending prompt replaces last user message text", async () => {
-    const { state, handler } = setupPipeline()
-
-    // Set up pending manual trigger
-    state.pendingManualTrigger = {
-        sessionId: SID,
-        prompt: "COMPRESS NOW: Focus on code changes",
-    }
-    state.manualMode = "compress-pending"
-
-    const output = {
-        messages: [
-            makeUserMessage("u1", "Original user message"),
-            makeAssistantMessage("a1", "Response"),
-            makeUserMessage("u2", "Please compress the context"),
-        ],
-    }
-
-    await handler({}, output)
-
-    // The last user message text should be replaced with the pending prompt
-    const lastUserMsg = output.messages.find(
-        (m: any) => m.info.id === "u2" && m.info.role === "user",
-    )
-    assert.ok(lastUserMsg)
-    const textPart = lastUserMsg!.parts.find((p: any) => p.type === "text" && !p.synthetic)
-    assert.ok(textPart)
-    assert.equal((textPart as any).text, "COMPRESS NOW: Focus on code changes")
-
-    // Trigger should be consumed
-    assert.equal(state.pendingManualTrigger, null)
-})
 
 // ─── Test: Sub-agent messages are skipped ────────────────────────────────────
 

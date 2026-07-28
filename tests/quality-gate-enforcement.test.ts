@@ -32,12 +32,10 @@ function buildConfig(qualityGateEnabled: boolean): PluginConfig {
         pruneNotification: "off",
         pruneNotificationType: "chat",
         commands: { enabled: true, protectedTools: [] },
-        manualMode: { enabled: false },
         turnProtection: { enabled: false, turns: 4 },
         experimental: { allowSubAgents: true, customPrompts: false },
         protectedFilePatterns: [],
         compress: {
-            mode: "range",
             permission: "allow",
             showCompression: false,
             summaryBuffer: true,

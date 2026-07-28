@@ -27,7 +27,6 @@ function makeBlock(overrides: Partial<CompressionBlock> = {}): CompressionBlock 
         compressedTokens: 1000,
         summaryTokens: 200,
         durationMs: 0,
-        mode: "range",
         tier: 1,
         topic: "test",
         batchTopic: "test",
@@ -57,7 +56,6 @@ function makeState(): SessionState {
     return {
         sessionId: SID,
         isSubAgent: false,
-        manualMode: false,
         compressPermission: "allow",
         pendingManualTrigger: null,
         prune: {
@@ -128,7 +126,6 @@ function makeInput(overrides: Partial<CompressionStateInput> = {}): CompressionS
         batchTopic: undefined,
         startId: "m00010",
         endId: "m00020",
-        mode: "range",
         runId: 10,
         compressMessageId: "comp-10",
         compressCallId: "call-10",

@@ -18,7 +18,6 @@ function makeBlock(overrides: Partial<CompressionBlock> = {}): CompressionBlock 
         compressedTokens: 100,
         summaryTokens: 20,
         durationMs: 0,
-        mode: "range",
         topic: "test topic",
         batchTopic: "test topic",
         startId: "m00001",
@@ -47,7 +46,6 @@ function makeState(blocks: Map<number, CompressionBlock>): SessionState {
     return {
         sessionId: SID,
         isSubAgent: false,
-        manualMode: false,
         compressPermission: "allow",
         pendingManualTrigger: null,
         prune: {

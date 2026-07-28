@@ -3,7 +3,6 @@ import { getConfig } from "./lib/config"
 import {
     createAcpStatusTool,
     createAcpContextRecapTool,
-    createCompressMessageTool,
     createCompressRangeTool,
     createDecompressTool,
     createSearchContextTool,
@@ -85,10 +84,7 @@ const server: Plugin = (async (ctx) => {
         event: createEventHandler(registry, logger),
         tool: {
             ...(config.compress.permission !== "deny" && {
-                compress:
-                    config.compress.mode === "message"
-                        ? createCompressMessageTool(compressToolContext)
-                        : createCompressRangeTool(compressToolContext),
+                compress: createCompressRangeTool(compressToolContext),
                 decompress: createDecompressTool(compressToolContext),
                 search_context: createSearchContextTool(compressToolContext),
                 acp_status: createAcpStatusTool(compressToolContext),

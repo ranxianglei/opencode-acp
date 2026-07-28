@@ -300,9 +300,6 @@ Each level overrides the previous, so project settings take priority over global
     },
     // Manual mode: disables autonomous context management,
     // tools only run when explicitly triggered via /acp commands
-    "manualMode": {
-        "enabled": false,
-    },
     // Protect from pruning for <turns> message turns past tool invocation
     "turnProtection": {
         "enabled": false,
@@ -323,7 +320,6 @@ Each level overrides the previous, so project settings take priority over global
     "compress": {
         // Compression mode: "range" (compress spans into block summaries)
         // or experimental "message" (compress individual raw messages)
-        "mode": "range",
         // Permission mode: "allow" (no prompt), "ask" (prompt), "deny" (tool not registered)
         "permission": "allow",
         // Show compression content in a chat notification

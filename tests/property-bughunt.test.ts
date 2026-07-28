@@ -105,7 +105,6 @@ function makeEmptyState(): SessionState {
         },
         compressionTiming: { pending: new Map(), completed: [] },
         toolParameters: new Map(),
-        manualMode: { enabled: false, pending: null },
     } as unknown as SessionState
 }
 

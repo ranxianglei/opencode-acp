@@ -17,9 +17,6 @@ function buildConfig(maxContextLimit: number, minContextLimit = 1): PluginConfig
             enabled: true,
             protectedTools: [],
         },
-        manualMode: {
-            enabled: false,
-        },
         turnProtection: {
             enabled: false,
             turns: 4,

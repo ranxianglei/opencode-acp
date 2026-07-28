@@ -11,7 +11,6 @@ function makeBlock(overrides: Partial<CompressionBlock> & { blockId: number }): 
         compressedTokens: 1000,
         summaryTokens: 100,
         durationMs: 0,
-        mode: "range",
         topic: "test",
         batchTopic: "",
         startId: "s1",

@@ -242,7 +242,6 @@ ACP maintains a bidirectional mapping:
 - `messageIds` — raw ↔ ref mapping
 - `compressionTiming` — tool execution duration tracking
 - `toolParameters` — tool call parameter cache
-- `manualMode` — manual compress mode state
 
 State is persisted to `~/.local/share/opencode/storage/plugin/acp/{sessionId}.json`.
 
@@ -268,7 +267,6 @@ Auto-migration: if `acp.jsonc` doesn't exist but `dcp.jsonc` does, automatically
     pruneNotification: "detailed",
     pruneNotificationType: "toast",
     commands: { enabled: true, protectedTools: ["task", "skill", "todowrite", "todoread", "compress", "batch", "plan_enter", "plan_exit", "write", "edit"] },
-    manualMode: { enabled: false },
     turnProtection: { enabled: false, turns: 4 },
     experimental: { allowSubAgents: false, customPrompts: false },
     protectedFilePatterns: [],

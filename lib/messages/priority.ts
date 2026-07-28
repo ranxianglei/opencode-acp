@@ -18,47 +18,11 @@ export interface CompressionPriorityEntry {
 export type CompressionPriorityMap = Map<string, CompressionPriorityEntry>
 
 export function buildPriorityMap(
-    config: PluginConfig,
-    state: SessionState,
-    messages: WithParts[],
+    _config: PluginConfig,
+    _state: SessionState,
+    _messages: WithParts[],
 ): CompressionPriorityMap {
-    if (config.compress.mode !== "message") {
-        return new Map()
-    }
-    const priorities: CompressionPriorityMap = new Map()
-
-    for (const message of messages) {
-        if (isIgnoredUserMessage(message)) {
-            continue
-        }
-
-        if (isProtectedUserMessage(config, message)) {
-            continue
-        }
-
-        if (isMessageCompacted(state, message)) {
-            continue
-        }
-
-        const rawMessageId = message.info.id
-        if (typeof rawMessageId !== "string" || rawMessageId.length === 0) {
-            continue
-        }
-
-        const ref = state.messageIds.byRawId.get(rawMessageId)
-        if (!ref) {
-            continue
-        }
-
-        const tokenCount = countAllMessageTokens(message)
-        priorities.set(rawMessageId, {
-            ref,
-            tokenCount,
-            priority: messageHasCompress(message) ? "high" : classifyMessagePriority(tokenCount),
-        })
-    }
-
-    return priorities
+    return new Map()
 }
 
 export function classifyMessagePriority(tokenCount: number): MessagePriority {

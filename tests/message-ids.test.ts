@@ -62,7 +62,6 @@ function makeState(overrides: Partial<SessionState> = {}): SessionState {
     return {
         sessionId: SID,
         isSubAgent: false,
-        manualMode: false,
         compressPermission: "allow",
         pendingManualTrigger: null,
         prune: {

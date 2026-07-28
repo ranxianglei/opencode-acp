@@ -68,21 +68,6 @@
                 "protectedTools": []
             }
         },
-        "manualMode": {
-            "type": "object",
-            "description": "Manual mode behavior for context management tools",
-            "additionalProperties": false,
-            "properties": {
-                "enabled": {
-                    "type": "boolean",
-                    "default": false,
-                    "description": "Start new sessions with manual mode enabled"
-                }
-            },
-            "default": {
-                "enabled": false
-            }
-        },
         "turnProtection": {
             "type": "object",
             "description": "Protect recent tool outputs from being pruned",
@@ -134,15 +119,6 @@
             "description": "Configuration for the unified compress tool",
             "additionalProperties": false,
             "properties": {
-                "mode": {
-                    "type": "string",
-                    "enum": [
-                        "range",
-                        "message"
-                    ],
-                    "default": "range",
-                    "description": "Compression mode. 'range' compresses spans into block summaries, 'message' compresses individual raw messages."
-                },
                 "permission": {
                     "type": "string",
                     "enum": [
@@ -332,7 +308,6 @@
                 }
             },
             "default": {
-                "mode": "range",
                 "permission": "allow",
                 "showCompression": false,
                 "summaryBuffer": true,

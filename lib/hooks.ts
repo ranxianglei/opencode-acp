@@ -26,14 +26,7 @@ import { filterMessages, filterMessagesInPlace } from "./messages/shape"
 import { getLastUserMessage } from "./messages/query"
 import { truncateLargeToolOutputs } from "./messages/truncate-tools"
 import {
-    applyPendingManualTrigger,
     handleContextCommand,
-    handleDecompressCommand,
-    handleHelpCommand,
-    handleManualToggleCommand,
-    handleManualTriggerCommand,
-    handleRecompressCommand,
-    handleStatsCommand,
 } from "./commands"
 import { type HostPermissionSnapshot } from "./host-permissions"
 import { compressPermission, syncCompressPermissionState } from "./compress-permission"
@@ -110,7 +103,6 @@ export function createSystemPromptHandler(
         const newPrompt = renderSystemPrompt(
             runtimePrompts,
             buildProtectedToolsExtension(config.compress.protectedTools),
-            !!state.manualMode,
             state.isSubAgent && config.experimental.allowSubAgents,
         )
         if (output.system.length > 0) {
@@ -160,7 +152,6 @@ export function createChatMessageTransformHandler(
                 client,
                 lastUserMessage.info.sessionID,
                 messages,
-                config.manualMode.enabled,
                 config,
             )
             await updatePerTurnState(state, logger, messages)
@@ -233,7 +224,6 @@ export function createChatMessageTransformHandler(
             prePruneTokens,
         )
         injectMessageIds(state, config, output.messages, compressionPriorities)
-        applyPendingManualTrigger(state, output.messages, logger)
         stripStaleMetadata(output.messages)
         dropEmptyMessages(output.messages)
 
@@ -269,7 +259,6 @@ export function createCommandExecuteHandler(
                 client,
                 input.sessionID,
                 messages,
-                config.manualMode.enabled,
                 config,
             )
 
@@ -280,10 +269,6 @@ export function createCommandExecuteHandler(
                 return
             }
 
-            const args = (input.arguments || "").trim().split(/\s+/).filter(Boolean)
-            const subcommand = args[0]?.toLowerCase() || ""
-            const subArgs = args.slice(1)
-
             const commandCtx = {
                 client,
                 state,
@@ -293,60 +278,8 @@ export function createCommandExecuteHandler(
                 messages,
             }
 
-            if (subcommand === "context") {
-                await handleContextCommand(commandCtx)
-                throw new Error("__DCP_CONTEXT_HANDLED__")
-            }
-
-            if (subcommand === "stats") {
-                await handleStatsCommand(commandCtx)
-                throw new Error("__DCP_STATS_HANDLED__")
-            }
-
-            if (subcommand === "manual") {
-                await handleManualToggleCommand(commandCtx, subArgs[0]?.toLowerCase())
-                throw new Error("__DCP_MANUAL_HANDLED__")
-            }
-
-            if (subcommand === "compress") {
-                const userFocus = subArgs.join(" ").trim()
-                const prompt = await handleManualTriggerCommand(commandCtx, "compress", userFocus)
-                if (!prompt) {
-                    throw new Error("__DCP_MANUAL_TRIGGER_BLOCKED__")
-                }
-
-                state.manualMode = "compress-pending"
-                state.pendingManualTrigger = {
-                    sessionId: input.sessionID,
-                    prompt,
-                }
-                const rawArgs = (input.arguments || "").trim()
-                output.parts.length = 0
-                output.parts.push({
-                    type: "text",
-                    text: rawArgs ? `/dcp ${rawArgs}` : `/dcp ${subcommand}`,
-                })
-                return
-            }
-
-            if (subcommand === "decompress") {
-                await handleDecompressCommand({
-                    ...commandCtx,
-                    args: subArgs,
-                })
-                throw new Error("__DCP_DECOMPRESS_HANDLED__")
-            }
-
-            if (subcommand === "recompress") {
-                await handleRecompressCommand({
-                    ...commandCtx,
-                    args: subArgs,
-                })
-                throw new Error("__DCP_RECOMPRESS_HANDLED__")
-            }
-
-            await handleHelpCommand(commandCtx)
-            throw new Error("__DCP_HELP_HANDLED__")
+            await handleContextCommand(commandCtx)
+            throw new Error("__DCP_CONTEXT_HANDLED__")
         }
     }
 }
