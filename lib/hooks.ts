@@ -40,6 +40,7 @@ import { compressPermission, syncCompressPermissionState } from "./compress-perm
 import { hideConsumedCompressCalls } from "./compress/hide-consumed"
 import { createSessionState, saveSessionState, syncToolCache, updatePerTurnState, type SessionStateRegistry } from "./state"
 import { cacheSystemPromptTokens } from "./ui/utils"
+import { sendIgnoredMessage } from "./ui/notification"
 import { runBatchCleanup } from "./gc/merge"
 import { getCurrentTokenUsage } from "./token-utils"
 
@@ -202,6 +203,21 @@ export function createChatMessageTransformHandler(
             config.debug
                 ? (text: string) => {
                       logger.debug(`[ACP Debug] Nudge injected:\n${text}`)
+                      if (state.sessionId && lastUserMessage) {
+                          const userInfo = lastUserMessage.info as any
+                          sendIgnoredMessage(
+                              client,
+                              state.sessionId,
+                              `[ACP Debug Nudge]\n${text}`,
+                              {
+                                  providerId: userInfo.model?.providerID,
+                                  modelId: userInfo.model?.modelID,
+                                  agent: userInfo.agent,
+                                  variant: userInfo.variant,
+                              },
+                              logger,
+                          ).catch(() => {})
+                      }
                       client.tui
                           .showToast({
                               body: {
