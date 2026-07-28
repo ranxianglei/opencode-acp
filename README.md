@@ -509,6 +509,14 @@ For the complete list with root cause analysis, see the [bug tracker](https://gi
 
 ## Changelog
 
+### v1.14.6 — Debug Nudge Chat Visibility (PR #226)
+
+**Problem**: With `debug: true`, ACP nudge injections (compression suggestions, context breakdown, tier triggers) were only visible via a 5-second toast and log files. The nudge suffix message is ephemeral — injected by the message-transform hook but never persisted to the conversation DB — so users could not see what the model was actually seeing in the chat UI. This made debugging nudge behavior very difficult.
+
+**Fix**: When `config.debug` is on, the `debugNotify` callback in `hooks.ts` now also calls `sendIgnoredMessage()` to persist the full nudge text to the conversation DB as an `ignored: true` user message (user-visible, model-invisible). The message is prefixed with `[ACP Debug Nudge]` for easy identification. Toast notification still shown alongside for backward compat. Debug OFF: behavior unchanged (no persisted messages).
+
+Files: `lib/hooks.ts`. No source logic changes. No config changes. No persisted-state schema changes. 937 tests pass.
+
 ### v1.14.5 — GC Module Removal + Property-Based Tests + Issue #176 Fix + Config Docs (PRs #222, #206, #221, #223, #224)
 
 **Problem**: Five issues bundled. (1) **GC data-loss bugs** (PR #222): The `gc/truncate.ts` module had 4 confirmed bugs that could silently lose summaries — single-line truncation exceeded maxLength by 19 chars, barely-over-maxLength silently failed (longer than input), long-header output overrun, and off-by-one marker reservation. GC only triggered at 100% context (default), so it was rarely reached but catastrophic when it did. (2) **Dead code** (PR #206): Prune tool, sweep command, and strategies (~2309 lines) were never used — `prune` tool was replaced by `compress` tool, `sweep` was superseded by batch cleanup, strategies were vestigial. (3) **No property-based tests** (PR #221): All tests were targeted/unit tests — invariant violations across edge cases were undetectable. (4) **Missing config docs** (PR #223): No comprehensive config reference — users had to read source to discover parameters. (5) **Nudge permanently stops after compress** (PR #224, Issue #176): In autonomous sessions (single user message + many assistant/tool turns), `injectCompressNudges` had an unconditional early return when any compress was detected in the current turn. Since the entire session IS one turn, once compress happened, `currentTurnHasCompress` was always true → function always returned early → nudges never fired again → unbounded context growth.
