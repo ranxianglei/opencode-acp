@@ -1,12 +1,16 @@
-# WORKLOG: Add npm stable dist-tag support
+# WORKLOG: Add npm stable dist-tag promotion via PR
 
-## Changes
+## Changes (v2 — redesigned from workflow_dispatch to PR-based)
 - `.github/workflows/release.yml`:
-  - Added `promote_stable` input to `workflow_dispatch`
-  - Added `promote-stable` job: runs `npm dist-tag add opencode-acp@VERSION stable` when triggered
-  - Guarded `publish` job with `if: promote_stable == '' || event == push` to prevent both jobs running simultaneously
+  - Removed `promote_stable` workflow_dispatch input (rejected: no audit trail)
+  - Added Pattern 3 + Pattern 4 detection for `promote-stable-v{VERSION}` branch merges
+  - Added "Promote to npm stable tag" step: runs `npm dist-tag add opencode-acp@VERSION stable`
+  - Expanded `setup-node` condition to cover both `is_release` and `is_promote_stable`
+  - All existing release/publish steps unchanged
 
-## Verification
-- YAML syntax valid (GitHub Actions schema)
-- `publish` job logic unchanged when `promote_stable` is empty
-- `promote-stable` job only runs when `promote_stable` input is non-empty
+## Rationale
+PR-based promotion provides:
+- Git history audit trail (who promoted, when, why)
+- PR description documents what changed since last stable
+- No manual version input (eliminates typo risk)
+- Same merge-based flow as releases — consistent workflow
