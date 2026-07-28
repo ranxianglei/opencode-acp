@@ -212,6 +212,8 @@ ACP 使用自己的配置文件，按以下顺序搜索：
 
 每一层覆盖前一层，因此项目设置优先于全局设置。修改配置后请重启 OpenCode。
 
+> **📖 完整参数参考：** 请查看 [CONFIGURATION.md](./CONFIGURATION.md)（英文），包含每个可配置参数的类型、默认值和详细说明。
+
 > [!IMPORTANT]
 > **禁用 OpenCode 的内置自动压缩。** ACP 自行处理上下文管理 — OpenCode 的压缩与 ACP 冲突，可能导致问题（消息重新展开、压缩状态丢失）。请在 `opencode.json` 中添加：
 >
