@@ -1379,3 +1379,152 @@ test("E2E growth: baseline preserved through nothingToCompress, nudge fires when
     )
 })
 
+test("E2E autonomous: nudge re-fires after compress in same turn (Issue #176)", () => {
+    const state = createSessionState()
+    state.sessionId = "test-issue-176"
+    state.modelContextLimit = 1_000_000
+
+    const config = buildConfig()
+    config.compress.maxContextLimit = 500_000
+    config.compress.minContextLimit = 200_000
+    config.compress.protectedTools = ["skill"]
+    config.compress.preserveRecentMessages = 5
+    config.compress.preserveRecentTokens = 0
+    config.compress.preserveLastUserMessage = false
+
+    // Autonomous session: single user message (like an agentic task)
+    state.messageIds.byRawId.set("u1", "m00001")
+
+    state.nudges.lastPerMessageNudgeTokens = 200_000
+
+    const phase1: WithParts[] = [userMsg("u1", "do the task")]
+    for (let i = 0; i < 20; i++) {
+        const id = `a_p1_${i}`
+        const ref = `m${String(i + 2).padStart(5, "0")}`
+        state.messageIds.byRawId.set(id, ref)
+        phase1.push(assistantMsgWithTokens(id, "work", { input: 300_000, output: 100_000 }, [
+            toolPart(`tp_p1_${i}`, "x".repeat(50_000)),
+        ]))
+    }
+    injectCompressNudges(state, config, logger, phase1, {} as any)
+    assert.equal(
+        state.nudges.shouldInjectThisTurn,
+        true,
+        "phase 1: first nudge should fire — enough growth and compressible content",
+    )
+    assert.notEqual(
+        state.nudges.lastNudgeShownTokens,
+        undefined,
+        "phase 1: lastNudgeShownTokens should be set",
+    )
+
+    const compressId1 = "a_compress_1"
+    state.messageIds.byRawId.set(compressId1, "m09001")
+    const phase2 = [...phase1, assistantMsg(compressId1, "compressed", [
+        compressToolPart("compress-1", "compression result"),
+    ])]
+    injectCompressNudges(state, config, logger, phase2, {} as any, undefined, undefined, 400_000)
+    assert.equal(
+        state.nudges.lastNudgeShownTokens,
+        undefined,
+        "phase 2: anchors cleared after compress detected",
+    )
+    assert.equal(
+        state.nudges.compressBaselineSet,
+        true,
+        "phase 2: baseline should be adjusted after successful compress",
+    )
+
+    // Phase 3: More work accumulates past the same growth threshold
+    // In the buggy code, currentTurnHasCompress is STILL true (same compress msg in
+    // turn), so the function ALWAYS returns early — nudge NEVER re-fires.
+    // After fix: the already-processed compress is detected, function falls through
+    // to normal evaluation, and the new nudge fires.
+    const phase3 = [...phase2]
+    for (let i = 0; i < 20; i++) {
+        const id = `a_p3_${i}`
+        const ref = `m${String(i + 22).padStart(5, "0")}`
+        state.messageIds.byRawId.set(id, ref)
+        phase3.push(assistantMsgWithTokens(id, "more work", { input: 350_000, output: 120_000 }, [
+            toolPart(`tp_p3_${i}`, "x".repeat(50_000)),
+        ]))
+    }
+    injectCompressNudges(state, config, logger, phase3, {} as any)
+
+    // THE BUG: shouldInjectThisTurn should be true but is false/stale
+    assert.equal(
+        state.nudges.shouldInjectThisTurn,
+        true,
+        "phase 3: nudge SHOULD re-fire after sufficient growth post-compress (Issue #176)",
+    )
+    assert.notEqual(
+        state.nudges.lastNudgeShownTokens,
+        undefined,
+        "phase 3: lastNudgeShownTokens should be set again — nudge actually injected",
+    )
+})
+
+test("E2E autonomous: second compress also gets processed (Issue #176 multi-compress)", () => {
+    const state = createSessionState()
+    state.sessionId = "test-issue-176-multi"
+    state.modelContextLimit = 1_000_000
+
+    const config = buildConfig()
+    config.compress.maxContextLimit = 500_000
+    config.compress.minContextLimit = 200_000
+    config.compress.protectedTools = ["skill"]
+    config.compress.preserveRecentMessages = 5
+    config.compress.preserveRecentTokens = 0
+    config.compress.preserveLastUserMessage = false
+
+    state.messageIds.byRawId.set("u1", "m00001")
+
+    function mkAssistants(prefix: string, count: number, startRef: number, input: number = 300_000): WithParts[] {
+        const msgs: WithParts[] = []
+        for (let i = 0; i < count; i++) {
+            const id = `a_${prefix}_${i}`
+            const ref = `m${String(startRef + i).padStart(5, "0")}`
+            state.messageIds.byRawId.set(id, ref)
+            msgs.push(assistantMsgWithTokens(id, "work", { input, output: 100_000 }, [
+                toolPart(`tp_${prefix}_${i}`, "x".repeat(50_000)),
+            ]))
+        }
+        return msgs
+    }
+
+    function mkCompress(id: string, ref: string, callId: string): WithParts {
+        state.messageIds.byRawId.set(id, ref)
+        return assistantMsg(id, "compressed", [
+            compressToolPart(callId, "compression result"),
+        ])
+    }
+
+    state.nudges.lastPerMessageNudgeTokens = 200_000
+
+    const phase1: WithParts[] = [userMsg("u1", "do the task"), ...mkAssistants("p1", 20, 2)]
+    injectCompressNudges(state, config, logger, phase1, {} as any)
+    assert.equal(state.nudges.shouldInjectThisTurn, true, "phase 1: first nudge fires")
+
+    const phase2 = [...phase1, mkCompress("a_compress_1", "m09001", "compress-1")]
+    injectCompressNudges(state, config, logger, phase2, {} as any, undefined, undefined, 400_000)
+    assert.equal(state.nudges.lastNudgeShownTokens, undefined, "phase 2: first compress processed")
+
+    const phase3 = [...phase2, ...mkAssistants("p3", 20, 100, 350_000)]
+    injectCompressNudges(state, config, logger, phase3, {} as any)
+    assert.equal(state.nudges.shouldInjectThisTurn, true, "phase 3: second nudge fires")
+    assert.notEqual(state.nudges.lastNudgeShownTokens, undefined, "phase 3: nudge injected")
+
+    const phase4 = [...phase3, mkCompress("a_compress_2", "m09002", "compress-2")]
+    injectCompressNudges(state, config, logger, phase4, {} as any, undefined, undefined, 450_000)
+    assert.equal(state.nudges.lastNudgeShownTokens, undefined, "phase 4: second compress processed")
+    assert.equal(state.nudges.compressBaselineSet, true, "phase 4: second baseline adjustment")
+
+    const phase5 = [...phase4, ...mkAssistants("p5", 20, 200, 400_000)]
+    injectCompressNudges(state, config, logger, phase5, {} as any)
+    assert.equal(
+        state.nudges.shouldInjectThisTurn,
+        true,
+        "phase 5: third nudge fires after second compress — no permanent stuck state",
+    )
+})
+

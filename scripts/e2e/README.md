@@ -69,6 +69,8 @@ the turn counter for real conversation turns.
 | `06-nudge-triggered.json` | Text turns grow context → ACP auto-injects nudge → fake LLM detects nudge and compresses → verify block count + nudge baseline |
 | `07-protection-filtered.json` | Production config (preserveRecentMessages:5) → compress all → verify protected messages excluded from compressed set (soft-filter, not hard-reject) |
 | `08-nudge-with-protection.json` | Nudge→compress WITH protection enabled → verify compress succeeds despite protected zone, nudge baseline set, protected messages survived |
+| `09-nudge-refire-after-compress.json` | Multi-turn regression: nudge→compress→growth→second nudge→second compress → verify minBlockCount ≥ 2 |
+| `10-autonomous-nudge-refire.json` | Issue #176: Autonomous session (bash tool calls grow context) → first nudge→compress → continued growth → second nudge→second compress → verify minBlockCount ≥ 2 |
 
 ### Scenario Format
 

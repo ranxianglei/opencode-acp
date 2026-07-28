@@ -120,6 +120,18 @@ export interface Nudges {
      * Reset to false when compress is NOT in the current turn.
      */
     compressBaselineSet: boolean
+    /**
+     * Tracks the message ID of the last processed compress call.
+     *
+     * Prevents the early-return in injectCompressNudges from firing repeatedly
+     * for the SAME compress call. In autonomous sessions (single user message),
+     * a compress stays in the turn forever — without this tracking, the nudge
+     * system would NEVER evaluate again after the first compress.
+     *
+     * NOT persisted — transient by design. On restart it's undefined, causing
+     * one extra early-return on the first call, then normal behavior resumes.
+     */
+    lastProcessedCompressMessageId: string | undefined
 }
 
 export interface SessionState {

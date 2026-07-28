@@ -107,60 +107,63 @@ export const injectCompressNudges = (
         .some((m) => m.info.role === "assistant" && messageHasCompressAttempt(m))
 
     if (currentTurnHasCompress) {
-        const wasNudgeTriggered = state.nudges.lastNudgeShownTokens !== undefined
-
-        // Clear anchors regardless of success/failure — a failed attempt still
-        // means the model responded to the nudge, so we stop the halved-threshold
-        // loop (Issue #216 Defect 2).
-        state.nudges.contextLimitAnchors.clear()
-        state.nudges.turnNudgeAnchors.clear()
-        state.nudges.iterationNudgeAnchors.clear()
-        state.nudges.lastNudgeShownTokens = undefined
-        state.nudges.lastToolOutputNudgeTokens = undefined
-        state.nudges.lastTier2NudgeTokens = undefined
-        state.nudges.lastTier3NudgeTokens = undefined
-
-        // Proportional baseline adjustment: ONLY when compress actually succeeded
-        // (something was compressed). For failed/rejected attempts, baseline stays
-        // unchanged — growth accumulates until there's genuinely more to compress.
-        const currentTurnHasSuccessfulCompress = messages
+        const lastCompressMsg = messages
             .slice(currentTurnStart)
-            .some((m) => m.info.role === "assistant" && messageHasCompress(m))
+            .findLast((m) => m.info.role === "assistant" && messageHasCompressAttempt(m))
+        const lastCompressMsgId = lastCompressMsg?.info?.id
 
-        if (currentTurnHasSuccessfulCompress && wasNudgeTriggered && !state.nudges.compressBaselineSet) {
-            const baseline = state.nudges.lastPerMessageNudgeTokens
-            const postCompress = currentTokens
-            // preCompressTokens is captured in hooks.ts BEFORE prune() runs
-            const preCompress = preCompressTokens
+        if (lastCompressMsgId !== state.nudges.lastProcessedCompressMessageId) {
+            state.nudges.lastProcessedCompressMessageId = lastCompressMsgId
 
-            if (
-                baseline !== undefined &&
-                postCompress !== undefined &&
-                preCompress !== undefined &&
-                preCompress > postCompress
-            ) {
-                const growth = preCompress - baseline
-                const compressed = preCompress - postCompress
-                if (growth > 0 && compressed > 0) {
-                    const ratio = Math.min(1, compressed / growth)
-                    const adjustment = Math.min(1, ratio * 2) // 50%→1.0, 25%→0.5, 10%→0.2
-                    const newBaseline =
-                        baseline + Math.round((postCompress - baseline) * adjustment)
-                    state.nudges.lastPerMessageNudgeTokens = newBaseline
+            const wasNudgeTriggered = state.nudges.lastNudgeShownTokens !== undefined
+
+            state.nudges.contextLimitAnchors.clear()
+            state.nudges.turnNudgeAnchors.clear()
+            state.nudges.iterationNudgeAnchors.clear()
+            state.nudges.lastNudgeShownTokens = undefined
+            state.nudges.lastToolOutputNudgeTokens = undefined
+            state.nudges.lastTier2NudgeTokens = undefined
+            state.nudges.lastTier3NudgeTokens = undefined
+
+            const currentTurnHasSuccessfulCompress = messages
+                .slice(currentTurnStart)
+                .some((m) => m.info.role === "assistant" && messageHasCompress(m))
+
+            if (currentTurnHasSuccessfulCompress && wasNudgeTriggered && !state.nudges.compressBaselineSet) {
+                const baseline = state.nudges.lastPerMessageNudgeTokens
+                const postCompress = currentTokens
+                const preCompress = preCompressTokens
+
+                if (
+                    baseline !== undefined &&
+                    postCompress !== undefined &&
+                    preCompress !== undefined &&
+                    preCompress > postCompress
+                ) {
+                    const growth = preCompress - baseline
+                    const compressed = preCompress - postCompress
+                    if (growth > 0 && compressed > 0) {
+                        const ratio = Math.min(1, compressed / growth)
+                        const adjustment = Math.min(1, ratio * 2)
+                        state.nudges.lastPerMessageNudgeTokens =
+                            baseline + Math.round((postCompress - baseline) * adjustment)
+                    } else {
+                        state.nudges.lastPerMessageNudgeTokens = postCompress
+                    }
                 } else {
                     state.nudges.lastPerMessageNudgeTokens = postCompress
                 }
-            } else {
-                state.nudges.lastPerMessageNudgeTokens = postCompress
+                state.nudges.compressBaselineSet = true
             }
-            state.nudges.compressBaselineSet = true
-        }
 
-        saveSessionState(state, logger).catch(() => {})
-        return
+            state.nudges.shouldInjectThisTurn = false
+            saveSessionState(state, logger).catch(() => {})
+            return
+        }
+    } else {
+        state.nudges.lastProcessedCompressMessageId = undefined
     }
 
-    // New turn (no compress) — release the lock
     state.nudges.compressBaselineSet = false
 
     let anchorsChanged = false
