@@ -7,8 +7,9 @@
  *
  *   filterMessagesInPlace → checkSession → syncCompressPermission →
  *   stripHallucinations → cacheSystemPromptTokens → assignMessageRefs →
- *   syncCompressionBlocks → syncToolCache → buildToolIdList → runMajorGC →
- *   prune → assignMessageRefs (reassign) → buildPriorityMap → injectCompressNudges → injectMessageIds →
+ *   syncCompressionBlocks → syncToolCache → buildToolIdList →
+ *   runBatchCleanup → prune → truncateLargeToolOutputs →
+ *   assignMessageRefs (reassign) → buildPriorityMap → injectCompressNudges → injectMessageIds →
  *   applyPendingManualTrigger → stripStaleMetadata → logger.saveContext
  */
 
