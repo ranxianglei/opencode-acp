@@ -42,7 +42,7 @@ function buildSessionState(blocks: CompressionBlock[]): Pick<SessionState, "prun
             pruneMessages.activeBlockIds.add(block.blockId)
         }
     }
-    return { prune: { tools: new Map(), messages: pruneMessages } }
+    return { prune: { messages: pruneMessages } }
 }
 
 test("getActiveSummaryTokenUsage: sums all active blocks without visibility filter", () => {

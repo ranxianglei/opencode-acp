@@ -143,7 +143,6 @@ export async function saveSessionState(
     const state: PersistedSessionState = {
         sessionName: sessionName,
         prune: {
-            tools: Object.fromEntries(sessionState.prune.tools),
             messages: serializePruneMessagesState(sessionState.prune.messages),
         },
         nudges: {
@@ -186,13 +185,11 @@ export async function loadSessionState(
         const content = await fs.readFile(filePath, "utf-8")
         const state = JSON.parse(content) as PersistedSessionState
 
-        const hasPruneTools = state?.prune?.tools && typeof state.prune.tools === "object"
         const hasPruneMessages = state?.prune?.messages && typeof state.prune.messages === "object"
         const hasNudgeFormat = state?.nudges && typeof state.nudges === "object"
         if (
             !state ||
             !state.prune ||
-            !hasPruneTools ||
             !hasPruneMessages ||
             !state.stats ||
             !hasNudgeFormat
@@ -306,9 +303,8 @@ export async function loadAllSessionStats(logger: Logger): Promise<AggregatedSta
 
                 if (state?.stats?.totalPruneTokens && state?.prune) {
                     result.totalTokens += state.stats.totalPruneTokens
-                    result.totalTools += state.prune.tools
-                        ? Object.keys(state.prune.tools).length
-                        : 0
+                    const legacy = (state.prune as { tools?: Record<string, unknown> }).tools
+                    result.totalTools += legacy ? Object.keys(legacy).length : 0
                     result.totalMessages += state.prune.messages?.byMessageId
                         ? Object.keys(state.prune.messages.byMessageId).length
                         : 0

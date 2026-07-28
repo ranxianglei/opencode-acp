@@ -23,7 +23,6 @@ function buildConfig(mode: "message" | "range" = "message"): PluginConfig {
         },
         manualMode: {
             enabled: false,
-            automaticStrategies: true,
         },
         turnProtection: {
             enabled: false,
@@ -46,17 +45,6 @@ function buildConfig(mode: "message" | "range" = "message"): PluginConfig {
             protectedTools: ["task"],
             protectTags: false,
             protectUserMessages: false,
-        },
-        strategies: {
-            deduplication: {
-                enabled: true,
-                protectedTools: [],
-            },
-            purgeErrors: {
-                enabled: true,
-                turns: 4,
-                protectedTools: [],
-            },
         },
     }
 }

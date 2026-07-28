@@ -49,7 +49,6 @@ function makeState(activeIds: number[], blocks: Map<number, CompressionBlock>): 
         compressPermission: "allow",
         pendingManualTrigger: null,
         prune: {
-            tools: new Map(),
             messages: {
                 byMessageId: new Map<string, PrunedMessageEntry>(),
                 blocksById: blocks,

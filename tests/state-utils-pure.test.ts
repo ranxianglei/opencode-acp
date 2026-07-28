@@ -3,7 +3,6 @@ import test from "node:test"
 import {
     createPruneMessagesState,
     serializePruneMessagesState,
-    loadPruneMap,
     loadPruneMessagesState,
 } from "../lib/state/utils"
 
@@ -67,42 +66,6 @@ test("serializePruneMessagesState converts Maps to Records, Sets to Arrays", () 
 
     assert.equal(serialized.nextBlockId, 1)
     assert.equal(serialized.nextRunId, 1)
-})
-
-test("loadPruneMap converts Record to Map", () => {
-    const record = { a: 1, b: 2, c: 3 }
-    const map = loadPruneMap(record)
-    assert.equal(map instanceof Map, true)
-    assert.equal(map.size, 3)
-    assert.equal(map.get("a"), 1)
-    assert.equal(map.get("b"), 2)
-    assert.equal(map.get("c"), 3)
-})
-
-test("loadPruneMap handles undefined input (returns empty Map)", () => {
-    const map = loadPruneMap(undefined)
-    assert.equal(map instanceof Map, true)
-    assert.equal(map.size, 0)
-})
-
-test("loadPruneMap handles null input (returns empty Map)", () => {
-    const map = loadPruneMap(null as any)
-    assert.equal(map instanceof Map, true)
-    assert.equal(map.size, 0)
-})
-
-test("loadPruneMap filters invalid entries", () => {
-    const record: Record<string, any> = { valid: 42, badString: "not-a-number", badNull: null }
-    const map = loadPruneMap(record)
-    assert.equal(map.size, 1)
-    assert.equal(map.get("valid"), 42)
-    assert.equal(map.has("badString"), false)
-    assert.equal(map.has("badNull"), false)
-})
-
-test("loadPruneMap handles empty object", () => {
-    const map = loadPruneMap({})
-    assert.equal(map.size, 0)
 })
 
 test("loadPruneMessagesState round-trips with serialize", () => {

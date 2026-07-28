@@ -238,7 +238,6 @@ ACP provides an `/acp` slash command (also accepts `/dcp` for backward compatibi
 | `/acp`                  | Shows available ACP commands                                                                                                               |
 | `/acp context`          | Token usage breakdown by category (system, user, assistant, tools, etc.) and how much has been saved through pruning                       |
 | `/acp stats`            | Cumulative pruning statistics across all sessions                                                                                          |
-| `/acp sweep [n]`        | Prunes all tools since the last user message. Optional count: `/acp sweep 10` prunes the last 10 tools. Respects `commands.protectedTools` |
 | `/acp manual [on\|off]` | Toggle manual mode. When on, the AI will not autonomously use context management tools                                                     |
 | `/acp compress [focus]` | Trigger a single compress tool execution. Optional focus text directs what content to compress, following the active `compress.mode`       |
 | `/acp decompress <n>`   | Restore a specific active compression by ID. Running without an argument shows available compression IDs, token sizes, and topics          |
@@ -294,16 +293,13 @@ Each level overrides the previous, so project settings take priority over global
     // Slash commands configuration
     "commands": {
         "enabled": true,
-        // Additional tools to protect from pruning via commands (e.g., /acp sweep)
+        // Additional tools to protect from pruning via commands
         "protectedTools": [],
     },
     // Manual mode: disables autonomous context management,
     // tools only run when explicitly triggered via /acp commands
     "manualMode": {
         "enabled": false,
-        // When true, automatic cleanup (deduplication, purgeErrors)
-        // still runs even in manual mode
-        "automaticStrategies": true,
     },
     // Protect from pruning for <turns> message turns past tool invocation
     "turnProtection": {
@@ -374,23 +370,6 @@ Each level overrides the previous, so project settings take priority over global
         // Warning: large copy-pasted prompts will never be compressed away
         "protectUserMessages": false,
     },
-    // Automatic pruning strategies
-    "strategies": {
-        // Remove duplicate tool calls (same tool with same arguments)
-        "deduplication": {
-            "enabled": true,
-            // Additional tools to protect from pruning
-            "protectedTools": [],
-        },
-        // Prune tool inputs for errored tools after X turns
-        "purgeErrors": {
-            "enabled": true,
-            // Number of turns before errored tool inputs are pruned
-            "turns": 4,
-            // Additional tools to protect from pruning
-            "protectedTools": [],
-        },
-    },
     // Garbage collection — hardcoded 100% fallback only
     "gc": {
         "algorithm": "truncate",
@@ -454,7 +433,7 @@ To reset an override, delete the matching file from your overrides directory.
 By default, these tools are always protected from pruning:
 `task`, `skill`, `todowrite`, `todoread`, `compress`, `decompress`, `batch`, `plan_enter`, `plan_exit`, `write`, `edit`
 
-The `protectedTools` arrays in `commands` and `strategies` add to this default list.
+The `protectedTools` array in `commands` adds to this default list.
 
 For the `compress` tool, `compress.protectedTools` ensures specific tool outputs are **hard-excluded** from compression ranges (v1.10.0+). When the model compresses a range that includes a protected tool message, that message survives intact in visible context — only the surrounding non-protected messages are compressed. The root default is `["skill", "compress"]` (the `compress` entry protects compress tool calls — which carry summaries — from being eaten by subsequent sequential compressions); an explicit array replaces the inherited policy. **`"compress"` is always force-protected regardless of user config** — its `summary` parameter is the sole record of compressed conversation and cannot be recovered if lost. Setting `[]` protects only `compress`; setting `["task"]` protects `task` and `compress`.
 

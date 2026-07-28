@@ -34,7 +34,6 @@ import {
     handleManualTriggerCommand,
     handleRecompressCommand,
     handleStatsCommand,
-    handleSweepCommand,
 } from "./commands"
 import { type HostPermissionSnapshot } from "./host-permissions"
 import { compressPermission, syncCompressPermissionState } from "./compress-permission"
@@ -286,15 +285,6 @@ export function createCommandExecuteHandler(
             if (subcommand === "stats") {
                 await handleStatsCommand(commandCtx)
                 throw new Error("__DCP_STATS_HANDLED__")
-            }
-
-            if (subcommand === "sweep") {
-                await handleSweepCommand({
-                    ...commandCtx,
-                    args: subArgs,
-                    workingDirectory,
-                })
-                throw new Error("__DCP_SWEEP_HANDLED__")
             }
 
             if (subcommand === "manual") {

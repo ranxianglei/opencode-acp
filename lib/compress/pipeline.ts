@@ -3,7 +3,6 @@ import { ensureSessionInitialized } from "../state"
 import { saveSessionState } from "../state/persistence"
 import { assignMessageRefs } from "../message-ids"
 import { isIgnoredUserMessage, isSyntheticMessage } from "../messages/query"
-import { deduplicate, purgeErrors } from "../strategies"
 import { getCurrentParams, getCurrentTokenUsage } from "../token-utils"
 import { sendCompressNotification } from "../ui/notification"
 import type { ToolContext } from "./types"
@@ -91,9 +90,6 @@ export async function prepareSession(
     )
 
     assignMessageRefs(ctx.state, rawMessages)
-
-    deduplicate(ctx.state, ctx.logger, ctx.config, rawMessages)
-    purgeErrors(ctx.state, ctx.logger, ctx.config, rawMessages)
 
     return {
         rawMessages,

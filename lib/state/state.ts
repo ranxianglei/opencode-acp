@@ -15,7 +15,6 @@ import {
     resetOnCompaction,
     createPruneMessagesState,
     loadPruneMessagesState,
-    loadPruneMap,
     collectTurnNudgeAnchors,
 } from "./utils"
 import { parseMessageRef, formatMessageRef } from "../message-ids"
@@ -142,7 +141,6 @@ export function createSessionState(): SessionState {
         compressPermission: undefined,
         pendingManualTrigger: null,
         prune: {
-            tools: new Map<string, number>(),
             messages: createPruneMessagesState(),
         },
         nudges: {
@@ -188,7 +186,6 @@ export function resetSessionState(state: SessionState): void {
     state.compressPermission = undefined
     state.pendingManualTrigger = null
     state.prune = {
-        tools: new Map<string, number>(),
         messages: createPruneMessagesState(),
     }
     state.nudges = {
@@ -260,7 +257,6 @@ export async function ensureSessionInitialized(
         return
     }
 
-    state.prune.tools = loadPruneMap(persisted.prune.tools)
     state.prune.messages = loadPruneMessagesState(persisted.prune.messages)
     state.nudges.contextLimitAnchors = new Set<string>(persisted.nudges.contextLimitAnchors || [])
     state.nudges.turnNudgeAnchors = new Set<string>([

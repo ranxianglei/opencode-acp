@@ -19,7 +19,6 @@ function buildConfig(maxContextLimit: number, minContextLimit = 1): PluginConfig
         },
         manualMode: {
             enabled: false,
-            automaticStrategies: true,
         },
         turnProtection: {
             enabled: false,
@@ -43,17 +42,6 @@ function buildConfig(maxContextLimit: number, minContextLimit = 1): PluginConfig
             protectedTools: ["task"],
             protectTags: false,
             protectUserMessages: false,
-        },
-        strategies: {
-            deduplication: {
-                enabled: true,
-                protectedTools: [],
-            },
-            purgeErrors: {
-                enabled: true,
-                turns: 4,
-                protectedTools: [],
-            },
         },
     }
 }

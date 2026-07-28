@@ -116,7 +116,6 @@ function makeState(overrides: Partial<SessionState> = {}): SessionState {
         compressPermission: "allow",
         pendingManualTrigger: null,
         prune: {
-            tools: new Map(),
             messages: {
                 byMessageId: new Map<string, PrunedMessageEntry>(),
                 blocksById: new Map(),

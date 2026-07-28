@@ -99,18 +99,6 @@ export function countTurns(state: SessionState, messages: WithParts[]): number {
     return turnCount
 }
 
-export function loadPruneMap(obj?: Record<string, number>): Map<string, number> {
-    if (!obj || typeof obj !== "object") {
-        return new Map()
-    }
-
-    const entries = Object.entries(obj).filter(
-        (entry): entry is [string, number] =>
-            typeof entry[0] === "string" && typeof entry[1] === "number",
-    )
-    return new Map(entries)
-}
-
 export function createPruneMessagesState(): PruneMessagesState {
     return {
         byMessageId: new Map<string, PrunedMessageEntry>(),
@@ -393,7 +381,6 @@ export function getTierTokenUsage(
 
 export function resetOnCompaction(state: SessionState): void {
     state.toolParameters.clear()
-    state.prune.tools = new Map<string, number>()
     // [PATCH Bug 2] Preserve prune.messages (compression blocks) on compaction.
     // Only reset transient state. Compression blocks are still valid even after
     // opencode compacts — their summaries are still needed in context.

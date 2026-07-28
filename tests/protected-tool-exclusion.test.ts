@@ -36,7 +36,6 @@ function buildConfig(overrides: Partial<PluginConfig> = {}): PluginConfig {
         },
         manualMode: {
             enabled: false,
-            automaticStrategies: true,
         },
         turnProtection: {
             enabled: false,
@@ -60,17 +59,6 @@ function buildConfig(overrides: Partial<PluginConfig> = {}): PluginConfig {
             protectTags: false,
             protectUserMessages: false,
             lastSegmentSoftBlock: false,
-        },
-        strategies: {
-            deduplication: {
-                enabled: true,
-                protectedTools: [],
-            },
-            purgeErrors: {
-                enabled: true,
-                turns: 4,
-                protectedTools: [],
-            },
         },
         gc: {
             algorithm: "truncate",

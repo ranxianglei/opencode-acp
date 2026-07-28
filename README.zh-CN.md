@@ -193,7 +193,6 @@ ACP 提供 `/acp` 斜杠命令（为向后兼容也接受 `/dcp`）：
 | `/acp`                  | 显示可用的 ACP 命令                                                                                                 |
 | `/acp context`          | 按类别（system、user、assistant、tools 等）显示 token 用量明细，以及通过剪枝节省的量                                |
 | `/acp stats`            | 跨所有会话的累计剪枝统计                                                                                            |
-| `/acp sweep [n]`        | 剪除自上次用户消息以来的所有工具。可选数量：`/acp sweep 10` 剪除最近 10 个工具。遵循 `commands.protectedTools` 设置 |
 | `/acp manual [on\|off]` | 切换手动模式。开启后，AI 不会自动使用上下文管理工具                                                                 |
 | `/acp compress [focus]` | 触发一次 `compress` 工具执行。可选的焦点文本指示要压缩的内容，遵循当前 `compress.mode`                              |
 | `/acp decompress <n>`   | 按 ID 恢复特定的活动压缩。不带参数运行时显示可用的压缩 ID、token 大小和主题                                         |
@@ -249,16 +248,13 @@ ACP 使用自己的配置文件，按以下顺序搜索：
     // Slash commands configuration
     "commands": {
         "enabled": true,
-        // Additional tools to protect from pruning via commands (e.g., /acp sweep)
+        // Additional tools to protect from pruning via commands
         "protectedTools": [],
     },
     // Manual mode: disables autonomous context management,
     // tools only run when explicitly triggered via /acp commands
     "manualMode": {
         "enabled": false,
-        // When true, automatic cleanup (deduplication, purgeErrors)
-        // still runs even in manual mode
-        "automaticStrategies": true,
     },
     // Protect from pruning for <turns> message turns past tool invocation
     "turnProtection": {
@@ -329,23 +325,6 @@ ACP 使用自己的配置文件，按以下顺序搜索：
         // Warning: large copy-pasted prompts will never be compressed away
         "protectUserMessages": false,
     },
-    // Automatic pruning strategies
-    "strategies": {
-        // Remove duplicate tool calls (same tool with same arguments)
-        "deduplication": {
-            "enabled": true,
-            // Additional tools to protect from pruning
-            "protectedTools": [],
-        },
-        // Prune tool inputs for errored tools after X turns
-        "purgeErrors": {
-            "enabled": true,
-            // Number of turns before errored tool inputs are pruned
-            "turns": 4,
-            // Additional tools to protect from pruning
-            "protectedTools": [],
-        },
-    },
     // 垃圾回收与批量清理
     "gc": {
         "algorithm": "truncate",
@@ -408,7 +387,7 @@ ACP 暴露六个可编辑的 prompt：
 默认情况下，以下工具始终受保护不被剪枝：
 `task`、`skill`、`todowrite`、`todoread`、`compress`、`decompress`、`batch`、`plan_enter`、`plan_exit`、`write`、`edit`
 
-`commands` 和 `strategies` 中的 `protectedTools` 数组会添加到此默认列表。
+`commands` 中的 `protectedTools` 数组会添加到此默认列表。
 
 对于 `compress` 工具，`compress.protectedTools` 确保特定工具的输出被**硬排除**在压缩范围之外（v1.10.0+）。当模型压缩包含受保护工具消息的范围时，该消息完整保留在可见上下文中 — 只有周围的非受保护消息被压缩。根默认值为 `["skill", "compress"]`（`compress` 条目保护携带 summary 的 compress 工具调用，防止被后续顺序压缩吞噬）；显式数组会替换继承的策略。**`"compress"` 无论用户如何配置都会被强制保护** — 其 `summary` 参数是已压缩对话的唯一记录，一旦丢失无法恢复。设置 `[]` 仅保护 `compress`；设置 `["task"]` 保护 `task` 和 `compress`。
 

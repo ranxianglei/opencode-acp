@@ -30,7 +30,6 @@ test("saveSessionState writes JSON file to disk", async () => {
     const state = createSessionState()
     state.sessionId = TEST_SESSION
     state.stats.totalPruneTokens = 500
-    state.prune.tools.set("call-1", 1)
 
     await saveSessionState(state, logger)
 
@@ -38,7 +37,6 @@ test("saveSessionState writes JSON file to disk", async () => {
     assert.ok(existsSync(filePath), "state file should exist")
     const content = JSON.parse(await fs.readFile(filePath, "utf-8"))
     assert.equal(content.stats.totalPruneTokens, 500)
-    assert.equal(content.prune.tools["call-1"], 1)
     await cleanup()
 })
 
@@ -59,8 +57,6 @@ test("loadSessionState round-trips saved state", async () => {
     const state = createSessionState()
     state.sessionId = TEST_SESSION
     state.stats.totalPruneTokens = 999
-    state.prune.tools.set("tool-a", 1)
-    state.prune.tools.set("tool-b", 2)
     state.nudges.contextLimitAnchors.add("anchor-1")
     state.nudges.contextLimitAnchors.add("anchor-2")
 
@@ -69,8 +65,6 @@ test("loadSessionState round-trips saved state", async () => {
 
     assert.ok(loaded, "loaded state should not be null")
     assert.equal(loaded!.stats.totalPruneTokens, 999)
-    assert.equal(loaded!.prune.tools!["tool-a"], 1)
-    assert.equal(loaded!.prune.tools!["tool-b"], 2)
     assert.ok(loaded!.nudges.contextLimitAnchors.includes("anchor-1"))
     assert.ok(loaded!.nudges.contextLimitAnchors.includes("anchor-2"))
     await cleanup()
@@ -121,5 +115,45 @@ test("loadSessionState deduplicates malformed anchor entries", async () => {
     assert.ok(!anchors.includes(123 as any))
     const uniqueA = anchors.filter((x) => x === "a")
     assert.equal(uniqueA.length, 1, "duplicates should be removed")
+    await cleanup()
+})
+
+test("loadSessionState tolerates legacy prune.tools field (Bug 38 backward-compat)", async () => {
+    // Pre-1.14.1 state files had a `prune.tools` Map (Record<string, number>) used by
+    // the now-removed deduplication/purgeErrors strategies. Loading such a file must
+    // not fail — the tools field is silently ignored and only `prune.messages` is
+    // carried forward into the live SessionState.
+    await cleanup()
+    const filePath = join(STORAGE_DIR, `${TEST_SESSION}.json`)
+    await fs.mkdir(STORAGE_DIR, { recursive: true })
+    const legacyState = {
+        prune: {
+            tools: { "call-1": 100, "call-2": 250 },
+            messages: {
+                byMessageId: {
+                    m1: { tokenCount: 50, allBlockIds: [0], activeBlockIds: [0] },
+                },
+                blocksById: {},
+                activeBlockIds: [],
+                activeByAnchorMessageId: {},
+                nextBlockId: 1,
+                nextRunId: 1,
+            },
+        },
+        nudges: { contextLimitAnchors: ["a"] },
+        stats: { pruneTokenCounter: 0, totalPruneTokens: 350 },
+        lastUpdated: new Date().toISOString(),
+    }
+    await fs.writeFile(filePath, JSON.stringify(legacyState), "utf-8")
+
+    const loaded = await loadSessionState(TEST_SESSION, logger)
+
+    assert.ok(loaded, "load must succeed for legacy state with prune.tools")
+    assert.ok(loaded!.prune.messages, "loaded state has prune.messages")
+    assert.deepEqual(
+        loaded!.prune.messages!.byMessageId.m1,
+        { tokenCount: 50, allBlockIds: [0], activeBlockIds: [0] },
+        "prune.messages round-trips intact",
+    )
     await cleanup()
 })

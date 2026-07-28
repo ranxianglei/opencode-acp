@@ -22,7 +22,6 @@ export interface HelpCommandContext {
 const BASE_COMMANDS: [string, string][] = [
     ["/acp context", "Show token usage breakdown for current session"],
     ["/acp stats", "Show ACP pruning statistics"],
-    ["/acp sweep [n]", "Prune tools since last user message, or last n tools"],
     ["/acp manual [on|off]", "Toggle manual mode or set explicit state"],
 ]
 
