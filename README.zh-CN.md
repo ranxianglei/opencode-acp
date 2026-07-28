@@ -17,7 +17,7 @@
 </p>
 
 <p align="center">
-<code>opencode plugin opencode-acp@latest --global</code>
+<code>opencode plugin opencode-acp@stable --global</code>
 </p>
 
 ---
@@ -57,7 +57,7 @@ ACP 将上下文管理的所有权限全部交给模型自己，而不依靠外�
 ## 安装
 
 ```bash
-opencode plugin opencode-acp@latest --global
+opencode plugin opencode-acp@stable --global
 ```
 
 或者添加到你的 opencode 配置中：
@@ -65,7 +65,7 @@ opencode plugin opencode-acp@latest --global
 ```json
 {
     "plugin": {
-        "opencode-acp": "latest"
+        "opencode-acp": "stable"
     }
 }
 ```
@@ -400,7 +400,7 @@ ACP 暴露六个可编辑的 prompt：
 ACP 是 DCP 的直接替代品。迁移步骤：
 
 1. 从 `opencode.json` 中移除旧的 DCP 插件
-2. 安装 ACP：`opencode plugin install opencode-acp@latest --global`
+2. 安装 ACP：`opencode plugin install opencode-acp@stable --global`
 3. 重启 OpenCode
 
 **保留的内容：**
