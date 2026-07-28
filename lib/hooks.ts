@@ -24,6 +24,7 @@ import {
 } from "./compress/timing"
 import { filterMessages, filterMessagesInPlace } from "./messages/shape"
 import { getLastUserMessage } from "./messages/query"
+import { truncateLargeToolOutputs } from "./messages/truncate-tools"
 import {
     applyPendingManualTrigger,
     handleContextCommand,
@@ -40,7 +41,6 @@ import { compressPermission, syncCompressPermissionState } from "./compress-perm
 import { hideConsumedCompressCalls } from "./compress/hide-consumed"
 import { createSessionState, saveSessionState, syncToolCache, updatePerTurnState, type SessionStateRegistry } from "./state"
 import { cacheSystemPromptTokens } from "./ui/utils"
-import { runTruncateGC, shouldRunMajorGC, getGCParams } from "./gc/truncate"
 import { runBatchCleanup } from "./gc/merge"
 import { getCurrentTokenUsage } from "./token-utils"
 
@@ -121,50 +121,6 @@ export function createSystemPromptHandler(
     }
 }
 
-function runMajorGC(
-    state: SessionState,
-    config: PluginConfig,
-    logger: Logger,
-    messages: WithParts[],
-): void {
-    // Age-based deactivation + oversized-block override intentionally removed:
-    // they truncated/deactivated model-written summaries at low context pressure,
-    // destroying memory. Only the explicit context-threshold gate remains.
-    // gc.maxBlockAge is now a no-op (kept for backward config compat).
-    if (!state.modelContextLimit) return
-
-    const currentTokens = getCurrentTokenUsage(state, messages)
-
-    if (!shouldRunMajorGC(currentTokens, state.modelContextLimit, config.gc)) return
-
-    const oldBlocks: import("./state").CompressionBlock[] = []
-    for (const [blockId, block] of state.prune.messages.blocksById) {
-        if (!block.active) continue
-        if (
-            block.generation === "old" ||
-            block.generation === undefined ||
-            block.summary.length > config.gc.maxOldGenSummaryLength
-        ) {
-            oldBlocks.push(block)
-        }
-    }
-
-    if (oldBlocks.length === 0) return
-
-    const params = getGCParams(config.gc, state.modelContextLimit, currentTokens)
-    const result = runTruncateGC(oldBlocks, params)
-
-    if (result.compactedBlocks > 0) {
-        logger.info("Major GC: truncated old-gen blocks", {
-            compactedBlocks: result.compactedBlocks,
-            savedTokens: result.savedTokens,
-            currentTokens,
-            threshold: config.gc.majorGcThresholdPercent,
-        })
-        saveSessionState(state, logger).catch(() => {})
-    }
-}
-
 export function createChatMessageTransformHandler(
     client: any,
     registry: SessionStateRegistry,
@@ -226,13 +182,13 @@ export function createChatMessageTransformHandler(
         }
         syncToolCache(state, config, logger, output.messages)
         buildToolIdList(state, output.messages)
-        runMajorGC(state, config, logger, output.messages)
         const batchResult = runBatchCleanup(state, config, logger, output.messages)
         if (batchResult.mergedCount > 0) {
             saveSessionState(state, logger).catch(() => {})
         }
         const prePruneTokens = getCurrentTokenUsage(state, output.messages)
         prune(state, logger, config, output.messages)
+        truncateLargeToolOutputs(state, config, logger, output.messages)
         hideConsumedCompressCalls(state, output.messages)
         assignMessageRefs(state, output.messages)
         const compressionPriorities = buildPriorityMap(config, state, output.messages)
