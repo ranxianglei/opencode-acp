@@ -509,6 +509,14 @@ For the complete list with root cause analysis, see the [bug tracker](https://gi
 
 ## Changelog
 
+### v1.14.7 — Deduplicate HOW_TO_COMPRESS_RULES (PR #228)
+
+**Problem**: `HOW_TO_COMPRESS_RULES` (~1.2K tokens) was injected 3-4 times per nudge turn — once in the system prompt, 1-2 times in nudge templates (turn/iteration/context-limit), and again in the breakdown block. In non-maxLimit scenarios the suffix message alone contained the rules 2-3 times. This wasted 2.4-3.6K tokens per nudge turn. The duplication became visible in v1.14.6 which persists debug nudge text to chat UI.
+
+**Fix**: Removed `HOW_TO_COMPRESS_RULES` from the breakdown block (`inject.ts:535-537`) and all 3 nudge templates (`turn-nudge.ts`, `iteration-nudge.ts`, `context-limit-nudge.ts`). Kept in `system.ts` (single source of truth — injected every turn per v1.8.2 invariant) and `quality-gate/rejection.ts` (retry guidance). Oracle-verified: no scenario loses compression guidance.
+
+Files: `lib/messages/inject/inject.ts`, `lib/prompts/{turn,iteration,context-limit}-nudge.ts`. 917 tests pass.
+
 ### v1.14.6 — Debug Nudge Chat Visibility (PR #226)
 
 **Problem**: With `debug: true`, ACP nudge injections (compression suggestions, context breakdown, tier triggers) were only visible via a 5-second toast and log files. The nudge suffix message is ephemeral — injected by the message-transform hook but never persisted to the conversation DB — so users could not see what the model was actually seeing in the chat UI. This made debugging nudge behavior very difficult.
