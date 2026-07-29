@@ -40,7 +40,7 @@ function makeMessage(id: string, role: "user" | "assistant", parts: any[]): With
     }
 }
 
-test("hideFailedCompressCalls: removes failed compress tool parts", () => {
+test("hideFailedCompressCalls: keeps single failed compress call (most recent)", () => {
     const messages = [
         makeMessage("msg-1", "user", [makeTextPart("hello")]),
         makeMessage("msg-2", "assistant", [
@@ -52,13 +52,12 @@ test("hideFailedCompressCalls: removes failed compress tool parts", () => {
 
     const hidden = hideFailedCompressCalls(messages)
 
-    assert.equal(hidden, 1)
+    assert.equal(hidden, 0)
     assert.equal(messages.length, 3)
-    assert.equal(messages[1]!.parts.length, 1)
-    assert.equal(messages[1]!.parts[0]!.type, "text")
+    assert.equal(messages[1]!.parts.length, 2)
 })
 
-test("hideFailedCompressCalls: splices message when all parts are failed compress calls", () => {
+test("hideFailedCompressCalls: keeps single failed compress-only message (most recent)", () => {
     const messages = [
         makeMessage("msg-1", "user", [makeTextPart("hello")]),
         makeMessage("msg-2", "assistant", [makeCompressPart("error", "call-1")]),
@@ -67,10 +66,9 @@ test("hideFailedCompressCalls: splices message when all parts are failed compres
 
     const hidden = hideFailedCompressCalls(messages)
 
-    assert.equal(hidden, 1)
-    assert.equal(messages.length, 2)
-    assert.equal(messages[0]!.info.id, "msg-1")
-    assert.equal(messages[1]!.info.id, "msg-3")
+    assert.equal(hidden, 0)
+    assert.equal(messages.length, 3)
+    assert.equal(messages[1]!.info.id, "msg-2")
 })
 
 test("hideFailedCompressCalls: does NOT remove successful compress calls", () => {
@@ -105,7 +103,7 @@ test("hideFailedCompressCalls: does NOT remove failed non-compress tool calls", 
     assert.equal(messages[1]!.parts.length, 1)
 })
 
-test("hideFailedCompressCalls: removes multiple failed compress calls across messages", () => {
+test("hideFailedCompressCalls: keeps most recent failure, removes older ones", () => {
     const messages = [
         makeMessage("msg-1", "user", [makeTextPart("hello")]),
         makeMessage("msg-2", "assistant", [
@@ -122,12 +120,14 @@ test("hideFailedCompressCalls: removes multiple failed compress calls across mes
 
     const hidden = hideFailedCompressCalls(messages)
 
-    assert.equal(hidden, 2)
-    assert.equal(messages.length, 3)
+    assert.equal(hidden, 1)
+    assert.equal(messages.length, 4)
     assert.equal(messages[0]!.info.id, "msg-1")
     assert.equal(messages[1]!.info.id, "msg-3")
-    assert.equal(messages[2]!.info.id, "msg-5")
-    assert.equal(messages[2]!.parts[0]!.state.status, "completed")
+    assert.equal(messages[2]!.info.id, "msg-4")
+    assert.equal(messages[2]!.parts[0]!.state.status, "error")
+    assert.equal(messages[3]!.info.id, "msg-5")
+    assert.equal(messages[3]!.parts[0]!.state.status, "completed")
 })
 
 test("hideFailedCompressCalls: handles empty messages array", () => {
