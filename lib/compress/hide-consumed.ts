@@ -1,4 +1,5 @@
 import type { SessionState, WithParts } from "../state"
+import { hasMeaningfulContent } from "./parts"
 
 /**
  * Hide compress tool-call parts whose blocks have been consumed by another
@@ -8,6 +9,10 @@ import type { SessionState, WithParts } from "../state"
  * of hiding whole messages covered by active blocks, it hides individual
  * compress tool-call PARTS whose blocks are no longer active. The message shell
  * survives (it may carry other parts); only the consumed compress call disappears.
+ *
+ * If after removal the message contains only structural parts (step-start,
+ * step-finish, reasoning), it is spliced entirely — those carry no useful
+ * content once the compress call they wrapped is gone.
  *
  * Block data (full summary, original messages) is preserved in session state and
  * remains recoverable via `decompress`.
@@ -50,7 +55,7 @@ export function hideConsumedCompressCalls(state: SessionState, messages: WithPar
         })
 
         if (changed) {
-            if (remaining.length > 0) {
+            if (hasMeaningfulContent(remaining)) {
                 messages[i] = { ...msg, parts: remaining }
             } else {
                 messages.splice(i, 1)

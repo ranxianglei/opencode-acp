@@ -1,4 +1,5 @@
 import type { WithParts } from "../state"
+import { hasMeaningfulContent } from "./parts"
 
 // Must run AFTER injectCompressNudges: the nudge system needs to see failed
 // compress calls for baseline reset (messageHasCompressAttempt). Removing them
@@ -50,7 +51,7 @@ export function hideFailedCompressCalls(messages: WithParts[]): number {
         })
 
         if (changed) {
-            if (remaining.length > 0) {
+            if (hasMeaningfulContent(remaining)) {
                 messages[i] = { ...msg, parts: remaining }
             } else {
                 messages.splice(i, 1)

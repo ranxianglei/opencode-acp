@@ -142,3 +142,28 @@ test("hideFailedCompressCalls: handles messages with no parts", () => {
     const hidden = hideFailedCompressCalls(messages)
     assert.equal(hidden, 0)
 })
+
+test("hideFailedCompressCalls: splices orphan when only structural parts remain after failure removal", () => {
+    const messages = [
+        makeMessage("msg-1", "user", [makeTextPart("hello")]),
+        makeMessage("msg-2", "assistant", [
+            { type: "reasoning", text: "thinking..." },
+            makeCompressPart("error", "call-1"),
+            { type: "step-finish", reason: "stop" },
+        ]),
+        makeMessage("msg-3", "user", [makeTextPart("retry")]),
+        makeMessage("msg-4", "assistant", [
+            makeCompressPart("error", "call-2"),
+        ]),
+    ]
+
+    const hidden = hideFailedCompressCalls(messages)
+
+    assert.equal(hidden, 1, "older failed compress removed, most recent kept")
+    assert.equal(
+        messages.find((m) => m.info.id === "msg-2"),
+        undefined,
+        "structural-only orphan msg-2 should be spliced",
+    )
+    assert.ok(messages.find((m) => m.info.id === "msg-4"), "msg-4 (most recent failure) survives")
+})
