@@ -22,6 +22,12 @@ const SYSTEM_REMINDER_OPEN = "<system-reminder>"
 const SYSTEM_REMINDER_CLOSE = "</system-reminder>"
 const OMO_MARKER = "<!-- OMO_INTERNAL_INITIATOR -->"
 
+// Pre-compiled module-level regexes (hoisted from per-call construction per review).
+// None of these literals contain regex metacharacters, so no escaping needed.
+const PAIRED_BLOCK_RE = /<system-reminder>[\s\S]*?<\/system-reminder>\s*<!-- OMO_INTERNAL_INITIATOR -->/g
+const LONE_REMINDER_RE = /<system-reminder>[\s\S]*?<\/system-reminder>/g
+const LONE_MARKER_RE = /<!-- OMO_INTERNAL_INITIATOR -->/g
+
 const OMO_SYSTEM_REMINDER_FILTER: MessageFilter = {
     name: "omo-system-reminder",
     version: "1.0.0",
@@ -36,26 +42,17 @@ const OMO_SYSTEM_REMINDER_FILTER: MessageFilter = {
         let modified = ctx.text
         let removedBlocks = 0
 
-        const openRegex = new RegExp(
-            `${escapeRegex(SYSTEM_REMINDER_OPEN)}[\\s\\S]*?${escapeRegex(SYSTEM_REMINDER_CLOSE)}\\s*${escapeRegex(OMO_MARKER)}`,
-            "g",
-        )
-        modified = modified.replace(openRegex, (_match) => {
+        modified = modified.replace(PAIRED_BLOCK_RE, () => {
             removedBlocks++
             return ""
         })
 
-        const loneReminderRegex = new RegExp(
-            `${escapeRegex(SYSTEM_REMINDER_OPEN)}[\\s\\S]*?${escapeRegex(SYSTEM_REMINDER_CLOSE)}`,
-            "g",
-        )
-        modified = modified.replace(loneReminderRegex, (_match) => {
+        modified = modified.replace(LONE_REMINDER_RE, () => {
             removedBlocks++
             return ""
         })
 
-        const loneMarkerRegex = new RegExp(escapeRegex(OMO_MARKER), "g")
-        modified = modified.replace(loneMarkerRegex, "")
+        modified = modified.replace(LONE_MARKER_RE, "")
 
         modified = modified.replace(/\n{3,}/g, "\n\n").trim()
 
@@ -73,10 +70,6 @@ const OMO_SYSTEM_REMINDER_FILTER: MessageFilter = {
 
         return { action: "keep" }
     },
-}
-
-function escapeRegex(s: string): string {
-    return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 }
 
 export { OMO_SYSTEM_REMINDER_FILTER }

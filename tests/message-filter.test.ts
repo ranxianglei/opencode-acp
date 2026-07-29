@@ -7,6 +7,7 @@ import {
     clearMessageFilters,
 } from "../lib/messages/filter/registry"
 import type { MessageFilter, MessageFilterContext } from "../lib/messages/filter/types"
+import type { WithParts } from "../lib/state"
 import { applyMessageFilters } from "../lib/messages/filter/apply"
 import { OMO_SYSTEM_REMINDER_FILTER } from "../lib/messages/filter/builtin/omo-system-reminder"
 import { ensureBuiltinFiltersRegistered } from "../lib/messages/filter/builtin"
@@ -289,5 +290,48 @@ describe("ensureBuiltinFiltersRegistered", () => {
         ensureBuiltinFiltersRegistered()
         ensureBuiltinFiltersRegistered()
         assert.equal(listMessageFilters().length, 1)
+    })
+})
+
+describe("filter chaining", () => {
+    beforeEach(() => clearMessageFilters())
+
+    it("filter B sees modified text from filter A", () => {
+        const uppercase: MessageFilter = {
+            name: "uppercase",
+            version: "1.0.0",
+            description: "test",
+            filter(ctx) {
+                return { action: "modify", text: ctx.text.toUpperCase() }
+            },
+        }
+        const detectUpper: MessageFilter = {
+            name: "detect-upper",
+            version: "1.0.0",
+            description: "test",
+            filter(ctx) {
+                if (ctx.text === ctx.text.toUpperCase() && ctx.text.length > 0) {
+                    return { action: "drop", reason: "all uppercase detected" }
+                }
+                return { action: "keep" }
+            },
+        }
+        registerMessageFilter(uppercase)
+        registerMessageFilter(detectUpper)
+
+        const messages: WithParts[] = [
+            {
+                info: { id: "msg-1", role: "user", time: Date.now() } as any,
+                parts: [{ type: "text", text: "hello world" }],
+            },
+        ]
+        const config = { enabled: true, filters: { uppercase: { enabled: true }, "detect-upper": { enabled: true } } }
+        const stats = applyMessageFilters(messages, config, makeLogger(), {
+            sessionId: "ses-test",
+            isSubAgent: false,
+        })
+        assert.equal(stats.partsDropped, 1)
+        assert.equal(stats.partsFiltered, 2)
+        assert.equal(stats.partsModified, 1)
     })
 })
