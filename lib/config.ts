@@ -241,6 +241,10 @@ const defaultConfig: PluginConfig = {
         enabled: true,
         filters: {
             "omo-system-reminder": { enabled: true },
+            "omo-todo-continuation": { enabled: true },
+            "omo-context": { enabled: true },
+            "omo-task-directive": { enabled: true },
+            "omo-mode-injection": { enabled: true },
         },
     },
 }

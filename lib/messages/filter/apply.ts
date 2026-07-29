@@ -19,39 +19,72 @@ export function applyMessageFilters(
         return { partsFiltered: 0, partsDropped: 0, partsModified: 0 }
     }
 
-    const filters = listMessageFilters().filter((f) => {
+    const allFilters = listMessageFilters().filter((f) => {
         const fc = config.filters?.[f.name]
         return fc?.enabled !== false
     })
 
-    if (filters.length === 0) {
+    if (allFilters.length === 0) {
         return { partsFiltered: 0, partsDropped: 0, partsModified: 0 }
     }
 
     const result: ApplyResult = { partsFiltered: 0, partsDropped: 0, partsModified: 0 }
     const total = messages.length
 
+    const buildCtx = (text: string, role: string, i: number): MessageFilterContext => ({
+        text,
+        role,
+        sessionId: ctx.sessionId,
+        isSubAgent: ctx.isSubAgent,
+        messageIndex: i,
+        totalMessages: total,
+        modelContextLimit: ctx.modelContextLimit,
+    })
+
+    const applyDecision = (
+        part: { text?: string },
+        decision: { action: string; text?: string; reason?: string },
+        filterName: string,
+        i: number,
+        originalText: string,
+    ): string => {
+        result.partsFiltered++
+        if (decision.action === "drop") {
+            part.text = ""
+            result.partsDropped++
+            if (decision.reason) {
+                logger.debug("Message filter dropped text", {
+                    filter: filterName, reason: decision.reason, messageIndex: i, originalLength: originalText.length,
+                })
+            }
+            return ""
+        }
+        if (decision.action === "modify" && decision.text !== undefined) {
+            part.text = decision.text
+            result.partsModified++
+            if (decision.reason) {
+                logger.debug("Message filter modified text", {
+                    filter: filterName, reason: decision.reason, messageIndex: i,
+                    originalLength: originalText.length, newLength: decision.text.length,
+                })
+            }
+            return decision.text
+        }
+        return originalText
+    }
+
+    // Phase 1: immediate filters (forward pass, chained)
+    const immediateFilters = allFilters.filter((f) => !f.keepLastOnly)
     for (let i = 0; i < messages.length; i++) {
         const msg = messages[i]
         const role = (msg.info as { role?: string }).role ?? "unknown"
-        const parts = msg.parts ?? []
-
-        for (const part of parts) {
+        for (const part of msg.parts ?? []) {
             const text = (part as { text?: string }).text
             if (typeof text !== "string" || text.length === 0) continue
-
-            const filterCtx: MessageFilterContext = {
-                text,
-                role,
-                sessionId: ctx.sessionId,
-                isSubAgent: ctx.isSubAgent,
-                messageIndex: i,
-                totalMessages: total,
-                toolName: (part as { tool?: string }).tool,
-                modelContextLimit: ctx.modelContextLimit,
-            }
-
-            for (const filter of filters) {
+            let current = text
+            const filterCtx = buildCtx(current, role, i)
+            filterCtx.toolName = (part as { tool?: string }).tool
+            for (const filter of immediateFilters) {
                 let decision
                 try {
                     decision = filter.filter(filterCtx)
@@ -63,34 +96,38 @@ export function applyMessageFilters(
                     })
                     continue
                 }
-
                 if (decision.action === "keep") continue
+                current = applyDecision(part as { text?: string }, decision, filter.name, i, current)
+                filterCtx.text = current
+            }
+        }
+    }
 
-                result.partsFiltered++
-                if (decision.action === "drop") {
-                    ;(part as { text?: string }).text = ""
-                    result.partsDropped++
-                    if (decision.reason) {
-                        logger.debug("Message filter dropped text", {
-                            filter: filter.name,
-                            reason: decision.reason,
-                            messageIndex: i,
-                            originalLength: text.length,
-                        })
+    // Phase 2: keep-last-only dedup (reverse pass)
+    const keepLastFilters = allFilters.filter((f) => f.keepLastOnly)
+    for (const filter of keepLastFilters) {
+        let foundLast = false
+        for (let i = messages.length - 1; i >= 0; i--) {
+            const msg = messages[i]
+            const role = (msg.info as { role?: string }).role ?? "unknown"
+            for (const part of msg.parts ?? []) {
+                const text = (part as { text?: string }).text
+                if (typeof text !== "string" || text.length === 0) continue
+                const filterCtx = buildCtx(text, role, i)
+                let decision
+                try {
+                    decision = filter.filter(filterCtx)
+                } catch {
+                    continue
+                }
+                if (decision.action !== "drop" && decision.action !== "modify") continue
+                if (foundLast) {
+                    applyDecision(part as { text?: string }, { action: "drop", reason: `keepLastOnly: earlier occurrence` }, filter.name, i, text)
+                } else {
+                    foundLast = true
+                    if (decision.action === "modify" && decision.text !== undefined) {
+                        applyDecision(part as { text?: string }, decision, filter.name, i, text)
                     }
-                } else if (decision.action === "modify" && decision.text !== undefined) {
-                    ;(part as { text?: string }).text = decision.text
-                    result.partsModified++
-                    if (decision.reason) {
-                        logger.debug("Message filter modified text", {
-                            filter: filter.name,
-                            reason: decision.reason,
-                            messageIndex: i,
-                            originalLength: text.length,
-                            newLength: decision.text.length,
-                        })
-                    }
-                    filterCtx.text = decision.text
                 }
             }
         }
@@ -98,7 +135,7 @@ export function applyMessageFilters(
 
     if (result.partsFiltered > 0) {
         logger.info("Message filters applied", {
-            filtersRun: filters.length,
+            filtersRun: allFilters.length,
             partsFiltered: result.partsFiltered,
             partsDropped: result.partsDropped,
             partsModified: result.partsModified,
