@@ -10,6 +10,9 @@ import type { MessageFilter, MessageFilterContext } from "../lib/messages/filter
 import type { WithParts } from "../lib/state"
 import { applyMessageFilters } from "../lib/messages/filter/apply"
 import { OMO_SYSTEM_REMINDER_FILTER } from "../lib/messages/filter/builtin/omo-system-reminder"
+import { OMO_TODO_FILTER } from "../lib/messages/filter/builtin/omo-todo-continuation"
+import { OMO_CONTEXT_FILTER } from "../lib/messages/filter/builtin/omo-context"
+import { OMO_MODE_FILTER } from "../lib/messages/filter/builtin/omo-mode-injection"
 import { ensureBuiltinFiltersRegistered } from "../lib/messages/filter/builtin"
 
 type MockLogger = { debug: (...a: any[]) => void; info: (...a: any[]) => void; warn: (...a: any[]) => void }
@@ -289,7 +292,7 @@ describe("ensureBuiltinFiltersRegistered", () => {
     it("is idempotent", () => {
         ensureBuiltinFiltersRegistered()
         ensureBuiltinFiltersRegistered()
-        assert.equal(listMessageFilters().length, 1)
+        assert.equal(listMessageFilters().length, 5)
     })
 })
 
@@ -333,5 +336,58 @@ describe("filter chaining", () => {
         assert.equal(stats.partsDropped, 1)
         assert.equal(stats.partsFiltered, 2)
         assert.equal(stats.partsModified, 1)
+    })
+})
+
+describe("keep-last-only dedup", () => {
+    beforeEach(() => clearMessageFilters())
+
+    it("keeps last TODO CONTINUATION, drops earlier ones", () => {
+        registerMessageFilter(OMO_TODO_FILTER)
+        const messages: WithParts[] = [
+            { info: { id: "m1", role: "user", time: 1 } as any, parts: [{ type: "text", text: "[SYSTEM DIRECTIVE: TODO CONTINUATION]\nWork on task A" }] },
+            { info: { id: "m2", role: "user", time: 2 } as any, parts: [{ type: "text", text: "real user message" }] },
+            { info: { id: "m3", role: "user", time: 3 } as any, parts: [{ type: "text", text: "[SYSTEM DIRECTIVE: TODO CONTINUATION]\nWork on task B" }] },
+        ]
+        const config = { enabled: true, filters: { "omo-todo-continuation": { enabled: true } } }
+        applyMessageFilters(messages, config, makeLogger(), { sessionId: "s", isSubAgent: false })
+        assert.equal((messages[0].parts[0] as any).text, "")
+        assert.equal((messages[1].parts[0] as any).text, "real user message")
+        assert.equal((messages[2].parts[0] as any).text, "[SYSTEM DIRECTIVE: TODO CONTINUATION]\nWork on task B")
+    })
+
+    it("keeps last [CONTEXT], drops earlier ones", () => {
+        registerMessageFilter(OMO_CONTEXT_FILTER)
+        const messages: WithParts[] = [
+            { info: { id: "m1", role: "user", time: 1 } as any, parts: [{ type: "text", text: "[CONTEXT] Old context" }] },
+            { info: { id: "m2", role: "user", time: 2 } as any, parts: [{ type: "text", text: "[CONTEXT] New context" }] },
+        ]
+        const config = { enabled: true, filters: { "omo-context": { enabled: true } } }
+        applyMessageFilters(messages, config, makeLogger(), { sessionId: "s", isSubAgent: false })
+        assert.equal((messages[0].parts[0] as any).text, "")
+        assert.equal((messages[1].parts[0] as any).text, "[CONTEXT] New context")
+    })
+
+    it("handles single occurrence (no dedup needed)", () => {
+        registerMessageFilter(OMO_TODO_FILTER)
+        const messages: WithParts[] = [
+            { info: { id: "m1", role: "user", time: 1 } as any, parts: [{ type: "text", text: "[SYSTEM DIRECTIVE: TODO CONTINUATION]\nOnly one" }] },
+        ]
+        const config = { enabled: true, filters: { "omo-todo-continuation": { enabled: true } } }
+        const stats = applyMessageFilters(messages, config, makeLogger(), { sessionId: "s", isSubAgent: false })
+        assert.equal((messages[0].parts[0] as any).text, "[SYSTEM DIRECTIVE: TODO CONTINUATION]\nOnly one")
+        assert.equal(stats.partsDropped, 0)
+    })
+
+    it("mode injection strips all occurrences", () => {
+        registerMessageFilter(OMO_MODE_FILTER)
+        const messages: WithParts[] = [
+            { info: { id: "m1", role: "user", time: 1 } as any, parts: [{ type: "text", text: "[search-mode]\nSearch for X" }] },
+            { info: { id: "m2", role: "user", time: 2 } as any, parts: [{ type: "text", text: "[analyze-mode]\nAnalyze Y" }] },
+        ]
+        const config = { enabled: true, filters: { "omo-mode-injection": { enabled: true } } }
+        applyMessageFilters(messages, config, makeLogger(), { sessionId: "s", isSubAgent: false })
+        assert.equal((messages[0].parts[0] as any).text, "")
+        assert.equal((messages[1].parts[0] as any).text, "")
     })
 })
