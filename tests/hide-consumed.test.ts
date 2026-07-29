@@ -212,4 +212,164 @@ describe("hideConsumedCompressCalls", () => {
             0,
         )
     })
+
+    it("splices message when only reasoning + step-finish remain after compress removal", () => {
+        const b1 = makeBlock({
+            blockId: 1,
+            active: false,
+            deactivatedByBlockId: 4,
+            compressMessageId: "msg-t1-compress",
+            tier: 1,
+        })
+        const b4 = makeBlock({
+            blockId: 4,
+            active: true,
+            compressMessageId: "msg-t2-compress",
+            tier: 2,
+        })
+
+        const state = makeState([b1, b4])
+        const messages: WithParts[] = [
+            { info: { id: "msg-user-1", role: "user" } as any, parts: [{ type: "text", text: "Hi" }] },
+            {
+                info: { id: "msg-t1-compress", role: "assistant" } as any,
+                parts: [
+                    { type: "reasoning", text: "I need to compress the early messages..." },
+                    { type: "tool", tool: "compress", state: { status: "completed" } },
+                    { type: "step-finish", reason: "stop" },
+                ],
+            },
+            { info: { id: "msg-user-2", role: "user" } as any, parts: [{ type: "text", text: "Next" }] },
+        ]
+
+        const hidden = hideConsumedCompressCalls(state, messages)
+
+        assert.equal(hidden, 1)
+        assert.equal(
+            messages.find((m) => m.info.id === "msg-t1-compress"),
+            undefined,
+            "structural-only orphan should be spliced entirely",
+        )
+    })
+
+    it("splices message when only reasoning remains after compress removal", () => {
+        const b1 = makeBlock({
+            blockId: 1,
+            active: false,
+            deactivatedByBlockId: 4,
+            compressMessageId: "msg-t1-compress",
+            tier: 1,
+        })
+        const b4 = makeBlock({
+            blockId: 4,
+            active: true,
+            compressMessageId: "msg-t2-compress",
+            tier: 2,
+        })
+
+        const state = makeState([b1, b4])
+        const messages: WithParts[] = [
+            { info: { id: "msg-user-1", role: "user" } as any, parts: [{ type: "text", text: "Hi" }] },
+            {
+                info: { id: "msg-t1-compress", role: "assistant" } as any,
+                parts: [
+                    { type: "reasoning", text: "Analyzing context usage..." },
+                    { type: "tool", tool: "compress", state: { status: "completed" } },
+                ],
+            },
+            { info: { id: "msg-user-2", role: "user" } as any, parts: [{ type: "text", text: "Next" }] },
+        ]
+
+        const hidden = hideConsumedCompressCalls(state, messages)
+
+        assert.equal(hidden, 1)
+        assert.equal(
+            messages.find((m) => m.info.id === "msg-t1-compress"),
+            undefined,
+            "reasoning-only orphan should be spliced entirely",
+        )
+    })
+
+    it("preserves message when text accompanies reasoning after compress removal", () => {
+        const b1 = makeBlock({
+            blockId: 1,
+            active: false,
+            deactivatedByBlockId: 4,
+            compressMessageId: "msg-t1-compress",
+            tier: 1,
+        })
+        const b4 = makeBlock({
+            blockId: 4,
+            active: true,
+            compressMessageId: "msg-t2-compress",
+            tier: 2,
+        })
+
+        const state = makeState([b1, b4])
+        const messages: WithParts[] = [
+            { info: { id: "msg-user-1", role: "user" } as any, parts: [{ type: "text", text: "Hi" }] },
+            {
+                info: { id: "msg-t1-compress", role: "assistant" } as any,
+                parts: [
+                    { type: "reasoning", text: "I need to compress..." },
+                    { type: "text", text: "Compressing early messages" },
+                    { type: "tool", tool: "compress", state: { status: "completed" } },
+                    { type: "step-finish", reason: "stop" },
+                ],
+            },
+            { info: { id: "msg-user-2", role: "user" } as any, parts: [{ type: "text", text: "Next" }] },
+        ]
+
+        const hidden = hideConsumedCompressCalls(state, messages)
+
+        assert.equal(hidden, 1)
+        const t1Msg = messages.find((m) => m.info.id === "msg-t1-compress")!
+        assert.ok(t1Msg, "message with text should survive")
+        assert.equal(t1Msg.parts.length, 3, "reasoning + text + step-finish remain")
+        assert.equal(
+            t1Msg.parts.filter((p: any) => p.type === "tool" && p.tool === "compress").length,
+            0,
+        )
+    })
+
+    it("preserves message when non-compress tool accompanies structural parts", () => {
+        const b1 = makeBlock({
+            blockId: 1,
+            active: false,
+            deactivatedByBlockId: 4,
+            compressMessageId: "msg-t1-compress",
+            tier: 1,
+        })
+        const b4 = makeBlock({
+            blockId: 4,
+            active: true,
+            compressMessageId: "msg-t2-compress",
+            tier: 2,
+        })
+
+        const state = makeState([b1, b4])
+        const messages: WithParts[] = [
+            { info: { id: "msg-user-1", role: "user" } as any, parts: [{ type: "text", text: "Hi" }] },
+            {
+                info: { id: "msg-t1-compress", role: "assistant" } as any,
+                parts: [
+                    { type: "reasoning", text: "I need to compress..." },
+                    { type: "tool", tool: "compress", state: { status: "completed" } },
+                    { type: "tool", tool: "bash", state: { status: "completed" } },
+                    { type: "step-finish", reason: "stop" },
+                ],
+            },
+            { info: { id: "msg-user-2", role: "user" } as any, parts: [{ type: "text", text: "Next" }] },
+        ]
+
+        const hidden = hideConsumedCompressCalls(state, messages)
+
+        assert.equal(hidden, 1)
+        const t1Msg = messages.find((m) => m.info.id === "msg-t1-compress")!
+        assert.ok(t1Msg, "message with bash tool should survive")
+        assert.equal(
+            t1Msg.parts.filter((p: any) => p.type === "tool" && p.tool === "compress").length,
+            0,
+        )
+    })
 })
