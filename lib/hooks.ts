@@ -31,6 +31,7 @@ import {
 import { type HostPermissionSnapshot } from "./host-permissions"
 import { compressPermission, syncCompressPermissionState } from "./compress-permission"
 import { hideConsumedCompressCalls } from "./compress/hide-consumed"
+import { hideFailedCompressCalls } from "./compress/hide-failed"
 import { createSessionState, saveSessionState, syncToolCache, updatePerTurnState, type SessionStateRegistry } from "./state"
 import { cacheSystemPromptTokens } from "./ui/utils"
 import { sendIgnoredMessage } from "./ui/notification"
@@ -224,6 +225,7 @@ export function createChatMessageTransformHandler(
             prePruneTokens,
         )
         injectMessageIds(state, config, output.messages, compressionPriorities)
+        hideFailedCompressCalls(output.messages)
         stripStaleMetadata(output.messages)
         dropEmptyMessages(output.messages)
 
