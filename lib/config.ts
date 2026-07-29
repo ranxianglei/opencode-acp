@@ -76,6 +76,11 @@ export interface QualityGateConfig {
     algorithms: QualityGateAlgorithmConfigs
 }
 
+export interface MessageFiltersConfig {
+    enabled: boolean
+    filters: Record<string, { enabled: boolean }>
+}
+
 export interface PluginConfig {
     enabled: boolean
     autoUpdate: boolean
@@ -88,6 +93,7 @@ export interface PluginConfig {
     compress: CompressConfig
     gc: GCConfig
     qualityGate: QualityGateConfig
+    messageFilters: MessageFiltersConfig
 }
 
 type CompressOverride = Partial<CompressConfig>
@@ -229,6 +235,12 @@ const defaultConfig: PluginConfig = {
                 layer2MaxRougeF1: 0.05,
                 layer2MaxTop20Recall: 0.20,
             },
+        },
+    },
+    messageFilters: {
+        enabled: true,
+        filters: {
+            "omo-system-reminder": { enabled: true },
         },
     },
 }
@@ -424,6 +436,12 @@ function deepCloneConfig(config: PluginConfig): PluginConfig {
             algorithm: config.qualityGate.algorithm,
             algorithms: { ...config.qualityGate.algorithms },
         },
+        messageFilters: {
+            enabled: config.messageFilters.enabled,
+            filters: Object.fromEntries(
+                Object.entries(config.messageFilters.filters).map(([k, v]) => [k, { ...v }]),
+            ),
+        },
     }
 }
 
@@ -451,6 +469,26 @@ function mergeQualityGate(
     }
 }
 
+function mergeMessageFilters(
+    base: MessageFiltersConfig,
+    override?: Partial<MessageFiltersConfig>,
+): MessageFiltersConfig {
+    if (!override) return base
+    const mergedFilters = { ...base.filters }
+    if (override.filters) {
+        for (const [name, fc] of Object.entries(override.filters)) {
+            const existing = mergedFilters[name]
+            mergedFilters[name] = existing
+                ? { ...existing, ...fc }
+                : { enabled: fc?.enabled ?? true }
+        }
+    }
+    return {
+        enabled: override.enabled ?? base.enabled,
+        filters: mergedFilters,
+    }
+}
+
 function mergeLayer(config: PluginConfig, data: Record<string, any>): PluginConfig {
     return {
         enabled: data.enabled ?? config.enabled,
@@ -466,6 +504,7 @@ function mergeLayer(config: PluginConfig, data: Record<string, any>): PluginConf
         compress: mergeCompress(config.compress, data.compress as CompressOverride),
         gc: mergeGC(config.gc, data.gc as Partial<GCConfig>),
         qualityGate: mergeQualityGate(config.qualityGate, data.qualityGate as Partial<QualityGateConfig>),
+        messageFilters: mergeMessageFilters(config.messageFilters, data.messageFilters as Partial<MessageFiltersConfig>),
     }
 }
 

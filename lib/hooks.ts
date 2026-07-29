@@ -33,6 +33,8 @@ import { type HostPermissionSnapshot } from "./host-permissions"
 import { compressPermission, syncCompressPermissionState } from "./compress-permission"
 import { hideConsumedCompressCalls } from "./compress/hide-consumed"
 import { hideFailedCompressCalls } from "./compress/hide-failed"
+import { applyMessageFilters } from "./messages/filter/apply"
+import { ensureBuiltinFiltersRegistered } from "./messages/filter/builtin"
 import { createSessionState, saveSessionState, syncToolCache, updatePerTurnState, type SessionStateRegistry } from "./state"
 import { cacheSystemPromptTokens } from "./ui/utils"
 import { sendIgnoredMessage } from "./ui/notification"
@@ -166,6 +168,12 @@ export function createChatMessageTransformHandler(
         }
 
         stripHallucinations(output.messages)
+        ensureBuiltinFiltersRegistered()
+        applyMessageFilters(output.messages, config.messageFilters, logger, {
+            sessionId: state.sessionId ?? "",
+            isSubAgent: state.isSubAgent,
+            modelContextLimit: state.modelContextLimit,
+        })
         cacheSystemPromptTokens(state, output.messages)
         assignMessageRefs(state, output.messages)
         const activeBlockCountBefore = state.prune.messages.activeBlockIds.size // [FIX Bug 4]
