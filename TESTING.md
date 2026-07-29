@@ -117,8 +117,8 @@ Not yet implemented. Will test the complete message transform pipeline from `hoo
 
 | Source Module | Key Untested Functions | Complexity |
 |-------------|----------------------|------------|
-| `lib/config.ts` | Config merging, defaults, validation, DCP migration | ~1125 lines, largest file |
-| `lib/state/persistence.ts` | `saveSessionState`, `loadSessionState`, `ensureSessionInitialized`, DCP migration | ~295 lines, filesystem I/O |
+| `lib/config.ts` | Config merging, defaults, validation | ~1125 lines, largest file |
+| `lib/state/persistence.ts` | `saveSessionState`, `loadSessionState`, `ensureSessionInitialized` | ~295 lines, filesystem I/O |
 | `lib/state/utils.ts` (direct) | `isMessageCompacted`, `serializePruneMessagesState`, `deserializePruneMessagesState`, `getActiveSummaryTokenUsage` | ~358 lines |
 | `lib/messages/prune.ts` | `filterCompressedRanges`, `stripStepMarkers` (post-removal) | ~263 lines |
 | `lib/messages/sync.ts` | `syncCompressionBlocks` — deactivate orphaned blocks | ~130 lines |
@@ -152,7 +152,6 @@ function buildConfig(mode: "message" | "range" = "message"): PluginConfig {
         pruneNotification: "off",
         pruneNotificationType: "toast",
         commands: { enabled: true, protectedTools: [] },
-        turnProtection: { enabled: false, turns: 4 },
         experimental: { allowSubAgents: false, customPrompts: false },
         protectedFilePatterns: [],
         compress: {
@@ -444,7 +443,6 @@ function buildConfig(): PluginConfig {
         pruneNotification: "off",
         pruneNotificationType: "toast",
         commands: { enabled: true, protectedTools: [] },
-        turnProtection: { enabled: false, turns: 4 },
         experimental: { allowSubAgents: false, customPrompts: false },
         protectedFilePatterns: [],
         compress: {
@@ -530,8 +528,8 @@ Need temp directories, file I/O, or multi-module orchestration.
 
 | Module | Functions to Test | Why Hard |
 |--------|-------------------|----------|
-| `lib/config.ts` | Config loading, merging, validation, migration | Filesystem reads, JSONC parsing, DCP migration |
-| `lib/state/persistence.ts` | `saveSessionState`, `loadSessionState`, `ensureSessionInitialized` | File I/O, JSON serialization, DCP migration |
+| `lib/config.ts` | Config loading, merging, validation | Filesystem reads, JSONC parsing |
+| `lib/state/persistence.ts` | `saveSessionState`, `loadSessionState`, `ensureSessionInitialized` | File I/O, JSON serialization |
 | `lib/commands/*.ts` | Command handlers | Full client mock needed, output formatting |
 | `lib/ui/notification.ts` | `buildMinimalMessage`, `buildDetailedMessage` | Needs full `SessionState` with blocks and stats |
 | `lib/hooks.ts` | Full pipeline integration | Orchestrates all other modules |

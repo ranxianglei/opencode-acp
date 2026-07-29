@@ -48,7 +48,7 @@ opencode-acp/
 ├── index.ts                          # Plugin entry point — wires hooks, tools, commands, config
 ├── lib/
 │   ├── hooks.ts                      # Plugin hook handlers (system prompt, message transform, command, event, text-complete)
-│   ├── config.ts                     # Three-layer config: global → config-dir → project, with DCP migration
+│   ├── config.ts                     # Three-layer config: global → config-dir → project
 │   ├── logger.ts                     # Structured logging (logs/acp/)
 │   ├── auth.ts                       # Plugin authentication
 │   ├── token-utils.ts                # Token counting utilities
@@ -106,7 +106,7 @@ opencode-acp/
 │   │
 │   ├── state/                        # State management
 │   │   ├── state.ts                  # SessionState creation, session change detection
-│   │   ├── persistence.ts            # File persistence (plugin/acp/{sessionId}.json), DCP migration
+│   │   ├── persistence.ts            # File persistence (plugin/acp/{sessionId}.json)
 │   │   ├── tool-cache.ts             # Tool result caching
 │   │   ├── types.ts                  # Core types (SessionState, CompressionBlock, Prune, etc.)
 │   │   ├── utils.ts                  # State utility functions
@@ -250,9 +250,9 @@ State is persisted to `~/.local/share/opencode/storage/plugin/acp/{sessionId}.js
 Three-layer config merging (later layers override earlier):
 
 ```
-1. Global:     ~/.config/opencode/acp.jsonc    (fallback: dcp.jsonc)
-2. Config dir: $OPENCODE_CONFIG_DIR/acp.jsonc  (fallback: dcp.jsonc)
-3. Project:    .opencode/acp.jsonc             (fallback: dcp.jsonc)
+1. Global:     ~/.config/opencode/acp.jsonc
+2. Config dir: $OPENCODE_CONFIG_DIR/acp.jsonc
+3. Project:    .opencode/acp.jsonc
 ```
 
 Auto-migration: if `acp.jsonc` doesn't exist but `dcp.jsonc` does, automatically copies.
@@ -267,7 +267,6 @@ Auto-migration: if `acp.jsonc` doesn't exist but `dcp.jsonc` does, automatically
     pruneNotification: "detailed",
     pruneNotificationType: "toast",
     commands: { enabled: true, protectedTools: ["task", "skill", "todowrite", "todoread", "compress", "batch", "plan_enter", "plan_exit", "write", "edit"] },
-    turnProtection: { enabled: false, turns: 4 },
     experimental: { allowSubAgents: false, customPrompts: false },
     protectedFilePatterns: [],
     compress: {
@@ -296,12 +295,12 @@ Auto-migration: if `acp.jsonc` doesn't exist but `dcp.jsonc` does, automatically
 
 ### 2.5 Storage Paths
 
-| What              | ACP Path                          | Legacy DCP Path | Migration                 |
-| ----------------- | --------------------------------- | --------------- | ------------------------- |
-| State persistence | `plugin/acp/{sessionId}.json`     | `plugin/dcp/`   | Auto-copy on first access |
-| Config            | `~/.config/opencode/acp.jsonc`    | `dcp.jsonc`     | Auto-copy on first access |
-| Prompt overrides  | `~/.config/opencode/acp-prompts/` | `dcp-prompts/`  | Auto-copy on first access |
-| Debug logs        | `logs/acp/`                       | `logs/dcp/`     | Path change only          |
+| What              | ACP Path                          | Notes          |
+| ----------------- | --------------------------------- | -------------- |
+| State persistence | `plugin/acp/{sessionId}.json`     | JSON file I/O  |
+| Config            | `~/.config/opencode/acp.jsonc`    | JSONC          |
+| Prompt overrides  | `~/.config/opencode/acp-prompts/` | File-based     |
+| Debug logs        | `logs/acp/`                       | Per-request    |
 
 Base storage: `~/.local/share/opencode/storage/`
 
@@ -367,7 +366,7 @@ CI is configured via GitHub Actions (PR #2): typecheck + test + build on Node 22
 
 **Coverage gaps** (modules still without dedicated tests):
 
-- `state/persistence.ts` — state persistence, DCP migration
+- `state/persistence.ts` — state persistence
 - `messages/prune.ts` — prune replacement logic
 - `messages/sync.ts` — block synchronization
 - `messages/inject/inject.ts` — nudge injection
@@ -482,7 +481,6 @@ For reference when modifying code — these bugs were real and the fixes are loa
 | GC deactivation    | `gc/truncate.ts`                           | Age-based block deactivation (blocks were never deactivated)                                                                                                                                       |
 | Logger speedup     | `logger.ts`                                | 268x faster tokenization (was using sync API)                                                                                                                                                      |
 | Summary resolution | `compress/range.ts`                        | Block placeholder injection for nested compressions                                                                                                                                                |
-| Config migration   | `config.ts`                                | Auto-migrate dcp.jsonc → acp.jsonc at getConfig() entry point                                                                                                                                      |
 
 ---
 

@@ -22,7 +22,7 @@ function createPromptStoreFixture(overrideContent?: string, overrideFileName = "
     delete process.env.OPENCODE_CONFIG_DIR
 
     if (overrideContent !== undefined) {
-        const overrideDir = join(configHome, "opencode", "dcp-prompts", "overrides")
+        const overrideDir = join(configHome, "opencode", "acp-prompts", "overrides")
         mkdirSync(overrideDir, { recursive: true })
         writeFileSync(join(overrideDir, overrideFileName), overrideContent, "utf-8")
     }

@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync, statSync, cpSync } from "fs"
+import { existsSync, mkdirSync, readFileSync, writeFileSync, statSync } from "fs"
 import { join, dirname } from "path"
 import { homedir } from "os"
 import type { Logger } from "../logger"
@@ -160,16 +160,6 @@ function findOpencodeDir(startDir: string): string | null {
 function resolvePromptPaths(workingDirectory: string): PromptPaths {
     const configHome = process.env.XDG_CONFIG_HOME || join(homedir(), ".config")
     const globalRoot = join(configHome, "opencode", "acp-prompts")
-    const legacyGlobalRoot = join(configHome, "opencode", "dcp-prompts")
-
-    if (!existsSync(globalRoot) && existsSync(legacyGlobalRoot)) {
-        try {
-            cpSync(legacyGlobalRoot, globalRoot, { recursive: true })
-            console.log("[ACP] Migrated prompts from dcp-prompts to acp-prompts")
-        } catch (e: any) {
-            console.warn(`[ACP] Prompts migration failed: ${e.message}`)
-        }
-    }
 
     const defaultsDir = join(globalRoot, "defaults")
     const globalOverridesDir = join(globalRoot, "overrides")

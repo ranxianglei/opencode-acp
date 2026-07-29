@@ -14,8 +14,6 @@ ACP 从最多三层配置文件中读取（后加载的覆盖先加载的）：
 | **配置目录** | `$OPENCODE_CONFIG_DIR/acp.jsonc` | 该配置目录下的所有会话 |
 | **项目** | `.opencode/acp.jsonc`（从当前目录向上搜索） | 仅当前项目 |
 
-旧版 `dcp.jsonc` / `dcp.json` 路径会在首次加载时自动迁移。
-
 > **提示：** 在配置文件中添加 `"$schema": "https://raw.githubusercontent.com/ranxianglei/opencode-acp/master/dcp.schema.json"` 可获得 IDE 自动补全。
 
 ## 快速开始
@@ -102,25 +100,6 @@ ACP 从最多三层配置文件中读取（后加载的覆盖先加载的）：
 - **默认值：** `["task", "skill", "todowrite", "todoread", "compress", "decompress", "batch", "plan_enter", "plan_exit", "write", "edit"]`
 - **状态：** ACTIVE
 - **说明：** 这些工具的输出受保护，不会被压缩。受保护工具的输出完整保留在可见上下文中。显式数组会**替换**默认值（设 `[]` 表示不保护任何工具）。
-
----
-
-
-### `turnProtection`
-
-保护最近几轮对话不被压缩。
-
-#### `turnProtection.enabled`
-- **类型：** `boolean`
-- **默认值：** `false`
-- **状态：** ACTIVE
-- **说明：** 设为 `true` 时，最近 N 轮的消息受保护，不被压缩。
-
-#### `turnProtection.turns`
-- **类型：** `number`
-- **默认值：** `4`
-- **状态：** ACTIVE
-- **说明：** 当 `turnProtection.enabled` 为 `true` 时，保护的最近对话轮数。
 
 ---
 

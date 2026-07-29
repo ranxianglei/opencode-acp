@@ -17,10 +17,6 @@ function buildConfig(maxContextLimit: number, minContextLimit = 1): PluginConfig
             enabled: true,
             protectedTools: [],
         },
-        turnProtection: {
-            enabled: false,
-            turns: 4,
-        },
         experimental: {
             allowSubAgents: false,
             customPrompts: false,

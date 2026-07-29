@@ -22,7 +22,6 @@ function makeConfig(gc?: Partial<PluginConfig["gc"]>): PluginConfig {
         pruneNotification: "off",
         pruneNotificationType: "chat",
         commands: { enabled: true, protectedTools: [] },
-        turnProtection: { enabled: false, turns: 4 },
         experimental: { allowSubAgents: false, customPrompts: false },
         protectedFilePatterns: [],
         compress: {

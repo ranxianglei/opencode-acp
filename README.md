@@ -253,8 +253,6 @@ ACP uses its own config file, searched in order:
 2. **Custom config directory:** `$OPENCODE_CONFIG_DIR/acp.jsonc` (or `acp.json`), if `OPENCODE_CONFIG_DIR` is set
 3. **Project:** `.opencode/acp.jsonc` (or `acp.json`) in your project's `.opencode` directory
 
-If no `acp.jsonc` is found, ACP falls back to `dcp.jsonc` / `dcp.json` (for backward compatibility with existing DCP installations) and auto-migrates on first write.
-
 Each level overrides the previous, so project settings take priority over global. Restart OpenCode after making config changes.
 
 > **📖 Full parameter reference:** See [CONFIGURATION.md](./CONFIGURATION.md) for a complete reference of every configurable parameter with type, default value, and description.
@@ -300,11 +298,6 @@ Each level overrides the previous, so project settings take priority over global
     },
     // Manual mode: disables autonomous context management,
     // tools only run when explicitly triggered via /acp commands
-    // Protect from pruning for <turns> message turns past tool invocation
-    "turnProtection": {
-        "enabled": false,
-        "turns": 4,
-    },
     // Experimental settings
     "experimental": {
         // Allow ACP processing in subagent sessions
@@ -443,23 +436,17 @@ ACP is a drop-in replacement for DCP. To migrate:
 
 1. Remove the old DCP plugin from your `opencode.json`
 2. Install ACP: `opencode plugin install opencode-acp@stable --global`
-3. Restart OpenCode
-
-**What's preserved:**
-
-- Session state (compression blocks, message ID mappings) -- auto-migrated from `plugin/dcp/` to `~/.local/share/opencode/storage/plugin/acp/`
-- Config file `~/.config/opencode/dcp.jsonc` -- ACP auto-migrates to `acp.jsonc`
-- Prompt overrides in `~/.config/opencode/dcp-prompts/` -- auto-migrates to `acp-prompts/`
+3. Copy your config: `cp ~/.config/opencode/dcp.jsonc ~/.config/opencode/acp.jsonc`
+4. Copy prompt overrides (if any): `cp -r ~/.config/opencode/dcp-prompts ~/.config/opencode/acp-prompts`
+5. Copy session state (optional, preserves compression blocks): `cp -r ~/.local/share/opencode/storage/plugin/dcp ~/.local/share/opencode/storage/plugin/acp`
+6. Restart OpenCode
 
 **What changes:**
 
-- Storage directory: `plugin/dcp/` to `plugin/acp/` (auto-migrated on first launch)
 - Log directory: `logs/dcp/` to `logs/acp/`
 - Slash command: `/dcp` to `/acp` (both work for backward compatibility)
 - Notification headers: `DCP` to `ACP`
 - Context usage label: `DCP threshold` to `ACP threshold`
-
-ACP auto-migrates config from `dcp.jsonc` to `acp.jsonc` and prompts from `dcp-prompts/` to `acp-prompts/` on first launch.
 
 ---
 

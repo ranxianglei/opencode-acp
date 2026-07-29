@@ -208,8 +208,6 @@ ACP 使用自己的配置文件，按以下顺序搜索：
 2. **自定义配置目录：** `$OPENCODE_CONFIG_DIR/acp.jsonc`（或 `acp.json`），当设置了 `OPENCODE_CONFIG_DIR` 时
 3. **项目级：** 项目 `.opencode` 目录下的 `.opencode/acp.jsonc`（或 `acp.json`）
 
-如果未找到 `acp.jsonc`，ACP 会回退到 `dcp.jsonc` / `dcp.json`（用于与现有 DCP 安装向后兼容），并在首次写入时自动迁移。
-
 每一层覆盖前一层，因此项目设置优先于全局设置。修改配置后请重启 OpenCode。
 
 > **📖 完整参数参考：** 请查看 [CONFIGURATION.zh-CN.md](./CONFIGURATION.zh-CN.md)（中文）或 [CONFIGURATION.md](./CONFIGURATION.md)（英文），包含每个可配置参数的类型、默认值和详细说明。
@@ -255,11 +253,6 @@ ACP 使用自己的配置文件，按以下顺序搜索：
     },
     // Manual mode: disables autonomous context management,
     // tools only run when explicitly triggered via /acp commands
-    // Protect from pruning for <turns> message turns past tool invocation
-    "turnProtection": {
-        "enabled": false,
-        "turns": 4,
-    },
     // Experimental settings
     "experimental": {
         // Allow ACP processing in subagent sessions
@@ -397,23 +390,17 @@ ACP 是 DCP 的直接替代品。迁移步骤：
 
 1. 从 `opencode.json` 中移除旧的 DCP 插件
 2. 安装 ACP：`opencode plugin install opencode-acp@stable --global`
-3. 重启 OpenCode
-
-**保留的内容：**
-
-- 会话状态（压缩块、消息 ID 映射） — 自动从 `plugin/dcp/` 迁移到 `~/.local/share/opencode/storage/plugin/acp/`
-- 配置文件 `~/.config/opencode/dcp.jsonc` — ACP 自动迁移到 `acp.jsonc`
-- `~/.config/opencode/dcp-prompts/` 中的 prompt 覆盖 — 自动迁移到 `acp-prompts/`
+3. 复制配置：`cp ~/.config/opencode/dcp.jsonc ~/.config/opencode/acp.jsonc`
+4. 复制 prompt 覆盖（如有）：`cp -r ~/.config/opencode/dcp-prompts ~/.config/opencode/acp-prompts`
+5. 复制会话状态（可选，保留压缩块）：`cp -r ~/.local/share/opencode/storage/plugin/dcp ~/.local/share/opencode/storage/plugin/acp`
+6. 重启 OpenCode
 
 **变更的内容：**
 
-- 存储目录：`plugin/dcp/` → `plugin/acp/`（首次启动时自动迁移）
 - 日志目录：`logs/dcp/` → `logs/acp/`
 - 斜杠命令：`/dcp` → `/acp`（两者均可用于向后兼容）
 - 通知标题：`DCP` → `ACP`
 - 上下文用量标签：`DCP threshold` → `ACP threshold`
-
-ACP 在首次启动时自动将配置从 `dcp.jsonc` 迁移到 `acp.jsonc`，将 prompt 从 `dcp-prompts/` 迁移到 `acp-prompts/`。
 
 ---
 
