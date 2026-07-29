@@ -520,10 +520,16 @@ export const injectCompressNudges = (
             const efficiencyNote = effectiveTipsVariant !== "maxLimit"
                 ? `\nThis is an efficiency nudge to compress early and keep context lean — not an overflow warning. A separate, stronger alert will appear if the context is actually full.\n\n${COMPRESS_PHILOSOPHY}`
                 : ""
-            let breakdown = `${efficiencyNote}\nBreakdown: ${fmt(composition.toolTokens)} tool (${pct(composition.toolTokens)}%) | ${fmt(composition.summaryTokens)} summaries (${pct(composition.summaryTokens)}%) | ${fmt(composition.codeTokens)} code (${pct(composition.codeTokens)}%) | ${fmt(plainTextTokens)} text (${pct(plainTextTokens)}%)${growthStr}`
+            const sysPart = composition.systemTokens > 0
+                ? `${fmt(composition.systemTokens)} system (${pct(composition.systemTokens)}%) | `
+                : ""
+            let breakdown = `${efficiencyNote}\nBreakdown: ${sysPart}${fmt(composition.toolTokens)} tool (${pct(composition.toolTokens)}%) | ${fmt(composition.summaryTokens)} summaries (${pct(composition.summaryTokens)}%) | ${fmt(composition.codeTokens)} code (${pct(composition.codeTokens)}%) | ${fmt(plainTextTokens)} text (${pct(plainTextTokens)}%)${growthStr}`
 
             const compressibleTokens =
-                composition.total - composition.protectedTokens - composition.summaryTokens
+                composition.total -
+                composition.systemTokens -
+                composition.protectedTokens -
+                composition.summaryTokens
             if (composition.protectedTokens > 0) {
                 breakdown += `\n⚠️ ${fmt(composition.protectedTokens)} tokens are protected (environment-managed tools) — not compressible. Effective compressible: ~${fmt(compressibleTokens)}.`
             }

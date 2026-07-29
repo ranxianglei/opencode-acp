@@ -133,7 +133,7 @@ describe("buildStatusReport (acp_stats wrapper)", () => {
 
         const report = buildStatusReport({ state, config }, messages)
 
-        assert.ok(report.includes("VISIBLE CONTEXT"))
+        assert.ok(report.includes("CONTEXT BREAKDOWN"))
         assert.ok(report.includes("No compressed blocks"))
     })
 
@@ -147,7 +147,7 @@ describe("buildStatusReport (acp_stats wrapper)", () => {
 
         const report = buildStatusReport({ state, config }, messages)
 
-        assert.ok(report.includes("VISIBLE CONTEXT"))
+        assert.ok(report.includes("CONTEXT BREAKDOWN"))
         assert.ok(report.includes("total"))
         assert.ok(report.includes("text"))
     })

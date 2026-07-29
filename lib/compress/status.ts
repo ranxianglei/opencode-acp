@@ -123,7 +123,7 @@ export interface StatusRenderContext {
 function collectVisibleMessages(
     rawMessages: WithParts[],
     ctx: StatusRenderContext,
-): { messages: VisibleMessageInfo[]; summaryTokens: number } {
+): { messages: VisibleMessageInfo[]; summaryTokens: number; systemTokens: number } {
     const pruneMap = ctx.state.prune.messages.byMessageId
     const byRawId = ctx.state.messageIds.byRawId
     const result: VisibleMessageInfo[] = []
@@ -170,12 +170,41 @@ function collectVisibleMessages(
         }
     })
 
-    return { messages: result, summaryTokens }
+    return { messages: result, summaryTokens, systemTokens: estimateSystemTokens(rawMessages) }
+}
+
+function estimateSystemTokens(rawMessages: WithParts[]): number {
+    let firstInput: number | undefined
+    for (const msg of rawMessages) {
+        if (msg.info.role !== "assistant") continue
+        const t = (msg.info as any)?.tokens
+        if (!t) continue
+        const input = (t.input || 0) + (t.cache?.read || 0) + (t.cache?.write || 0)
+        if (input > 0) {
+            firstInput = input
+            break
+        }
+    }
+    if (firstInput === undefined) return 0
+
+    let firstUserText = ""
+    for (const msg of rawMessages) {
+        if (msg.info.role !== "user") continue
+        const parts = Array.isArray(msg.parts) ? msg.parts : []
+        for (const part of parts) {
+            if (part.type === "text" && typeof (part as any).text === "string") {
+                firstUserText += (part as any).text
+            }
+        }
+        if (firstUserText) break
+    }
+    return Math.max(0, firstInput - Math.round(firstUserText.length / 4))
 }
 
 function renderOverview(
     visibleMessages: VisibleMessageInfo[],
     summaryTokens: number,
+    systemTokens: number,
     blocks: CompressionBlock[],
     fetchFailed: boolean,
     rawMessages: WithParts[],
@@ -199,15 +228,16 @@ function renderOverview(
         const totalText = visibleMessages
             .filter((m) => m.tool === "text")
             .reduce((s, m) => s + m.tokens, 0)
-        const total = totalTool + totalText + summaryTokens
+        const total = systemTokens + totalTool + totalText + summaryTokens
 
+        const sysPct = pct(systemTokens, total)
         const toolPct = pct(totalTool, total)
         const textPct = pct(totalText, total)
         const summaryPct = pct(summaryTokens, total)
 
-        lines.push("VISIBLE CONTEXT (uncompressed)")
+        lines.push("CONTEXT BREAKDOWN")
         lines.push(
-            `  ${formatTokens(total)} total | ${formatTokens(totalTool)} tool (${toolPct}%) | ${formatTokens(totalText)} text (${textPct}%) | ${formatTokens(summaryTokens)} summaries (${summaryPct}%)`,
+            `  ${formatTokens(total)} total | ${formatTokens(systemTokens)} system (${sysPct}%) | ${formatTokens(totalTool)} tool (${toolPct}%) | ${formatTokens(totalText)} text (${textPct}%) | ${formatTokens(summaryTokens)} summaries (${summaryPct}%)`,
         )
 
         const topTypes = Array.from(toolTypeMap.entries())
@@ -520,6 +550,7 @@ export function buildStatusReport(
     const result = collectVisibleMessages(rawMessages, renderCtx)
     const visibleMsgs = result.messages
     const summaryTokens = result.summaryTokens
+    const systemTokens = result.systemTokens
 
     if (scope === "uncompressed") {
         if (view === "messages") {
@@ -529,7 +560,15 @@ export function buildStatusReport(
         }
     } else {
         lines.push(
-            ...renderOverview(visibleMsgs, summaryTokens, allBlocks, false, rawMessages, renderCtx),
+            ...renderOverview(
+                visibleMsgs,
+                summaryTokens,
+                systemTokens,
+                allBlocks,
+                false,
+                rawMessages,
+                renderCtx,
+            ),
         )
     }
 

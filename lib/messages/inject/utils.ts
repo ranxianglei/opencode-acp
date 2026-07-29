@@ -451,6 +451,7 @@ export interface ContextComposition {
     summaryTokens: number
     messageTokens: number
     textTokens: number
+    systemTokens: number
     protectedTokens: number
     total: number
     largestRanges: { ref: string; tokens: number }[]
@@ -578,14 +579,37 @@ export function estimateContextComposition(
         .map(([tool, tokens]) => ({ tool, tokens }))
         .sort((a, b) => b.tokens - a.tokens)
 
+    let systemTokens = 0
+    for (const msg of messages) {
+        if (msg.info.role !== "assistant") continue
+        const t = (msg.info as any)?.tokens
+        if (!t) continue
+        const input = (t.input || 0) + (t.cache?.read || 0) + (t.cache?.write || 0)
+        if (input > 0) {
+            let firstUserText = ""
+            for (const m of messages) {
+                if (m.info.role !== "user") continue
+                for (const part of m.parts || []) {
+                    if (part.type === "text" && typeof (part as any).text === "string") {
+                        firstUserText += (part as any).text
+                    }
+                }
+                if (firstUserText) break
+            }
+            systemTokens = Math.max(0, input - Math.round(firstUserText.length / 4))
+            break
+        }
+    }
+
     return {
         toolTokens,
         codeTokens,
         summaryTokens,
         messageTokens,
         textTokens: Math.max(0, messageTokens - codeTokens),
+        systemTokens,
         protectedTokens,
-        total: toolTokens + summaryTokens + messageTokens,
+        total: systemTokens + toolTokens + summaryTokens + messageTokens,
         largestRanges: perMessage.slice(0, 15),
         largestToolRanges: perTool.slice(0, 15),
         largestCodeRanges: perCode.slice(0, 5),
