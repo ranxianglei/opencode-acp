@@ -1,11 +1,5 @@
 import type { SessionState, WithParts } from "../state"
-
-/**
- * Part types that are structural wrappers, not meaningful content. When a
- * compress tool-call part is removed and only these remain, the message is an
- * orphan shell and should be spliced entirely.
- */
-const STRUCTURAL_PART_TYPES = new Set(["step-start", "step-finish", "reasoning"])
+import { hasMeaningfulContent } from "./parts"
 
 /**
  * Hide compress tool-call parts whose blocks have been consumed by another
@@ -61,10 +55,7 @@ export function hideConsumedCompressCalls(state: SessionState, messages: WithPar
         })
 
         if (changed) {
-            const hasMeaningfulContent = remaining.some(
-                (p) => !STRUCTURAL_PART_TYPES.has(p.type),
-            )
-            if (hasMeaningfulContent) {
+            if (hasMeaningfulContent(remaining)) {
                 messages[i] = { ...msg, parts: remaining }
             } else {
                 messages.splice(i, 1)

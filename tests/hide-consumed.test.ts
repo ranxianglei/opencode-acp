@@ -372,4 +372,43 @@ describe("hideConsumedCompressCalls", () => {
             0,
         )
     })
+
+    it("splices message when only step-start + step-finish remain after compress removal", () => {
+        const b1 = makeBlock({
+            blockId: 1,
+            active: false,
+            deactivatedByBlockId: 4,
+            compressMessageId: "msg-t1-compress",
+            tier: 1,
+        })
+        const b4 = makeBlock({
+            blockId: 4,
+            active: true,
+            compressMessageId: "msg-t2-compress",
+            tier: 2,
+        })
+
+        const state = makeState([b1, b4])
+        const messages: WithParts[] = [
+            { info: { id: "msg-user-1", role: "user" } as any, parts: [{ type: "text", text: "Hi" }] },
+            {
+                info: { id: "msg-t1-compress", role: "assistant" } as any,
+                parts: [
+                    { type: "step-start" },
+                    { type: "tool", tool: "compress", state: { status: "completed" } },
+                    { type: "step-finish", reason: "stop" },
+                ],
+            },
+            { info: { id: "msg-user-2", role: "user" } as any, parts: [{ type: "text", text: "Next" }] },
+        ]
+
+        const hidden = hideConsumedCompressCalls(state, messages)
+
+        assert.equal(hidden, 1)
+        assert.equal(
+            messages.find((m) => m.info.id === "msg-t1-compress"),
+            undefined,
+            "step-start + step-finish orphan should be spliced",
+        )
+    })
 })
