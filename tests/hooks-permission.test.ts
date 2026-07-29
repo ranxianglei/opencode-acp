@@ -26,9 +26,6 @@ function buildConfig(permission: "allow" | "ask" | "deny" = "allow"): PluginConf
             enabled: true,
             protectedTools: [],
         },
-        manualMode: {
-            enabled: false,
-        },
         turnProtection: {
             enabled: false,
             turns: 4,

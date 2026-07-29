@@ -105,17 +105,6 @@ ACP 从最多三层配置文件中读取（后加载的覆盖先加载的）：
 
 ---
 
-### `manualMode`
-
-手动压缩模式 — 禁用自动 nudge 注入，让用户/模型手动触发压缩。
-
-#### `manualMode.enabled`
-- **类型：** `boolean`
-- **默认值：** `false`
-- **状态：** ACTIVE
-- **说明：** 设为 `true` 时，ACP 不注入上下文限制 nudge。模型需要自行决定何时调用 `compress`。适用于能主动管理上下文的模型。
-
----
 
 ### `turnProtection`
 
@@ -156,14 +145,6 @@ ACP 从最多三层配置文件中读取（后加载的覆盖先加载的）：
 ### `compress`
 
 核心压缩行为。
-
-#### `compress.mode`
-- **类型：** `"range" | "message"`
-- **默认值：** `"range"`
-- **状态：** ACTIVE
-- **说明：** 压缩工具模式。
-  - `"range"` — 模型将连续的消息范围（`startId` → `endId`）压缩为单个摘要块
-  - `"message"` — 模型逐条压缩消息
 
 #### `compress.permission`
 - **类型：** `"ask" | "allow" | "deny"`
@@ -458,7 +439,6 @@ ACP 从最多三层配置文件中读取（后加载的覆盖先加载的）：
 ### 完全禁用自动压缩
 ```jsonc
 {
-    "manualMode": { "enabled": true }
 }
 ```
 

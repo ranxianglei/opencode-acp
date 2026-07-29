@@ -3,7 +3,6 @@ import test from "node:test"
 import { mergeCompress, type CompressConfig } from "../lib/config"
 
 const base: CompressConfig = {
-    mode: "range",
     permission: "allow",
     showCompression: true,
     summaryBuffer: true,

@@ -7,10 +7,8 @@ import { VALID_CONFIG_KEYS, getInvalidConfigKeys, validateConfigTypes, type Vali
 
 
 type Permission = "ask" | "allow" | "deny"
-type CompressMode = "range" | "message"
 
 export interface CompressConfig {
-    mode: CompressMode
     permission: Permission
     showCompression: boolean
     summaryBuffer: boolean
@@ -46,10 +44,6 @@ export interface CompressConfig {
 export interface Commands {
     enabled: boolean
     protectedTools: string[]
-}
-
-export interface ManualModeConfig {
-    enabled: boolean
 }
 
 export interface TurnProtection {
@@ -94,7 +88,6 @@ export interface PluginConfig {
     pruneNotification: "off" | "minimal" | "detailed"
     pruneNotificationType: "chat" | "toast"
     commands: Commands
-    manualMode: ManualModeConfig
     turnProtection: TurnProtection
     experimental: ExperimentalConfig
     protectedFilePatterns: string[]
@@ -190,9 +183,6 @@ const defaultConfig: PluginConfig = {
         enabled: true,
         protectedTools: [...DEFAULT_PROTECTED_TOOLS],
     },
-    manualMode: {
-        enabled: false,
-    },
     turnProtection: {
         enabled: false,
         turns: 4,
@@ -203,7 +193,6 @@ const defaultConfig: PluginConfig = {
     },
     protectedFilePatterns: [],
     compress: {
-        mode: "range",
         permission: "allow",
         showCompression: true,
         summaryBuffer: true,
@@ -389,7 +378,6 @@ export function mergeCompress(
     }
 
     return {
-        mode: override.mode ?? base.mode,
         permission: override.permission ?? base.permission,
         showCompression: override.showCompression ?? base.showCompression,
         summaryBuffer: override.summaryBuffer ?? base.summaryBuffer,
@@ -436,17 +424,6 @@ function mergeCommands(
     }
 }
 
-function mergeManualMode(
-    base: PluginConfig["manualMode"],
-    override?: Partial<PluginConfig["manualMode"]>,
-): PluginConfig["manualMode"] {
-    if (override === undefined) return base
-
-    return {
-        enabled: override.enabled ?? base.enabled,
-    }
-}
-
 function mergeExperimental(
     base: PluginConfig["experimental"],
     override?: Partial<PluginConfig["experimental"]>,
@@ -465,9 +442,6 @@ function deepCloneConfig(config: PluginConfig): PluginConfig {
         commands: {
             enabled: config.commands.enabled,
             protectedTools: [...config.commands.protectedTools],
-        },
-        manualMode: {
-            enabled: config.manualMode.enabled,
         },
         turnProtection: { ...config.turnProtection },
         experimental: { ...config.experimental },
@@ -522,7 +496,6 @@ function mergeLayer(config: PluginConfig, data: Record<string, any>): PluginConf
         pruneNotification: data.pruneNotification ?? config.pruneNotification,
         pruneNotificationType: data.pruneNotificationType ?? config.pruneNotificationType,
         commands: mergeCommands(config.commands, data.commands as any),
-        manualMode: mergeManualMode(config.manualMode, data.manualMode as any),
         turnProtection: {
             enabled: data.turnProtection?.enabled ?? config.turnProtection.enabled,
             turns: data.turnProtection?.turns ?? config.turnProtection.turns,

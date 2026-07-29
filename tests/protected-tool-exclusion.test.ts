@@ -4,7 +4,6 @@ import { join } from "node:path"
 import { tmpdir } from "node:os"
 import { mkdirSync } from "node:fs"
 import { createCompressRangeTool } from "../lib/compress/range"
-import { createCompressMessageTool } from "../lib/compress/message"
 import { createSessionState, type WithParts } from "../lib/state"
 import type { PluginConfig } from "../lib/config"
 import { Logger } from "../lib/logger"
@@ -34,9 +33,6 @@ function buildConfig(overrides: Partial<PluginConfig> = {}): PluginConfig {
             enabled: true,
             protectedTools: [],
         },
-        manualMode: {
-            enabled: false,
-        },
         turnProtection: {
             enabled: false,
             turns: 4,
@@ -47,7 +43,6 @@ function buildConfig(overrides: Partial<PluginConfig> = {}): PluginConfig {
         },
         protectedFilePatterns: [],
         compress: {
-            mode: "range",
             permission: "allow",
             showCompression: false,
             maxContextLimit: 150000,
@@ -193,32 +188,12 @@ function buildRangeToolCtx(config: PluginConfig, rawMessages: WithParts[], state
         prompts: {
             reload() {},
             getRuntimePrompts() {
-                return { compressRange: "", compressMessage: "" }
+                return { compressRange: "" }
             },
         },
     } as any)
 }
 
-function buildMessageToolCtx(config: PluginConfig, rawMessages: WithParts[], state: ReturnType<typeof createSessionState>, sessionID: string) {
-    const logger = new Logger(false)
-    return createCompressMessageTool({
-        client: {
-            session: {
-                messages: async () => ({ data: rawMessages }),
-                get: async () => ({ data: { parentID: null } }),
-            },
-        },
-        registry: singletonRegistry(state),
-        logger,
-        config,
-        prompts: {
-            reload() {},
-            getRuntimePrompts() {
-                return { compressRange: "", compressMessage: "" }
-            },
-        },
-    } as any)
-}
 
 function mockToolCtx(sessionID: string) {
     return {
@@ -536,77 +511,6 @@ test("range mode handles skill message in the middle of a range", async () => {
     assert.ok(
         block.directMessageIds.includes("msg-assistant-2"),
         "msg-assistant-2 (m00004) should be compressed",
-    )
-})
-
-test("message mode skips protected tool message and reports issue", async () => {
-    const sessionID = `ses_skill_message_skip_${Date.now()}`
-    const config = buildConfig()
-    config.compress.mode = "message"
-    const rawMessages = buildMessagesWithSkill(sessionID)
-    const state = createSessionState()
-    const tool = buildMessageToolCtx(config, rawMessages, state, sessionID)
-
-    await assert.rejects(
-        tool.execute(
-            {
-                topic: "Message mode skill skip",
-                content: [
-                    {
-                        topic: "Message mode skill skip",
-                        messageId: "m00003",
-                        summary: "Trying to compress the skill message directly.",
-                    },
-                ],
-            },
-            mockToolCtx(sessionID),
-        ),
-        /Unable to compress[\s\S]*protected tool output/,
-    )
-
-    assert.equal(
-        state.prune.messages.blocksById.size,
-        0,
-        "no blocks should be created for skipped protected message",
-    )
-})
-
-test("message mode compresses non-protected messages while skipping protected ones", async () => {
-    const sessionID = `ses_skill_mixed_${Date.now()}`
-    const config = buildConfig()
-    config.compress.mode = "message"
-    const rawMessages = buildMessagesWithSkill(sessionID)
-    const state = createSessionState()
-    const tool = buildMessageToolCtx(config, rawMessages, state, sessionID)
-
-    const result = await tool.execute(
-        {
-            topic: "Mixed compress",
-            content: [
-                {
-                    topic: "Mixed compress",
-                    messageId: "m00002",
-                    summary: "Compressing the assistant text message.",
-                },
-                {
-                    topic: "Mixed compress",
-                    messageId: "m00003",
-                    summary: "Trying to compress the skill message (should be skipped).",
-                },
-            ],
-        },
-        mockToolCtx(sessionID),
-    )
-
-    assert.match(result, /Compressed 1 message/)
-    assert.match(result, /Skipped 1 issue/i)
-    assert.match(result, /protected tool output/i)
-
-    const blocks = [...state.prune.messages.blocksById.values()]
-    assert.equal(blocks.length, 1, "only one block for the non-protected message")
-    assert.ok(
-        blocks[0].directMessageIds.includes("msg-assistant-1"),
-        "the compressed block should contain msg-assistant-1",
     )
 })
 

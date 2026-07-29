@@ -10,7 +10,6 @@ const SID = "ses-preserve-test"
 
 function buildCompress(p: Partial<PluginConfig["compress"]> = {}): PluginConfig["compress"] {
     return {
-        mode: "range",
         permission: "allow",
         showCompression: false,
         summaryBuffer: true,
@@ -45,7 +44,6 @@ function buildConfig(compressOverrides: Partial<PluginConfig["compress"]> = {}):
         pruneNotification: "off",
         pruneNotificationType: "chat",
         commands: { enabled: true, protectedTools: [] },
-        manualMode: { enabled: false },
         turnProtection: { enabled: false, turns: 4 },
         experimental: { allowSubAgents: false, customPrompts: false },
         protectedFilePatterns: [],

@@ -31,9 +31,6 @@ function buildConfig(): PluginConfig {
             enabled: true,
             protectedTools: [],
         },
-        manualMode: {
-            enabled: false,
-        },
         turnProtection: {
             enabled: false,
             turns: 4,
@@ -44,7 +41,6 @@ function buildConfig(): PluginConfig {
         },
         protectedFilePatterns: [],
         compress: {
-            mode: "range",
             permission: "allow",
             showCompression: false,
             maxContextLimit: 150000,

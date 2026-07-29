@@ -43,9 +43,7 @@ function makeState(blocks: CompressionBlock[]): SessionState {
     return {
         sessionId: "test",
         isSubAgent: false,
-        manualMode: false,
         compressPermission: "allow",
-        pendingManualTrigger: null,
         prune: {
             messages: {
                 byMessageId: new Map(),

@@ -20,7 +20,6 @@ function buildConfig(mode: "message" | "range" = "range"): PluginConfig {
         pruneNotification: "off",
         pruneNotificationType: "chat",
         commands: { enabled: true, protectedTools: [] },
-        manualMode: { enabled: false },
         turnProtection: { enabled: false, turns: 4 },
         experimental: { allowSubAgents: false, customPrompts: false },
         protectedFilePatterns: [],
@@ -136,18 +135,6 @@ test("injectMessageIds skips messages without refs", () => {
     assert.ok(!text.text.includes("m0"), "message without ref should not be tagged")
 })
 
-test("injectMessageIds assigns BLOCKED to protected user messages", () => {
-    const state = createSessionState()
-    state.messageIds.byRawId.set("u1", "m00001")
-    const config = buildConfig("message")
-    config.compress.protectUserMessages = true
-    const messages = [userMsg("u1", "protected content")]
-    injectMessageIds(state, config, messages)
-    const text = messages[0]!.parts[0] as any
-    assert.ok(text.text.includes("BLOCKED"), "protected message should have BLOCKED ref")
-    assert.ok(!text.text.includes("m00001"), "protected message should NOT have the actual ref")
-})
-
 test("injectMessageIds adds tag to assistant text when no tool parts exist", () => {
     const state = createSessionState()
     state.messageIds.byRawId.set("a1", "m00003")
@@ -165,15 +152,6 @@ test("injectCompressNudges does nothing when permission is deny", () => {
     const originalLength = messages.length
     injectCompressNudges(state, config, logger, messages, {} as any)
     assert.equal(messages.length, originalLength, "no messages should be added when permission denied")
-})
-
-test("injectCompressNudges does nothing when manualMode is active", () => {
-    const state = createSessionState()
-    state.manualMode = "active"
-    const messages = [userMsg("u1", "hello")]
-    const originalLength = messages.length
-    injectCompressNudges(state, buildConfig(), logger, messages, {} as any)
-    assert.equal(messages.length, originalLength, "no messages should be added in manual mode")
 })
 
 test("injectCompressNudges clears anchors when compress tool is detected", () => {

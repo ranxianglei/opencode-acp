@@ -14,14 +14,12 @@ import { evaluateBatchQuality } from "./quality-gate"
 export interface CompressionSnapshot {
     messages: PruneMessagesState
     stats: SessionStats
-    manualMode: SessionState["manualMode"]
 }
 
 export function snapshotCompressionState(state: SessionState): CompressionSnapshot {
     return {
         messages: structuredClone(state.prune.messages),
         stats: { ...state.stats },
-        manualMode: state.manualMode,
     }
 }
 
@@ -31,7 +29,6 @@ export function restoreCompressionState(
 ): void {
     state.prune.messages = structuredClone(snapshot.messages)
     state.stats = { ...snapshot.stats }
-    state.manualMode = snapshot.manualMode
 }
 
 interface RunContext {
@@ -62,12 +59,6 @@ export async function prepareSession(
     toolCtx: RunContext,
     title: string,
 ): Promise<PreparedSession> {
-    if (ctx.state.manualMode && ctx.state.manualMode !== "compress-pending") {
-        throw new Error(
-            "Manual mode: compress blocked. Do not retry until `<compress triggered manually>` appears in user context.",
-        )
-    }
-
     await toolCtx.ask({
         permission: "compress",
         patterns: ["*"],
@@ -85,7 +76,6 @@ export async function prepareSession(
         toolCtx.sessionID,
         ctx.logger,
         rawMessages,
-        ctx.config.manualMode.enabled,
         ctx.config,
     )
 
@@ -104,7 +94,6 @@ export async function finalizeSession(
     entries: NotificationEntry[],
     batchTopic: string | undefined,
 ): Promise<void> {
-    ctx.state.manualMode = ctx.state.manualMode ? "active" : false
     applyPendingCompressionDurations(ctx.state)
     await saveSessionState(ctx.state, ctx.logger)
 

@@ -80,42 +80,6 @@ export function getActiveCompressionTargets(
     return splitTargets(activeBlocks)
 }
 
-export function getRecompressibleCompressionTargets(
-    messagesState: PruneMessagesState,
-    availableMessageIds: Set<string>,
-): CompressionTarget[] {
-    const allBlocks = Array.from(messagesState.blocksById.values()).filter((block) => {
-        return availableMessageIds.has(block.compressMessageId)
-    })
-
-    const messageGroups = new Map<number, CompressionBlock[]>()
-    const singleTargets: CompressionTarget[] = []
-
-    for (const block of allBlocks) {
-        if (block.mode === "message") {
-            const existing = messageGroups.get(block.runId)
-            if (existing) {
-                existing.push(block)
-            } else {
-                messageGroups.set(block.runId, [block])
-            }
-            continue
-        }
-
-        if (block.deactivatedByUser && !block.active) {
-            singleTargets.push(buildTarget([block]))
-        }
-    }
-
-    for (const blocks of messageGroups.values()) {
-        if (blocks.some((block) => block.deactivatedByUser && !block.active)) {
-            singleTargets.push(buildTarget(blocks))
-        }
-    }
-
-    return singleTargets.sort((a, b) => a.displayId - b.displayId)
-}
-
 export function resolveCompressionTarget(
     messagesState: PruneMessagesState,
     blockId: number,

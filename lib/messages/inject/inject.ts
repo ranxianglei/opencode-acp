@@ -81,10 +81,6 @@ export const injectCompressNudges = (
         return
     }
 
-    if (state.manualMode) {
-        return
-    }
-
     const lastMessage = findLastNonIgnoredMessage(messages)
     const lastAssistantMessage = messages.findLast((message) => message.info.role === "assistant")
 
@@ -543,7 +539,7 @@ export const injectCompressNudges = (
         // Intentionally do NOT update lastPerMessageNudgeTokens here — nudges
         // repeat every turn until the model actually compresses.
         state.nudges.lastNudgeShownTokens = currentTokens
-        if (config.compress.mode !== "message") {
+        {
             const visibleMessageIds = new Set<string>(
                 messages.map((message) => message.info.id),
             )
@@ -770,10 +766,7 @@ export const injectMessageIds = (
         }
 
         const isBlockedMessage = isProtectedUserMessage(config, message)
-        const priority =
-            config.compress.mode === "message" && !isBlockedMessage
-                ? compressionPriorities?.get(message.info.id)?.priority
-                : undefined
+        const priority = undefined
         const msgType = classifyMessageType(message.parts)
         const msgTokens = Math.round(countMessageCharacters(message) / 4)
         const tag = formatMessageIdTag(isBlockedMessage ? "BLOCKED" : messageRef, {

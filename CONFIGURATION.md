@@ -105,17 +105,6 @@ Controls ACP slash commands (`/acp context`, `/acp stats`, etc.).
 
 ---
 
-### `manualMode`
-
-Manual compression mode — disables automatic nudge injection, letting the user/model trigger compression manually.
-
-#### `manualMode.enabled`
-- **Type:** `boolean`
-- **Default:** `false`
-- **Status:** ACTIVE
-- **Description:** When `true`, ACP does not inject context-limit nudges. The model must call `compress` on its own initiative. Useful for models that proactively manage context.
-
----
 
 ### `turnProtection`
 
@@ -156,14 +145,6 @@ Experimental features that may change or be removed.
 ### `compress`
 
 Core compression behavior.
-
-#### `compress.mode`
-- **Type:** `"range" | "message"`
-- **Default:** `"range"`
-- **Status:** ACTIVE
-- **Description:** Compression tool mode.
-  - `"range"` — Model compresses a contiguous range of messages (`startId` → `endId`) into a single summary block
-  - `"message"` — Model compresses individual messages one at a time
 
 #### `compress.permission`
 - **Type:** `"ask" | "allow" | "deny"`
@@ -458,7 +439,6 @@ Post-compression quality evaluation. Runs after each compression to verify summa
 ### Disable automatic compression entirely
 ```jsonc
 {
-    "manualMode": { "enabled": true }
 }
 ```
 

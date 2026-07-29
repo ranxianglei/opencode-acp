@@ -21,10 +21,7 @@ export const VALID_CONFIG_KEYS = new Set([
     "commands",
     "commands.enabled",
     "commands.protectedTools",
-    "manualMode",
-    "manualMode.enabled",
     "compress",
-    "compress.mode",
     "compress.permission",
     "compress.showCompression",
     "compress.summaryBuffer",
@@ -244,25 +241,6 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
         }
     }
 
-    const manualMode = config.manualMode
-    if (manualMode !== undefined) {
-        if (typeof manualMode !== "object" || manualMode === null || Array.isArray(manualMode)) {
-            errors.push({
-                key: "manualMode",
-                expected: "object",
-                actual: typeof manualMode,
-            })
-        } else {
-            if (manualMode.enabled !== undefined && typeof manualMode.enabled !== "boolean") {
-                errors.push({
-                    key: "manualMode.enabled",
-                    expected: "boolean",
-                    actual: typeof manualMode.enabled,
-                })
-            }
-        }
-    }
-
     const compress = config.compress
     if (compress !== undefined) {
         if (typeof compress !== "object" || compress === null || Array.isArray(compress)) {
@@ -272,18 +250,6 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
                 actual: typeof compress,
             })
         } else {
-            if (
-                compress.mode !== undefined &&
-                compress.mode !== "range" &&
-                compress.mode !== "message"
-            ) {
-                errors.push({
-                    key: "compress.mode",
-                    expected: '"range" | "message"',
-                    actual: JSON.stringify(compress.mode),
-                })
-            }
-
             if (
                 compress.summaryBuffer !== undefined &&
                 typeof compress.summaryBuffer !== "boolean"

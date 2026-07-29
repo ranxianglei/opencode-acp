@@ -35,7 +35,6 @@ function makeCompressionInput(runId: number, blockId: number): CompressionStateI
         batchTopic: "test",
         startId: "m001",
         endId: "m005",
-        mode: "range" as const,
         runId,
         compressMessageId: "compress-msg-1",
         compressCallId: undefined,

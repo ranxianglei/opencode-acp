@@ -88,11 +88,6 @@ export interface Prune {
     messages: PruneMessagesState
 }
 
-export interface PendingManualTrigger {
-    sessionId: string
-    prompt: string
-}
-
 export interface MessageIdState {
     byRawId: Map<string, string>
     byRef: Map<string, string>
@@ -137,9 +132,7 @@ export interface Nudges {
 export interface SessionState {
     sessionId: string | null
     isSubAgent: boolean
-    manualMode: false | "active" | "compress-pending"
     compressPermission: "ask" | "allow" | "deny" | undefined
-    pendingManualTrigger: PendingManualTrigger | null
     prune: Prune
     nudges: Nudges
     stats: SessionStats

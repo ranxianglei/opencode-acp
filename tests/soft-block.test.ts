@@ -19,13 +19,11 @@ function buildConfig(): PluginConfig {
         pruneNotification: "off",
         pruneNotificationType: "chat",
         commands: { enabled: true, protectedTools: [] },
-        manualMode: { enabled: false },
         turnProtection: { enabled: false, turns: 4 },
         experimental: { allowSubAgents: false, customPrompts: false },
         protectedFilePatterns: [],
         autoUpdate: true,
         compress: {
-            mode: "range",
             permission: "allow",
             showCompression: false,
             maxContextLimit: 150000,

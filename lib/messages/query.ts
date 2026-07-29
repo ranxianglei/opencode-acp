@@ -87,15 +87,10 @@ export const isIgnoredUserMessage = (message: WithParts): boolean => {
     return true
 }
 
-export function isProtectedUserMessage(config: PluginConfig, message: WithParts): boolean {
+export function isProtectedUserMessage(_config: PluginConfig, message: WithParts): boolean {
     if (!isMessageWithInfo(message)) {
         return false
     }
 
-    return (
-        config.compress.mode === "message" &&
-        config.compress.protectUserMessages &&
-        message.info.role === "user" &&
-        !isIgnoredUserMessage(message)
-    )
+    return false
 }

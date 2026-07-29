@@ -255,9 +255,6 @@ ACP 使用自己的配置文件，按以下顺序搜索：
     },
     // Manual mode: disables autonomous context management,
     // tools only run when explicitly triggered via /acp commands
-    "manualMode": {
-        "enabled": false,
-    },
     // Protect from pruning for <turns> message turns past tool invocation
     "turnProtection": {
         "enabled": false,
@@ -278,7 +275,6 @@ ACP 使用自己的配置文件，按以下顺序搜索：
     "compress": {
         // Compression mode: "range" (compress spans into block summaries)
         // or experimental "message" (compress individual raw messages)
-        "mode": "range",
         // Permission mode: "allow" (no prompt), "ask" (prompt), "deny" (tool not registered)
         "permission": "allow",
         // Show compression content in a chat notification

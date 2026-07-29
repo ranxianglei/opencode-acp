@@ -22,12 +22,10 @@ function makeConfig(gc?: Partial<PluginConfig["gc"]>): PluginConfig {
         pruneNotification: "off",
         pruneNotificationType: "chat",
         commands: { enabled: true, protectedTools: [] },
-        manualMode: { enabled: false, automaticStrategies: true },
         turnProtection: { enabled: false, turns: 4 },
         experimental: { allowSubAgents: false, customPrompts: false },
         protectedFilePatterns: [],
         compress: {
-            mode: "range",
             permission: "allow",
             showCompression: false,
             summaryBuffer: true,
@@ -94,7 +92,6 @@ function makeState(modelContextLimit: number = 200000): SessionState {
         messageIds: { byRawId: new Map(), byRef: new Map(), nextRef: 1 },
         compressionTiming: { pending: new Map(), completed: [] },
         toolParameters: new Map(),
-        manualMode: { enabled: false, pending: null },
     } as unknown as SessionState
 }
 

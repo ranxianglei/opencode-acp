@@ -25,7 +25,6 @@ function makeBlock(overrides: Partial<CompressionBlock> = {}): CompressionBlock 
         compressedTokens: 100,
         summaryTokens: 20,
         durationMs: 0,
-        mode: "range",
         topic: "test",
         batchTopic: "test",
         startId: "m00001",
@@ -54,9 +53,7 @@ function makeState(overrides: Partial<SessionState> = {}): SessionState {
     return {
         sessionId: SID,
         isSubAgent: false,
-        manualMode: false,
         compressPermission: "allow",
-        pendingManualTrigger: null,
         prune: {
             messages: {
                 byMessageId: new Map<string, PrunedMessageEntry>(),
@@ -108,7 +105,6 @@ function makeCompressionInput(overrides: Partial<CompressionStateInput> = {}): C
         batchTopic: "batch topic",
         startId: "m00001",
         endId: "m00002",
-        mode: "range",
         runId: 1,
         compressMessageId: "comp-1",
         compressCallId: "call-1",
@@ -205,7 +201,6 @@ test("applyCompressionState creates a new block in blocksById", () => {
     assert.equal(block!.anchorMessageId, "msg-a")
     assert.equal(block!.summary, "summary text")
     assert.equal(block!.active, true)
-    assert.equal(block!.mode, "range")
     assert.equal(block!.topic, "test topic")
 })
 

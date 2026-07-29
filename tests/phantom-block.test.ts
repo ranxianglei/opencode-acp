@@ -12,7 +12,6 @@ function makeBlock(overrides: Partial<CompressionBlock> = {}): CompressionBlock 
         compressedTokens: 100,
         summaryTokens: 20,
         durationMs: 0,
-        mode: "range",
         topic: "test",
         batchTopic: "test",
         startId: "m00001",
@@ -41,9 +40,7 @@ function makeState(overrides: Partial<SessionState> = {}): SessionState {
     return {
         sessionId: "phantom-test",
         isSubAgent: false,
-        manualMode: false,
         compressPermission: "allow",
-        pendingManualTrigger: null,
         prune: {
             messages: {
                 byMessageId: new Map<string, PrunedMessageEntry>(),
