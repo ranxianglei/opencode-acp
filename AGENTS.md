@@ -253,9 +253,7 @@ Three-layer config merging (later layers override earlier):
 1. Global:     ~/.config/opencode/acp.jsonc
 2. Config dir: $OPENCODE_CONFIG_DIR/acp.jsonc
 3. Project:    .opencode/acp.jsonc
-```
-
-Auto-migration: if `acp.jsonc` doesn't exist but `dcp.jsonc` does, automatically copies.
+ ```
 
 #### Default Configuration
 
