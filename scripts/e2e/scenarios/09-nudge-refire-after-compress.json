@@ -55,6 +55,8 @@
     ],
     "verify": {
         "minBlockCount": 1,
-        "nudgeBaselineSet": true
+        "maxBlockCount": 8,
+        "nudgeBaselineSet": true,
+        "maxNudgeCount": 6
     }
 }

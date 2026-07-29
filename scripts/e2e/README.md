@@ -69,8 +69,10 @@ the turn counter for real conversation turns.
 | `06-nudge-triggered.json` | Text turns grow context → ACP auto-injects nudge → fake LLM detects nudge and compresses → verify block count + nudge baseline |
 | `07-protection-filtered.json` | Production config (preserveRecentMessages:5) → compress all → verify protected messages excluded from compressed set (soft-filter, not hard-reject) |
 | `08-nudge-with-protection.json` | Nudge→compress WITH protection enabled → verify compress succeeds despite protected zone, nudge baseline set, protected messages survived |
-| `09-nudge-refire-after-compress.json` | Multi-turn regression: nudge→compress→growth→second nudge→second compress → verify minBlockCount ≥ 2 |
-| `10-autonomous-nudge-refire.json` | Issue #176: Autonomous session (bash tool calls grow context) → first nudge→compress → continued growth → second nudge→second compress → verify minBlockCount ≥ 2 |
+| `09-nudge-refire-after-compress.json` | Multi-turn nudge→compress→growth→re-nudge→re-compress. Verifies minBlockCount ≥ 1 (full re-nudge cycle with baseline reset is in scenario 10 + unit tests), maxBlockCount ≤ 8 |
+| `10-autonomous-nudge-refire.json` | Issue #176: Autonomous session (bash tool calls grow context) → first nudge→compress → continued growth → second nudge→second compress → verify minBlockCount ≥ 2, maxCompressCallsVisible ≤ 2 |
+| `11-tier2-baseline-preserved-after-compress.json` | Bug #235 regression: verify lastTier2NudgeTokens preserved (not reset to undefined) after compress. Tests compress handler baseline preservation, not T2 cadence (T2 never fires — consumption chain leaves only 1 active T1 block) |
+| `12-consumed-call-hiding.json` | Bug #236 regression: T1 compresses auto-consume previous blocks → verify lastRequestCompressCalls=1 (consumed calls hidden from LLM) |
 
 ### Scenario Format
 
@@ -100,15 +102,27 @@ the turn counter for real conversation turns.
 ```
 
 **Fields:**
-- `respond`: `"text"`, `"compress"`, `"nudge-compress"`, `"task"`, or `"tool"`
+- `respond`: `"text"`, `"compress"`, `"nudge-compress"`, `"task"`, or `"tool"`, `"autonomous-nudge"`
 - `auto`: `true` = triggered by tool result, no user message needed
 - `range`: `"all"` (entire conversation) or `[startIdx, endIdx]` (0-indexed into mNNNNN refs)
 - `retryOnReject`: if the compress is rejected by quality gate, retry with this config
 - `ranges`: array for batch compress (multiple ranges in one call)
-- `growthText`: for `nudge-compress` — text emitted when no nudge detected (grows context until ACP injects nudge)
+- `growthText`: for `nudge-compress`/`autonomous-nudge` — text emitted when no nudge detected (grows context until ACP injects nudge)
+- `maxCompressCount`: for `autonomous-nudge` — stop after this many total compressions emitted (default: 2)
 - `acpConfig`: optional — overrides the default `acp.jsonc` for this scenario (enables testing protection behavior)
 - `verify.blockCount`: exact block count after scenario
-- `verify.minBlockCount`: minimum block count
+- `verify.minBlockCount` / `verify.maxBlockCount`: inclusive bounds on block count
+- `verify.activeBlockCount`: exact count of active (non-deactivated) blocks
 - `verify.nudgeBaselineSet`: `true` = `lastPerMessageNudgeTokens` is set (not null/undefined)
+- `verify.tier2BaselineSet`: `true` = `lastTier2NudgeTokens` is set (not null/undefined)
 - `verify.compressedCount`: exact count of messages in `byMessageId` (compressed set)
 - `verify.minCompressedCount` / `verify.maxCompressedCount`: inclusive bounds on compressed message count
+- `verify.maxCompressCallsVisible`: upper bound on compress tool_use calls visible in any single LLM request
+- `verify.lastRequestCompressCalls`: exact compress call count in the final LLM request
+- `verify.maxNudgeCount`: upper bound on total nudge detections across all requests
+
+### Known Limitations
+
+1. **T2 distillation not tested**: The fake LLM always uses `parseMessageRefs` (mNNNNN refs), never block IDs (bNN refs). When ACP injects a `[Tier 2 Trigger]` nudge, the fake LLM responds with a T1 compress (message refs), not a T2 distillation (block IDs). Additionally, each T1 compress auto-consumes the previous block (via `search.ts` auto-detection), so only 1 active T1 block exists at any time — T2 never triggers (requires ≥2 active T1 blocks). To test T2 distillation, the fake LLM would need to: (a) compress non-overlapping ranges to accumulate ≥2 active blocks, and (b) parse bNN refs from T2 trigger text to emit proper T2 distillation calls.
+
+2. **`detectNudge` cannot distinguish T1 from T2**: Both T1 and T2 nudges inject the same "efficiency nudge to compress early" phrase (because T2 sets `shouldInject=true`, triggering the same composition breakdown code path). To distinguish them, the fake LLM would need to parse `[Tier 2 Trigger]` or `[Tier 3 Trigger]` markers from the suffix message.

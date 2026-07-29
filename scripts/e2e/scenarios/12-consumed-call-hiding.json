@@ -1,0 +1,35 @@
+{
+    "name": "consumed-call-hiding",
+    "description": "Bug #236 regression: hideConsumedCompressCalls must remove consumed compress calls. With maxCompressCount=4, each T1 compress auto-consumes the previous block (search.ts auto-detection). After 4 compressions, b0-b2 are consumed (inactive) and only b3 is active. hideConsumedCompressCalls must hide the compress calls for consumed blocks. Before fix (#236): lastUserIdx guard broke at i=0 in autonomous sessions (only user msg at index 0), hiding nothing — all 4 calls stayed visible.",
+    "acpConfig": {
+        "compress": {
+            "minCompressRange": 0,
+            "maxSummaryLengthHard": 20000,
+            "preserveRecentMessages": 0,
+            "preserveRecentTokens": 0,
+            "preserveLastUserMessage": false,
+            "maxContextLimit": 8000,
+            "minContextLimit": 5000,
+            "nudgeGrowthTokens": 100,
+            "minNudgeGrowthFloor": 50,
+            "minNudgeGrowthRatio": 0.01
+        }
+    },
+    "turns": [
+        {
+            "respond": "autonomous-nudge",
+            "maxCompressCount": 4,
+            "growthText": "Database design and query optimization deep dive. The users table stores columns id email password_hash created_at updated_at and last_login_at. The id column is a UUID primary key generated using uuid v7 for time-ordered uniqueness. The email column has a unique index for fast lookups during login. Migration 001_initial_schema.sql creates the users table with all columns and indexes. Migration 002_add_sessions.sql creates the sessions table with columns id token user_id expires_at created_at and a foreign key to users.id with cascade delete. The User model at src/models/user.ts line 25 defines the schema with field types validations and relationships to sessions. The findByEmail query at src/db/queries/user.ts line 25 fetches a user by email address for login verification using parameterized queries to prevent SQL injection. Connection pooling at src/db/pool.ts line 10 manages a pool of 10 database connections with idle timeout of 30 seconds and connection lifetime of 5 minutes. Query builder at src/db/builder.ts line 15 provides a fluent interface for constructing SQL queries with type safety. Transaction handling at src/db/transaction.ts line 20 wraps multiple queries in a serializable transaction with retry logic for deadlock detection.",
+            "topic": "Database Design",
+            "summary": "## Database Design\n\nUsers table: UUID v7 PK, email unique index, bcrypt hash. Migrations 001 (users) + 002 (sessions FK cascade). User model at src/models/user.ts:25. findByEmail at src/db/queries/user.ts:25. Pool at src/db/pool.ts:10 (10 conns, 30s idle, 5min lifetime). Query builder at src/db/builder.ts:15. Transactions at src/db/transaction.ts:20 with deadlock retry."
+        }
+    ],
+    "verify": {
+        "minBlockCount": 2,
+        "maxBlockCount": 8,
+        "activeBlockCount": 1,
+        "maxCompressCallsVisible": 3,
+        "lastRequestCompressCalls": 1,
+        "maxNudgeCount": 15
+    }
+}

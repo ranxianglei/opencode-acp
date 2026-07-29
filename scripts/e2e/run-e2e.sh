@@ -169,9 +169,10 @@ for scenario in "${SCENARIOS[@]}"; do
 
     rm -f /tmp/acp-e2e-turn-counter
     rm -f /tmp/acp-e2e-turn-counter-child
+    rm -f /tmp/acp-e2e-observations.json
 
     info "starting fake LLM server"
-    PORT="$FAKE_LLM_PORT" SCENARIO="$scenario" TURN_COUNTER=/tmp/acp-e2e-turn-counter "$BUN_BIN" run "$SCRIPT_DIR/fake-llm-server.ts" 2>/tmp/acp-e2e-fakellm.log &
+    PORT="$FAKE_LLM_PORT" SCENARIO="$scenario" TURN_COUNTER=/tmp/acp-e2e-turn-counter OBSERVATIONS=/tmp/acp-e2e-observations.json "$BUN_BIN" run "$SCRIPT_DIR/fake-llm-server.ts" 2>/tmp/acp-e2e-fakellm.log &
     FAKE_LLM_PID=$!
 
     for i in $(seq 1 30); do
@@ -240,7 +241,7 @@ for scenario in "${SCENARIOS[@]}"; do
 
     info "verifying state"
     ACP_DIR="$FAKE_HOME/.local/share/opencode/storage/plugin/acp"
-    if HOME="$FAKE_HOME" "$NODE_BIN" --import tsx "$SCRIPT_DIR/verify.ts" "$STATE_FILE" "$scenario" "$ACP_DIR"; then
+    if HOME="$FAKE_HOME" OBSERVATIONS=/tmp/acp-e2e-observations.json "$NODE_BIN" --import tsx "$SCRIPT_DIR/verify.ts" "$STATE_FILE" "$scenario" "$ACP_DIR"; then
         pass "scenario $scenario_name"
         ((TOTAL_PASS++)) || true
     else

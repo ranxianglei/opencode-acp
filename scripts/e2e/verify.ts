@@ -1,26 +1,43 @@
 #!/usr/bin/env node
 
-import { readFileSync, readdirSync } from "fs"
+import { readFileSync, readdirSync, existsSync } from "fs"
 
 interface VerifyExpectations {
     blockCount?: number
-    qualityGateRetryPending?: boolean
+    maxBlockCount?: number
     minBlockCount?: number
+    qualityGateRetryPending?: boolean
     summaryContains?: string
     childBlockCount?: number
     nudgeBaselineSet?: boolean
+    tier2BaselineSet?: boolean
+    activeBlockCount?: number
     compressedCount?: number
     minCompressedCount?: number
     maxCompressedCount?: number
+    maxCompressCallsVisible?: number
+    lastRequestCompressCalls?: number
+    maxNudgeCount?: number
 }
 
 interface VerifyScenario {
     verify: VerifyExpectations
 }
 
+interface RequestObservation {
+    turn: number
+    inputTokens: number
+    messageCount: number
+    compressCallCount: number
+    nudgeDetected: boolean
+    isChild: boolean
+    isAuxiliary: boolean
+}
+
 const statePath = process.argv[2]
 const scenarioPath = process.argv[3]
 const acpDir = process.argv[4]
+const observationsPath = process.env.OBSERVATIONS ?? "/tmp/acp-e2e-observations.json"
 
 if (!statePath || !scenarioPath) {
     process.stderr.write("Usage: verify.ts <state-file> <scenario-file> [acp-dir]\n")
@@ -36,9 +53,20 @@ function readJson(path: string): any {
     }
 }
 
+function readObservations(): RequestObservation[] {
+    if (!existsSync(observationsPath)) return []
+    try {
+        const data = JSON.parse(readFileSync(observationsPath, "utf-8"))
+        return Array.isArray(data?.requests) ? data.requests : []
+    } catch {
+        return []
+    }
+}
+
 const state = readJson(statePath)
 const scenario = readJson(scenarioPath) as VerifyScenario
 const expect = scenario.verify
+const observations = readObservations()
 
 let passed = 0
 let failed = 0
@@ -61,7 +89,12 @@ function getBlocks(s: any): any[] {
     return Object.values(s?.prune?.messages?.blocksById ?? {})
 }
 
+function countActiveBlocks(s: any): number {
+    return getBlocks(s).filter((b: any) => b?.active !== false).length
+}
+
 const actualBlockCount = countBlocks(state)
+const actualActiveBlocks = countActiveBlocks(state)
 const actualPending = state?.qualityGateRetryPending ?? false
 
 let childStateFiles: string[] = []
@@ -84,10 +117,32 @@ if (acpDir) {
     } catch {}
 }
 
+const parentObs = observations.filter((o) => !o.isChild && !o.isAuxiliary)
+const maxCompressCalls = parentObs.length > 0
+    ? Math.max(...parentObs.map((o) => o.compressCallCount))
+    : 0
+const lastCompressCalls = parentObs.length > 0
+    ? parentObs[parentObs.length - 1].compressCallCount
+    : 0
+const nudgeCount = parentObs.filter((o) => o.nudgeDetected).length
+
+const usesObsAssertions = expect.maxCompressCallsVisible !== undefined
+    || expect.lastRequestCompressCalls !== undefined
+    || expect.maxNudgeCount !== undefined
+if (usesObsAssertions && parentObs.length === 0) {
+    assert("observations recorded (non-empty)", false, "no real-turn observations — observation-based assertions are vacuous")
+}
+
 console.log(`\nVerifying: ${scenarioPath}`)
 console.log(`  state file: ${statePath}`)
-console.log(`  blocks: ${actualBlockCount}`)
+console.log(`  blocks: ${actualBlockCount} (active: ${actualActiveBlocks})`)
 console.log(`  qualityGateRetryPending: ${actualPending}`)
+if (observations.length > 0) {
+    console.log(`  observations: ${observations.length} requests`)
+    console.log(`    maxCompressCallsVisible: ${maxCompressCalls}`)
+    console.log(`    lastRequestCompressCalls: ${lastCompressCalls}`)
+    console.log(`    nudgeDetections: ${nudgeCount}`)
+}
 if (childStateFiles.length > 0) {
     console.log(`  child state files: ${childStateFiles.length}`)
     console.log(`  child blocks: ${childBlockCount}`)
@@ -107,6 +162,22 @@ if (expect.minBlockCount !== undefined) {
         `blockCount >= ${expect.minBlockCount}`,
         actualBlockCount >= expect.minBlockCount,
         `got ${actualBlockCount}`,
+    )
+}
+
+if (expect.maxBlockCount !== undefined) {
+    assert(
+        `blockCount <= ${expect.maxBlockCount}`,
+        actualBlockCount <= expect.maxBlockCount,
+        `got ${actualBlockCount}`,
+    )
+}
+
+if (expect.activeBlockCount !== undefined) {
+    assert(
+        `activeBlockCount === ${expect.activeBlockCount}`,
+        actualActiveBlocks === expect.activeBlockCount,
+        `got ${actualActiveBlocks}`,
     )
 }
 
@@ -152,6 +223,17 @@ if (expect.nudgeBaselineSet !== undefined) {
     )
 }
 
+const tier2Baseline = state?.nudges?.lastTier2NudgeTokens
+
+if (expect.tier2BaselineSet !== undefined) {
+    const isSet = tier2Baseline !== null && tier2Baseline !== undefined
+    assert(
+        `tier2BaselineSet === ${expect.tier2BaselineSet}`,
+        isSet === expect.tier2BaselineSet,
+        `got ${tier2Baseline ?? "null"}`,
+    )
+}
+
 function getCompressedMessageIds(s: any): string[] {
     return Object.keys(s?.prune?.messages?.byMessageId ?? {})
 }
@@ -179,6 +261,30 @@ if (expect.maxCompressedCount !== undefined) {
         `compressedCount <= ${expect.maxCompressedCount}`,
         compressedIds.length <= expect.maxCompressedCount,
         `got ${compressedIds.length} compressed message IDs`,
+    )
+}
+
+if (expect.maxCompressCallsVisible !== undefined) {
+    assert(
+        `maxCompressCallsVisible <= ${expect.maxCompressCallsVisible}`,
+        maxCompressCalls <= expect.maxCompressCallsVisible,
+        `got max ${maxCompressCalls} compress calls visible in a single request`,
+    )
+}
+
+if (expect.lastRequestCompressCalls !== undefined) {
+    assert(
+        `lastRequestCompressCalls === ${expect.lastRequestCompressCalls}`,
+        lastCompressCalls === expect.lastRequestCompressCalls,
+        `got ${lastCompressCalls} compress calls in last request`,
+    )
+}
+
+if (expect.maxNudgeCount !== undefined) {
+    assert(
+        `nudgeCount <= ${expect.maxNudgeCount}`,
+        nudgeCount <= expect.maxNudgeCount,
+        `got ${nudgeCount} nudge detections across ${parentObs.length} requests`,
     )
 }
 

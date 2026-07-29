@@ -55,7 +55,9 @@ jobs:
                     scripts/e2e/scenarios/07-protection-filtered.json \
                     scripts/e2e/scenarios/08-nudge-with-protection.json \
                     scripts/e2e/scenarios/09-nudge-refire-after-compress.json \
-                    scripts/e2e/scenarios/10-autonomous-nudge-refire.json
+                    scripts/e2e/scenarios/10-autonomous-nudge-refire.json \
+                    scripts/e2e/scenarios/11-tier2-baseline-preserved-after-compress.json \
+                    scripts/e2e/scenarios/12-consumed-call-hiding.json
             - name: Dump diagnostics on failure
               if: failure()
               run: |
@@ -67,5 +69,7 @@ jobs:
                   head -30 /tmp/acp-e2e-turn-4.json 2>/dev/null || echo "(no turn output)"
                   echo "=== fake LLM log ==="
                   cat /tmp/acp-e2e-fakellm.log 2>/dev/null || echo "(no fake LLM log)"
+                  echo "=== observations ==="
+                  cat /tmp/acp-e2e-observations.json 2>/dev/null || echo "(no observations)"
                   echo "=== storage tree ==="
                   find /tmp/acp-e2e/.local/share/opencode -type f 2>/dev/null | head -20 || echo "(no storage)"

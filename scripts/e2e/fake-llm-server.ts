@@ -26,6 +26,7 @@ const PORT = parseInt(process.env.PORT ?? "8400", 10)
 const HOST = process.env.HOST ?? "127.0.0.1"
 const SCENARIO_PATH = process.env.SCENARIO
 const TURN_COUNTER = process.env.TURN_COUNTER ?? "/tmp/acp-e2e-turn-counter"
+const OBSERVATIONS_FILE = process.env.OBSERVATIONS ?? "/tmp/acp-e2e-observations.json"
 
 if (!SCENARIO_PATH) {
     process.stderr.write("[fake-llm] FATAL: SCENARIO env var not set\n")
@@ -59,6 +60,8 @@ interface ScenarioStep {
     toolArgs?: Record<string, unknown>
     /** For nudge-compress: text to emit when no nudge detected (grows context) */
     growthText?: string
+    /** For autonomous-nudge: stop after this many total compressions emitted (default: 2) */
+    maxCompressCount?: number
 }
 
 interface Scenario {
@@ -70,6 +73,43 @@ interface Scenario {
 const scenario: Scenario = JSON.parse(readFileSync(SCENARIO_PATH, "utf-8"))
 
 process.stderr.write(`[fake-llm] scenario: ${scenario.name} (${scenario.turns.length} turns)\n`)
+
+export interface RequestObservation {
+    /** 0-based scenario turn index */
+    turn: number
+    inputTokens: number
+    messageCount: number
+    /** Count of `compress` tool_use calls visible to the LLM in this request */
+    compressCallCount: number
+    nudgeDetected: boolean
+    isChild: boolean
+    isAuxiliary: boolean
+}
+
+export interface Observations {
+    requests: RequestObservation[]
+}
+
+const observations: Observations = { requests: [] }
+
+let totalCompressionsEmitted = 0
+
+function recordObservation(
+    turn: number,
+    inputTokens: number,
+    messageCount: number,
+    compressCallCount: number,
+    nudgeDetected: boolean,
+    isChild: boolean,
+    isAuxiliary: boolean,
+): void {
+    observations.requests.push({ turn, inputTokens, messageCount, compressCallCount, nudgeDetected, isChild, isAuxiliary })
+    try {
+        writeFileSync(OBSERVATIONS_FILE, JSON.stringify(observations, null, 2))
+    } catch {
+        // best-effort — verify.ts treats missing file as "no constraints"
+    }
+}
 
 const CHILD_TURN_COUNTER = TURN_COUNTER + "-child"
 
@@ -154,6 +194,12 @@ async function handleChatCompletion(req: Request): Promise<Response> {
     const lastRole = lastMsg?.role
 
     const inputTokens = computeInputTokens(messages)
+    const nudgeDetected = detectNudge(messages)
+    const compressCallCount = countCompressCalls(messages)
+
+    const isAuxiliary = tools.length === 0
+
+    recordObservation(readTurnCounter(), inputTokens, messages.length, compressCallCount, nudgeDetected, isChild, isAuxiliary)
 
     log(
         `  body: stream=${isStream} msgs=${messages.length} ` +
@@ -388,17 +434,18 @@ function handleAutonomousNudgeStep(
     isStream: boolean,
     inputTokens: number,
 ): Response {
-    const compressCount = countCompressCalls(messages)
+    const visibleCompressCount = countCompressCalls(messages)
     const nudgeDetected = detectNudge(messages)
+    const maxCompress = step.maxCompressCount ?? 2
     const growthText = step.growthText ?? "Autonomous work generating output to fill the context window with meaningful discussion about software architecture patterns dependency injection inversion of control and SOLID principles applied to the authentication module service layer and data access layer with proper separation of concerns and testability through mockable interfaces and dependency injection containers."
 
-    if (compressCount >= 2) {
-        log(`  → autonomous-nudge: compressCount=${compressCount} ≥ 2, task complete`)
+    if (totalCompressionsEmitted >= maxCompress) {
+        log(`  → autonomous-nudge: totalCompressions=${totalCompressionsEmitted} ≥ ${maxCompress}, task complete (visible=${visibleCompressCount})`)
         return textResponse(model, "Task complete.", isStream, inputTokens)
     }
 
     if (nudgeDetected) {
-        log(`  → autonomous-nudge: nudge DETECTED (compressCount=${compressCount}), emitting compress call`)
+        log(`  → autonomous-nudge: nudge DETECTED (total=${totalCompressionsEmitted}, visible=${visibleCompressCount}), emitting compress call`)
         const refs = parseMessageRefs(messages)
         if (refs.length === 0) {
             log("  ⚠ no mNNNNN refs found — emitting fallback text")
@@ -415,7 +462,7 @@ function handleAutonomousNudgeStep(
         }, false, isStream, inputTokens)
     }
 
-    log(`  → autonomous-nudge: no nudge yet (compressCount=${compressCount}), emitting growth bash call`)
+    log(`  → autonomous-nudge: no nudge yet (total=${totalCompressionsEmitted}, visible=${visibleCompressCount}), emitting growth bash call`)
     return toolUseResponse(model, "bash", {
         command: `echo '${growthText.replace(/'/g, "'\\''")}'`,
         description: "Generate autonomous work output",
@@ -599,6 +646,7 @@ function compressResponse(
     isStream: boolean,
     inputTokens = 0,
 ): Response {
+    totalCompressionsEmitted++
     const fullArgs = { ...args }
     if (acknowledgeRisk) {
        ;(fullArgs as any).acknowledgeRisk = true

@@ -25,6 +25,9 @@
     ],
     "verify": {
         "minBlockCount": 2,
-        "nudgeBaselineSet": true
+        "maxBlockCount": 5,
+        "nudgeBaselineSet": true,
+        "maxCompressCallsVisible": 2,
+        "maxNudgeCount": 10
     }
 }
