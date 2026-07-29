@@ -14,8 +14,6 @@ ACP reads config from up to three layers (later layers override earlier):
 | **Config dir** | `$OPENCODE_CONFIG_DIR/acp.jsonc` | All sessions in this config dir |
 | **Project** | `.opencode/acp.jsonc` (searched upward from cwd) | Current project only |
 
-Legacy `dcp.jsonc` / `dcp.json` paths are auto-migrated on first load.
-
 > **Tip:** Add `"$schema": "https://raw.githubusercontent.com/ranxianglei/opencode-acp/master/dcp.schema.json"` for IDE autocompletion.
 
 ## Quick Start
@@ -102,25 +100,6 @@ Controls ACP slash commands (`/acp context`, `/acp stats`, etc.).
 - **Default:** `["task", "skill", "todowrite", "todoread", "compress", "decompress", "batch", "plan_enter", "plan_exit", "write", "edit"]`
 - **Status:** ACTIVE
 - **Description:** Tool outputs from these tools are protected from compression. These tools' outputs survive intact in visible context. An explicit array **replaces** the default (use `[]` to protect nothing).
-
----
-
-
-### `turnProtection`
-
-Protects the most recent turns from compression.
-
-#### `turnProtection.enabled`
-- **Type:** `boolean`
-- **Default:** `false`
-- **Status:** ACTIVE
-- **Description:** When `true`, messages from the last N turns are protected from compression.
-
-#### `turnProtection.turns`
-- **Type:** `number`
-- **Default:** `4`
-- **Status:** ACTIVE
-- **Description:** Number of recent turns to protect when `turnProtection.enabled` is `true`.
 
 ---
 

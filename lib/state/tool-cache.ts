@@ -36,18 +36,7 @@ export function syncToolCache(
                     continue
                 }
 
-                const turnProtectionEnabled = config.turnProtection.enabled
-                const turnProtectionTurns = config.turnProtection.turns
-                const isProtectedByTurn =
-                    turnProtectionEnabled &&
-                    turnProtectionTurns > 0 &&
-                    state.currentTurn - turnCounter < turnProtectionTurns
-
                 if (state.toolParameters.has(part.callID)) {
-                    continue
-                }
-
-                if (isProtectedByTurn) {
                     continue
                 }
 

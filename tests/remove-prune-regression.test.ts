@@ -25,7 +25,6 @@ function buildConfig(): PluginConfig {
         pruneNotification: "off",
         pruneNotificationType: "toast",
         commands: { enabled: true, protectedTools: [] },
-        turnProtection: { enabled: false, turns: 4 },
         experimental: { allowSubAgents: false, customPrompts: false },
         protectedFilePatterns: [],
         compress: {

@@ -10,7 +10,6 @@ test("getInvalidConfigKeys returns empty array for valid keys", () => {
 test("getInvalidConfigKeys returns empty array for valid nested keys", () => {
     const result = getInvalidConfigKeys({
         enabled: true,
-        turnProtection: { enabled: false, turns: 4 },
         compress: { nudgeForce: "soft" },
     })
     assert.deepEqual(result, [])
@@ -25,9 +24,9 @@ test("getInvalidConfigKeys accepts compress.toolOutputNudgeThreshold (#18)", () 
 
 test("getInvalidConfigKeys returns dot-path keys for unknown nested keys", () => {
     const result = getInvalidConfigKeys({
-        turnProtection: { enabled: false, unknownSubKey: true },
+        compress: { nudgeForce: "soft", unknownSubKey: true },
     })
-    assert.ok(result.includes("turnProtection.unknownSubKey"))
+    assert.ok(result.includes("compress.unknownSubKey"))
 })
 
 test("getInvalidConfigKeys returns top-level unknown keys", () => {
@@ -95,23 +94,6 @@ test("validateConfigTypes catches non-string entries in protectedFilePatterns", 
     const result = validateConfigTypes({ protectedFilePatterns: ["ok", 42] })
     assert.equal(result.length, 1)
     assert.equal(result[0].actual, "non-string entries")
-})
-
-test("validateConfigTypes catches wrong type in nested turnProtection", () => {
-    const result = validateConfigTypes({
-        turnProtection: { enabled: "yes", turns: 4 },
-    })
-    assert.equal(result.length, 1)
-    assert.equal(result[0].key, "turnProtection.enabled")
-})
-
-test("validateConfigTypes catches negative turns in turnProtection", () => {
-    const result = validateConfigTypes({
-        turnProtection: { enabled: true, turns: 0 },
-    })
-    assert.equal(result.length, 1)
-    assert.equal(result[0].key, "turnProtection.turns")
-    assert.ok(result[0].expected.includes("positive"))
 })
 
 test("validateConfigTypes catches invalid compress.permission enum", () => {

@@ -11,9 +11,6 @@ export const VALID_CONFIG_KEYS = new Set([
     "showUpdateToasts",
     "pruneNotification",
     "pruneNotificationType",
-    "turnProtection",
-    "turnProtection.enabled",
-    "turnProtection.turns",
     "experimental",
     "experimental.allowSubAgents",
     "experimental.customPrompts",
@@ -143,37 +140,6 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
                 key: "protectedFilePatterns",
                 expected: "string[]",
                 actual: "non-string entries",
-            })
-        }
-    }
-
-    if (config.turnProtection) {
-        if (
-            config.turnProtection.enabled !== undefined &&
-            typeof config.turnProtection.enabled !== "boolean"
-        ) {
-            errors.push({
-                key: "turnProtection.enabled",
-                expected: "boolean",
-                actual: typeof config.turnProtection.enabled,
-            })
-        }
-
-        if (
-            config.turnProtection.turns !== undefined &&
-            typeof config.turnProtection.turns !== "number"
-        ) {
-            errors.push({
-                key: "turnProtection.turns",
-                expected: "number",
-                actual: typeof config.turnProtection.turns,
-            })
-        }
-        if (typeof config.turnProtection.turns === "number" && config.turnProtection.turns < 1) {
-            errors.push({
-                key: "turnProtection.turns",
-                expected: "positive number (>= 1)",
-                actual: `${config.turnProtection.turns}`,
             })
         }
     }

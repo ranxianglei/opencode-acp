@@ -28,10 +28,6 @@ function buildConfig(): PluginConfig {
             enabled: true,
             protectedTools: [],
         },
-        turnProtection: {
-            enabled: false,
-            turns: 4,
-        },
         experimental: {
             allowSubAgents: true,
             customPrompts: false,

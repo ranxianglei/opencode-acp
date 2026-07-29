@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, existsSync, mkdirSync, statSync, copyFileSync } from "fs"
+import { readFileSync, writeFileSync, existsSync, mkdirSync, statSync } from "fs"
 import { join, dirname } from "path"
 import { homedir } from "os"
 import { parse } from "jsonc-parser/lib/esm/main.js"
@@ -46,11 +46,6 @@ export interface Commands {
     protectedTools: string[]
 }
 
-export interface TurnProtection {
-    enabled: boolean
-    turns: number
-}
-
 export interface ExperimentalConfig {
     allowSubAgents: boolean
     customPrompts: boolean
@@ -88,7 +83,6 @@ export interface PluginConfig {
     pruneNotification: "off" | "minimal" | "detailed"
     pruneNotificationType: "chat" | "toast"
     commands: Commands
-    turnProtection: TurnProtection
     experimental: ExperimentalConfig
     protectedFilePatterns: string[]
     compress: CompressConfig
@@ -183,10 +177,6 @@ const defaultConfig: PluginConfig = {
         enabled: true,
         protectedTools: [...DEFAULT_PROTECTED_TOOLS],
     },
-    turnProtection: {
-        enabled: false,
-        turns: 4,
-    },
     experimental: {
         allowSubAgents: false,
         customPrompts: false,
@@ -248,8 +238,6 @@ const GLOBAL_CONFIG_DIR = process.env.XDG_CONFIG_HOME
     : join(homedir(), ".config", "opencode")
 const GLOBAL_CONFIG_PATH_JSONC = join(GLOBAL_CONFIG_DIR, "acp.jsonc")
 const GLOBAL_CONFIG_PATH_JSON = join(GLOBAL_CONFIG_DIR, "acp.json")
-const LEGACY_GLOBAL_CONFIG_PATH_JSONC = join(GLOBAL_CONFIG_DIR, "dcp.jsonc")
-const LEGACY_GLOBAL_CONFIG_PATH_JSON = join(GLOBAL_CONFIG_DIR, "dcp.json")
 
 function findOpencodeDir(startDir: string): string | null {
     let current = startDir
@@ -276,28 +264,18 @@ function getConfigPaths(ctx?: PluginInput): {
         ? GLOBAL_CONFIG_PATH_JSONC
         : existsSync(GLOBAL_CONFIG_PATH_JSON)
           ? GLOBAL_CONFIG_PATH_JSON
-          : existsSync(LEGACY_GLOBAL_CONFIG_PATH_JSONC)
-            ? LEGACY_GLOBAL_CONFIG_PATH_JSONC
-            : existsSync(LEGACY_GLOBAL_CONFIG_PATH_JSON)
-              ? LEGACY_GLOBAL_CONFIG_PATH_JSON
-              : null
+          : null
 
     let configDir: string | null = null
     const opencodeConfigDir = process.env.OPENCODE_CONFIG_DIR
     if (opencodeConfigDir) {
         const configJsonc = join(opencodeConfigDir, "acp.jsonc")
         const configJson = join(opencodeConfigDir, "acp.json")
-        const legacyJsonc = join(opencodeConfigDir, "dcp.jsonc")
-        const legacyJson = join(opencodeConfigDir, "dcp.json")
         configDir = existsSync(configJsonc)
             ? configJsonc
             : existsSync(configJson)
               ? configJson
-              : existsSync(legacyJsonc)
-                ? legacyJsonc
-                : existsSync(legacyJson)
-                  ? legacyJson
-                  : null
+              : null
     }
 
     let project: string | null = null
@@ -306,17 +284,11 @@ function getConfigPaths(ctx?: PluginInput): {
         if (opencodeDir) {
             const projectJsonc = join(opencodeDir, "acp.jsonc")
             const projectJson = join(opencodeDir, "acp.json")
-            const legacyJsonc = join(opencodeDir, "dcp.jsonc")
-            const legacyJson = join(opencodeDir, "dcp.json")
             project = existsSync(projectJsonc)
                 ? projectJsonc
                 : existsSync(projectJson)
                   ? projectJson
-                  : existsSync(legacyJsonc)
-                    ? legacyJsonc
-                    : existsSync(legacyJson)
-                      ? legacyJson
-                      : null
+                  : null
         }
     }
 
@@ -329,19 +301,11 @@ function createDefaultConfig(): void {
     }
 
     if (!existsSync(GLOBAL_CONFIG_PATH_JSONC)) {
-        if (existsSync(LEGACY_GLOBAL_CONFIG_PATH_JSONC)) {
-            copyFileSync(LEGACY_GLOBAL_CONFIG_PATH_JSONC, GLOBAL_CONFIG_PATH_JSONC)
-            console.log("[ACP] Migrated config from dcp.jsonc to acp.jsonc")
-        } else if (existsSync(LEGACY_GLOBAL_CONFIG_PATH_JSON)) {
-            copyFileSync(LEGACY_GLOBAL_CONFIG_PATH_JSON, GLOBAL_CONFIG_PATH_JSONC)
-            console.log("[ACP] Migrated config from dcp.json to acp.jsonc")
-        } else {
-            const configContent = `{
+        const configContent = `{
   "$schema": "https://raw.githubusercontent.com/ranxianglei/opencode-acp/master/dcp.schema.json"
 }
 `
-            writeFileSync(GLOBAL_CONFIG_PATH_JSONC, configContent, "utf-8")
-        }
+        writeFileSync(GLOBAL_CONFIG_PATH_JSONC, configContent, "utf-8")
     }
 }
 
@@ -443,7 +407,6 @@ function deepCloneConfig(config: PluginConfig): PluginConfig {
             enabled: config.commands.enabled,
             protectedTools: [...config.commands.protectedTools],
         },
-        turnProtection: { ...config.turnProtection },
         experimental: { ...config.experimental },
         protectedFilePatterns: [...config.protectedFilePatterns],
         compress: {
@@ -496,10 +459,6 @@ function mergeLayer(config: PluginConfig, data: Record<string, any>): PluginConf
         pruneNotification: data.pruneNotification ?? config.pruneNotification,
         pruneNotificationType: data.pruneNotificationType ?? config.pruneNotificationType,
         commands: mergeCommands(config.commands, data.commands as any),
-        turnProtection: {
-            enabled: data.turnProtection?.enabled ?? config.turnProtection.enabled,
-            turns: data.turnProtection?.turns ?? config.turnProtection.turns,
-        },
         experimental: mergeExperimental(config.experimental, data.experimental as any),
         protectedFilePatterns: [
             ...new Set([...config.protectedFilePatterns, ...(data.protectedFilePatterns ?? [])]),
@@ -528,22 +487,6 @@ function scheduleParseWarning(ctx: PluginInput, title: string, message: string):
 export function getConfig(ctx: PluginInput): PluginConfig {
     let config = deepCloneConfig(defaultConfig)
     const configPaths = getConfigPaths(ctx)
-
-    // Migration: dcp.jsonc → acp.jsonc (must run before createDefaultConfig check)
-    if (!existsSync(GLOBAL_CONFIG_PATH_JSONC) && !existsSync(GLOBAL_CONFIG_PATH_JSON)) {
-        if (existsSync(GLOBAL_CONFIG_DIR) || existsSync(LEGACY_GLOBAL_CONFIG_PATH_JSONC) || existsSync(LEGACY_GLOBAL_CONFIG_PATH_JSON)) {
-            if (!existsSync(GLOBAL_CONFIG_DIR)) {
-                mkdirSync(GLOBAL_CONFIG_DIR, { recursive: true })
-            }
-            if (existsSync(LEGACY_GLOBAL_CONFIG_PATH_JSONC)) {
-                copyFileSync(LEGACY_GLOBAL_CONFIG_PATH_JSONC, GLOBAL_CONFIG_PATH_JSONC)
-                console.log("[ACP] Migrated config from dcp.jsonc to acp.jsonc")
-            } else if (existsSync(LEGACY_GLOBAL_CONFIG_PATH_JSON)) {
-                copyFileSync(LEGACY_GLOBAL_CONFIG_PATH_JSON, GLOBAL_CONFIG_PATH_JSONC)
-                console.log("[ACP] Migrated config from dcp.json to acp.jsonc")
-            }
-        }
-    }
 
     if (!configPaths.global && !existsSync(GLOBAL_CONFIG_PATH_JSONC)) {
         createDefaultConfig()

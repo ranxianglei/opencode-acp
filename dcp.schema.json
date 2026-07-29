@@ -68,23 +68,6 @@
                 "protectedTools": []
             }
         },
-        "turnProtection": {
-            "type": "object",
-            "description": "Protect recent tool outputs from being pruned",
-            "additionalProperties": false,
-            "properties": {
-                "enabled": {
-                    "type": "boolean",
-                    "default": false,
-                    "description": "Enable turn-based protection"
-                },
-                "turns": {
-                    "type": "number",
-                    "default": 4,
-                    "description": "Number of recent turns to protect from pruning"
-                }
-            }
-        },
         "experimental": {
             "type": "object",
             "description": "Experimental settings that may change in future releases",

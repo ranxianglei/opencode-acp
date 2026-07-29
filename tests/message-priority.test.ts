@@ -21,10 +21,6 @@ function buildConfig(mode: "message" | "range" = "message"): PluginConfig {
             enabled: true,
             protectedTools: [],
         },
-        turnProtection: {
-            enabled: false,
-            turns: 4,
-        },
         experimental: {
             allowSubAgents: false,
             customPrompts: false,
