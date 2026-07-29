@@ -96,19 +96,14 @@ test("buildCompressedBlockGuidance shows last compression age", () => {
     assert.match(guidance, /5m ago/)
 })
 
-test("buildContextUsageGuidance returns context number without compression guidance", () => {
+test("buildContextUsageGuidance returns empty (no context fill leaked to model)", () => {
     const low = buildContextUsageGuidance(buildConfig(), LOW_USAGE, MODEL_CONTEXT_LIMIT)
     const mid = buildContextUsageGuidance(buildConfig(), MODERATE_USAGE, MODEL_CONTEXT_LIMIT)
     const high = buildContextUsageGuidance(buildConfig(), HIGH_USAGE, MODEL_CONTEXT_LIMIT)
 
-    assert.match(low, /Context:/)
-    assert.match(mid, /Context:/)
-    assert.match(high, /Context:/)
-
-    assert.doesNotMatch(low, /be frugal/i)
-    assert.doesNotMatch(low, /MUST|aggressive|critical/i)
-    assert.doesNotMatch(mid, /growing|MUST|aggressive/i)
-    assert.doesNotMatch(high, /aggressive|MUST/i)
+    assert.equal(low, "")
+    assert.equal(mid, "")
+    assert.equal(high, "")
 })
 
 test("buildCompressedBlockGuidance aggregates summary tokens across blocks", () => {

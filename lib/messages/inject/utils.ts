@@ -380,26 +380,12 @@ function resolveThresholdPercent(
     return isNaN(parsed) ? undefined : parsed
 }
 
-/**
- * Build tiered context usage guidance based on actual config thresholds.
- * Shared by inject.ts (suffix message) and utils.ts (anchored nudges).
- *
- * Note: we deliberately do NOT reveal the absolute token count — only the
- * percentage of the model's context limit. This prevents the model from
- * gaming exact thresholds and keeps the guidance qualitative.
- */
 export function buildContextUsageGuidance(
-    config: PluginConfig,
-    currentTokens?: number,
-    modelContextLimit?: number,
+    _config: PluginConfig,
+    _currentTokens?: number,
+    _modelContextLimit?: number,
 ): string {
-    if (currentTokens === undefined || modelContextLimit === undefined || modelContextLimit === 0) {
-        return ""
-    }
-
-    const pct = Math.round((currentTokens / modelContextLimit) * 100)
-
-    return `\n\nContext: ${pct}% full.`
+    return ""
 }
 
 export function applyAnchoredNudges(

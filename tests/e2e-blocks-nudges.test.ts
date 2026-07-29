@@ -190,11 +190,10 @@ function setupPipeline(
 
 // ─── Test: Nudge injection when context is near limits ──────────────────────
 
-test("nudge injection: context usage tag injected when modelContextLimit is set", async () => {
+test("nudge injection: nudge breakdown injected when modelContextLimit is set", async () => {
     const { state, handler } = setupPipeline(SID_A, {}, {
         modelContextLimit: 200000,
     })
-    // Simulate post-baseline state so growth-gating can fire (not first turn).
     state.nudges.lastPerMessageNudgeTokens = 0
 
     const output = {
@@ -213,7 +212,8 @@ test("nudge injection: context usage tag injected when modelContextLimit is set"
     assert.ok(suffixMessage, "suffix message should be created")
     const textParts = suffixMessage!.parts.filter((p: any) => p.type === "text")
     const combinedText = textParts.map((p: any) => p.text).join("")
-    assert.ok(combinedText.includes("Context:"), "should inject context tag")
+    assert.ok(combinedText.includes("Breakdown:"), "should inject breakdown")
+    assert.ok(!combinedText.match(/\d+%\s*full/i), "should NOT inject context fill percentage")
 })
 
 // ─── Test: No nudge when permission is denied ───────────────────────────────
@@ -242,7 +242,7 @@ test("nudge injection: no context usage tag when permission is denied", async ()
     assert.ok(lastUser)
     const textParts = lastUser!.parts.filter((p: any) => p.type === "text" && !p.synthetic)
     const originalText = textParts.map((p: any) => p.text).join("")
-    assert.ok(!originalText.includes("Context:"), "should NOT inject context with deny")
+    assert.ok(!originalText.includes("Breakdown:"), "should NOT inject nudge with deny")
 })
 
 // ─── Test: Age-based deactivation removed (memory-loss fix) ────────────────

@@ -67,15 +67,7 @@ Summaries accumulate as the session grows. When tier-1 summaries pile up, the sy
 
 To compress blocks: use block IDs as boundaries: \`compress({ content: [{ startId: "b3", endId: "b15", summary: "..." }] })\`. This deactivates the consumed blocks and creates a new higher-tier block. The system prompt at the trigger tells you which rules to follow.
 
-PERIODIC CONTEXT STATUS
-
-Periodically, as context grows, the system appends a short status line in a synthetic suffix message. It looks like:
-
-[ACP] Context: 47% full. Visible: m00001–m00929, m00944–m00950 (810 msgs). 3 active blocks. \`acp_status\` for details.
-
-This line is INFORMATION, not an instruction. Seeing it does not mean you should compress. Compress only when one of the WHEN TO COMPRESS conditions actually holds. Between these lines, context is not under additional pressure — you do not need to seek things to compress.
-
-If you are unsure which \`mNNNNN\` refs are still compressible, or which blocks have already consumed which ranges, call \`acp_status\` first. It returns the visible context breakdown (tool/code/text/summary tokens with largest items) and the compressed block list (block IDs, sizes, message counts each covers).
+If you are unsure which \`mNNNNN\` refs are still compressible, or which blocks have already consumed which ranges, call \`acp_status\` first. It returns the visible context breakdown and the compressed block list.
 
 CONTEXT BREAKDOWN
 
