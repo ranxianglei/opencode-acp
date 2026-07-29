@@ -1,0 +1,34 @@
+{
+    "name": "t2-cadence-regression",
+    "description": "Bug #235 regression: T2 nudge must not loop after compress. Multiple T1 compressions accumulate tier-1 blocks, triggering T2. After T2 fires, tier2BaselineSet must be true (not undefined). Before fix: lastTier2NudgeTokens was reset to undefined on every compress, causing T2 to re-fire every turn without growth.",
+    "acpConfig": {
+        "compress": {
+            "minCompressRange": 0,
+            "maxSummaryLengthHard": 20000,
+            "preserveRecentMessages": 0,
+            "preserveRecentTokens": 0,
+            "preserveLastUserMessage": false,
+            "maxContextLimit": 8000,
+            "minContextLimit": 5000,
+            "nudgeGrowthTokens": 100,
+            "minNudgeGrowthFloor": 50,
+            "minNudgeGrowthRatio": 0.01
+        }
+    },
+    "turns": [
+        {
+            "respond": "autonomous-nudge",
+            "maxCompressCount": 4,
+            "growthText": "Software architecture deep dive. Dependency injection container at src/di/container.ts line 15 registers all service implementations. AuthService at src/services/auth.ts line 28 depends on UserRepository and TokenService. The container resolves dependencies at startup and validates the dependency graph for circular references using topological sort. SOLID principles applied throughout the codebase. Single responsibility for each service class. Open closed principle via strategy pattern for password hashing at src/services/hash/strategy.ts line 8. Liskov substitution through abstract UserRepository interface at src/repositories/user.ts line 10. Interface segregation with separate ReadRepository and WriteRepository interfaces. Dependency inversion with high level AuthController depending on abstract AuthService not concrete implementation.",
+            "topic": "Architecture",
+            "summary": "## Architecture\n\nDI container at src/di/container.ts:15. AuthService at src/services/auth.ts:28 depends on UserRepository + TokenService. SOLID: SRP per service, OCP via hash strategy, LSP via abstract repo, ISP with Read/Write split, DIP via abstract AuthService."
+        }
+    ],
+    "verify": {
+        "minBlockCount": 2,
+        "maxBlockCount": 8,
+        "tier2BaselineSet": true,
+        "nudgeBaselineSet": true,
+        "maxCompressCallsVisible": 3
+    }
+}
