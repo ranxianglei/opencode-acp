@@ -27,6 +27,7 @@ import { getLastUserMessage } from "./messages/query"
 import { truncateLargeToolOutputs } from "./messages/truncate-tools"
 import {
     handleContextCommand,
+    handleStatsCommand,
 } from "./commands"
 import { type HostPermissionSnapshot } from "./host-permissions"
 import { compressPermission, syncCompressPermissionState } from "./compress-permission"
@@ -278,6 +279,12 @@ export function createCommandExecuteHandler(
                 logger,
                 sessionId: input.sessionID,
                 messages,
+            }
+
+            const sub = input.arguments?.trim().toLowerCase()
+            if (sub === "stats" || sub === "status") {
+                await handleStatsCommand(commandCtx)
+                throw new Error("__DCP_CONTEXT_HANDLED__")
             }
 
             await handleContextCommand(commandCtx)

@@ -2,6 +2,9 @@ import { tool } from "@opencode-ai/plugin"
 import { type ToolContext, type ToolFactoryContext, resolveToolContext } from "./types"
 import { formatAge } from "../ui/utils"
 import type { CompressionBlock, WithParts } from "../state/types"
+import type { SessionState } from "../state/types"
+import type { PluginConfig } from "../config"
+import type { Logger } from "../logger"
 import {
     estimateContextComposition,
     buildCompressibleRanges,
@@ -112,9 +115,14 @@ interface VisibleMessageInfo {
     index: number
 }
 
+export interface StatusRenderContext {
+    state: SessionState
+    config?: PluginConfig
+}
+
 function collectVisibleMessages(
     rawMessages: WithParts[],
-    ctx: ToolContext,
+    ctx: StatusRenderContext,
 ): { messages: VisibleMessageInfo[]; summaryTokens: number } {
     const pruneMap = ctx.state.prune.messages.byMessageId
     const byRawId = ctx.state.messageIds.byRawId
@@ -171,7 +179,7 @@ function renderOverview(
     blocks: CompressionBlock[],
     fetchFailed: boolean,
     rawMessages: WithParts[],
-    ctx: ToolContext,
+    ctx: StatusRenderContext,
 ): string[] {
     const lines: string[] = []
 
@@ -284,7 +292,7 @@ function renderOverview(
     return lines
 }
 
-function renderUncompressedRanges(rawMessages: WithParts[], ctx: ToolContext): string[] {
+function renderUncompressedRanges(rawMessages: WithParts[], ctx: StatusRenderContext): string[] {
     const pruneMap = ctx.state.prune.messages.byMessageId
     const visibleMessages = rawMessages.filter((msg) => {
         const msgId = (msg.info as any)?.id || ""
@@ -477,6 +485,57 @@ function buildVisibleWithSummaries(rawMessages: WithParts[], ctx: ToolContext): 
     return visible
 }
 
+export interface StatusReportOptions {
+    scope?: "compressed" | "uncompressed"
+    view?: "ranges" | "messages"
+    tool?: string
+    sort?: "size" | "time" | "tool" | "age"
+    limit?: number
+}
+
+export function buildStatusReport(
+    renderCtx: StatusRenderContext,
+    rawMessages: WithParts[],
+    options?: StatusReportOptions,
+): string {
+    const scope = options?.scope
+    const view = options?.view ?? "ranges"
+    const toolFilter = options?.tool
+    const sort = options?.sort ?? "size"
+    const limit = options?.limit ?? 30
+
+    const msgState = renderCtx.state.prune.messages
+    const activeIds = Array.from(msgState.activeBlockIds).sort((a, b) => a - b)
+    const allBlocks = activeIds
+        .map((id) => msgState.blocksById.get(id))
+        .filter((b): b is NonNullable<typeof b> => b !== undefined && b.active)
+
+    const lines: string[] = []
+
+    if (scope === "compressed") {
+        lines.push(...renderCompressedDrilldown(allBlocks, sort, limit, msgState.blocksById))
+        return lines.join("\n")
+    }
+
+    const result = collectVisibleMessages(rawMessages, renderCtx)
+    const visibleMsgs = result.messages
+    const summaryTokens = result.summaryTokens
+
+    if (scope === "uncompressed") {
+        if (view === "messages") {
+            lines.push(...renderUncompressedDrilldown(visibleMsgs, toolFilter, sort, limit))
+        } else {
+            lines.push(...renderUncompressedRanges(rawMessages, renderCtx))
+        }
+    } else {
+        lines.push(
+            ...renderOverview(visibleMsgs, summaryTokens, allBlocks, false, rawMessages, renderCtx),
+        )
+    }
+
+    return lines.join("\n")
+}
+
 export function createAcpStatusTool(factoryCtx: ToolFactoryContext): ReturnType<typeof tool> {
     factoryCtx.prompts.reload()
 
@@ -520,61 +579,27 @@ export function createAcpStatusTool(factoryCtx: ToolFactoryContext): ReturnType<
             const limit =
                 Number.isFinite(args.limit) && args.limit! > 0 ? Math.min(args.limit!, 200) : 30
 
-            const msgState = ctx.state.prune.messages
-            const activeIds = Array.from(msgState.activeBlockIds).sort((a, b) => a - b)
-            const allBlocks = activeIds
-                .map((id) => msgState.blocksById.get(id))
-                .filter((b): b is NonNullable<typeof b> => b !== undefined && b.active)
-
-            const lines: string[] = []
-
             if (scope === "compressed") {
-                lines.push(
-                    ...renderCompressedDrilldown(
-                        allBlocks,
-                        sort,
-                        limit,
-                        msgState.blocksById,
-                    ),
+                return buildStatusReport(
+                    { state: ctx.state, config: ctx.config },
+                    [],
+                    { scope: "compressed", sort, limit },
                 )
-                return lines.join("\n")
             }
 
-            let visibleMsgs: VisibleMessageInfo[] = []
-            let summaryTokens = 0
-            let fetchFailed = false
             let rawMessages: WithParts[] = []
-
             try {
                 rawMessages = await fetchSessionMessages(ctx.client, toolCtx.sessionID)
-                const result = collectVisibleMessages(rawMessages, ctx)
-                visibleMsgs = result.messages
-                summaryTokens = result.summaryTokens
             } catch {
-                fetchFailed = true
+                if (scope === "uncompressed") return "(unable to fetch messages)"
+                rawMessages = []
             }
 
-            if (scope === "uncompressed") {
-                if (fetchFailed) return "(unable to fetch messages)"
-                if (view === "messages") {
-                    lines.push(...renderUncompressedDrilldown(visibleMsgs, toolFilter, sort, limit))
-                } else {
-                    lines.push(...renderUncompressedRanges(rawMessages, ctx))
-                }
-            } else {
-                lines.push(
-                    ...renderOverview(
-                        visibleMsgs,
-                        summaryTokens,
-                        allBlocks,
-                        fetchFailed,
-                        rawMessages,
-                        ctx,
-                    ),
-                )
-            }
-
-            return lines.join("\n")
+            return buildStatusReport(
+                { state: ctx.state, config: ctx.config },
+                rawMessages,
+                { scope, view, tool: toolFilter, sort, limit },
+            )
         },
     })
 }
