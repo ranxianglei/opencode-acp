@@ -12,6 +12,7 @@ import {
     formatCompressibleRanges,
 } from "../messages/inject/utils"
 import { fetchSessionMessages } from "./search"
+import { estimateSystemPromptTokens } from "../token-utils"
 
 const ACP_STATUS_TOOL_DESCRIPTION = `Show context status — overview includes compressible ranges by default.
 
@@ -170,35 +171,7 @@ function collectVisibleMessages(
         }
     })
 
-    return { messages: result, summaryTokens, systemTokens: estimateSystemTokens(rawMessages) }
-}
-
-function estimateSystemTokens(rawMessages: WithParts[]): number {
-    let firstInput: number | undefined
-    for (const msg of rawMessages) {
-        if (msg.info.role !== "assistant") continue
-        const t = (msg.info as any)?.tokens
-        if (!t) continue
-        const input = (t.input || 0) + (t.cache?.read || 0) + (t.cache?.write || 0)
-        if (input > 0) {
-            firstInput = input
-            break
-        }
-    }
-    if (firstInput === undefined) return 0
-
-    let firstUserText = ""
-    for (const msg of rawMessages) {
-        if (msg.info.role !== "user") continue
-        const parts = Array.isArray(msg.parts) ? msg.parts : []
-        for (const part of parts) {
-            if (part.type === "text" && typeof (part as any).text === "string") {
-                firstUserText += (part as any).text
-            }
-        }
-        if (firstUserText) break
-    }
-    return Math.max(0, firstInput - Math.round(firstUserText.length / 4))
+    return { messages: result, summaryTokens, systemTokens: estimateSystemPromptTokens(rawMessages) }
 }
 
 function renderOverview(

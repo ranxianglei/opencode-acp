@@ -26,7 +26,6 @@ import {
     addAnchor,
     applyAnchoredNudges,
     buildCompressibleRanges,
-    buildContextUsageGuidance,
     computeProtectedRefs,
     computeShouldNudge,
     countMessagesAfterIndex,
@@ -502,8 +501,6 @@ export const injectCompressNudges = (
     let tipsText: string | null = null
 
     if (shouldInject) {
-        injectContextUsage(suffixMessage, config, currentTokens, modelContextLimit)
-
         if (suffixMessage && composition.total > 0) {
             const fmt = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n))
             const pct = (n: number) =>
@@ -615,26 +612,6 @@ function resolveEmergencyThreshold(
     if (isNaN(parsedPercent)) return undefined
     const clampedPercent = Math.max(0, Math.min(100, Math.round(parsedPercent)))
     return Math.round((clampedPercent / 100) * modelContextLimit)
-}
-
-function injectContextUsage(
-    target: WithParts | null,
-    config: PluginConfig,
-    currentTokens?: number,
-    modelContextLimit?: number,
-): void {
-    if (!target) return
-    const rawUsage = buildContextUsageGuidance(config, currentTokens, modelContextLimit)
-    if (!rawUsage) return
-    const usageTag = rawUsage
-
-    for (const part of target.parts) {
-        if (part.type === "text") {
-            appendToTextPart(part, usageTag)
-            return
-        }
-    }
-    target.parts.push(createSyntheticTextPart(target, usageTag))
 }
 
 export interface VisibleSegment {

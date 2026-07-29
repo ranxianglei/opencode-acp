@@ -14,6 +14,7 @@ import {
     type MessagePriority,
     listPriorityRefsBeforeIndex,
 } from "../priority"
+import { estimateSystemPromptTokens } from "../../token-utils"
 import {
     appendToTextPart,
     appendToLastTextPart,
@@ -380,14 +381,6 @@ function resolveThresholdPercent(
     return isNaN(parsed) ? undefined : parsed
 }
 
-export function buildContextUsageGuidance(
-    _config: PluginConfig,
-    _currentTokens?: number,
-    _modelContextLimit?: number,
-): string {
-    return ""
-}
-
 export function applyAnchoredNudges(
     state: SessionState,
     config: PluginConfig,
@@ -569,27 +562,7 @@ export function estimateContextComposition(
         .map(([tool, tokens]) => ({ tool, tokens }))
         .sort((a, b) => b.tokens - a.tokens)
 
-    let systemTokens = 0
-    for (const msg of messages) {
-        if (msg.info.role !== "assistant") continue
-        const t = (msg.info as any)?.tokens
-        if (!t) continue
-        const input = (t.input || 0) + (t.cache?.read || 0) + (t.cache?.write || 0)
-        if (input > 0) {
-            let firstUserText = ""
-            for (const m of messages) {
-                if (m.info.role !== "user") continue
-                for (const part of m.parts || []) {
-                    if (part.type === "text" && typeof (part as any).text === "string") {
-                        firstUserText += (part as any).text
-                    }
-                }
-                if (firstUserText) break
-            }
-            systemTokens = Math.max(0, input - Math.round(firstUserText.length / 4))
-            break
-        }
-    }
+    const systemTokens = estimateSystemPromptTokens(messages)
 
     return {
         toolTokens,
