@@ -118,8 +118,14 @@ export const injectCompressNudges = (
             state.nudges.iterationNudgeAnchors.clear()
             state.nudges.lastNudgeShownTokens = undefined
             state.nudges.lastToolOutputNudgeTokens = undefined
-            state.nudges.lastTier2NudgeTokens = undefined
-            state.nudges.lastTier3NudgeTokens = undefined
+            // Preserve tier cadence baselines instead of resetting to undefined.
+            // Resetting to undefined causes T2/T3 to immediately re-trigger on
+            // the next turn (cadence check treats undefined as "never fired"),
+            // creating a loop: T2 fires → compress attempted → baseline reset
+            // → T2 fires again. Set to currentTokens so the growthFloor gate
+            // applies naturally.
+            state.nudges.lastTier2NudgeTokens = currentTokens
+            state.nudges.lastTier3NudgeTokens = currentTokens
 
             const currentTurnHasSuccessfulCompress = messages
                 .slice(currentTurnStart)
