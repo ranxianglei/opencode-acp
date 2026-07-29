@@ -1,5 +1,4 @@
 import type { SessionState, WithParts } from "../state"
-import { isIgnoredUserMessage } from "../messages/query"
 
 /**
  * Hide compress tool-call parts whose blocks have been consumed by another
@@ -34,14 +33,8 @@ export function hideConsumedCompressCalls(state: SessionState, messages: WithPar
         return 0
     }
 
-    const lastUserIdx = messages.findLastIndex(
-        (m) => m.info.role === "user" && !isIgnoredUserMessage(m),
-    )
-
     let hidden = 0
     for (let i = 0; i < messages.length; i++) {
-        if (lastUserIdx >= 0 && i >= lastUserIdx) break
-
         const msg = messages[i]!
         if (!consumedMessageIds.has(msg.info.id)) continue
 
