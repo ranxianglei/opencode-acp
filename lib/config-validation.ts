@@ -63,6 +63,9 @@ export const VALID_CONFIG_KEYS = new Set([
     "qualityGate.enabled",
     "qualityGate.algorithm",
     "qualityGate.algorithms",
+    "messageFilters",
+    "messageFilters.enabled",
+    "messageFilters.filters",
 ])
 
 function getConfigKeyPaths(obj: Record<string, any>, prefix = ""): string[] {
