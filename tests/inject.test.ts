@@ -1506,3 +1506,109 @@ test("E2E autonomous: second compress also gets processed (Issue #176 multi-comp
     )
 })
 
+test("T2 cadence: does NOT immediately re-fire after compress attempt (T2 loop bug)", () => {
+    const state = createSessionState()
+    state.sessionId = "test-t2-cadence"
+    state.modelContextLimit = 1_000_000
+
+    const config = buildConfig()
+    config.compress.maxContextLimit = 500_000
+    config.compress.minContextLimit = 200_000
+    config.compress.nudgeGrowthTokens = 10_000
+    config.compress.minNudgeGrowthFloor = 5_000
+    config.compress.minNudgeGrowthRatio = 0.01
+    config.compress.preserveRecentMessages = 0
+    config.compress.preserveRecentTokens = 0
+    config.compress.preserveLastUserMessage = false
+
+    // Seed T1 blocks so tier1Tokens >= nudgeGrowthTokens
+    for (let i = 0; i < 5; i++) {
+        const blockId = i + 1
+        state.prune.messages.blocksById.set(blockId, {
+            blockId,
+            runId: i + 1,
+            active: true,
+            tier: 1,
+            generation: "young",
+            survivedCount: 1,
+            directMessageIds: [],
+            effectiveMessageIds: [],
+            consumedBlockIds: [],
+            parentBlockIds: [],
+            summary: "T1 summary ".repeat(200),
+            summaryTokens: 5_000,
+            topic: `T1 block ${i}`,
+            createdAt: Date.now(),
+        })
+        state.prune.messages.activeBlockIds.add(blockId)
+    }
+
+    state.messageIds.byRawId.set("u1", "m00001")
+
+    function mkAssistant(id: string, ref: string, inputTokens: number): WithParts {
+        state.messageIds.byRawId.set(id, ref)
+        return assistantMsgWithTokens(id, "work", { input: inputTokens, output: 50_000 }, [
+            toolPart(`${id}-tool`, "x".repeat(10_000)),
+        ])
+    }
+
+    // Phase 1: T1 won't fire (baseline very high → negative growth),
+    // but T2 should fire because tier1Tokens = 25K >= nudgeGrowthTokens
+    state.nudges.lastPerMessageNudgeTokens = 500_000
+
+    const phase1: WithParts[] = [
+        userMsg("u1", "do the task"),
+        mkAssistant("a1", "m00002", 300_000),
+    ]
+    injectCompressNudges(state, config, logger, phase1, {} as any)
+
+    assert.equal(
+        state.nudges.shouldInjectThisTurn,
+        true,
+        "phase 1: T2 should fire (tier1 blocks accumulated, T1 suppressed by high baseline)",
+    )
+    assert.notEqual(
+        state.nudges.lastTier2NudgeTokens,
+        undefined,
+        "phase 1: lastTier2NudgeTokens should be set after T2 fires",
+    )
+
+    // Phase 2: Compress attempt appears in the turn.
+    // The compress-processing block runs, resetting tier cadence baselines.
+    // BEFORE FIX: lastTier2NudgeTokens = undefined → T2 re-fires next turn
+    // AFTER FIX:  lastTier2NudgeTokens = currentTokens → growthFloor gate applies
+    const phase2 = [...phase1]
+    const compressId = "a_compress_1"
+    const compressRef = "m09001"
+    state.messageIds.byRawId.set(compressId, compressRef)
+    phase2.push(assistantMsg(compressId, "compressed", [
+        compressToolPart("compress-1", "compression result"),
+    ]))
+
+    injectCompressNudges(state, config, logger, phase2, {} as any, undefined, undefined, 310_000)
+
+    assert.notEqual(
+        state.nudges.lastTier2NudgeTokens,
+        undefined,
+        "phase 2: lastTier2NudgeTokens must NOT be undefined after compress (was the bug)",
+    )
+
+    // Phase 3: Next turn — no new compress, small growth (< growthFloor).
+    // T2 should NOT fire because growth < growthFloor.
+    // BEFORE FIX: lastTier2NudgeTokens was reset to undefined → cadence always met → T2 fires.
+    // AFTER FIX:  lastTier2NudgeTokens = currentTokens → growthFloor gate blocks re-fire.
+    const phase3 = [...phase2, mkAssistant("a3", "m00003", 301_000)]
+    injectCompressNudges(state, config, logger, phase3, {} as any)
+
+    assert.notEqual(
+        state.nudges.lastTier2NudgeTokens,
+        undefined,
+        "phase 3: lastTier2NudgeTokens should still be defined (not reset to undefined)",
+    )
+    assert.equal(
+        state.nudges.shouldInjectThisTurn,
+        false,
+        "phase 3: T2 should NOT re-fire with growth < growthFloor (the T2 loop bug)",
+    )
+})
+
