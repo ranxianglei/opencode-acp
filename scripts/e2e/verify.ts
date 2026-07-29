@@ -31,6 +31,7 @@ interface RequestObservation {
     compressCallCount: number
     nudgeDetected: boolean
     isChild: boolean
+    isAuxiliary: boolean
 }
 
 const statePath = process.argv[2]
@@ -116,7 +117,7 @@ if (acpDir) {
     } catch {}
 }
 
-const parentObs = observations.filter((o) => !o.isChild)
+const parentObs = observations.filter((o) => !o.isChild && !o.isAuxiliary)
 const maxCompressCalls = parentObs.length > 0
     ? Math.max(...parentObs.map((o) => o.compressCallCount))
     : 0
@@ -124,6 +125,13 @@ const lastCompressCalls = parentObs.length > 0
     ? parentObs[parentObs.length - 1].compressCallCount
     : 0
 const nudgeCount = parentObs.filter((o) => o.nudgeDetected).length
+
+const usesObsAssertions = expect.maxCompressCallsVisible !== undefined
+    || expect.lastRequestCompressCalls !== undefined
+    || expect.maxNudgeCount !== undefined
+if (usesObsAssertions && parentObs.length === 0) {
+    assert("observations recorded (non-empty)", false, "no real-turn observations — observation-based assertions are vacuous")
+}
 
 console.log(`\nVerifying: ${scenarioPath}`)
 console.log(`  state file: ${statePath}`)

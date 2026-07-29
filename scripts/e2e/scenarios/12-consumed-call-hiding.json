@@ -1,6 +1,6 @@
 {
     "name": "consumed-call-hiding",
-    "description": "Bug #236 regression: hideConsumedCompressCalls must remove consumed compress calls after T2 absorbs T1 blocks. With maxCompressCount=4, T1 blocks accumulate and T2 fires. After T2 consumes T1, those compress calls should be hidden from the LLM. Before fix: lastUserIdx guard left consumed calls visible, inflating context and confusing the model.",
+    "description": "Bug #236 regression: hideConsumedCompressCalls must remove consumed compress calls. With maxCompressCount=4, each T1 compress auto-consumes the previous block (search.ts auto-detection). After 4 compressions, b0-b2 are consumed (inactive) and only b3 is active. hideConsumedCompressCalls must hide the compress calls for consumed blocks. Before fix (#236): lastUserIdx guard broke at i=0 in autonomous sessions (only user msg at index 0), hiding nothing — all 4 calls stayed visible.",
     "acpConfig": {
         "compress": {
             "minCompressRange": 0,
@@ -27,6 +27,7 @@
     "verify": {
         "minBlockCount": 2,
         "maxBlockCount": 8,
+        "activeBlockCount": 1,
         "maxCompressCallsVisible": 3,
         "lastRequestCompressCalls": 1,
         "maxNudgeCount": 15

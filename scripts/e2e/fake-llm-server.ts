@@ -83,6 +83,7 @@ export interface RequestObservation {
     compressCallCount: number
     nudgeDetected: boolean
     isChild: boolean
+    isAuxiliary: boolean
 }
 
 export interface Observations {
@@ -100,8 +101,9 @@ function recordObservation(
     compressCallCount: number,
     nudgeDetected: boolean,
     isChild: boolean,
+    isAuxiliary: boolean,
 ): void {
-    observations.requests.push({ turn, inputTokens, messageCount, compressCallCount, nudgeDetected, isChild })
+    observations.requests.push({ turn, inputTokens, messageCount, compressCallCount, nudgeDetected, isChild, isAuxiliary })
     try {
         writeFileSync(OBSERVATIONS_FILE, JSON.stringify(observations, null, 2))
     } catch {
@@ -195,7 +197,9 @@ async function handleChatCompletion(req: Request): Promise<Response> {
     const nudgeDetected = detectNudge(messages)
     const compressCallCount = countCompressCalls(messages)
 
-    recordObservation(readTurnCounter(), inputTokens, messages.length, compressCallCount, nudgeDetected, isChild)
+    const isAuxiliary = tools.length === 0
+
+    recordObservation(readTurnCounter(), inputTokens, messages.length, compressCallCount, nudgeDetected, isChild, isAuxiliary)
 
     log(
         `  body: stream=${isStream} msgs=${messages.length} ` +

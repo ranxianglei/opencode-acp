@@ -1,6 +1,6 @@
 {
-    "name": "t2-cadence-regression",
-    "description": "Bug #235 regression: T2 nudge must not loop after compress. Multiple T1 compressions accumulate tier-1 blocks, triggering T2. After T2 fires, tier2BaselineSet must be true (not undefined). Before fix: lastTier2NudgeTokens was reset to undefined on every compress, causing T2 to re-fire every turn without growth.",
+    "name": "tier2-baseline-preserved-after-compress",
+    "description": "Bug #235 regression: lastTier2NudgeTokens must be preserved (not reset to undefined) after compress. The compress handler at inject.ts:121-128 sets lastTier2NudgeTokens=currentTokens on every compress attempt. Before fix (#235): handler reset to undefined, causing T2 to re-fire every turn without growth. Note: T2 never actually fires in this scenario because each T1 compress auto-consumes the previous block (search.ts auto-detection), leaving only 1 active T1 block. The assertion tests the compress handler's baseline preservation, not T2 cadence. T2 distillation testing requires fake LLM support for bNN block-ID refs (not yet implemented).",
     "acpConfig": {
         "compress": {
             "minCompressRange": 0,
@@ -27,6 +27,7 @@
     "verify": {
         "minBlockCount": 2,
         "maxBlockCount": 8,
+        "activeBlockCount": 1,
         "tier2BaselineSet": true,
         "nudgeBaselineSet": true,
         "maxCompressCallsVisible": 3
