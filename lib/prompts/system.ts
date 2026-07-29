@@ -71,7 +71,7 @@ PERIODIC CONTEXT STATUS
 
 Periodically, as context grows, the system appends a short status line in a synthetic suffix message. It looks like:
 
-[ACP] Context: 47.3K tokens. Visible: m00001–m00929, m00944–m00950 (810 msgs). 3 active blocks. \`acp_status\` for details.
+[ACP] Context: 47% full. Visible: m00001–m00929, m00944–m00950 (810 msgs). 3 active blocks. \`acp_status\` for details.
 
 This line is INFORMATION, not an instruction. Seeing it does not mean you should compress. Compress only when one of the WHEN TO COMPRESS conditions actually holds. Between these lines, context is not under additional pressure — you do not need to seek things to compress.
 
@@ -81,8 +81,9 @@ CONTEXT BREAKDOWN
 
 When context usage passes a threshold, the system appends a breakdown showing where your context tokens are spent:
 
-Breakdown: 12.3K tool (40%) | 3.1K summaries (10%) | 8.5K code (28%) | 6.5K text (22%)
+Breakdown: 5.2K system (21%) | 12.3K tool (40%) | 3.1K summaries (10%) | 8.5K code (28%) | 6.5K text (22%)
 
+- "system" = system prompt tokens (AGENTS.md, tool definitions — not compressible)
 - "tool" = tool call outputs (largest category — compress first when consumed)
 - "summaries" = existing compression block summaries (already compressed; do not re-compress standalone)
 - "code" = messages containing code blocks

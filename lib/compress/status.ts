@@ -237,7 +237,7 @@ function renderOverview(
 
         lines.push("CONTEXT BREAKDOWN")
         lines.push(
-            `  ${formatTokens(total)} total | ${formatTokens(systemTokens)} system (${sysPct}%) | ${formatTokens(totalTool)} tool (${toolPct}%) | ${formatTokens(totalText)} text (${textPct}%) | ${formatTokens(summaryTokens)} summaries (${summaryPct}%)`,
+            `  ${formatTokens(systemTokens)} system (${sysPct}%) | ${formatTokens(totalTool)} tool (${toolPct}%) | ${formatTokens(totalText)} text (${textPct}%) | ${formatTokens(summaryTokens)} summaries (${summaryPct}%)`,
         )
 
         const topTypes = Array.from(toolTypeMap.entries())

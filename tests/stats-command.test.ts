@@ -148,7 +148,7 @@ describe("buildStatusReport (acp_stats wrapper)", () => {
         const report = buildStatusReport({ state, config }, messages)
 
         assert.ok(report.includes("CONTEXT BREAKDOWN"))
-        assert.ok(report.includes("total"))
+        assert.ok(report.includes("tool"))
         assert.ok(report.includes("text"))
     })
 
