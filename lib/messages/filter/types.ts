@@ -64,6 +64,14 @@ export interface MessageFilter {
      * Called once per text part per message.
      */
     filter(ctx: MessageFilterContext): FilterResult
+    /**
+     * When true, applyMessageFilters keeps only the LAST matching message
+     * and drops all earlier matches. Useful for repeating directives
+     * (e.g., TODO CONTINUATION) where only the latest is relevant.
+     * The filter() function still runs per-part to identify matches;
+     * the dedup pass then empties earlier occurrences.
+     */
+    keepLastOnly?: boolean
 }
 
 /**
