@@ -492,6 +492,21 @@ For the complete list with root cause analysis, see the [bug tracker](https://gi
 
 ## Changelog
 
+### v1.14.8-dev.1 — Dev Prerelease (7 PRs since v1.14.7)
+
+Dev prerelease covering PRs #238–#242. Published to `dev` npm tag for early testing.
+
+**PRs included**:
+- **#238** — E2E hardening: observation recording, T2 cadence regression scenario, consumed-call hiding scenario, auxiliary call filtering. 12 E2E scenarios (was 8).
+- **#232** — Refactor: remove dead `turnProtection` config + DCP migration code.
+- **#234** — Re-add `/acp stats` as `acp_status` wrapper.
+- **#239** — Pluggable message filter for third-party injection cleanup.
+- **#240** — Fix: splice orphan messages (only structural parts remain after consumed compress removal).
+- **#241** — System token breakdown in `acp_status` + nudge; hide context fill percentage from model; consolidate 4 duplicate estimations into 1 shared `estimateSystemPromptTokens()`.
+- **#242** — `keepLastOnly` dedup mechanism + 4 OMO builtin filters.
+
+**Install**: `opencode plugin opencode-acp@dev --global`
+
 ### v1.14.7 — Deduplicate HOW_TO_COMPRESS_RULES (PR #228)
 
 **Problem**: `HOW_TO_COMPRESS_RULES` (~1.2K tokens) was injected 3-4 times per nudge turn — once in the system prompt, 1-2 times in nudge templates (turn/iteration/context-limit), and again in the breakdown block. In non-maxLimit scenarios the suffix message alone contained the rules 2-3 times. This wasted 2.4-3.6K tokens per nudge turn. The duplication became visible in v1.14.6 which persists debug nudge text to chat UI.

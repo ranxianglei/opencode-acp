@@ -446,6 +446,21 @@ ACP 是 DCP 的直接替代品。迁移步骤：
 
 ## 更新日志
 
+### v1.14.8-dev.1 — Dev 预发布（v1.14.7 以来 7 个 PR）
+
+Dev 预发布，涵盖 PR #238–#242。发布到 `dev` npm tag 供早期测试。
+
+**包含的 PR**：
+- **#238** — E2E 强化：观察记录、T2 节奏回归场景、consumed-call 隐藏场景、辅助调用过滤。E2E 场景 8→12 个。
+- **#232** — 重构：移除死代码 `turnProtection` 配置 + DCP 迁移代码。
+- **#234** — 重新添加 `/acp stats` 作为 `acp_status` 的封装。
+- **#239** — 可插拔消息过滤器，用于第三方注入清理。
+- **#240** — 修复：splice 孤儿消息（consumed compress 移除后仅剩结构化部分）。
+- **#241** — `acp_status` + nudge 中的系统 token 分类；隐藏上下文填充百分比；4 处重复估算整合为 1 个共享 `estimateSystemPromptTokens()`。
+- **#242** — `keepLastOnly` 去重机制 + 4 个 OMO 内置过滤器。
+
+**安装**：`opencode plugin opencode-acp@dev --global`
+
 ### v1.14.7 — 去重 HOW_TO_COMPRESS_RULES（PR #228）
 
 **问题**：`HOW_TO_COMPRESS_RULES`（~1.2K tokens）每次 nudge 注入重复 3-4 次——系统提示词 1 次、nudge 模板 1-2 次、breakdown 块 1 次。非 maxLimit 场景下 suffix 消息单独就包含 2-3 份规则。每次 nudge 浪费 2.4-3.6K tokens。v1.14.6 让 debug 模式持久化 nudge 文本到聊天界面后，重复变得可见。
