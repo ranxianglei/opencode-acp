@@ -32,3 +32,10 @@
 ### Verification
 - typecheck: clean
 - Full suite: 947 tests pass, 0 fail
+
+### Oracle Review Fixes
+- **Tier misclassification risk**: Block anchors are compress tool_use messages (have callIDs). Forward scan would flip `endReference.kind` from `"compressed-block"` to `"message"`, corrupting tier detection (T2 → T1).
+- **Fix 1**: Exclude `compress` tool callIDs from scan (`part.tool === "compress" → continue`)
+- **Fix 2**: Only extend MESSAGE boundaries (`startReference.kind === "message"` guard)
+- **New tests**: block boundary kind preserved (b1→b1 T2 distillation), compress excluded from scan
+- **Final**: typecheck clean, 949 tests pass, CI all green (5/5)
