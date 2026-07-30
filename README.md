@@ -492,6 +492,16 @@ For the complete list with root cause analysis, see the [bug tracker](https://gi
 
 ## Changelog
 
+### v1.14.8-dev.2 — Dev Prerelease (2 PRs since v1.14.8-dev.1)
+
+Dev prerelease covering PRs #244–#245. Published to `dev` npm tag for early testing.
+
+**PRs included**:
+- **#245** — Fix: re-add HOW_TO_COMPRESS_RULES to nudge injection for high-attention summary guidance. v1.14.7 over-removed the rules from all 4 nudge locations (breakdown + 3 templates), leaving them only in system prompt. In long sessions, system prompt rules degrade due to "lost in the middle" effect — model needs rules at high attention (end of context) when nudge fires.
+- **#244** — Fix: acp_status hides consumed compress calls from PROTECTED list.
+
+**Install**: `opencode plugin opencode-acp@dev --global`
+
 ### v1.14.8-dev.1 — Dev Prerelease (7 PRs since v1.14.7)
 
 Dev prerelease covering PRs #238–#242. Published to `dev` npm tag for early testing.
