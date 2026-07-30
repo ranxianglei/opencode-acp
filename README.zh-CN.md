@@ -446,6 +446,16 @@ ACP 是 DCP 的直接替代品。迁移步骤：
 
 ## 更新日志
 
+### v1.14.8-dev.2 — Dev 预发布（v1.14.8-dev.1 以来 2 个 PR）
+
+Dev 预发布，涵盖 PR #244–#245。发布到 `dev` npm tag 供早期测试。
+
+**包含的 PR**：
+- **#245** — 修复：重新将 HOW_TO_COMPRESS_RULES 加入 nudge 注入。v1.14.7 过度删除了所有 4 处 nudge 位置的规则（breakdown + 3 个模板），只保留在 system prompt。在长 session 中，system prompt 的规则因"lost in the middle"效应衰减——模型在 nudge 触发时需要规则在高注意力区（上下文末尾）。
+- **#244** — 修复：acp_status 隐藏 PROTECTED 列表中已消耗的 compress 调用。
+
+**安装**：`opencode plugin opencode-acp@dev --global`
+
 ### v1.14.8-dev.1 — Dev 预发布（v1.14.7 以来 7 个 PR）
 
 Dev 预发布，涵盖 PR #238–#242。发布到 `dev` npm tag 供早期测试。
