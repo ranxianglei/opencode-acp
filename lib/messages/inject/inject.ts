@@ -41,7 +41,7 @@ import {
     resolveAdaptiveNudgeGrowth,
 } from "./utils"
 import { buildCompressedBlockGuidance } from "../../prompts/extensions/nudge"
-import { COMPRESS_PHILOSOPHY, TIER2_DISTILL_RULES, TIER3_CONDENSE_RULES } from "context-compress-algorithms/prompts"
+import { COMPRESS_PHILOSOPHY, HOW_TO_COMPRESS_RULES, TIER2_DISTILL_RULES, TIER3_CONDENSE_RULES } from "context-compress-algorithms/prompts"
 import { getTierTokenUsage } from "../../state/utils"
 
 /**
@@ -532,7 +532,7 @@ export const injectCompressNudges = (
             }
 
             if (recommendedRanges.length > 0) {
-                breakdown += `\n\n${formatCompressibleRanges(recommendedRanges, contextRanges.protected)}`
+                breakdown += `\n\n${HOW_TO_COMPRESS_RULES}\n\n${formatCompressibleRanges(recommendedRanges, contextRanges.protected)}`
                 breakdown += `\n💡 Compress all ranges in one call (pass multiple content entries: \`content: [{...}, {...}]\`).`
             }
             breakdown += `\nUse \`acp_status({scope:"uncompressed"})\` to re-fetch compressible ranges after compressing, or \`acp_status\` for compressed block details.`
@@ -543,7 +543,7 @@ export const injectCompressNudges = (
         // maxLimit strong alert + lastNudgeShownTokens + block aging guidance
         if (effectiveTipsVariant === "maxLimit") {
             tipsText =
-                '\n\n⚠️ Context limit reached — compress now. Prioritize consumed tool outputs.\n\n{ "topic": "...", "content": [{ "startId": "<ID>", "endId": "<ID>", "summary": "..." }] }\n\nOnly use IDs from visible messages above. Compress older work first.'
+                '\n\n⚠️ Context limit reached — compress now. Prioritize consumed tool outputs.\n\n' + HOW_TO_COMPRESS_RULES + '\n\n{ "topic": "...", "content": [{ "startId": "<ID>", "endId": "<ID>", "summary": "..." }] }\n\nOnly use IDs from visible messages above. Compress older work first.'
         }
         // Intentionally do NOT update lastPerMessageNudgeTokens here — nudges
         // repeat every turn until the model actually compresses.
