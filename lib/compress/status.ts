@@ -12,6 +12,7 @@ import {
     formatCompressibleRanges,
 } from "../messages/inject/utils"
 import { fetchSessionMessages } from "./search"
+import { hideConsumedCompressCalls } from "./hide-consumed"
 import { estimateSystemPromptTokens } from "../token-utils"
 
 const ACP_STATUS_TOOL_DESCRIPTION = `Show context status — overview includes compressible ranges by default.
@@ -606,6 +607,8 @@ export function createAcpStatusTool(factoryCtx: ToolFactoryContext): ReturnType<
                 if (scope === "uncompressed") return "(unable to fetch messages)"
                 rawMessages = []
             }
+
+            hideConsumedCompressCalls(ctx.state, rawMessages)
 
             return buildStatusReport(
                 { state: ctx.state, config: ctx.config },
