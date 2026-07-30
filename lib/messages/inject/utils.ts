@@ -14,6 +14,7 @@ import {
     type MessagePriority,
     listPriorityRefsBeforeIndex,
 } from "../priority"
+import { estimateSystemPromptTokens } from "../../token-utils"
 import {
     appendToTextPart,
     appendToLastTextPart,
@@ -380,24 +381,6 @@ function resolveThresholdPercent(
     return isNaN(parsed) ? undefined : parsed
 }
 
-/**
- * Build tiered context usage guidance based on actual config thresholds.
- * Shared by inject.ts (suffix message) and utils.ts (anchored nudges).
- */
-export function buildContextUsageGuidance(
-    config: PluginConfig,
-    currentTokens?: number,
-    modelContextLimit?: number,
-): string {
-    if (currentTokens === undefined || modelContextLimit === undefined || modelContextLimit === 0) {
-        return ""
-    }
-
-    const formatK = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n))
-
-    return `\n\nContext: ${formatK(currentTokens)} tokens.`
-}
-
 export function applyAnchoredNudges(
     state: SessionState,
     config: PluginConfig,
@@ -451,6 +434,7 @@ export interface ContextComposition {
     summaryTokens: number
     messageTokens: number
     textTokens: number
+    systemTokens: number
     protectedTokens: number
     total: number
     largestRanges: { ref: string; tokens: number }[]
@@ -578,14 +562,17 @@ export function estimateContextComposition(
         .map(([tool, tokens]) => ({ tool, tokens }))
         .sort((a, b) => b.tokens - a.tokens)
 
+    const systemTokens = estimateSystemPromptTokens(messages)
+
     return {
         toolTokens,
         codeTokens,
         summaryTokens,
         messageTokens,
         textTokens: Math.max(0, messageTokens - codeTokens),
+        systemTokens,
         protectedTokens,
-        total: toolTokens + summaryTokens + messageTokens,
+        total: systemTokens + toolTokens + summaryTokens + messageTokens,
         largestRanges: perMessage.slice(0, 15),
         largestToolRanges: perTool.slice(0, 15),
         largestCodeRanges: perCode.slice(0, 5),

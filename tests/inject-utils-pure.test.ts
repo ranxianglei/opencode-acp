@@ -1,6 +1,8 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 import { computeShouldNudge, resolveAdaptiveNudgeGrowth, estimateContextComposition } from "../lib/messages/inject/utils"
+import { estimateSystemPromptTokens } from "../lib/token-utils"
+import { countTokens } from "../lib/token-utils"
 import type { WithParts } from "../lib/state"
 
 const baseParams = {
@@ -224,6 +226,51 @@ function mkSummary(id: string, text: string): WithParts {
     return { info: { id: `msg_dcp_summary_${id}` } as any, parts: [{ type: "text", text: `[Compressed conversation section]\n${text}` }] as any }
 }
 
+function mkAssistantWithTokens(input: number, cacheRead = 0, cacheWrite = 0): WithParts {
+    return {
+        info: { id: "a1", role: "assistant", tokens: { input, output: 100, cache: { read: cacheRead, write: cacheWrite } } } as any,
+        parts: [{ type: "text", text: "ok", id: "a1-p", sessionID: "s", messageID: "a1" }] as any,
+    }
+}
+
+test("estimateSystemPromptTokens: assistant input minus first user text", () => {
+    const userText = "Hello, please help me with a task."
+    const input = 10_000
+    const messages = [
+        { info: { id: "u1", role: "user" } as any, parts: [{ type: "text", text: userText }] as any },
+        mkAssistantWithTokens(input),
+    ]
+    const sys = estimateSystemPromptTokens(messages)
+    assert.ok(sys > 0, "system tokens should be positive")
+    assert.equal(sys, input - countTokens(userText))
+})
+
+test("estimateSystemPromptTokens: returns 0 when no assistant token data", () => {
+    const messages = [mkText("u1", "hello")]
+    assert.equal(estimateSystemPromptTokens(messages), 0)
+})
+
+test("estimateSystemPromptTokens: handles cache.read and cache.write", () => {
+    const messages = [
+        { info: { id: "u1", role: "user" } as any, parts: [{ type: "text", text: "hi" }] as any },
+        mkAssistantWithTokens(5000, 3000, 2000),
+    ]
+    const sys = estimateSystemPromptTokens(messages)
+    assert.ok(sys > 0)
+    assert.equal(sys, 10_000 - countTokens("hi"))
+})
+
+test("estimateContextComposition: systemTokens from assistant data included in total", () => {
+    const msgs = [
+        { info: { id: "u1", role: "user" } as any, parts: [{ type: "text", text: "hello" }] as any },
+        mkAssistantWithTokens(8000),
+        mkText("m1", "x".repeat(400)),
+    ]
+    const c = estimateContextComposition(msgs)
+    assert.ok(c.systemTokens > 0, "system tokens should be computed from assistant data")
+    assert.equal(c.total, c.systemTokens + c.toolTokens + c.summaryTokens + c.messageTokens)
+})
+
 test("estimateContextComposition: empty messages returns zeros", () => {
     const c = estimateContextComposition([])
     assert.equal(c.toolTokens, 0)
@@ -272,7 +319,7 @@ test("estimateContextComposition: code blocks counted in codeTokens (subset of m
     assert.equal(c.total, c.messageTokens)
 })
 
-test("estimateContextComposition: total = tool + summary + message (mutually exclusive)", () => {
+test("estimateContextComposition: total = system + tool + summary + message (no assistant data → system=0)", () => {
     const msgs = [
         mkText("m1", "hello world"),
         mkTool("m2", '{"a":1}'),

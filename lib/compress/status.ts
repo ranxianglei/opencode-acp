@@ -12,6 +12,7 @@ import {
     formatCompressibleRanges,
 } from "../messages/inject/utils"
 import { fetchSessionMessages } from "./search"
+import { estimateSystemPromptTokens } from "../token-utils"
 
 const ACP_STATUS_TOOL_DESCRIPTION = `Show context status — overview includes compressible ranges by default.
 
@@ -123,7 +124,7 @@ export interface StatusRenderContext {
 function collectVisibleMessages(
     rawMessages: WithParts[],
     ctx: StatusRenderContext,
-): { messages: VisibleMessageInfo[]; summaryTokens: number } {
+): { messages: VisibleMessageInfo[]; summaryTokens: number; systemTokens: number } {
     const pruneMap = ctx.state.prune.messages.byMessageId
     const byRawId = ctx.state.messageIds.byRawId
     const result: VisibleMessageInfo[] = []
@@ -170,12 +171,13 @@ function collectVisibleMessages(
         }
     })
 
-    return { messages: result, summaryTokens }
+    return { messages: result, summaryTokens, systemTokens: estimateSystemPromptTokens(rawMessages) }
 }
 
 function renderOverview(
     visibleMessages: VisibleMessageInfo[],
     summaryTokens: number,
+    systemTokens: number,
     blocks: CompressionBlock[],
     fetchFailed: boolean,
     rawMessages: WithParts[],
@@ -199,15 +201,16 @@ function renderOverview(
         const totalText = visibleMessages
             .filter((m) => m.tool === "text")
             .reduce((s, m) => s + m.tokens, 0)
-        const total = totalTool + totalText + summaryTokens
+        const total = systemTokens + totalTool + totalText + summaryTokens
 
+        const sysPct = pct(systemTokens, total)
         const toolPct = pct(totalTool, total)
         const textPct = pct(totalText, total)
         const summaryPct = pct(summaryTokens, total)
 
-        lines.push("VISIBLE CONTEXT (uncompressed)")
+        lines.push("CONTEXT BREAKDOWN")
         lines.push(
-            `  ${formatTokens(total)} total | ${formatTokens(totalTool)} tool (${toolPct}%) | ${formatTokens(totalText)} text (${textPct}%) | ${formatTokens(summaryTokens)} summaries (${summaryPct}%)`,
+            `  ${formatTokens(systemTokens)} system (${sysPct}%) | ${formatTokens(totalTool)} tool (${toolPct}%) | ${formatTokens(totalText)} text (${textPct}%) | ${formatTokens(summaryTokens)} summaries (${summaryPct}%)`,
         )
 
         const topTypes = Array.from(toolTypeMap.entries())
@@ -520,6 +523,7 @@ export function buildStatusReport(
     const result = collectVisibleMessages(rawMessages, renderCtx)
     const visibleMsgs = result.messages
     const summaryTokens = result.summaryTokens
+    const systemTokens = result.systemTokens
 
     if (scope === "uncompressed") {
         if (view === "messages") {
@@ -529,7 +533,15 @@ export function buildStatusReport(
         }
     } else {
         lines.push(
-            ...renderOverview(visibleMsgs, summaryTokens, allBlocks, false, rawMessages, renderCtx),
+            ...renderOverview(
+                visibleMsgs,
+                summaryTokens,
+                systemTokens,
+                allBlocks,
+                false,
+                rawMessages,
+                renderCtx,
+            ),
         )
     }
 

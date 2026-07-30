@@ -26,7 +26,6 @@ import {
     addAnchor,
     applyAnchoredNudges,
     buildCompressibleRanges,
-    buildContextUsageGuidance,
     computeProtectedRefs,
     computeShouldNudge,
     countMessagesAfterIndex,
@@ -502,8 +501,6 @@ export const injectCompressNudges = (
     let tipsText: string | null = null
 
     if (shouldInject) {
-        injectContextUsage(suffixMessage, config, currentTokens, modelContextLimit)
-
         if (suffixMessage && composition.total > 0) {
             const fmt = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n))
             const pct = (n: number) =>
@@ -520,10 +517,16 @@ export const injectCompressNudges = (
             const efficiencyNote = effectiveTipsVariant !== "maxLimit"
                 ? `\nThis is an efficiency nudge to compress early and keep context lean — not an overflow warning. A separate, stronger alert will appear if the context is actually full.\n\n${COMPRESS_PHILOSOPHY}`
                 : ""
-            let breakdown = `${efficiencyNote}\nBreakdown: ${fmt(composition.toolTokens)} tool (${pct(composition.toolTokens)}%) | ${fmt(composition.summaryTokens)} summaries (${pct(composition.summaryTokens)}%) | ${fmt(composition.codeTokens)} code (${pct(composition.codeTokens)}%) | ${fmt(plainTextTokens)} text (${pct(plainTextTokens)}%)${growthStr}`
+            const sysPart = composition.systemTokens > 0
+                ? `${fmt(composition.systemTokens)} system (${pct(composition.systemTokens)}%) | `
+                : ""
+            let breakdown = `${efficiencyNote}\nBreakdown: ${sysPart}${fmt(composition.toolTokens)} tool (${pct(composition.toolTokens)}%) | ${fmt(composition.summaryTokens)} summaries (${pct(composition.summaryTokens)}%) | ${fmt(composition.codeTokens)} code (${pct(composition.codeTokens)}%) | ${fmt(plainTextTokens)} text (${pct(plainTextTokens)}%)${growthStr}`
 
             const compressibleTokens =
-                composition.total - composition.protectedTokens - composition.summaryTokens
+                composition.total -
+                composition.systemTokens -
+                composition.protectedTokens -
+                composition.summaryTokens
             if (composition.protectedTokens > 0) {
                 breakdown += `\n⚠️ ${fmt(composition.protectedTokens)} tokens are protected (environment-managed tools) — not compressible. Effective compressible: ~${fmt(compressibleTokens)}.`
             }
@@ -609,26 +612,6 @@ function resolveEmergencyThreshold(
     if (isNaN(parsedPercent)) return undefined
     const clampedPercent = Math.max(0, Math.min(100, Math.round(parsedPercent)))
     return Math.round((clampedPercent / 100) * modelContextLimit)
-}
-
-function injectContextUsage(
-    target: WithParts | null,
-    config: PluginConfig,
-    currentTokens?: number,
-    modelContextLimit?: number,
-): void {
-    if (!target) return
-    const rawUsage = buildContextUsageGuidance(config, currentTokens, modelContextLimit)
-    if (!rawUsage) return
-    const usageTag = rawUsage
-
-    for (const part of target.parts) {
-        if (part.type === "text") {
-            appendToTextPart(part, usageTag)
-            return
-        }
-    }
-    target.parts.push(createSyntheticTextPart(target, usageTag))
 }
 
 export interface VisibleSegment {

@@ -53,6 +53,48 @@ export function getCurrentTokenUsage(state: SessionState, messages: WithParts[])
     return estimated
 }
 
+/**
+ * Estimate system prompt tokens by subtracting the first user message's tokens
+ * from the first assistant message's total input prompt tokens.
+ *
+ * The first assistant turn's prompt = system_prompt + first_user_message (+
+ * any injected suffixes). By subtracting the first user message's token count
+ * (via countTokens for CJK/code accuracy), we isolate the system prompt estimate.
+ *
+ * Uses the real Anthropic tokenizer (countTokens) — NOT length/4 — for
+ * consistency with /acp context and cacheSystemPromptTokens.
+ *
+ * Returns 0 if no assistant message with token data is found.
+ */
+export function estimateSystemPromptTokens(messages: WithParts[]): number {
+    let firstInput: number | undefined
+    for (const msg of messages) {
+        if (msg.info.role !== "assistant") continue
+        const assistantInfo = msg.info as AssistantMessage
+        const t = assistantInfo.tokens
+        if (!t) continue
+        const input = (t.input || 0) + (t.cache?.read || 0) + (t.cache?.write || 0)
+        if (input > 0) {
+            firstInput = input
+            break
+        }
+    }
+    if (firstInput === undefined) return 0
+
+    let firstUserText = ""
+    for (const msg of messages) {
+        if (msg.info.role !== "user") continue
+        const parts = Array.isArray(msg.parts) ? msg.parts : []
+        for (const part of parts) {
+            if (part.type === "text" && typeof part.text === "string") {
+                firstUserText += part.text
+            }
+        }
+        if (firstUserText) break
+    }
+    return Math.max(0, firstInput - countTokens(firstUserText))
+}
+
 export function getCurrentParams(
     state: SessionState,
     messages: WithParts[],
