@@ -446,6 +446,15 @@ ACP 是 DCP 的直接替代品。迁移步骤：
 
 ## 更新日志
 
+### v1.14.8-dev.3 — Dev 预发布（v1.14.8-dev.2 以来 1 个 PR）
+
+Dev 预发布，涵盖 PR #248。发布到 `dev` npm tag 供早期测试。
+
+**包含的 PR**：
+- **#248** — 修复：自动扩展压缩范围以防止拆分 tool_use/tool_result 配对。当模型选择的压缩边界落在 tool 调用与其结果之间时，孤立的 tool_result 引用不存在的 tool_use_id → API 拒绝。新增 `adjustBoundariesForToolPairs`（`compress/search.ts`）向前/向后扫描（最多 20 条消息）以包含匹配的配对。排除 `compress` 工具（强制保护）并仅扩展消息边界（从不扩展 block 边界）以避免层级错误分类。11 个测试。
+
+**安装**：`opencode plugin opencode-acp@dev --global`
+
 ### v1.14.8-dev.2 — Dev 预发布（v1.14.8-dev.1 以来 2 个 PR）
 
 Dev 预发布，涵盖 PR #244–#245。发布到 `dev` npm tag 供早期测试。

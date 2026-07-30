@@ -492,6 +492,15 @@ For the complete list with root cause analysis, see the [bug tracker](https://gi
 
 ## Changelog
 
+### v1.14.8-dev.3 — Dev Prerelease (1 PR since v1.14.8-dev.2)
+
+Dev prerelease covering PR #248. Published to `dev` npm tag for early testing.
+
+**PRs included**:
+- **#248** — Fix: auto-extend compression ranges to prevent splitting tool_use/tool_result pairs. When the model selects a compression boundary that falls between a tool call and its result, the orphaned tool_result references a non-existent tool_use_id → API rejection. New `adjustBoundariesForToolPairs` in `compress/search.ts` scans forward/backward (up to 20 messages) to include the matching pair. Excludes `compress` tool (force-protected) and only extends message boundaries (never block boundaries) to avoid tier misclassification. 11 tests.
+
+**Install**: `opencode plugin opencode-acp@dev --global`
+
 ### v1.14.8-dev.2 — Dev Prerelease (2 PRs since v1.14.8-dev.1)
 
 Dev prerelease covering PRs #244–#245. Published to `dev` npm tag for early testing.
