@@ -492,6 +492,24 @@ For the complete list with root cause analysis, see the [bug tracker](https://gi
 
 ## Changelog
 
+### v1.14.8 — Stable Release (10 PRs since v1.14.7)
+
+Stable release promoted from dev prereleases v1.14.8-dev.1 through v1.14.8-dev.3. Includes all fixes tested in the dev channel.
+
+**Highlights**:
+
+- **System token visibility** (#241): `acp_status` and nudge breakdown now show system prompt token proportion (5-15% of context). Consolidated 4 duplicate estimation algorithms into 1 shared `estimateSystemPromptTokens()` using the real Anthropic tokenizer.
+- **HOW_TO_COMPRESS_RULES re-added to nudge** (#245): v1.14.7 over-removed the compression rules from all nudge locations. In long sessions (8,000+ messages), the rules in the system prompt degrade due to "lost in the middle" effect — re-added to nudge for high-attention guidance when compression triggers.
+- **Tool pair integrity** (#248): Compression ranges that split tool_use/tool_result pairs caused API rejections. New `adjustBoundariesForToolPairs` auto-extends boundaries by callID matching.
+- **Pluggable message filters** (#239, #242): `keepLastOnly` dedup mechanism + 4 OMO builtin filters for cleaning up third-party (e.g. OMO) injected messages that accumulate duplicates.
+- **Orphan message splicing** (#240): When `hideConsumedCompressCalls` leaves only structural parts (step-finish, reasoning), the message is now spliced out instead of surviving as a 500-2000 token orphan.
+- **E2E hardening** (#238): Observation recording, T2 cadence regression scenario, consumed-call hiding scenario, auxiliary call filtering. 12 E2E scenarios (was 8).
+- **acp_status consumed compress hiding** (#244): Hides consumed compress calls from the PROTECTED list.
+
+**All PRs included**: #238 (E2E hardening), #232 (remove dead turnProtection/DCP migration), #234 (re-add /acp stats), #239 (pluggable message filter), #240 (orphan splice), #241 (system tokens), #242 (keepLastOnly + OMO filters), #244 (acp_status consumed compress), #245 (HOW_TO_COMPRESS_RULES re-add), #248 (tool pair integrity).
+
+**Install**: `opencode plugin opencode-acp@stable --global`
+
 ### v1.14.8-dev.3 — Dev Prerelease (1 PR since v1.14.8-dev.2)
 
 Dev prerelease covering PR #248. Published to `dev` npm tag for early testing.
