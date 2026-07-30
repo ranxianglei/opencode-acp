@@ -1,6 +1,6 @@
 import type { WithParts } from "../../state"
 import type { Logger } from "../../logger"
-import type { MessageFilter, MessageFilterContext, MessageFiltersConfig } from "./types"
+import type { MessageFilter, MessageFilterContext, MessageFiltersConfig, FilterResult } from "./types"
 import { listMessageFilters } from "./registry"
 
 export interface ApplyResult {
@@ -43,7 +43,7 @@ export function applyMessageFilters(
 
     const applyDecision = (
         part: { text?: string },
-        decision: { action: string; text?: string; reason?: string },
+        decision: FilterResult,
         filterName: string,
         i: number,
         originalText: string,
@@ -110,10 +110,13 @@ export function applyMessageFilters(
         for (let i = messages.length - 1; i >= 0; i--) {
             const msg = messages[i]
             const role = (msg.info as { role?: string }).role ?? "unknown"
-            for (const part of msg.parts ?? []) {
+            const parts = msg.parts ?? []
+            for (let p = parts.length - 1; p >= 0; p--) {
+                const part = parts[p]
                 const text = (part as { text?: string }).text
                 if (typeof text !== "string" || text.length === 0) continue
                 const filterCtx = buildCtx(text, role, i)
+                filterCtx.toolName = (part as { tool?: string }).tool
                 let decision
                 try {
                     decision = filter.filter(filterCtx)

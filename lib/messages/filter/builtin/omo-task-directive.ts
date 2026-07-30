@@ -1,5 +1,7 @@
 import type { MessageFilter, MessageFilterContext, FilterResult } from "../types"
 
+const OMO_MARKER = "<!-- OMO_INTERNAL_INITIATOR -->"
+
 const OMO_TASK_FILTER: MessageFilter = {
     name: "omo-task-directive",
     version: "1.0.0",
@@ -8,6 +10,7 @@ const OMO_TASK_FILTER: MessageFilter = {
 
     filter(ctx: MessageFilterContext): FilterResult {
         if (ctx.role !== "user") return { action: "keep" }
+        if (!ctx.text.includes(OMO_MARKER)) return { action: "keep" }
         const stripped = ctx.text.trimStart()
         if (!stripped.startsWith("TASK:") && !stripped.startsWith("## TASK")) {
             return { action: "keep" }
