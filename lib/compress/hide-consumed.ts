@@ -1,52 +1,42 @@
 import type { SessionState, WithParts } from "../state"
 import { hasMeaningfulContent } from "./parts"
 
-/**
- * Hide compress tool-call parts whose blocks have been consumed by another
- * compression (tier escalation or range overlap).
- *
- * This is the compress-as-anchor equivalent of filterCompressedRanges: instead
- * of hiding whole messages covered by active blocks, it hides individual
- * compress tool-call PARTS whose blocks are no longer active. The message shell
- * survives (it may carry other parts); only the consumed compress call disappears.
- *
- * If after removal the message contains only structural parts (step-start,
- * step-finish, reasoning), it is spliced entirely — those carry no useful
- * content once the compress call they wrapped is gone.
- *
- * Block data (full summary, original messages) is preserved in session state and
- * remains recoverable via `decompress`.
- *
- * Returns the number of compress-call parts hidden.
- */
+const KEEP_LAST_ORPHANED = 2
+
 export function hideConsumedCompressCalls(state: SessionState, messages: WithParts[]): number {
-    if (state.prune.messages.blocksById.size === 0) {
-        return 0
-    }
 
-    const consumedMessageIds = new Set<string>()
+    const activeCallIds = new Set<string>()
+    const allBlockCallIds = new Set<string>()
     for (const block of state.prune.messages.blocksById.values()) {
-        if (block.active) continue
-        if (block.deactivatedByUser) continue
-        if (block.deactivatedByUserDeep) continue
-        if (block.deactivatedByBlockId === undefined) continue
-        if (!block.compressMessageId) continue
-        consumedMessageIds.add(block.compressMessageId)
+        if (block.compressCallId) {
+            allBlockCallIds.add(block.compressCallId)
+            if (block.active && !block.deactivatedByUser && !block.deactivatedByUserDeep) {
+                activeCallIds.add(block.compressCallId)
+            }
+        }
     }
 
-    if (consumedMessageIds.size === 0) {
-        return 0
+    const lastOrphanedCallIds: string[] = []
+    for (let i = messages.length - 1; i >= 0 && lastOrphanedCallIds.length < KEEP_LAST_ORPHANED; i--) {
+        const parts = Array.isArray(messages[i]?.parts) ? messages[i]!.parts : []
+        for (let j = parts.length - 1; j >= 0 && lastOrphanedCallIds.length < KEEP_LAST_ORPHANED; j--) {
+            const p = parts[j]!
+            if (p.type === "tool" && p.tool === "compress" && p.callID && !allBlockCallIds.has(p.callID)) {
+                lastOrphanedCallIds.push(p.callID)
+            }
+        }
     }
+
+    const keepCallIds = new Set([...activeCallIds, ...lastOrphanedCallIds])
 
     let hidden = 0
     for (let i = 0; i < messages.length; i++) {
         const msg = messages[i]!
-        if (!consumedMessageIds.has(msg.info.id)) continue
-
         const parts = Array.isArray(msg.parts) ? msg.parts : []
         let changed = false
         const remaining = parts.filter((p) => {
             if (p.type === "tool" && p.tool === "compress") {
+                if (p.callID && keepCallIds.has(p.callID)) return true
                 hidden++
                 changed = true
                 return false
