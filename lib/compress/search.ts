@@ -142,13 +142,21 @@ export function resolveBoundaryIds(
     // assistant (tool_use) and user (tool_result), linked by callID. If a
     // compression range includes one but not the other, the pruned output
     // has an orphaned reference → provider API rejection.
+    //
+    // Only adjust MESSAGE boundaries — block boundaries (bN) are anchors of
+    // compress tool calls, which are force-protected (always survive intact).
+    // Adjusting them would flip kind from "compressed-block" to "message",
+    // corrupting tier detection in applyCompressionState (T2 → T1).
     const adjusted = adjustBoundariesForToolPairs(
         context,
         startReference.rawIndex,
         endReference.rawIndex,
     )
 
-    if (adjusted.startIndex < startReference.rawIndex) {
+    if (
+        adjusted.startIndex < startReference.rawIndex &&
+        startReference.kind === "message"
+    ) {
         const msg = context.rawMessages[adjusted.startIndex]
         if (msg) {
             startReference = {
@@ -159,7 +167,10 @@ export function resolveBoundaryIds(
         }
     }
 
-    if (adjusted.endIndex > endReference.rawIndex) {
+    if (
+        adjusted.endIndex > endReference.rawIndex &&
+        endReference.kind === "message"
+    ) {
         const msg = context.rawMessages[adjusted.endIndex]
         if (msg) {
             endReference = {
@@ -187,6 +198,7 @@ function adjustBoundariesForToolPairs(
         const parts = Array.isArray(msg.parts) ? msg.parts : []
         for (const part of parts) {
             if (part.type !== "tool" || !part.callID) continue
+            if (part.tool === "compress") continue
             callIdsInRange.add(part.callID)
         }
     }
