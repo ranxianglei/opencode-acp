@@ -137,7 +137,110 @@ export function resolveBoundaryIds(
         [startReference, endReference] = [endReference, startReference]
     }
 
+    // [FIX Issue #247] Auto-extend range boundaries to prevent splitting
+    // tool_use/tool_result pairs. In OpenCode, a tool call spans two messages:
+    // assistant (tool_use) and user (tool_result), linked by callID. If a
+    // compression range includes one but not the other, the pruned output
+    // has an orphaned reference → provider API rejection.
+    //
+    // Only adjust MESSAGE boundaries — block boundaries (bN) are anchors of
+    // compress tool calls, which are force-protected (always survive intact).
+    // Adjusting them would flip kind from "compressed-block" to "message",
+    // corrupting tier detection in applyCompressionState (T2 → T1).
+    const adjusted = adjustBoundariesForToolPairs(
+        context,
+        startReference.rawIndex,
+        endReference.rawIndex,
+    )
+
+    if (
+        adjusted.startIndex < startReference.rawIndex &&
+        startReference.kind === "message"
+    ) {
+        const msg = context.rawMessages[adjusted.startIndex]
+        if (msg) {
+            startReference = {
+                kind: "message",
+                rawIndex: adjusted.startIndex,
+                messageId: msg.info.id,
+            }
+        }
+    }
+
+    if (
+        adjusted.endIndex > endReference.rawIndex &&
+        endReference.kind === "message"
+    ) {
+        const msg = context.rawMessages[adjusted.endIndex]
+        if (msg) {
+            endReference = {
+                kind: "message",
+                rawIndex: adjusted.endIndex,
+                messageId: msg.info.id,
+            }
+        }
+    }
+
     return { startReference, endReference }
+}
+
+function adjustBoundariesForToolPairs(
+    context: SearchContext,
+    startIdx: number,
+    endIdx: number,
+): { startIndex: number; endIndex: number } {
+    const messages = context.rawMessages
+
+    const callIdsInRange = new Set<string>()
+    for (let i = startIdx; i <= endIdx; i++) {
+        const msg = messages[i]
+        if (!msg) continue
+        const parts = Array.isArray(msg.parts) ? msg.parts : []
+        for (const part of parts) {
+            if (part.type !== "tool" || !part.callID) continue
+            if (part.tool === "compress") continue
+            callIdsInRange.add(part.callID)
+        }
+    }
+
+    if (callIdsInRange.size === 0) {
+        return { startIndex: startIdx, endIndex: endIdx }
+    }
+
+    // Extend forward: tool_results follow their tool_use. Stop at the first
+    // gap after finding at least one matching message.
+    let newEndIdx = endIdx
+    for (let i = endIdx + 1; i < messages.length && i <= endIdx + 20; i++) {
+        const msg = messages[i]
+        if (!msg) break
+        const parts = Array.isArray(msg.parts) ? msg.parts : []
+        const hasMatch = parts.some(
+            (part) => part.type === "tool" && part.callID && callIdsInRange.has(part.callID),
+        )
+        if (hasMatch) {
+            newEndIdx = i
+        } else if (newEndIdx > endIdx) {
+            break
+        }
+    }
+
+    // Extend backward: tool_uses precede their tool_result.
+    let newStartIdx = startIdx
+    for (let i = startIdx - 1; i >= 0 && i >= startIdx - 20; i--) {
+        const msg = messages[i]
+        if (!msg) break
+        const parts = Array.isArray(msg.parts) ? msg.parts : []
+        const hasMatch = parts.some(
+            (part) => part.type === "tool" && part.callID && callIdsInRange.has(part.callID),
+        )
+        if (hasMatch) {
+            newStartIdx = i
+        } else if (newStartIdx < startIdx) {
+            break
+        }
+    }
+
+    return { startIndex: newStartIdx, endIndex: newEndIdx }
 }
 
 function buildBoundaryRecoveryHint(context: SearchContext, state: SessionState): string {
