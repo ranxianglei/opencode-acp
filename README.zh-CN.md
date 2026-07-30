@@ -480,6 +480,24 @@ Dev 预发布，涵盖 PR #238–#242。发布到 `dev` npm tag 供早期测试�
 
 **安装**：`opencode plugin opencode-acp@dev --global`
 
+### v1.14.8 — 正式版（v1.14.7 以来 10 个 PR）
+
+正式版，从 dev 预发布 v1.14.8-dev.1 至 v1.14.8-dev.3 提升而来。包含所有在 dev 通道测试过的修复。
+
+**亮点**：
+
+- **系统 token 可见性**（#241）：`acp_status` 和 nudge breakdown 现在显示系统 prompt token 占比（上下文的 5-15%）。将 4 处重复的估算算法整合为 1 个共享 `estimateSystemPromptTokens()`，使用真正的 Anthropic 分词器。
+- **HOW_TO_COMPRESS_RULES 重新加入 nudge**（#245）：v1.14.7 过度删除了所有 nudge 位置的压缩规则。在长 session（8000+ 消息）中，system prompt 中的规则因"lost in the middle"效应衰减——重新加入 nudge 以在压缩触发时提供高注意力区指导。
+- **工具配对完整性**（#248）：压缩范围拆分 tool_use/tool_result 配对会导致 API 拒绝。新增 `adjustBoundariesForToolPairs` 按 callID 匹配自动扩展边界。
+- **可插拔消息过滤器**（#239, #242）：`keepLastOnly` 去重机制 + 4 个 OMO 内置过滤器，用于清理第三方注入消息的重复累积。
+- **孤儿消息清理**（#240）：`hideConsumedCompressCalls` 仅剩结构化部分时（step-finish、reasoning），消息现在被 splice 掉，不再作为 500-2000 token 孤儿存活。
+- **E2E 强化**（#238）：观察记录、T2 节奏回归场景、consumed-call 隐藏场景、辅助调用过滤。E2E 场景 8→12 个。
+- **acp_status 隐藏已消耗 compress**（#244）：从 PROTECTED 列表中隐藏已消耗的 compress 调用。
+
+**包含的所有 PR**：#238（E2E 强化）、#232（移除死代码 turnProtection/DCP 迁移）、#234（重新添加 /acp stats）、#239（可插拔消息过滤器）、#240（孤儿消息清理）、#241（系统 token）、#242（keepLastOnly + OMO 过滤器）、#244（acp_status 已消耗 compress）、#245（HOW_TO_COMPRESS_RULES 重新加入）、#248（工具配对完整性）。
+
+**安装**：`opencode plugin opencode-acp@stable --global`
+
 ### v1.14.7 — 去重 HOW_TO_COMPRESS_RULES（PR #228）
 
 **问题**：`HOW_TO_COMPRESS_RULES`（~1.2K tokens）每次 nudge 注入重复 3-4 次——系统提示词 1 次、nudge 模板 1-2 次、breakdown 块 1 次。非 maxLimit 场景下 suffix 消息单独就包含 2-3 份规则。每次 nudge 浪费 2.4-3.6K tokens。v1.14.6 让 debug 模式持久化 nudge 文本到聊天界面后，重复变得可见。
