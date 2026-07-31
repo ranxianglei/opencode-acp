@@ -926,7 +926,7 @@ test("baseline preserved when nudge fires for small compressible — Issue #251"
     )
 })
 
-test("pending nudge cleared when suppressed — threshold resets to full", () => {
+test("pending nudge preserved when all-protected — no loop", () => {
     const state = createSessionState()
     state.modelContextLimit = 1_000_000
     state.messageIds.byRawId.set("a1", "m00001")
@@ -951,13 +951,62 @@ test("pending nudge cleared when suppressed — threshold resets to full", () =>
     assert.equal(state.nudges.shouldInjectThisTurn, false, "nudge suppressed — all protected")
     assert.equal(
         state.nudges.lastNudgeShownTokens,
-        undefined,
-        "pending nudge cleared — threshold resets to full (not halved) for next check",
+        200_000,
+        "pending nudge baseline preserved — prevents loop (stale fallback → huge growth → re-fire)",
     )
     assert.equal(
         state.nudges.lastPerMessageNudgeTokens,
         200_000,
         "baseline preserved — growth accumulates for next turn",
+    )
+})
+
+test("multi-turn: all-protected does not loop (lastNudgeShownTokens stable)", () => {
+    const state = createSessionState()
+    state.modelContextLimit = 1_000_000
+    state.messageIds.byRawId.set("a1", "m00001")
+    state.messageIds.byRawId.set("a2", "m00002")
+    state.messageIds.byRawId.set("a3", "m00003")
+
+    const config = buildConfig()
+    config.compress.protectedTools = ["skill"]
+    config.compress.maxContextLimit = 500_000
+    config.compress.minContextLimit = 200_000
+
+    state.nudges.lastPerMessageNudgeTokens = 200_000
+
+    const protectedTurn = (id: string, inputTokens: number) =>
+        assistantMsgWithTokens(id, "work", { input: inputTokens, output: 30_000 }, [
+            {
+                id: `${id}-part`, messageID: id, sessionID: SID,
+                type: "tool" as const, tool: "skill", callID: `${id}-call`,
+                state: { status: "completed" as const, input: {}, output: "x".repeat(80_000) },
+            },
+        ])
+
+    // Turn 1: nudge suppressed (all protected)
+    injectCompressNudges(state, config, logger, [protectedTurn("a1", 225_000)], {} as any)
+    assert.equal(state.nudges.shouldInjectThisTurn, false, "turn 1: all protected, nudge suppressed")
+    assert.equal(state.nudges.lastNudgeShownTokens, undefined, "turn 1: no nudge shown yet")
+
+    state.nudges.lastNudgeShownTokens = 225_000
+
+    // Turn 2: growth continues, still all-protected
+    injectCompressNudges(state, config, logger, [protectedTurn("a2", 230_000)], {} as any)
+    assert.equal(state.nudges.shouldInjectThisTurn, false, "turn 2: still all protected")
+    assert.equal(
+        state.nudges.lastNudgeShownTokens,
+        225_000,
+        "turn 2: baseline preserved — NOT reset (prevents loop)",
+    )
+
+    // Turn 3: more growth, still all-protected
+    injectCompressNudges(state, config, logger, [protectedTurn("a3", 240_000)], {} as any)
+    assert.equal(state.nudges.shouldInjectThisTurn, false, "turn 3: still all protected")
+    assert.equal(
+        state.nudges.lastNudgeShownTokens,
+        225_000,
+        "turn 3: baseline still preserved — no loop",
     )
 })
 

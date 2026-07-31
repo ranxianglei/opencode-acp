@@ -20,4 +20,19 @@
 ## Verification
 
 - `npm run typecheck` — clean
-- `npm test` — 941 tests pass, 0 failures
+- `npm test` — 942 tests pass, 0 failures
+
+## Additional Fix: Nudge Loop Bug (lastNudgeShownTokens reset)
+
+### Problem
+When `nothingToCompress` was true (all ranges protected), `lastNudgeShownTokens` was reset to `undefined`. This caused a loop: next turn, `growthReference` fell back to stale `lastPerMessageNudgeTokens` (potentially very old), producing artificially huge growth → nudge fires → nothingToCompress again → reset → repeat every turn.
+
+### Changes
+- `lib/messages/inject/inject.ts`:
+  - Removed `lastNudgeShownTokens = undefined` from `nothingToCompress` path (lines 367-369 deleted). Baseline preserved, half-threshold gate applies naturally.
+  - Fixed growth display: `currentTokens - lastPerMessageNudgeTokens` → `currentTokens - (lastNudgeShownTokens ?? lastPerMessageNudgeTokens)`. Display now matches the actual growthReference used for nudge decisions.
+
+### Tests
+- `tests/inject.test.ts`:
+  - Updated "pending nudge cleared when suppressed" → "pending nudge preserved when all-protected — no loop" (asserts baseline kept, not reset)
+  - Added "multi-turn: all-protected does not loop (lastNudgeShownTokens stable)" — 3-turn regression test verifying baseline stability

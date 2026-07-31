@@ -364,9 +364,9 @@ export const injectCompressNudges = (
     const shouldInjectNudge = nudgeAllowed && (!nothingToCompress || emergencyOverride)
     let shouldInject = shouldInjectNudge
 
-    if (nudgeAllowed && nothingToCompress && !emergencyOverride) {
-        state.nudges.lastNudgeShownTokens = undefined
-    }
+    // Keep lastNudgeShownTokens when nothingToCompress — resetting it
+    // reintroduces the nudge loop (baseline wiped → stale growthReference
+    // → nudge fires every turn).
 
     // Issue #216 Defect 1: only apply anchored nudge text when there IS something
     // to compress. Previously applyAnchoredNudges ran before nothingToCompress was
@@ -494,8 +494,9 @@ export const injectCompressNudges = (
             const pct = (n: number) =>
                 n > 0 ? Math.max(1, Math.round((n / composition.total) * 100)) : 0
             const growth =
-                currentTokens !== undefined && state.nudges.lastPerMessageNudgeTokens !== undefined
-                    ? currentTokens - state.nudges.lastPerMessageNudgeTokens
+                currentTokens !== undefined &&
+                (state.nudges.lastNudgeShownTokens ?? state.nudges.lastPerMessageNudgeTokens) !== undefined
+                    ? currentTokens - (state.nudges.lastNudgeShownTokens ?? state.nudges.lastPerMessageNudgeTokens!)
                     : 0
             const growthStr = growth > 0 ? ` (+${fmt(growth)} since last nudge)` : ""
 
