@@ -751,11 +751,11 @@ test("growth floor: 98% emergency override fires regardless of growth", () => {
     )
 })
 
-test("nudge suppressed when filter has no recommendations (all ranges below last-segment floor)", () => {
-    // 1M model: growthThreshold=50K, lastSegmentFloor=100K
+test("nudge fires when small ranges exist — Issue #251: no floor suppression at large context", () => {
+    // 1M model: growthThreshold=50K
     // Growth of 55K > 50K threshold → nudgeAllowed = true
-    // But tool output is 80K chars (~20K tokens) < 100K floor → filtered out
-    // shouldInjectThisTurn = false (no ranges to recommend, not emergency)
+    // Tool output is 80K chars (~20K tokens) — before #251 this was < 100K floor → suppressed
+    // After #251: filterRecommendedRanges never suppresses → range shown → nudge fires
     const state = createSessionState()
     state.modelContextLimit = 1_000_000
     state.nudges.lastPerMessageNudgeTokens = 200_000
@@ -776,14 +776,13 @@ test("nudge suppressed when filter has no recommendations (all ranges below last
 
     assert.equal(
         state.nudges.shouldInjectThisTurn,
-        false,
-        "55K growth triggers nudgeAllowed but 20K tool output < 100K floor → no recommendations → nudge suppressed",
+        true,
+        "55K growth + 20K tool output → range recommended → nudge fires (Issue #251 fix)",
     )
 
     const injected = suffixText(messages)
-    assert.ok(!injected.includes("Breakdown:"), "no breakdown when no recommendations")
-    assert.ok(!injected.includes("efficiency nudge"), "no efficiency nudge text")
-    assert.ok(!injected.includes("Context limit reached"), "no emergency alert")
+    assert.ok(injected.includes("Breakdown:"), "breakdown shown when range recommended")
+    assert.ok(!injected.includes("Context limit reached"), "no emergency alert — not at max limit")
 })
 
 test("nudge suppressed when all content is protected (nothing to compress)", () => {
@@ -901,7 +900,7 @@ test("baseline preserved when nudge suppressed — growth accumulates (all prote
     )
 })
 
-test("baseline preserved when filter suppressed — compressible too small", () => {
+test("baseline preserved when nudge fires for small compressible — Issue #251", () => {
     const state = createSessionState()
     state.modelContextLimit = 1_000_000
     state.messageIds.byRawId.set("u1", "m00001")
@@ -919,11 +918,11 @@ test("baseline preserved when filter suppressed — compressible too small", () 
         ]),
     ]
     injectCompressNudges(state, config, logger, turn1, {} as any)
-    assert.equal(state.nudges.shouldInjectThisTurn, false, "55K growth but 20K compressible < 100K floor → suppressed")
+    assert.equal(state.nudges.shouldInjectThisTurn, true, "55K growth + 20K compressible → nudge fires (Issue #251)")
     assert.equal(
         state.nudges.lastPerMessageNudgeTokens,
         200_000,
-        "baseline preserved — growth accumulates until compressible content exists",
+        "baseline preserved on nudge fire — only advances after actual compression (inject.ts:537)",
     )
 })
 

@@ -398,12 +398,15 @@ test("INV4c: computeShouldNudge returns false when growth step not met and not o
 })
 
 // ═══════════════════════════════════════════════════════════════════════
-// INV5: filterRecommendedRanges — suppressed ⟹ effective < growth threshold
+// INV5: filterRecommendedRanges — always returns all input ranges
 // ═══════════════════════════════════════════════════════════════════════
-// Correctness property: when the filter suppresses all recommendations,
-// the effective compressible tokens must be below the growth threshold.
+// Issue #251 regression: filterRecommendedRanges used to suppress ranges
+// below a context-relative threshold (5% of modelContextLimit). At 1M context
+// this meant 50K+ of compressible content was never recommended.
+// New invariant: ALL input ranges are always returned (no suppression).
+// The minCompressRange backstop in range.ts handles garbage filtering.
 
-test("INV5: filterRecommendedRanges suppressed implies effective below threshold", () => {
+test("INV5: filterRecommendedRanges always returns all input ranges", () => {
     fc.assert(
         fc.property(
             fc.array(
@@ -417,34 +420,17 @@ test("INV5: filterRecommendedRanges suppressed implies effective below threshold
                 }),
                 { minLength: 1, maxLength: 20 },
             ),
-            arbModelLimit,
-            (ranges, modelContextLimit) => {
-                const growthRatio = 0.05
-                const growthThreshold = modelContextLimit * growthRatio
-                const lastSegmentFloor = growthThreshold * 2
-
+            (ranges) => {
                 const result = filterRecommendedRanges(
                     ranges as CompressibleRange[],
                     [],
-                    { modelContextLimit, growthRatio },
+                    {},
                 )
-
-                if (result.length === 0) {
-                    // Suppressed — verify effective compressible < threshold
-                    const lastIndex = ranges.length - 1
-                    let effective = 0
-                    for (let i = 0; i < ranges.length; i++) {
-                        if (i === lastIndex) {
-                            effective += Math.max(0, ranges[i]!.tokens - lastSegmentFloor)
-                        } else {
-                            effective += ranges[i]!.tokens
-                        }
-                    }
-                    assert.ok(
-                        effective < growthThreshold,
-                        `Suppressed but effective=${effective} >= threshold=${growthThreshold}`,
-                    )
-                }
+                assert.equal(
+                    result.length,
+                    ranges.length,
+                    `Input has ${ranges.length} ranges but got ${result.length} — suppression should not occur`,
+                )
             },
         ),
         { numRuns: 300 },
