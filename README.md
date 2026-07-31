@@ -492,6 +492,15 @@ For the complete list with root cause analysis, see the [bug tracker](https://gi
 
 ## Changelog
 
+### v1.14.8-dev.4 — Dev Prerelease (1 PR since v1.14.8-dev.3)
+
+Dev prerelease covering PR #252. Published to `dev` npm tag for early testing.
+
+**PRs included**:
+- **#252** — Two fixes: (1) **Issue #251**: `filterRecommendedRanges` suppressed ALL recommendations when compressible content was below 5% of modelContextLimit (50K at 1M context). Rewrote to always show all ranges with `dangerous: true` on the last segment. Simplified `RangeFilterOptions`. (2) **Nudge loop fix**: `lastNudgeShownTokens` was reset to `undefined` on `nothingToCompress`, causing `growthReference` to fall back to stale session-start baseline → nudges firing every turn. Removed the reset. Also fixed growth display to use `lastNudgeShownTokens ?? lastPerMessageNudgeTokens` matching the actual decision logic. Oracle + Explore review: both APPROVE.
+
+**Install**: `opencode plugin opencode-acp@dev --global`
+
 ### v1.14.8 — Stable Release (10 PRs since v1.14.7)
 
 Stable release promoted from dev prereleases v1.14.8-dev.1 through v1.14.8-dev.3. Includes all fixes tested in the dev channel.

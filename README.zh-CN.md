@@ -446,6 +446,15 @@ ACP 是 DCP 的直接替代品。迁移步骤：
 
 ## 更新日志
 
+### v1.14.8-dev.4 — Dev 预发布（v1.14.8-dev.3 以来 1 个 PR）
+
+Dev 预发布，涵盖 PR #252。发布到 `dev` npm tag 供早期测试。
+
+**包含的 PR**：
+- **#252** — 两个修复：(1) **Issue #251**：`filterRecommendedRanges` 在可压缩内容低于 modelContextLimit 的 5%（1M 上下文为 50K）时抑制所有推荐。重写为始终显示所有范围，最后一段标记 `dangerous: true`。简化 `RangeFilterOptions`。(2) **Nudge 循环修复**：`nothingToCompress` 时 `lastNudgeShownTokens` 被重置为 `undefined`，导致 `growthReference` 回退到 session 开始时的 stale baseline → 每轮都触发 nudge。移除该重置。同时修复增长显示使用 `lastNudgeShownTokens ?? lastPerMessageNudgeTokens`，与实际决策逻辑一致。Oracle + Explore Review：均通过。
+
+**安装**：`opencode plugin opencode-acp@dev --global`
+
 ### v1.14.8-dev.3 — Dev 预发布（v1.14.8-dev.2 以来 1 个 PR）
 
 Dev 预发布，涵盖 PR #248。发布到 `dev` npm tag 供早期测试。
