@@ -343,42 +343,30 @@ export const injectCompressNudges = (
     const recommendedRanges = filterRecommendedRanges(
         unprotectedCompressible,
         contextRanges.protected,
-        { modelContextLimit, growthRatio: 0.05, logger },
+        { logger },
     )
     const hasRecommendations = recommendedRanges.length > 0
 
-    if (config.debug && contextRanges.compressible.length > 0 && modelContextLimit) {
-        const growthThreshold = modelContextLimit * 0.05
-        const lastSegmentFloor = growthThreshold * 2
+    if (config.debug && contextRanges.compressible.length > 0) {
         const compressible = contextRanges.compressible
-        const lastRange = compressible[compressible.length - 1]
-        const lastIncluded = lastRange.tokens >= lastSegmentFloor
-        const nonLastTokens = compressible
-            .slice(0, -1)
-            .reduce((s, r) => s + r.tokens, 0)
-        const effective = nonLastTokens + Math.max(0, lastRange.tokens - lastSegmentFloor)
-        const suppressed = effective < growthThreshold
         const fmt = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n))
         const lines = [
-            `[ACP Debug] Recommendation filter decision:`,
+            `[ACP Debug] Recommendation filter:`,
             `  Input: ${compressible.length} range(s), ${fmt(compressible.reduce((s, r) => s + r.tokens, 0))} tokens`,
-            `  Thresholds: growth=${fmt(growthThreshold)}, lastSegmentFloor=${fmt(lastSegmentFloor)}`,
-            `  Last segment: ${lastRange.startRef}–${lastRange.endRef} ${fmt(lastRange.tokens)} tokens → ${lastIncluded ? "included (dangerous)" : "excluded (< floor)"}`,
-            `  Effective compressible: ${fmt(effective)} → ${suppressed ? "SUPPRESSED (< growth threshold)" : `${recommendedRanges.length} range(s) recommended`}`,
+            `  Output: ${recommendedRanges.length} range(s) (last segment marked dangerous)`,
         ]
         logger.debug(lines.join("\n"))
     }
 
-    const filterSuppressed = contextRanges.compressible.length > 0 && !hasRecommendations
     const allProtected = contextRanges.compressible.length === 0 && contextRanges.protected.length > 0
     const allInProtectedZone = protectedRefs.size > 0 && unprotectedCompressible.length === 0
-    const nothingToCompress = filterSuppressed || allProtected || allInProtectedZone
+    const nothingToCompress = allProtected || allInProtectedZone
     const shouldInjectNudge = nudgeAllowed && (!nothingToCompress || emergencyOverride)
     let shouldInject = shouldInjectNudge
 
-    if (nudgeAllowed && nothingToCompress && !emergencyOverride) {
-        state.nudges.lastNudgeShownTokens = undefined
-    }
+    // Keep lastNudgeShownTokens when nothingToCompress — resetting it
+    // reintroduces the nudge loop (baseline wiped → stale growthReference
+    // → nudge fires every turn).
 
     // Issue #216 Defect 1: only apply anchored nudge text when there IS something
     // to compress. Previously applyAnchoredNudges ran before nothingToCompress was
@@ -506,8 +494,9 @@ export const injectCompressNudges = (
             const pct = (n: number) =>
                 n > 0 ? Math.max(1, Math.round((n / composition.total) * 100)) : 0
             const growth =
-                currentTokens !== undefined && state.nudges.lastPerMessageNudgeTokens !== undefined
-                    ? currentTokens - state.nudges.lastPerMessageNudgeTokens
+                currentTokens !== undefined &&
+                (state.nudges.lastNudgeShownTokens ?? state.nudges.lastPerMessageNudgeTokens) !== undefined
+                    ? currentTokens - (state.nudges.lastNudgeShownTokens ?? state.nudges.lastPerMessageNudgeTokens!)
                     : 0
             const growthStr = growth > 0 ? ` (+${fmt(growth)} since last nudge)` : ""
 

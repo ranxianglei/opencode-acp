@@ -751,11 +751,11 @@ test("growth floor: 98% emergency override fires regardless of growth", () => {
     )
 })
 
-test("nudge suppressed when filter has no recommendations (all ranges below last-segment floor)", () => {
-    // 1M model: growthThreshold=50K, lastSegmentFloor=100K
+test("nudge fires when small ranges exist — Issue #251: no floor suppression at large context", () => {
+    // 1M model: growthThreshold=50K
     // Growth of 55K > 50K threshold → nudgeAllowed = true
-    // But tool output is 80K chars (~20K tokens) < 100K floor → filtered out
-    // shouldInjectThisTurn = false (no ranges to recommend, not emergency)
+    // Tool output is 80K chars (~20K tokens) — before #251 this was < 100K floor → suppressed
+    // After #251: filterRecommendedRanges never suppresses → range shown → nudge fires
     const state = createSessionState()
     state.modelContextLimit = 1_000_000
     state.nudges.lastPerMessageNudgeTokens = 200_000
@@ -776,14 +776,13 @@ test("nudge suppressed when filter has no recommendations (all ranges below last
 
     assert.equal(
         state.nudges.shouldInjectThisTurn,
-        false,
-        "55K growth triggers nudgeAllowed but 20K tool output < 100K floor → no recommendations → nudge suppressed",
+        true,
+        "55K growth + 20K tool output → range recommended → nudge fires (Issue #251 fix)",
     )
 
     const injected = suffixText(messages)
-    assert.ok(!injected.includes("Breakdown:"), "no breakdown when no recommendations")
-    assert.ok(!injected.includes("efficiency nudge"), "no efficiency nudge text")
-    assert.ok(!injected.includes("Context limit reached"), "no emergency alert")
+    assert.ok(injected.includes("Breakdown:"), "breakdown shown when range recommended")
+    assert.ok(!injected.includes("Context limit reached"), "no emergency alert — not at max limit")
 })
 
 test("nudge suppressed when all content is protected (nothing to compress)", () => {
@@ -901,7 +900,7 @@ test("baseline preserved when nudge suppressed — growth accumulates (all prote
     )
 })
 
-test("baseline preserved when filter suppressed — compressible too small", () => {
+test("baseline preserved when nudge fires for small compressible — Issue #251", () => {
     const state = createSessionState()
     state.modelContextLimit = 1_000_000
     state.messageIds.byRawId.set("u1", "m00001")
@@ -919,15 +918,15 @@ test("baseline preserved when filter suppressed — compressible too small", () 
         ]),
     ]
     injectCompressNudges(state, config, logger, turn1, {} as any)
-    assert.equal(state.nudges.shouldInjectThisTurn, false, "55K growth but 20K compressible < 100K floor → suppressed")
+    assert.equal(state.nudges.shouldInjectThisTurn, true, "55K growth + 20K compressible → nudge fires (Issue #251)")
     assert.equal(
         state.nudges.lastPerMessageNudgeTokens,
         200_000,
-        "baseline preserved — growth accumulates until compressible content exists",
+        "baseline preserved on nudge fire — only advances after actual compression (inject.ts:537)",
     )
 })
 
-test("pending nudge cleared when suppressed — threshold resets to full", () => {
+test("pending nudge preserved when all-protected — no loop", () => {
     const state = createSessionState()
     state.modelContextLimit = 1_000_000
     state.messageIds.byRawId.set("a1", "m00001")
@@ -952,13 +951,62 @@ test("pending nudge cleared when suppressed — threshold resets to full", () =>
     assert.equal(state.nudges.shouldInjectThisTurn, false, "nudge suppressed — all protected")
     assert.equal(
         state.nudges.lastNudgeShownTokens,
-        undefined,
-        "pending nudge cleared — threshold resets to full (not halved) for next check",
+        200_000,
+        "pending nudge baseline preserved — prevents loop (stale fallback → huge growth → re-fire)",
     )
     assert.equal(
         state.nudges.lastPerMessageNudgeTokens,
         200_000,
         "baseline preserved — growth accumulates for next turn",
+    )
+})
+
+test("multi-turn: all-protected does not loop (lastNudgeShownTokens stable)", () => {
+    const state = createSessionState()
+    state.modelContextLimit = 1_000_000
+    state.messageIds.byRawId.set("a1", "m00001")
+    state.messageIds.byRawId.set("a2", "m00002")
+    state.messageIds.byRawId.set("a3", "m00003")
+
+    const config = buildConfig()
+    config.compress.protectedTools = ["skill"]
+    config.compress.maxContextLimit = 500_000
+    config.compress.minContextLimit = 200_000
+
+    state.nudges.lastPerMessageNudgeTokens = 200_000
+
+    const protectedTurn = (id: string, inputTokens: number) =>
+        assistantMsgWithTokens(id, "work", { input: inputTokens, output: 30_000 }, [
+            {
+                id: `${id}-part`, messageID: id, sessionID: SID,
+                type: "tool" as const, tool: "skill", callID: `${id}-call`,
+                state: { status: "completed" as const, input: {}, output: "x".repeat(80_000) },
+            },
+        ])
+
+    // Turn 1: nudge suppressed (all protected)
+    injectCompressNudges(state, config, logger, [protectedTurn("a1", 225_000)], {} as any)
+    assert.equal(state.nudges.shouldInjectThisTurn, false, "turn 1: all protected, nudge suppressed")
+    assert.equal(state.nudges.lastNudgeShownTokens, undefined, "turn 1: no nudge shown yet")
+
+    state.nudges.lastNudgeShownTokens = 225_000
+
+    // Turn 2: growth continues, still all-protected
+    injectCompressNudges(state, config, logger, [protectedTurn("a2", 230_000)], {} as any)
+    assert.equal(state.nudges.shouldInjectThisTurn, false, "turn 2: still all protected")
+    assert.equal(
+        state.nudges.lastNudgeShownTokens,
+        225_000,
+        "turn 2: baseline preserved — NOT reset (prevents loop)",
+    )
+
+    // Turn 3: more growth, still all-protected
+    injectCompressNudges(state, config, logger, [protectedTurn("a3", 240_000)], {} as any)
+    assert.equal(state.nudges.shouldInjectThisTurn, false, "turn 3: still all protected")
+    assert.equal(
+        state.nudges.lastNudgeShownTokens,
+        225_000,
+        "turn 3: baseline still preserved — no loop",
     )
 })
 

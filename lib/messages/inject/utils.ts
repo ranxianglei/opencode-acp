@@ -761,91 +761,45 @@ export function buildCompressibleRanges(
 }
 
 export interface RangeFilterOptions {
-    modelContextLimit: number | undefined
-    growthRatio: number
     logger?: { debug: (msg: string, data?: any) => void }
 }
 
 /**
  * Filter compressible ranges for the recommendation list.
  *
- * Last segment: excluded if < 2× growth threshold; included with
- * `dangerous: true` flag if >= 2× growth threshold.
+ * All ranges are shown to the model — the model decides what to compress.
+ * The last segment is always marked `dangerous: true` (it may still be in
+ * active use; the model is warned in the suffix text).
  *
- * Gate: "effective compressible" = non-last-segment tokens + max(0,
- * last-segment tokens − 2× growth threshold). If effective compressible
- * < growth threshold, suppress all recommendations.
+ * Issue #251: Previously this function used `growthThreshold` (5% of context
+ * window = 50K at 1M) as an aggregate gate — if "effective compressible"
+ * was below the threshold, ALL ranges were suppressed and the nudge was
+ * hidden. At large context windows, individual ranges rarely exceeded this
+ * threshold, so compression was permanently blocked. The aggregate gate
+ * has been removed; `minCompressRange` in `range.ts` (5000 chars) already
+ * prevents garbage compressions as a backstop.
  */
 export function filterRecommendedRanges(
     compressible: CompressibleRange[],
     _protectedRanges: ProtectedRange[],
     options: RangeFilterOptions,
 ): CompressibleRange[] {
-    const { modelContextLimit, growthRatio, logger } = options
+    const { logger } = options
     const log = logger?.debug.bind(logger)
-
-    if (!modelContextLimit || modelContextLimit <= 0) {
-        log?.("filterRecommendedRanges: modelContextLimit unknown, passthrough", {
-            inputCount: compressible.length,
-        })
-        if (compressible.length === 0) return []
-        const passthrough = [...compressible]
-        passthrough[passthrough.length - 1] = {
-            ...passthrough[passthrough.length - 1],
-            dangerous: true,
-        }
-        return passthrough
-    }
 
     if (compressible.length === 0) {
         log?.("filterRecommendedRanges: no compressible ranges, returning empty")
         return []
     }
 
-    const growthThreshold = modelContextLimit * growthRatio
-    const lastSegmentFloor = growthThreshold * 2
+    const result = compressible.map((r, i) =>
+        i === compressible.length - 1 ? { ...r, dangerous: true } : r,
+    )
 
-    const lastIndex = compressible.length - 1
-    const lastRange = compressible[lastIndex]
-    const lastSegmentIncluded = lastRange.tokens >= lastSegmentFloor
-
-    let effectiveCompressible = 0
-    const result: CompressibleRange[] = []
-
-    for (let i = 0; i < compressible.length; i++) {
-        const r = compressible[i]
-        if (i === lastIndex) {
-            const excess = Math.max(0, r.tokens - lastSegmentFloor)
-            effectiveCompressible += excess
-            if (lastSegmentIncluded) {
-                result.push({ ...r, dangerous: true })
-            }
-        } else {
-            effectiveCompressible += r.tokens
-            result.push(r)
-        }
-    }
-
-    const suppressed = effectiveCompressible < growthThreshold
-
-    log?.("filterRecommendedRanges: decision", {
+    log?.("filterRecommendedRanges: passthrough (last segment marked dangerous)", {
         inputRanges: compressible.length,
-        inputTokens: compressible.reduce((s, r) => s + r.tokens, 0),
-        growthThreshold,
-        lastSegmentFloor,
-        lastSegment: {
-            ref: `${lastRange.startRef}–${lastRange.endRef}`,
-            tokens: lastRange.tokens,
-            included: lastSegmentIncluded,
-        },
-        effectiveCompressible,
-        suppressed,
-        outputRanges: suppressed ? 0 : result.length,
+        outputRanges: result.length,
     })
-
-    if (suppressed) {
-        return []
-    }
 
     return result
 }
