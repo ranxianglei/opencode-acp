@@ -492,6 +492,15 @@ For the complete list with root cause analysis, see the [bug tracker](https://gi
 
 ## Changelog
 
+### v1.14.8-dev.5 — Dev Prerelease (1 PR since v1.14.8-dev.4)
+
+Dev prerelease covering PR #257. Published to `dev` npm tag for early testing.
+
+**PRs included**:
+- **#257** — Bump `context-compress-algorithms` from 1.2.1 to 1.3.0. cc-alg 1.3.0 ships holistic TIER2/TIER3 compression prompts — summarize by theme instead of per-block. The old per-block format (Source header + 3-5 bullets + 50-150 tokens per block) caused length overflow when compressing 70+ T1 blocks (~30K chars exceeding `maxSummaryLengthHard`). No source code changes needed (prompts consumed from dependency).
+
+**Install**: `opencode plugin opencode-acp@dev --global`
+
 ### v1.14.8-dev.4 — Dev Prerelease (1 PR since v1.14.8-dev.3)
 
 Dev prerelease covering PR #252. Published to `dev` npm tag for early testing.
