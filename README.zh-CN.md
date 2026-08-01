@@ -446,6 +446,15 @@ ACP 是 DCP 的直接替代品。迁移步骤：
 
 ## 更新日志
 
+### v1.14.8-dev.5 — Dev 预发布（v1.14.8-dev.4 以来 1 个 PR）
+
+Dev 预发布，涵盖 PR #257。发布到 `dev` npm tag 供早期测试。
+
+**包含的 PR**：
+- **#257** — 升级 `context-compress-algorithms` 从 1.2.1 到 1.3.0。cc-alg 1.3.0 提供整体式 TIER2/TIER3 压缩提示——按主题综合而非逐块处理。旧的逐块格式（Source 头 + 每块 3-5 条 + 每块 50-150 tokens）在压缩 70+ 个 T1 块时导致长度溢出（~30K 字符超过 `maxSummaryLengthHard`）。无需源码修改（提示从依赖中获取）。
+
+**安装**: `opencode plugin opencode-acp@dev --global`
+
 ### v1.14.8-dev.4 — Dev 预发布（v1.14.8-dev.3 以来 1 个 PR）
 
 Dev 预发布，涵盖 PR #252。发布到 `dev` npm tag 供早期测试。
