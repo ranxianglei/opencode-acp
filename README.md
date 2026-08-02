@@ -503,6 +503,15 @@ Stable release with nudge loop fix, holistic T2/T3 compression prompts, and mult
 
 **Install**: `opencode plugin opencode-acp@stable --global`
 
+### v1.14.9-dev.2 — Dev Prerelease (1 PR since v1.14.9-dev.1)
+
+Dev prerelease covering PR #263. Published to `dev` npm tag for early testing.
+
+**PRs included**:
+- **#263** — Fix: `omo-mode-injection` filter was dropping entire user messages when OMO mode injections (`<ultrawork-mode>`, `[search-mode]`, etc.) were prepended to user content. Mode injections are prepended via `UserPromptSubmit.additionalContext`, not standalone — the old filter (v1.0.0) matched the injection and returned `drop`, clearing the entire message including the user's actual request. Rewrote to v1.1.0: strips injection blocks and preserves user content via `modify`. Also fixes config validation (messageFilters.filters dynamic key skip) and adds messageFilters to dcp.schema.json.
+
+**Install**: `opencode plugin opencode-acp@dev --global`
+
 ### v1.14.9-dev.1 — Dev Prerelease (1 PR since v1.14.8-dev.5)
 
 Dev prerelease covering PR #259. Published to `dev` npm tag for early testing.

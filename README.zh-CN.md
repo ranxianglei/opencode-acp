@@ -457,6 +457,15 @@ ACP 是 DCP 的直接替代品。迁移步骤：
 
 **安装**：`opencode plugin opencode-acp@stable --global`
 
+### v1.14.9-dev.2 — Dev 预发布（v1.14.9-dev.1 以来 1 个 PR）
+
+Dev 预发布，覆盖 PR #263。已发布到 `dev` npm 标签供早期测试。
+
+**包含的 PR**：
+- **#263** — 修复：`omo-mode-injection` 过滤器在 OMO 模式注入（`<ultrawork-mode>`、`[search-mode]` 等）被前置到用户消息时，会丢弃整个用户消息。模式注入通过 `UserPromptSubmit.additionalContext` 前置，不是独立消息——旧过滤器（v1.0.0）匹配到注入就返回 `drop`，清空了整个消息包括用户的实际请求。重写为 v1.1.0：剥离注入块、通过 `modify` 保留用户内容。同时修复配置校验（messageFilters.filters 动态键跳过）并补充 dcp.schema.json。
+
+**安装**：`opencode plugin opencode-acp@dev --global`
+
 ### v1.14.9-dev.1 — Dev 预发布（v1.14.8-dev.5 以来 1 个 PR）
 
 Dev 预发布，涵盖 PR #259。发布到 `dev` npm tag 供早期测试。
