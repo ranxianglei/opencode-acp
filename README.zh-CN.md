@@ -446,6 +446,17 @@ ACP 是 DCP 的直接替代品。迁移步骤：
 
 ## 更新日志
 
+### v1.14.9 — 正式版（v1.14.8 以来 3 个 PR）
+
+正式版发布，包含 nudge 循环修复、整体式 T2/T3 压缩提示词、多条目 compress 格式文档。
+
+**包含的 PR**：
+- **#252** — 两个修复：(1) **Issue #251**：`filterRecommendedRanges` 在可压缩内容低于 modelContextLimit 的 5% 时抑制所有推荐。重写为始终显示所有范围。(2) **Nudge 循环修复**：`lastNudgeShownTokens` 在 `nothingToCompress` 时被重置为 `undefined`，导致每轮都触发 nudge。
+- **#257** — 升级 `context-compress-algorithms` 1.2.1 → 1.3.0。整体式 TIER2/TIER3 提示词 — 按主题综述而非逐块处理，修复 70+ T1 块时的长度溢出问题（issue #256）。
+- **#259** — 在系统提示词和 T2/T3 nudge 中文档化多条目 compress 格式。compress 工具已支持 `content` 数组（PR #156），但块压缩只展示了单条目格式。
+
+**安装**：`opencode plugin opencode-acp@stable --global`
+
 ### v1.14.9-dev.1 — Dev 预发布（v1.14.8-dev.5 以来 1 个 PR）
 
 Dev 预发布，涵盖 PR #259。发布到 `dev` npm tag 供早期测试。

@@ -492,6 +492,17 @@ For the complete list with root cause analysis, see the [bug tracker](https://gi
 
 ## Changelog
 
+### v1.14.9 — Stable Release (3 PRs since v1.14.8)
+
+Stable release with nudge loop fix, holistic T2/T3 compression prompts, and multi-entry compress format documentation.
+
+**PRs included**:
+- **#252** — Two fixes: (1) **Issue #251**: `filterRecommendedRanges` suppressed ALL recommendations when compressible content was below 5% of modelContextLimit. Rewrote to always show all ranges. (2) **Nudge loop fix**: `lastNudgeShownTokens` reset to `undefined` on `nothingToCompress` caused nudges firing every turn.
+- **#257** — Bump `context-compress-algorithms` 1.2.1 → 1.3.0. Holistic TIER2/TIER3 prompts — summarize by theme instead of per-block, fixing length overflow with 70+ T1 blocks (issue #256).
+- **#259** — Document multi-entry compress format in system prompt and T2/T3 nudge. The compress tool already supported `content` arrays (PR #156), but only single-entry was shown for block-based compression.
+
+**Install**: `opencode plugin opencode-acp@stable --global`
+
 ### v1.14.9-dev.1 — Dev Prerelease (1 PR since v1.14.8-dev.5)
 
 Dev prerelease covering PR #259. Published to `dev` npm tag for early testing.
