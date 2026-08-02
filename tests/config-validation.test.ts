@@ -48,6 +48,13 @@ test("getInvalidConfigKeys does not recurse into modelMaxLimits dynamic keys", (
     assert.deepEqual(result, [])
 })
 
+test("getInvalidConfigKeys does not recurse into messageFilters.filters dynamic keys", () => {
+    const result = getInvalidConfigKeys({
+        messageFilters: { filters: { "omo-mode-injection": { enabled: true } } },
+    })
+    assert.deepEqual(result, [])
+})
+
 test("validateConfigTypes returns empty array for valid config", () => {
     const result = validateConfigTypes({
         enabled: true,

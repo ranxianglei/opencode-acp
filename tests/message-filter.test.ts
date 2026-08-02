@@ -434,7 +434,7 @@ describe("keep-last-only dedup", () => {
         assert.equal(stats.partsFiltered, 0)
     })
 
-    it("mode injection strips all occurrences", () => {
+    it("mode injection strips tag, preserves user content", () => {
         registerMessageFilter(OMO_MODE_FILTER)
         const messages: WithParts[] = [
             { info: { id: "m1", role: "user", time: 1 } as any, parts: [{ type: "text", text: "[search-mode]\nSearch for X" }] },
@@ -442,7 +442,66 @@ describe("keep-last-only dedup", () => {
         ]
         const config = { enabled: true, filters: { "omo-mode-injection": { enabled: true } } }
         applyMessageFilters(messages, config, makeLogger(), { sessionId: "s", isSubAgent: false })
-        assert.equal((messages[0].parts[0] as any).text, "")
-        assert.equal((messages[1].parts[0] as any).text, "")
+        assert.equal((messages[0].parts[0] as any).text, "Search for X")
+        assert.equal((messages[1].parts[0] as any).text, "Analyze Y")
+    })
+})
+
+describe("omo-mode-injection filter (v1.1.0)", () => {
+    const filter = OMO_MODE_FILTER
+
+    it("keeps normal user messages without mode tags", () => {
+        const result = filter.filter(makeCtx({ text: "Fix the bug in auth.ts" }))
+        assert.equal(result.action, "keep")
+    })
+
+    it("keeps assistant messages even with mode tags", () => {
+        const result = filter.filter(makeCtx({ text: "<ultrawork-mode>", role: "assistant" }))
+        assert.equal(result.action, "keep")
+    })
+
+    it("strips ultrawork-mode XML block, preserves user content", () => {
+        const text = `<ultrawork-mode>\n\nMode instructions here.\n\n</ultrawork-mode>\n\nFix the bug in auth.ts`
+        const result = filter.filter(makeCtx({ text }))
+        assert.equal(result.action, "modify")
+        assert.equal(result.text, "Fix the bug in auth.ts")
+    })
+
+    it("strips bracket mode pattern, preserves user content", () => {
+        const text = `[search-mode]\nFind all uses of deprecated API`
+        const result = filter.filter(makeCtx({ text }))
+        assert.equal(result.action, "modify")
+        assert.equal(result.text, "Find all uses of deprecated API")
+    })
+
+    it("strips stacked hyperplan + ultrawork injections", () => {
+        const text = `<hyperplan-ultrawork-mode>\n<ultrawork-mode>\n\nInstructions.\n\n</ultrawork-mode>\n\n</hyperplan-ultrawork-mode>\n\nDo the actual work`
+        const result = filter.filter(makeCtx({ text }))
+        assert.equal(result.action, "modify")
+        assert.equal(result.text, "Do the actual work")
+    })
+
+    it("drops pure mode injection with no user content", () => {
+        const text = `<ultrawork-mode>\n\nInstructions only, no user message.\n\n</ultrawork-mode>`
+        const result = filter.filter(makeCtx({ text }))
+        assert.equal(result.action, "drop")
+    })
+
+    it("drops pure bracket mode with no user content", () => {
+        const result = filter.filter(makeCtx({ text: "[ultrawork-mode]" }))
+        assert.equal(result.action, "drop")
+    })
+
+    it("handles unclosed XML tag gracefully (strips opening tag only)", () => {
+        const text = `<ultrawork-mode>\nThis is the user content without closing tag`
+        const result = filter.filter(makeCtx({ text }))
+        assert.equal(result.action, "modify")
+        assert.equal(result.text, "This is the user content without closing tag")
+    })
+
+    it("preserves user content with angle brackets that are not mode tags", () => {
+        const text = `Use <template> in the code`
+        const result = filter.filter(makeCtx({ text }))
+        assert.equal(result.action, "keep")
     })
 })
