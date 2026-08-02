@@ -446,6 +446,15 @@ ACP 是 DCP 的直接替代品。迁移步骤：
 
 ## 更新日志
 
+### v1.14.9-dev.1 — Dev 预发布（v1.14.8-dev.5 以来 1 个 PR）
+
+Dev 预发布，涵盖 PR #259。发布到 `dev` npm tag 供早期测试。
+
+**包含的 PR**：
+- **#259** — 在系统提示词和 T2/T3 nudge 中文档化多条目 compress 格式。compress 工具已支持 `content` 数组（PR #156），但块压缩只展示了单条目格式。现在两种格式都被中立地文档化。
+
+**安装**：`opencode plugin opencode-acp@dev --global`
+
 ### v1.14.8-dev.5 — Dev 预发布（v1.14.8-dev.4 以来 1 个 PR）
 
 Dev 预发布，涵盖 PR #257。发布到 `dev` npm tag 供早期测试。
