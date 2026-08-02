@@ -471,7 +471,7 @@ export const injectCompressNudges = (
                 .join("\n")
             const extraCount = candidates.length > 10 ? `\n...and ${candidates.length - 10} more` : ""
 
-            const tierText = `\n\n[Tier ${tc.triggerTier} Trigger] ${sourceTier} summaries accumulated (${fmt(candidateTokens)} tokens across ${candidates.length} blocks). ${action} them to free context.\n\nTarget blocks (oldest first):\n${blockList}${extraCount}\n\nCompress range: \`content: [{ startId: "b${firstBlock.blockId}", endId: "b${lastBlock.blockId}", summary: "..." }]\`\n\n${rules}`
+            const tierText = `\n\n[Tier ${tc.triggerTier} Trigger] ${sourceTier} summaries accumulated (${fmt(candidateTokens)} tokens across ${candidates.length} blocks). ${action} them to free context.\n\nTarget blocks (oldest first):\n${blockList}${extraCount}\n\nCompress range: \`content: [{ startId: "b${firstBlock.blockId}", endId: "b${lastBlock.blockId}", summary: "..." }]\`\nMultiple entries create separate blocks: \`content: [{ startId: "b${firstBlock.blockId}", endId: "b...", summary: "..." }, { startId: "b...", endId: "b${lastBlock.blockId}", summary: "..." }]\`\n\n${rules}`
 
             appendToLastTextPart(suffixMessage, tierText)
             shouldInject = true

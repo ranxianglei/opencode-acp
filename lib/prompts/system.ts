@@ -65,7 +65,7 @@ Summaries accumulate as the session grows. When tier-1 summaries pile up, the sy
 - Tier 2: Distillation of old tier-1 block summaries. Uses TIER 2 DISTILLATION rules (decisions/outcomes only, drop paths/code/process).
 - Tier 3: Ultra-condensation of tier-2 summaries. Uses TIER 3 CONDENSATION rules (bare facts, 1-3 lines per block).
 
-To compress blocks: use block IDs as boundaries: \`compress({ content: [{ startId: "b3", endId: "b15", summary: "..." }] })\`. This deactivates the consumed blocks and creates a new higher-tier block. The system prompt at the trigger tells you which rules to follow.
+To compress blocks: use block IDs as boundaries: \`compress({ content: [{ startId: "b3", endId: "b15", summary: "..." }] })\`. Multiple entries create separate blocks: \`compress({ content: [{ startId: "b3", endId: "b10", summary: "..." }, { startId: "b11", endId: "b20", summary: "..." }] })\`. This deactivates the consumed blocks and creates a new higher-tier block per entry. The system prompt at the trigger tells you which rules to follow.
 
 If you are unsure which \`mNNNNN\` refs are still compressible, or which blocks have already consumed which ranges, call \`acp_status\` first. It returns the visible context breakdown and the compressed block list.
 
