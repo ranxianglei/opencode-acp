@@ -492,6 +492,15 @@ For the complete list with root cause analysis, see the [bug tracker](https://gi
 
 ## Changelog
 
+### v1.14.9-dev.1 — Dev Prerelease (1 PR since v1.14.8-dev.5)
+
+Dev prerelease covering PR #259. Published to `dev` npm tag for early testing.
+
+**PRs included**:
+- **#259** — Document multi-entry compress format in system prompt and T2/T3 nudge. The compress tool already supported `content` arrays (PR #156), but only single-entry was shown for block-based compression. Now both formats are documented neutrally.
+
+**Install**: `opencode plugin opencode-acp@dev --global`
+
 ### v1.14.8-dev.5 — Dev Prerelease (1 PR since v1.14.8-dev.4)
 
 Dev prerelease covering PR #257. Published to `dev` npm tag for early testing.
