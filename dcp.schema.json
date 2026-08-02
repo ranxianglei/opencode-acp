@@ -465,6 +465,36 @@
                     }
                 }
             }
+        },
+        "messageFilters": {
+            "type": "object",
+            "description": "Pluggable message filter system for cleaning up third-party (e.g. OMO) injected messages that accumulate duplicates.",
+            "additionalProperties": false,
+            "properties": {
+                "enabled": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Master switch for all message filters."
+                },
+                "filters": {
+                    "type": "object",
+                    "description": "Per-filter config map. Keyed by filter name. Each filter can be individually enabled/disabled.",
+                    "additionalProperties": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                            "enabled": {
+                                "type": "boolean",
+                                "default": true,
+                                "description": "Enable or disable this specific filter."
+                            }
+                        }
+                    }
+                }
+            },
+            "default": {
+                "enabled": true
+            }
         }
     }
 }

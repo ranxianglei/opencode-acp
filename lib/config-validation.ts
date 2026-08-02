@@ -71,8 +71,11 @@ function getConfigKeyPaths(obj: Record<string, any>, prefix = ""): string[] {
         const fullKey = prefix ? `${prefix}.${key}` : key
         keys.push(fullKey)
 
-        // model*Limits are dynamic maps keyed by providerID/modelID; do not recurse into arbitrary IDs.
-        if (fullKey === "compress.modelMaxLimits" || fullKey === "compress.modelMinLimits") {
+        if (
+            fullKey === "compress.modelMaxLimits" ||
+            fullKey === "compress.modelMinLimits" ||
+            fullKey === "messageFilters.filters"
+        ) {
             continue
         }
 
