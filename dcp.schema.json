@@ -487,6 +487,11 @@
                                 "type": "boolean",
                                 "default": true,
                                 "description": "Enable or disable this specific filter."
+                            },
+                            "keepLast": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "description": "Override how many of the most recent matches to keep for keepLastOnly filters."
                             }
                         }
                     }

@@ -65,19 +65,25 @@ export interface MessageFilter {
      */
     filter(ctx: MessageFilterContext): FilterResult
     /**
-     * When true, applyMessageFilters keeps only the LAST matching message
-     * and drops all earlier matches. Useful for repeating directives
+     * When true, applyMessageFilters keeps only the most recent N matching
+     * messages and drops all earlier matches. Useful for repeating directives
      * (e.g., TODO CONTINUATION) where only the latest is relevant.
      * The filter() function still runs per-part to identify matches;
      * the dedup pass then empties earlier occurrences.
      */
     keepLastOnly?: boolean
+    /**
+     * How many of the most recent matches to keep when keepLastOnly is true.
+     * Default: 1. Set to 2+ to preserve recent notifications (e.g., background
+     * task results) while still cleaning up historical accumulation.
+     */
+    keepLast?: number
 }
 
 /**
  * Per-filter configuration: whether the filter is enabled.
  */
-export type MessageFilterConfig = Record<string, { enabled: boolean }>
+export type MessageFilterConfig = Record<string, { enabled: boolean; keepLast?: number }>
 
 /**
  * Top-level configuration for the message filter subsystem.

@@ -222,62 +222,73 @@ describe("applyMessageFilters", () => {
 })
 
 describe("OMO system-reminder filter", () => {
+    beforeEach(() => clearMessageFilters())
     const filter = OMO_SYSTEM_REMINDER_FILTER
 
-    it("keeps normal user messages", () => {
-        const result = filter.filter(makeCtx({ text: "hello world" }))
-        assert.equal(result.action, "keep")
+    it("has keepLastOnly and keepLast=2", () => {
+        assert.equal(filter.keepLastOnly, true)
+        assert.equal(filter.keepLast, 2)
     })
 
-    it("keeps assistant messages with system-reminder tags", () => {
-        const text = "<system-reminder>foo</system-reminder><!-- OMO_INTERNAL_INITIATOR -->"
-        const result = filter.filter(makeCtx({ text, role: "assistant" }))
-        assert.equal(result.action, "keep")
-    })
-
-    it("drops user message that is ONLY a system-reminder block", () => {
+    it("matches user message with system-reminder block", () => {
         const text = `<system-reminder>\n[BG COMPLETE]\n</system-reminder>\n<!-- OMO_INTERNAL_INITIATOR -->`
         const result = filter.filter(makeCtx({ text, role: "user" }))
         assert.equal(result.action, "drop")
     })
 
-    it("modifies user message with system-reminder + real content", () => {
-        const text = `Please help me.\n\n<system-reminder>\n[BG COMPLETE]\n</system-reminder>\n<!-- OMO_INTERNAL_INITIATOR -->`
-        const result = filter.filter(makeCtx({ text, role: "user" }))
-        assert.equal(result.action, "modify")
-        assert.ok(result.text!.includes("Please help me"))
-        assert.ok(!result.text!.includes("<system-reminder>"))
-        assert.ok(!result.text!.includes("OMO_INTERNAL_INITIATOR"))
-    })
-
-    it("strips lone system-reminder without OMO marker", () => {
-        const text = `Real content.\n\n<system-reminder>\nfoo\n</system-reminder>`
-        const result = filter.filter(makeCtx({ text, role: "user" }))
-        assert.equal(result.action, "modify")
-        assert.ok(!result.text!.includes("<system-reminder>"))
-        assert.ok(result.text!.includes("Real content"))
-    })
-
-    it("strips lone OMO marker without system-reminder", () => {
+    it("matches user message with lone OMO marker", () => {
         const text = `Real content.\n<!-- OMO_INTERNAL_INITIATOR -->`
         const result = filter.filter(makeCtx({ text, role: "user" }))
-        assert.equal(result.action, "modify")
-        assert.ok(!result.text!.includes("OMO_INTERNAL_INITIATOR"))
-    })
-
-    it("handles multiple system-reminder blocks in one message", () => {
-        const text = `Real content.\n<system-reminder>A</system-reminder>\n<!-- OMO_INTERNAL_INITIATOR -->\n<system-reminder>B</system-reminder>\n<!-- OMO_INTERNAL_INITIATOR -->`
-        const result = filter.filter(makeCtx({ text, role: "user" }))
-        assert.equal(result.action, "modify")
-        assert.ok(result.text!.includes("Real content"))
-        assert.ok(!result.text!.includes("system-reminder"))
-        assert.ok(!result.text!.includes("OMO_INTERNAL_INITIATOR"))
-    })
-
-    it("drops message that becomes empty after stripping", () => {
-        const text = `   \n\n<system-reminder>\nfoo\n</system-reminder>\n<!-- OMO_INTERNAL_INITIATOR -->\n\n   `
-        const result = filter.filter(makeCtx({ text, role: "user" }))
         assert.equal(result.action, "drop")
+    })
+
+    it("does not match assistant messages", () => {
+        const text = "<system-reminder>foo</system-reminder><!-- OMO_INTERNAL_INITIATOR -->"
+        const result = filter.filter(makeCtx({ text, role: "assistant" }))
+        assert.equal(result.action, "keep")
+    })
+
+    it("does not match plain user messages", () => {
+        const result = filter.filter(makeCtx({ text: "hello world" }))
+        assert.equal(result.action, "keep")
+    })
+
+    it("keeps last 2, drops older ones (issue #267)", () => {
+        registerMessageFilter(OMO_SYSTEM_REMINDER_FILTER)
+        const messages: WithParts[] = [
+            { info: { id: "m1", role: "user", time: 1 } as any, parts: [{ type: "text", text: "<system-reminder>old #1</system-reminder><!-- OMO_INTERNAL_INITIATOR -->" }] },
+            { info: { id: "m2", role: "user", time: 2 } as any, parts: [{ type: "text", text: "real user message" }] },
+            { info: { id: "m3", role: "user", time: 3 } as any, parts: [{ type: "text", text: "<system-reminder>recent #1 [BACKGROUND TASK COMPLETED]</system-reminder><!-- OMO_INTERNAL_INITIATOR -->" }] },
+            { info: { id: "m4", role: "user", time: 4 } as any, parts: [{ type: "text", text: "<system-reminder>recent #2 [BACKGROUND TASK FAILED]</system-reminder><!-- OMO_INTERNAL_INITIATOR -->" }] },
+        ]
+        const config = { enabled: true, filters: { "omo-system-reminder": { enabled: true } } }
+        applyMessageFilters(messages, config, makeLogger(), { sessionId: "s", isSubAgent: false })
+        assert.equal((messages[0].parts[0] as any).text, "", "oldest system-reminder dropped")
+        assert.equal((messages[1].parts[0] as any).text, "real user message", "normal message unaffected")
+        assert.ok((messages[2].parts[0] as any).text.includes("BACKGROUND TASK COMPLETED"), "2nd-most-recent kept")
+        assert.ok((messages[3].parts[0] as any).text.includes("BACKGROUND TASK FAILED"), "most-recent kept")
+    })
+
+    it("single occurrence: no dedup needed", () => {
+        registerMessageFilter(OMO_SYSTEM_REMINDER_FILTER)
+        const messages: WithParts[] = [
+            { info: { id: "m1", role: "user", time: 1 } as any, parts: [{ type: "text", text: "<system-reminder>only one</system-reminder><!-- OMO_INTERNAL_INITIATOR -->" }] },
+        ]
+        const config = { enabled: true, filters: { "omo-system-reminder": { enabled: true } } }
+        applyMessageFilters(messages, config, makeLogger(), { sessionId: "s", isSubAgent: false })
+        assert.equal((messages[0].parts[0] as any).text, "<system-reminder>only one</system-reminder><!-- OMO_INTERNAL_INITIATOR -->")
+    })
+
+    it("exactly 2 occurrences: both kept", () => {
+        registerMessageFilter(OMO_SYSTEM_REMINDER_FILTER)
+        const messages: WithParts[] = [
+            { info: { id: "m1", role: "user", time: 1 } as any, parts: [{ type: "text", text: "<system-reminder>first</system-reminder><!-- OMO_INTERNAL_INITIATOR -->" }] },
+            { info: { id: "m2", role: "user", time: 2 } as any, parts: [{ type: "text", text: "<system-reminder>second</system-reminder><!-- OMO_INTERNAL_INITIATOR -->" }] },
+        ]
+        const config = { enabled: true, filters: { "omo-system-reminder": { enabled: true } } }
+        applyMessageFilters(messages, config, makeLogger(), { sessionId: "s", isSubAgent: false })
+        assert.ok((messages[0].parts[0] as any).text.includes("first"), "first kept")
+        assert.ok((messages[1].parts[0] as any).text.includes("second"), "second kept")
     })
 })
 
@@ -287,7 +298,7 @@ describe("ensureBuiltinFiltersRegistered", () => {
     it("registers the OMO filter", () => {
         ensureBuiltinFiltersRegistered()
         assert.ok(getMessageFilter("omo-system-reminder"))
-        assert.equal(getMessageFilter("omo-system-reminder")!.version, "1.0.0")
+        assert.equal(getMessageFilter("omo-system-reminder")!.version, "1.2.0")
     })
 
     it("is idempotent", () => {
@@ -367,6 +378,22 @@ describe("keep-last-only dedup", () => {
         applyMessageFilters(messages, config, makeLogger(), { sessionId: "s", isSubAgent: false })
         assert.equal((messages[0].parts[0] as any).text, "")
         assert.equal((messages[1].parts[0] as any).text, "[CONTEXT] New context\n<!-- OMO_INTERNAL_INITIATOR -->")
+    })
+
+    it("configurable keepLast override keeps N most recent", () => {
+        registerMessageFilter(OMO_TODO_FILTER)
+        const messages: WithParts[] = [
+            { info: { id: "m1", role: "user", time: 1 } as any, parts: [{ type: "text", text: "[SYSTEM DIRECTIVE: TODO CONTINUATION]\nOld" }] },
+            { info: { id: "m2", role: "user", time: 2 } as any, parts: [{ type: "text", text: "[SYSTEM DIRECTIVE: TODO CONTINUATION]\nMid" }] },
+            { info: { id: "m3", role: "user", time: 3 } as any, parts: [{ type: "text", text: "[SYSTEM DIRECTIVE: TODO CONTINUATION]\nNew" }] },
+            { info: { id: "m4", role: "user", time: 4 } as any, parts: [{ type: "text", text: "[SYSTEM DIRECTIVE: TODO CONTINUATION]\nNewest" }] },
+        ]
+        const config = { enabled: true, filters: { "omo-todo-continuation": { enabled: true, keepLast: 3 } } }
+        applyMessageFilters(messages, config, makeLogger(), { sessionId: "s", isSubAgent: false })
+        assert.equal((messages[0].parts[0] as any).text, "")
+        assert.equal((messages[1].parts[0] as any).text, "[SYSTEM DIRECTIVE: TODO CONTINUATION]\nMid")
+        assert.equal((messages[2].parts[0] as any).text, "[SYSTEM DIRECTIVE: TODO CONTINUATION]\nNew")
+        assert.equal((messages[3].parts[0] as any).text, "[SYSTEM DIRECTIVE: TODO CONTINUATION]\nNewest")
     })
 
     it("handles single occurrence (no dedup needed)", () => {

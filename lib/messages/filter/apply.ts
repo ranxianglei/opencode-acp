@@ -106,7 +106,9 @@ export function applyMessageFilters(
     // Phase 2: keep-last-only dedup (reverse pass)
     const keepLastFilters = allFilters.filter((f) => f.keepLastOnly)
     for (const filter of keepLastFilters) {
-        let foundLast = false
+        const fcKeepLast = config.filters?.[filter.name]?.keepLast
+        const keepCount = Math.max(1, fcKeepLast ?? filter.keepLast ?? 1)
+        let kept = 0
         for (let i = messages.length - 1; i >= 0; i--) {
             const msg = messages[i]
             const role = (msg.info as { role?: string }).role ?? "unknown"
@@ -124,13 +126,13 @@ export function applyMessageFilters(
                     continue
                 }
                 if (decision.action !== "drop" && decision.action !== "modify") continue
-                if (foundLast) {
-                    applyDecision(part as { text?: string }, { action: "drop", reason: `keepLastOnly: earlier occurrence` }, filter.name, i, text)
-                } else {
-                    foundLast = true
+                if (kept < keepCount) {
+                    kept++
                     if (decision.action === "modify" && decision.text !== undefined) {
                         applyDecision(part as { text?: string }, decision, filter.name, i, text)
                     }
+                } else {
+                    applyDecision(part as { text?: string }, { action: "drop", reason: `keepLastOnly(${keepCount}): earlier occurrence` }, filter.name, i, text)
                 }
             }
         }
