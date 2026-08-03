@@ -446,6 +446,15 @@ ACP 是 DCP 的直接替代品。迁移步骤：
 
 ## 更新日志
 
+### v1.14.10 — 正式版（v1.14.9 以来 1 个 PR）
+
+正式版发布，包含 omo-mode-injection 过滤器修复。
+
+**包含的 PR**：
+- **#263** — 修复：`omo-mode-injection` 过滤器在 OMO 模式注入（`<ultrawork-mode>`、`[search-mode]` 等）被前置到用户消息时，会丢弃整个用户消息。模式注入通过 `UserPromptSubmit.additionalContext` 前置，不是独立消息——旧过滤器（v1.0.0）匹配到注入就返回 `drop`，清空了整个消息包括用户的实际请求。重写为 v1.1.0：剥离注入块、通过 `modify` 保留用户内容。同时修复配置校验（messageFilters.filters 动态键跳过）并补充 dcp.schema.json。
+
+**安装**：`opencode plugin opencode-acp@stable --global`
+
 ### v1.14.9 — 正式版（v1.14.8 以来 3 个 PR）
 
 正式版发布，包含 nudge 循环修复、整体式 T2/T3 压缩提示词、多条目 compress 格式文档。

@@ -492,6 +492,15 @@ For the complete list with root cause analysis, see the [bug tracker](https://gi
 
 ## Changelog
 
+### v1.14.10 — Stable Release (1 PR since v1.14.9)
+
+Stable release with the omo-mode-injection filter fix.
+
+**PRs included**:
+- **#263** — Fix: `omo-mode-injection` filter was dropping entire user messages when OMO mode injections (`<ultrawork-mode>`, `[search-mode]`, etc.) were prepended to user content. Mode injections are prepended via `UserPromptSubmit.additionalContext`, not standalone — the old filter (v1.0.0) matched the injection and returned `drop`, clearing the entire message including the user's actual request. Rewrote to v1.1.0: strips injection blocks and preserves user content via `modify`. Also fixes config validation (messageFilters.filters dynamic key skip) and adds messageFilters to dcp.schema.json.
+
+**Install**: `opencode plugin opencode-acp@stable --global`
+
 ### v1.14.9 — Stable Release (3 PRs since v1.14.8)
 
 Stable release with nudge loop fix, holistic T2/T3 compression prompts, and multi-entry compress format documentation.
