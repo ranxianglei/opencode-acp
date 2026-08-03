@@ -446,6 +446,15 @@ ACP 是 DCP 的直接替代品。迁移步骤：
 
 ## 更新日志
 
+### v1.14.12 — 正式版（v1.14.11 以来 1 个 PR）
+
+正式版发布，包含 omo-system-reminder 过滤器修复——剥离 `<system-reminder>` 块时保留用户正文。
+
+**包含的 PR**：
+- **#271** — 修复（#268 后续）：`omo-system-reminder` 过滤器 v1.2.0 对任何含 `<system-reminder>` 的用户消息直接返回 `drop`，当 OMO 将 system-reminder 块注入到用户消息前面时丢失用户正文。改为 v1.3.0：剥离 `<system-reminder>` 块 + OMO 标记，保留剩余用户内容（`modify`）。纯 OMO 消息仍返回 `drop`。Phase 2 `keepLastOnly` 现在对较旧的匹配应用过滤器实际决策（drop 或 modify），不再无条件丢弃。最近 N 条保持不动（语义正确）。与其他 3 个 `keepLastOnly` 过滤器向后兼容（它们只返回 `drop`）。双 Agent Review（Oracle + Explore，全部 APPROVE）。
+
+**安装**：`opencode plugin opencode-acp@stable --global`
+
 ### v1.14.11 — 正式版（v1.14.10 以来 1 个 PR）
 
 正式版发布，包含 omo-system-reminder 过滤器修复和可配置 `keepLast`。
