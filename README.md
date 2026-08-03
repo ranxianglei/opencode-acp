@@ -492,6 +492,15 @@ For the complete list with root cause analysis, see the [bug tracker](https://gi
 
 ## Changelog
 
+### v1.14.12 — Stable Release (1 PR since v1.14.11)
+
+Stable release with the omo-system-reminder filter fix that preserves user content when stripping `<system-reminder>` blocks.
+
+**PRs included**:
+- **#271** — Fix (follow-up to #268): `omo-system-reminder` filter v1.2.0 returned `{ action: "drop" }` for ANY user message containing `<system-reminder>`, losing user text when OMO prepends system-reminder blocks to user messages. Rewrote to v1.3.0: strips `<system-reminder>` blocks + OMO markers, preserves remaining user content via `modify`. Pure OMO messages still return `drop`. Phase 2 `keepLastOnly` now applies the filter's actual decision (drop or modify) to older matches instead of unconditional drop. Recent N matches kept fully untouched (semantically correct). Backward compatible with other 3 `keepLastOnly` filters (they only return `drop`). Dual-agent reviewed (Oracle + Explore, both APPROVE).
+
+**Install**: `opencode plugin opencode-acp@stable --global`
+
 ### v1.14.11 — Stable Release (1 PR since v1.14.10)
 
 Stable release with the omo-system-reminder filter fix and configurable `keepLast`.
