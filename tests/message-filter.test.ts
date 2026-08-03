@@ -236,10 +236,11 @@ describe("OMO system-reminder filter", () => {
         assert.equal(result.action, "drop")
     })
 
-    it("matches user message with lone OMO marker", () => {
+    it("matches user message with lone OMO marker, preserves user content", () => {
         const text = `Real content.\n<!-- OMO_INTERNAL_INITIATOR -->`
         const result = filter.filter(makeCtx({ text, role: "user" }))
-        assert.equal(result.action, "drop")
+        assert.equal(result.action, "modify")
+        assert.equal(result.text, "Real content.")
     })
 
     it("does not match assistant messages", () => {
@@ -290,6 +291,22 @@ describe("OMO system-reminder filter", () => {
         assert.ok((messages[0].parts[0] as any).text.includes("first"), "first kept")
         assert.ok((messages[1].parts[0] as any).text.includes("second"), "second kept")
     })
+
+    it("preserves user content when stripping older system-reminder messages", () => {
+        registerMessageFilter(OMO_SYSTEM_REMINDER_FILTER)
+        const messages: WithParts[] = [
+            { info: { id: "m1", role: "user", time: 1 } as any, parts: [{ type: "text", text: "<system-reminder>[BG DONE] old task</system-reminder>\n\nFix the login bug please" }] },
+            { info: { id: "m2", role: "user", time: 2 } as any, parts: [{ type: "text", text: "<system-reminder>[BG DONE] task 2</system-reminder>\n\nThanks for the help" }] },
+            { info: { id: "m3", role: "user", time: 3 } as any, parts: [{ type: "text", text: "<system-reminder>[BG DONE] task 3</system-reminder><!-- OMO_INTERNAL_INITIATOR -->" }] },
+            { info: { id: "m4", role: "user", time: 4 } as any, parts: [{ type: "text", text: "<system-reminder>[BG DONE] task 4</system-reminder><!-- OMO_INTERNAL_INITIATOR -->" }] },
+        ]
+        const config = { enabled: true, filters: { "omo-system-reminder": { enabled: true } } }
+        applyMessageFilters(messages, config, makeLogger(), { sessionId: "s", isSubAgent: false })
+        assert.equal((messages[0].parts[0] as any).text, "Fix the login bug please", "oldest: user content preserved, blocks stripped")
+        assert.equal((messages[1].parts[0] as any).text, "Thanks for the help", "2nd oldest: user content preserved, blocks stripped")
+        assert.ok((messages[2].parts[0] as any).text.includes("task 3"), "2nd-most-recent kept as-is")
+        assert.ok((messages[3].parts[0] as any).text.includes("task 4"), "most-recent kept as-is")
+    })
 })
 
 describe("ensureBuiltinFiltersRegistered", () => {
@@ -298,7 +315,7 @@ describe("ensureBuiltinFiltersRegistered", () => {
     it("registers the OMO filter", () => {
         ensureBuiltinFiltersRegistered()
         assert.ok(getMessageFilter("omo-system-reminder"))
-        assert.equal(getMessageFilter("omo-system-reminder")!.version, "1.2.0")
+        assert.equal(getMessageFilter("omo-system-reminder")!.version, "1.3.0")
     })
 
     it("is idempotent", () => {

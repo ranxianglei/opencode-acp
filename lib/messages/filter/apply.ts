@@ -128,11 +128,8 @@ export function applyMessageFilters(
                 if (decision.action !== "drop" && decision.action !== "modify") continue
                 if (kept < keepCount) {
                     kept++
-                    if (decision.action === "modify" && decision.text !== undefined) {
-                        applyDecision(part as { text?: string }, decision, filter.name, i, text)
-                    }
                 } else {
-                    applyDecision(part as { text?: string }, { action: "drop", reason: `keepLastOnly(${keepCount}): earlier occurrence` }, filter.name, i, text)
+                    applyDecision(part as { text?: string }, decision, filter.name, i, text)
                 }
             }
         }
