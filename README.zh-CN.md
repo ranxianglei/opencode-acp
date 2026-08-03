@@ -446,6 +446,15 @@ ACP 是 DCP 的直接替代品。迁移步骤：
 
 ## 更新日志
 
+### v1.14.11 — 正式版（v1.14.10 以来 1 个 PR）
+
+正式版发布，包含 omo-system-reminder 过滤器修复和可配置 `keepLast`。
+
+**包含的 PR**：
+- **#268** — 修复（issue #267）：`omo-system-reminder` 过滤器删除所有 `<system-reminder>` 块，导致后台任务通知丢失、主会话无法恢复子代理结果。改为 v1.2.0：`keepLastOnly: true, keepLast: 2` — 保留最近 2 条匹配，丢弃更早的重复。同时添加框架级可配置 `keepLast` 字段，用户可覆盖每个 `keepLastOnly` 过滤器保留最近几条（默认 1，最小 1）。
+
+**安装**：`opencode plugin opencode-acp@stable --global`
+
 ### v1.14.10 — 正式版（v1.14.9 以来 1 个 PR）
 
 正式版发布，包含 omo-mode-injection 过滤器修复。
