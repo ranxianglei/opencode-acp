@@ -492,6 +492,15 @@ For the complete list with root cause analysis, see the [bug tracker](https://gi
 
 ## Changelog
 
+### v1.14.11 — Stable Release (1 PR since v1.14.10)
+
+Stable release with the omo-system-reminder filter fix and configurable `keepLast`.
+
+**PRs included**:
+- **#268** — Fix (issue #267): `omo-system-reminder` filter was stripping ALL `<system-reminder>` blocks from messages, deleting background task notifications and preventing the main session from recovering subagent results. Rewrote to v1.2.0: `keepLastOnly: true, keepLast: 2` — keeps the 2 most recent matches, drops older duplicates. Also adds framework-level configurable `keepLast` field so users can override how many recent matches to keep per `keepLastOnly` filter (default 1, clamped to minimum 1).
+
+**Install**: `opencode plugin opencode-acp@stable --global`
+
 ### v1.14.10 — Stable Release (1 PR since v1.14.9)
 
 Stable release with the omo-mode-injection filter fix.
