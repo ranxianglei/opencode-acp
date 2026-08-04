@@ -2,6 +2,11 @@
 
 Issue: dog/opencode-acp#42 · Branch: `2026-08-05_acp-kernel`
 
+> **⚠️ SUPERSEDED (2026-08-05)**: The phased migration described in §9 below was
+> **rejected** by @dog on issue #42 in favour of a **one-shot fresh rewrite**.
+> See `WORKLOG.md` for the as-built design. This document is retained as the
+> original design rationale; the §9 phase plan was **not** executed.
+
 ## 1. Why a phased migration
 
 The current engine (`lib/compress`, `lib/messages`, `lib/state`, `lib/gc`) is

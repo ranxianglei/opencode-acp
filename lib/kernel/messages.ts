@@ -2,21 +2,16 @@ import type { CoreMessage } from "acp-kernel"
 export type { CoreMessage } from "acp-kernel"
 import type { WithParts } from "../state"
 
-// Message projection between OpenCode's SDK shape (WithParts = { info, parts[] })
-// and acp-kernel's CoreMessage. Phase 1: pure shape translation, not yet wired
-// into the message-transform hook (that is Phase 2 — see devlog DESIGN.md §4).
+// Projection between OpenCode's SDK shape (WithParts = { info, parts[] }) and
+// acp-kernel's CoreMessage.
 //
-// OpenCode Part kinds (see lib/message-ids.ts, lib/messages/utils.ts):
-//   text      { type:"text", text, ignored? }
-//   tool      { type:"tool", tool, callID, messageID?, state:{ status, input?, output?, error?, time? } }
-//   reasoning { type:"reasoning", text }
+// OpenCode Part kinds: text { type,text,ignored? }, tool { type,tool,callID,
+// state:{status,input?,output?,error?} }, reasoning { type,text }.
 //
-// acp-kernel CoreMessage: { id, role, contentType:"text"|"tool-call"|"tool-result"|"reasoning", text?, toolName?, toolCallId? }
-// A single OpenCode tool part spans the call AND its result (state.status
-// pending→completed), so a completed tool part projects to TWO CoreMessages
-// (tool-call + tool-result) sharing the same toolCallId — required so the
-// kernel's protected-tool-pairing (Bug 39) and tool-pair boundary adjustment
-// can match call↔result by toolCallId.
+// A completed OpenCode tool part spans BOTH a tool-call and its tool-result, so
+// it projects to TWO CoreMessages sharing the same toolCallId — required so the
+// kernel's protected-tool pairing (Bug 39) and tool-pair boundary adjustment can
+// match call↔result. Tool result ids use the "#result" suffix.
 
 type AnyPart = {
     type?: string
@@ -28,7 +23,6 @@ type AnyPart = {
         input?: unknown
         output?: unknown
         error?: string | { message?: string }
-        time?: { start?: string; end?: string }
     }
 }
 
@@ -57,8 +51,7 @@ function toolResultText(part: AnyPart): string {
     if (!state) return ""
     if (state.status === "error") {
         const err = state.error
-        const msg = typeof err === "string" ? err : err?.message ?? ""
-        return msg || "tool error"
+        return typeof err === "string" ? err : err?.message ?? "tool error"
     }
     if (state.output !== undefined && state.output !== null) {
         return stringifyContent(state.output)
@@ -75,9 +68,7 @@ export function withPartsToCoreMessages(messages: WithParts[]): CoreMessage[] {
 
         if (role === "user") {
             const text = extractText(parts)
-            if (text.length > 0) {
-                out.push({ id, role: "user", contentType: "text", text })
-            }
+            if (text.length > 0) out.push({ id, role: "user", contentType: "text", text })
             continue
         }
 
@@ -90,12 +81,8 @@ export function withPartsToCoreMessages(messages: WithParts[]): CoreMessage[] {
             const textBody = extractText(parts)
 
             if (toolParts.length === 0) {
-                if (textBody.length > 0) {
-                    out.push({ id, role: "assistant", contentType: "text", text: textBody })
-                }
-                if (reasoningText.length > 0) {
-                    out.push({ id, role: "assistant", contentType: "reasoning", text: reasoningText })
-                }
+                if (textBody.length > 0) out.push({ id, role: "assistant", contentType: "text", text: textBody })
+                if (reasoningText.length > 0) out.push({ id, role: "assistant", contentType: "reasoning", text: reasoningText })
                 continue
             }
 
@@ -121,14 +108,10 @@ export function withPartsToCoreMessages(messages: WithParts[]): CoreMessage[] {
                     })
                 }
             }
-            if (reasoningText.length > 0) {
-                out.push({ id, role: "assistant", contentType: "reasoning", text: reasoningText })
-            }
+            if (reasoningText.length > 0) out.push({ id, role: "assistant", contentType: "reasoning", text: reasoningText })
             continue
         }
 
-        // system / other roles: carry text through as-is so the kernel sees the
-        // full window (it will classify system tokens in the context breakdown).
         const text = extractText(parts)
         if (text.length > 0) {
             out.push({ id, role: role === "system" ? "system" : "user", contentType: "text", text })
@@ -137,38 +120,51 @@ export function withPartsToCoreMessages(messages: WithParts[]): CoreMessage[] {
     return out
 }
 
-// Inverse: given the kernel's output CoreMessage[] and the original OpenCode
-// messages (keyed by id), reconstruct the surviving OpenCode message list in
-// order. Used by Phase 2 to convert processTurn output back to SDK messages.
-//
-// Rules (pai-acp coreOutToAgentMessages pattern):
-//   - CoreMessages whose id starts with "acp_summary_" are synthetic recap
-//     slots — skipped. With compress-as-anchor, summaries live inside the
-//     model's own compress calls, so no synthetic message is emitted.
-//   - A plain id (no '#') maps 1:1 to its original message.
-//   - A split id ("baseId#callID[#result]") means the original assistant
-//     message had multiple tool calls; reconstruct it keeping only the
-//     surviving callIDs.
-export function coreMessagesToWithParts(coreOut: CoreMessage[], originalById: Map<string, WithParts>): WithParts[] {
+const ACP_TAG = /<acp\s[^>]*>m\d{1,5}<\/acp>\n?/g
+const ACP_TAG_LEADING = /^<acp\s[^>]*>m\d{1,5}<\/acp>\n?/
+
+function extractTag(core: CoreMessage): string | null {
+    const match = (core.text ?? "").match(ACP_TAG_LEADING)
+    return match ? match[0].replace(/\n?$/, "") : null
+}
+
+// Reconstruct the OpenCode message list from the kernel's surviving CoreMessage
+// output. Survival order comes from coreOut. Ref tags are extracted from the
+// kernel's render-refs output (burned into core.text) — not from messageRefs —
+// because split assistant messages (baseId#callID) carry per-split refs that
+// only exist on the core, not on the base raw id. Multi-call assistant
+// messages are rebuilt keeping only surviving callIDs. Assistant text/reasoning
+// messages are NOT tagged (the model echoes tags on its own output — pai-acp).
+export interface ReconstructionResult {
+    messages: WithParts[]
+    survivingIds: string[]
+}
+
+export function reconstructMessages(
+    coreOut: CoreMessage[],
+    originalById: Map<string, WithParts>,
+): ReconstructionResult {
     const out: WithParts[] = []
+    const survivingIds: string[] = []
     const emittedBase = new Set<string>()
 
     for (const core of coreOut) {
         if (core.id.startsWith("acp_summary_")) continue
 
         const hashIdx = core.id.indexOf("#")
-        if (hashIdx < 0) {
-            const original = originalById.get(core.id)
-            if (original) out.push(original)
-            continue
-        }
-
-        const baseId = core.id.substring(0, hashIdx)
+        const baseId = hashIdx < 0 ? core.id : core.id.substring(0, hashIdx)
         if (emittedBase.has(baseId)) continue
         emittedBase.add(baseId)
 
         const original = originalById.get(baseId)
         if (!original) continue
+
+        const tag = extractTag(core)
+        if (hashIdx < 0) {
+            out.push(applyRefTag(original, tag))
+            survivingIds.push(baseId)
+            continue
+        }
 
         const survivingCallIds = new Set(
             coreOut
@@ -176,19 +172,38 @@ export function coreMessagesToWithParts(coreOut: CoreMessage[], originalById: Ma
                 .map((c) => c.toolCallId)
                 .filter((cid): cid is string => typeof cid === "string"),
         )
-
-        out.push(reconstructMultiCallMessage(original, survivingCallIds))
+        const filteredParts = ((original.parts as AnyPart[]).filter((part) => {
+            if (part.type === "tool" && typeof part.callID === "string") return survivingCallIds.has(part.callID)
+            return true
+        })) as WithParts["parts"]
+        out.push(applyRefTag({ info: original.info, parts: filteredParts }, tag))
+        survivingIds.push(baseId)
     }
 
-    return out
+    return { messages: out, survivingIds }
 }
 
-function reconstructMultiCallMessage(original: WithParts, survivingCallIds: Set<string>): WithParts {
-    const filteredParts = (original.parts as AnyPart[]).filter((part) => {
-        if (part.type === "tool" && typeof part.callID === "string") {
-            return survivingCallIds.has(part.callID)
+function applyRefTag(message: WithParts, tag: string | null): WithParts {
+    if (!tag) return message
+    const hasTool = (message.parts as AnyPart[]).some((p) => p.type === "tool")
+    if (message.info.role === "assistant" && !hasTool) return message
+    return patchTag(message, tag)
+}
+
+function patchTag(original: WithParts, tag: string): WithParts {
+    const parts = (original.parts as AnyPart[]).map((p) => ({ ...p }))
+    for (const p of parts) {
+        if (p.type === "text" && typeof p.text === "string") {
+            p.text = p.text.replace(ACP_TAG, "").replace(/\n+$/, "")
         }
-        return true
-    })
-    return { info: original.info, parts: filteredParts as WithParts["parts"] }
+    }
+    for (let i = parts.length - 1; i >= 0; i--) {
+        const p = parts[i]!
+        if (p.type === "text" && typeof p.text === "string") {
+            p.text = p.text.length > 0 ? `${p.text}\n\n${tag}` : tag
+            return { info: original.info, parts: parts as WithParts["parts"] }
+        }
+    }
+    parts.push({ type: "text", text: tag })
+    return { info: original.info, parts: parts as WithParts["parts"] }
 }
