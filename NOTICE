@@ -12,6 +12,16 @@ into this AGPL distribution become part of the combined AGPL work.
 For the standalone MIT-licensed version, install
 `context-compress-algorithms` directly.
 
+This distribution also bundles acp-kernel
+(https://github.com/ranxianglei/acp-kernel), the framework-agnostic
+compression engine, originally published under the MIT License. It is
+inline-bundled into dist/index.js so npm consumers install no extra
+dependency. The MIT-licensed source retains its MIT status when consumed
+directly; the bytes inlined into this AGPL distribution become part of the
+combined AGPL work.
+
+For the standalone MIT-licensed version, install `acp-kernel` directly.
+
 MIT License (context-compress-algorithms):
 
   Copyright (c) 2026 ranxianglei

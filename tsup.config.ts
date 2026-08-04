@@ -10,7 +10,8 @@ export default defineConfig({
     // Bundle both:
     //   - jsonc-parser: broken ESM imports when external
     //   - context-compress-algorithms: published tarball must be self-contained (file: dep does not survive pack)
-    noExternal: ["jsonc-parser", "context-compress-algorithms"],
+    //   - acp-kernel: published tarball must be self-contained (compression engine, inline-bundled)
+    noExternal: ["jsonc-parser", "context-compress-algorithms", "acp-kernel"],
     define: {
         ACP_VERSION: JSON.stringify(pkg.version),
     },
