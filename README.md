@@ -492,6 +492,15 @@ For the complete list with root cause analysis, see the [bug tracker](https://gi
 
 ## Changelog
 
+### v1.14.13-dev.1 — Dev Prerelease (1 PR since v1.14.12)
+
+Dev prerelease covering PR #276. Published to `dev` npm tag for early testing.
+
+**PRs included**:
+- **#276** — Promote `allowSubAgents` from experimental to top-level config field, change default from `false` to `true`. Subagent sessions now get compression by default. Fully backward compatible: old `experimental.allowSubAgents` configs still work (top-level takes priority). Updated all 4 hook sites, schema, config validation, and 6 documentation files. Dual-agent reviewed (Oracle + Explore, both APPROVE).
+
+**Install**: `opencode plugin opencode-acp@dev --global`
+
 ### v1.14.12 — Stable Release (1 PR since v1.14.11)
 
 Stable release with the omo-system-reminder filter fix that preserves user content when stripping `<system-reminder>` blocks.
