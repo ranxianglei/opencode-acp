@@ -4,6 +4,7 @@ import type { Logger } from "../logger"
 import { countTokens } from "../token-utils"
 import type { AcpCoreRuntime } from "./runtime"
 import type { SessionModelLimits } from "./hooks"
+import { versionBanner, VERSION } from "./version"
 
 export interface AcpCommandContext {
     subcommand: string
@@ -44,14 +45,30 @@ function formatK(n: number): string {
 export async function handleAcpCommand(ctx: AcpCommandContext): Promise<boolean> {
     const sub = ctx.subcommand
 
+    if (sub === "version") {
+        await sendIgnored(
+            ctx,
+            [
+                versionBanner(),
+                `  opencode-acp : v${VERSION.package}`,
+                `  engine      : ${VERSION.engine}`,
+                `  acp-kernel  : v${VERSION.kernel}`,
+            ].join("\n"),
+        )
+        return true
+    }
+
     if (sub === "help" || sub === "") {
         await sendIgnored(
             ctx,
             [
+                versionBanner(),
+                "",
                 "ACP commands:",
-                "  /acp          show this help",
-                "  /acp context  show context usage + compressible ranges",
-                "  /acp stats    show compression statistics",
+                "  /acp           show this help",
+                "  /acp version   show version + engine (confirm kernel build is active)",
+                "  /acp context   show context usage + compressible ranges",
+                "  /acp stats     show compression statistics",
             ].join("\n"),
         )
         return true
@@ -66,6 +83,7 @@ export async function handleAcpCommand(ctx: AcpCommandContext): Promise<boolean>
     if (sub === "stats" || sub === "status") {
         const active = state.blocks.filter((b) => b.active)
         const lines = [
+            versionBanner(),
             `ACP stats — session ${ctx.sessionId}`,
             `Context: ${formatK(tokenCount)} / ${formatK(kernelConfig.modelContextLimit)} tokens (${Math.round(report.contextUsage * 100)}%)`,
             `Blocks: ${state.blocks.length} total, ${active.length} active`,
@@ -78,6 +96,7 @@ export async function handleAcpCommand(ctx: AcpCommandContext): Promise<boolean>
     if (sub === "context") {
         const active = state.blocks.filter((b) => b.active)
         const lines = [
+            versionBanner(),
             `ACP context — ${formatK(tokenCount)} / ${formatK(kernelConfig.modelContextLimit)} tokens (${Math.round(report.contextUsage * 100)}%)`,
             `Active compressed blocks: ${active.length}` + (active.length ? ` (${active.map((b) => b.blockId).join(", ")})` : ""),
         ]

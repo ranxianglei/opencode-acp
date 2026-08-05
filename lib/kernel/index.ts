@@ -25,3 +25,4 @@ export {
     type KernelToolContext,
 } from "./tools"
 export { handleAcpCommand, type AcpCommandContext } from "./commands"
+export { versionBanner, VERSION } from "./version"
