@@ -47,7 +47,6 @@ export interface Commands {
 }
 
 export interface ExperimentalConfig {
-    allowSubAgents: boolean
     customPrompts: boolean
 }
 
@@ -85,6 +84,7 @@ export interface PluginConfig {
     enabled: boolean
     autoUpdate: boolean
     debug: boolean
+    allowSubAgents: boolean
     pruneNotification: "off" | "minimal" | "detailed"
     pruneNotificationType: "chat" | "toast"
     commands: Commands
@@ -174,6 +174,7 @@ const defaultConfig: PluginConfig = {
     enabled: true,
     autoUpdate: true,
     debug: false,
+    allowSubAgents: true,
     pruneNotification: "off",
     // [FIX #20] Default to toast — chat-mode notifications inject an empty
     // user message that freezes the session on providers that reject empty
@@ -184,7 +185,6 @@ const defaultConfig: PluginConfig = {
         protectedTools: [...DEFAULT_PROTECTED_TOOLS],
     },
     experimental: {
-        allowSubAgents: false,
         customPrompts: false,
     },
     protectedFilePatterns: [],
@@ -411,7 +411,6 @@ function mergeExperimental(
     if (override === undefined) return base
 
     return {
-        allowSubAgents: override.allowSubAgents ?? base.allowSubAgents,
         customPrompts: override.customPrompts ?? base.customPrompts,
     }
 }
@@ -498,6 +497,7 @@ function mergeLayer(config: PluginConfig, data: Record<string, any>): PluginConf
         enabled: data.enabled ?? config.enabled,
         autoUpdate: data.autoUpdate ?? config.autoUpdate,
         debug: data.debug ?? config.debug,
+        allowSubAgents: data.allowSubAgents ?? data.experimental?.allowSubAgents ?? config.allowSubAgents,
         pruneNotification: data.pruneNotification ?? config.pruneNotification,
         pruneNotificationType: data.pruneNotificationType ?? config.pruneNotificationType,
         commands: mergeCommands(config.commands, data.commands as any),

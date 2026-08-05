@@ -298,10 +298,10 @@ Each level overrides the previous, so project settings take priority over global
     },
     // Manual mode: disables autonomous context management,
     // tools only run when explicitly triggered via /acp commands
+    // Allow ACP processing in subagent sessions (default: true)
+    "allowSubAgents": true,
     // Experimental settings
     "experimental": {
-        // Allow ACP processing in subagent sessions
-        "allowSubAgents": false,
         // Enable user-editable prompt overrides under dcp-prompts directories
         // When false (default), prompt override files/directories are ignored
         "customPrompts": false,

@@ -9,6 +9,7 @@ export const VALID_CONFIG_KEYS = new Set([
     "autoUpdate",
     "debug",
     "showUpdateToasts",
+    "allowSubAgents",
     "pruneNotification",
     "pruneNotificationType",
     "experimental",

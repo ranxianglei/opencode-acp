@@ -253,10 +253,10 @@ ACP 使用自己的配置文件，按以下顺序搜索：
     },
     // Manual mode: disables autonomous context management,
     // tools only run when explicitly triggered via /acp commands
+    // 允许在子代理会话中运行 ACP（默认：开启）
+    "allowSubAgents": true,
     // Experimental settings
     "experimental": {
-        // Allow ACP processing in subagent sessions
-        "allowSubAgents": false,
         // Enable user-editable prompt overrides under dcp-prompts directories
         // When false (default), prompt override files/directories are ignored
         "customPrompts": false,

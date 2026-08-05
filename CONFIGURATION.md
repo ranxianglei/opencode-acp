@@ -103,15 +103,19 @@ Controls ACP slash commands (`/acp context`, `/acp stats`, etc.).
 
 ---
 
+### `allowSubAgents`
+
+- **Type:** `boolean`
+- **Default:** `true`
+- **Status:** ACTIVE
+- **Description:** Allow ACP to run in sub-agent sessions. When enabled, subagent sessions get full compression, nudge, and context-management capabilities. Set to `false` to restrict ACP to the main session only.
+- **Migration:** Moved from `experimental.allowSubAgents` (default `false`) to top-level `allowSubAgents` (default `true`) in v1.14.13. The old `experimental.allowSubAgents` key is still read for backward compatibility — top-level takes priority.
+
+---
+
 ### `experimental`
 
 Experimental features that may change or be removed.
-
-#### `experimental.allowSubAgents`
-- **Type:** `boolean`
-- **Default:** `false`
-- **Status:** EXPERIMENTAL
-- **Description:** Allow ACP to run in sub-agent sessions. By default, ACP only activates in the main session to avoid interference with delegated tasks.
 
 #### `experimental.customPrompts`
 - **Type:** `boolean`

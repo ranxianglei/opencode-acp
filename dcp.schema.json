@@ -68,6 +68,11 @@
                 "protectedTools": []
             }
         },
+        "allowSubAgents": {
+            "type": "boolean",
+            "default": true,
+            "description": "Allow ACP processing in subagent sessions. When true, subagent sessions get full compression/nudge capabilities. (Moved from experimental in v1.14.13; old experimental.allowSubAgents still read for backward compat.)"
+        },
         "experimental": {
             "type": "object",
             "description": "Experimental settings that may change in future releases",
@@ -76,7 +81,7 @@
                 "allowSubAgents": {
                     "type": "boolean",
                     "default": false,
-                    "description": "Allow DCP processing in subagent sessions"
+                    "description": "[DEPRECATED — use top-level allowSubAgents] Allow ACP processing in subagent sessions. Kept for backward compat; top-level takes priority."
                 },
                 "customPrompts": {
                     "type": "boolean",
@@ -85,7 +90,6 @@
                 }
             },
             "default": {
-                "allowSubAgents": false,
                 "customPrompts": false
             }
         },
