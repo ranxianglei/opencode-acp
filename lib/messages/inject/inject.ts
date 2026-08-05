@@ -347,17 +347,6 @@ export const injectCompressNudges = (
     )
     const hasRecommendations = recommendedRanges.length > 0
 
-    if (config.debug && contextRanges.compressible.length > 0) {
-        const compressible = contextRanges.compressible
-        const fmt = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n))
-        const lines = [
-            `[ACP Debug] Recommendation filter:`,
-            `  Input: ${compressible.length} range(s), ${fmt(compressible.reduce((s, r) => s + r.tokens, 0))} tokens`,
-            `  Output: ${recommendedRanges.length} range(s) (last segment marked dangerous)`,
-        ]
-        logger.debug(lines.join("\n"))
-    }
-
     const allProtected = contextRanges.compressible.length === 0 && contextRanges.protected.length > 0
     const allInProtectedZone = protectedRefs.size > 0 && unprotectedCompressible.length === 0
     const nothingToCompress = allProtected || allInProtectedZone
@@ -485,6 +474,19 @@ export const injectCompressNudges = (
     }
 
     state.nudges.shouldInjectThisTurn = shouldInject
+
+    // Only log recommendation filter when a nudge is actually being injected —
+    // avoids noisy per-turn logging when there's nothing to compress.
+    if (shouldInject && config.debug && contextRanges.compressible.length > 0) {
+        const compressible = contextRanges.compressible
+        const fmt = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n))
+        const lines = [
+            `[ACP Debug] Recommendation filter:`,
+            `  Input: ${compressible.length} range(s), ${fmt(compressible.reduce((s, r) => s + r.tokens, 0))} tokens`,
+            `  Output: ${recommendedRanges.length} range(s) (last segment marked dangerous)`,
+        ]
+        logger.debug(lines.join("\n"))
+    }
 
     let tipsText: string | null = null
 
