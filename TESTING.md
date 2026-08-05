@@ -152,7 +152,8 @@ function buildConfig(mode: "message" | "range" = "message"): PluginConfig {
         pruneNotification: "off",
         pruneNotificationType: "toast",
         commands: { enabled: true, protectedTools: [] },
-        experimental: { allowSubAgents: false, customPrompts: false },
+        allowSubAgents: false,
+        experimental: { customPrompts: false },
         protectedFilePatterns: [],
         compress: {
             mode,
@@ -443,7 +444,8 @@ function buildConfig(): PluginConfig {
         pruneNotification: "off",
         pruneNotificationType: "toast",
         commands: { enabled: true, protectedTools: [] },
-        experimental: { allowSubAgents: false, customPrompts: false },
+        allowSubAgents: false,
+        experimental: { customPrompts: false },
         protectedFilePatterns: [],
         compress: {
             mode: "range",

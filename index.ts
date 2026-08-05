@@ -108,7 +108,7 @@ const server: Plugin = (async (ctx) => {
             }
 
             const toolsToAdd: string[] = []
-            if (config.compress.permission !== "deny" && !config.experimental.allowSubAgents) {
+            if (config.compress.permission !== "deny" && !config.allowSubAgents) {
                 toolsToAdd.push("compress", "decompress", "search_context", "acp_status")
             }
 

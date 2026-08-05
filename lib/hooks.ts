@@ -86,7 +86,7 @@ export function createSystemPromptHandler(
             state.modelContextLimit = input.model.limit.context
         }
 
-        if (!state || (state.isSubAgent && !config.experimental.allowSubAgents)) {
+        if (!state || (state.isSubAgent && !config.allowSubAgents)) {
             return
         }
 
@@ -107,7 +107,7 @@ export function createSystemPromptHandler(
         const newPrompt = renderSystemPrompt(
             runtimePrompts,
             buildProtectedToolsExtension(config.compress.protectedTools),
-            state.isSubAgent && config.experimental.allowSubAgents,
+            state.isSubAgent && config.allowSubAgents,
         )
         if (output.system.length > 0) {
             output.system[output.system.length - 1] += "\n\n" + newPrompt
@@ -163,7 +163,7 @@ export function createChatMessageTransformHandler(
 
         syncCompressPermissionState(state, config, hostPermissions, output.messages)
 
-        if (state.isSubAgent && !config.experimental.allowSubAgents) {
+        if (state.isSubAgent && !config.allowSubAgents) {
             return
         }
 

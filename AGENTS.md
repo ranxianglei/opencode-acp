@@ -265,7 +265,8 @@ Three-layer config merging (later layers override earlier):
     pruneNotification: "detailed",
     pruneNotificationType: "toast",
     commands: { enabled: true, protectedTools: ["task", "skill", "todowrite", "todoread", "compress", "batch", "plan_enter", "plan_exit", "write", "edit"] },
-    experimental: { allowSubAgents: false, customPrompts: false },
+    allowSubAgents: true,
+    experimental: { customPrompts: false },
     protectedFilePatterns: [],
     compress: {
         mode: "range",

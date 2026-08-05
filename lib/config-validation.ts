@@ -9,6 +9,7 @@ export const VALID_CONFIG_KEYS = new Set([
     "autoUpdate",
     "debug",
     "showUpdateToasts",
+    "allowSubAgents",
     "pruneNotification",
     "pruneNotificationType",
     "experimental",
@@ -110,6 +111,10 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
 
     if (config.debug !== undefined && typeof config.debug !== "boolean") {
         errors.push({ key: "debug", expected: "boolean", actual: typeof config.debug })
+    }
+
+    if (config.allowSubAgents !== undefined && typeof config.allowSubAgents !== "boolean") {
+        errors.push({ key: "allowSubAgents", expected: "boolean", actual: typeof config.allowSubAgents })
     }
 
     if (config.pruneNotification !== undefined) {

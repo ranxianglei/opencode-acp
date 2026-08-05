@@ -103,15 +103,19 @@ ACP 从最多三层配置文件中读取（后加载的覆盖先加载的）：
 
 ---
 
+### `allowSubAgents`
+
+- **类型：** `boolean`
+- **默认值：** `true`
+- **状态：** ACTIVE
+- **说明：** 允许 ACP 在子代理（sub-agent）会话中运行。开启后，子代理会话获得完整的压缩、nudge 和上下文管理能力。设为 `false` 可将 ACP 限制在主会话中。
+- **迁移：** v1.14.13 从 `experimental.allowSubAgents`（默认 `false`）移至顶层 `allowSubAgents`（默认 `true`）。旧的 `experimental.allowSubAgents` 仍可读取以保持向后兼容 —— 顶层优先。
+
+---
+
 ### `experimental`
 
 实验性功能，可能变更或移除。
-
-#### `experimental.allowSubAgents`
-- **类型：** `boolean`
-- **默认值：** `false`
-- **状态：** EXPERIMENTAL
-- **说明：** 允许 ACP 在子代理（sub-agent）会话中运行。默认情况下，ACP 仅在主会话中激活，以避免干扰委托任务。
 
 #### `experimental.customPrompts`
 - **类型：** `boolean`
