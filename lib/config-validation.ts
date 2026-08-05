@@ -113,6 +113,10 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
         errors.push({ key: "debug", expected: "boolean", actual: typeof config.debug })
     }
 
+    if (config.allowSubAgents !== undefined && typeof config.allowSubAgents !== "boolean") {
+        errors.push({ key: "allowSubAgents", expected: "boolean", actual: typeof config.allowSubAgents })
+    }
+
     if (config.pruneNotification !== undefined) {
         const validValues = ["off", "minimal", "detailed"]
         if (!validValues.includes(config.pruneNotification)) {
