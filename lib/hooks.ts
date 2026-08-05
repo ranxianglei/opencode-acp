@@ -37,7 +37,6 @@ import { applyMessageFilters } from "./messages/filter/apply"
 import { ensureBuiltinFiltersRegistered } from "./messages/filter/builtin"
 import { createSessionState, saveSessionState, syncToolCache, updatePerTurnState, type SessionStateRegistry } from "./state"
 import { cacheSystemPromptTokens } from "./ui/utils"
-import { sendIgnoredMessage } from "./ui/notification"
 import { runBatchCleanup } from "./gc/merge"
 import { getCurrentTokenUsage } from "./token-utils"
 
@@ -203,22 +202,11 @@ export function createChatMessageTransformHandler(
             compressionPriorities,
             config.debug
                 ? (text: string) => {
+                      // sendIgnoredMessage writes an ignored:true user msg to DB.
+                      // opencode's runtime loop detects it as "last user" (role-only,
+                      // ignores the flag) → phantom turn → compress → notification →
+                      // infinite loop. Use logger.debug + toast instead.
                       logger.debug(`[ACP Debug] Nudge injected:\n${text}`)
-                      if (state.sessionId && lastUserMessage) {
-                          const userInfo = lastUserMessage.info as any
-                          sendIgnoredMessage(
-                              client,
-                              state.sessionId,
-                              `[ACP Debug Nudge]\n${text}`,
-                              {
-                                  providerId: userInfo.model?.providerID,
-                                  modelId: userInfo.model?.modelID,
-                                  agent: userInfo.agent,
-                                  variant: userInfo.variant,
-                              },
-                              logger,
-                          ).catch(() => {})
-                      }
                       client.tui
                           .showToast({
                               body: {
