@@ -24,10 +24,9 @@ ACP reads config from up to three layers (later layers override earlier):
     "$schema": "https://raw.githubusercontent.com/ranxianglei/opencode-acp/master/dcp.schema.json",
     "enabled": true,
     "compress": {
-        "maxContextLimit": "60%",
-        "minContextLimit": "50%",
-        "preserveRecentMessages": 10,
-        "protectedTools": ["skill", "bash"]
+        "maxContextLimit": "70%",
+        "minContextLimit": "70%",
+        "protectedTools": ["skill"]
     }
 }
 ```
