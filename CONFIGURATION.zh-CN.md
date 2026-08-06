@@ -24,10 +24,9 @@ ACP 从最多三层配置文件中读取（后加载的覆盖先加载的）：
     "$schema": "https://raw.githubusercontent.com/ranxianglei/opencode-acp/master/dcp.schema.json",
     "enabled": true,
     "compress": {
-        "maxContextLimit": "60%",
-        "minContextLimit": "50%",
-        "preserveRecentMessages": 10,
-        "protectedTools": ["skill", "bash"]
+        "maxContextLimit": "70%",
+        "minContextLimit": "70%",
+        "protectedTools": ["skill"]
     }
 }
 ```
