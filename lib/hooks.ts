@@ -29,6 +29,7 @@ import {
     handleContextCommand,
     handleStatsCommand,
 } from "./commands"
+import { handleExportCommand } from "./commands/export"
 import { type HostPermissionSnapshot } from "./host-permissions"
 import { compressPermission, syncCompressPermissionState } from "./compress-permission"
 import { hideConsumedCompressCalls } from "./compress/hide-consumed"
@@ -244,6 +245,20 @@ export function createChatMessageTransformHandler(
     }
 }
 
+function buildHelpText(): string {
+    return [
+        "[ACP] Available commands:",
+        "",
+        "  /acp              Show this help",
+        "  /acp context      Token usage breakdown (system, user, assistant, tools)",
+        "  /acp stats        Compression status: blocks, context usage, ranges",
+        "  /acp export       Export active compression blocks to markdown",
+        "                   Options: --output <path>, --tier t1,t2,t3, --stdout, --append",
+        "",
+        "Also accepts /dcp for backward compatibility.",
+    ].join("\n")
+}
+
 export function createCommandExecuteHandler(
     client: any,
     registry: SessionStateRegistry,
@@ -275,11 +290,6 @@ export function createCommandExecuteHandler(
 
             syncCompressPermissionState(state, config, hostPermissions, messages)
 
-            const effectivePermission = compressPermission(state, config)
-            if (effectivePermission === "deny") {
-                return
-            }
-
             const commandCtx = {
                 client,
                 state,
@@ -287,11 +297,29 @@ export function createCommandExecuteHandler(
                 logger,
                 sessionId: input.sessionID,
                 messages,
+                workingDirectory,
             }
 
             const sub = input.arguments?.trim().toLowerCase()
             if (sub === "stats" || sub === "status") {
                 await handleStatsCommand(commandCtx)
+                throw new Error("__DCP_CONTEXT_HANDLED__")
+            }
+
+            if (sub === "export" || sub.startsWith("export ")) {
+                const exportArgs = input.arguments?.trim().slice("export".length).trim() || ""
+                await handleExportCommand(commandCtx, exportArgs)
+                throw new Error("__DCP_CONTEXT_HANDLED__")
+            }
+
+            if (sub === "help" || sub === "") {
+                await sendIgnoredMessage(
+                    client,
+                    input.sessionID,
+                    buildHelpText(),
+                    {},
+                    logger,
+                )
                 throw new Error("__DCP_CONTEXT_HANDLED__")
             }
 
