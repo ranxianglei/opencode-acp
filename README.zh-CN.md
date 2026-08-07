@@ -389,7 +389,7 @@ ACP 暴露六个可编辑的 prompt：
 ACP 是 DCP 的直接替代品。迁移步骤：
 
 1. 从 `opencode.json` 中移除旧的 DCP 插件
-2. 安装 ACP：`opencode plugin install opencode-acp@stable --global`
+2. 安装 ACP：`opencode plugin opencode-acp@stable --global`
 3. 复制配置：`cp ~/.config/opencode/dcp.jsonc ~/.config/opencode/acp.jsonc`
 4. 复制 prompt 覆盖（如有）：`cp -r ~/.config/opencode/dcp-prompts ~/.config/opencode/acp-prompts`
 5. 复制会话状态（可选，保留压缩块）：`cp -r ~/.local/share/opencode/storage/plugin/dcp ~/.local/share/opencode/storage/plugin/acp`

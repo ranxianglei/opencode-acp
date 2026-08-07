@@ -435,7 +435,7 @@ For the `compress` tool, `compress.protectedTools` ensures specific tool outputs
 ACP is a drop-in replacement for DCP. To migrate:
 
 1. Remove the old DCP plugin from your `opencode.json`
-2. Install ACP: `opencode plugin install opencode-acp@stable --global`
+2. Install ACP: `opencode plugin opencode-acp@stable --global`
 3. Copy your config: `cp ~/.config/opencode/dcp.jsonc ~/.config/opencode/acp.jsonc`
 4. Copy prompt overrides (if any): `cp -r ~/.config/opencode/dcp-prompts ~/.config/opencode/acp-prompts`
 5. Copy session state (optional, preserves compression blocks): `cp -r ~/.local/share/opencode/storage/plugin/dcp ~/.local/share/opencode/storage/plugin/acp`
