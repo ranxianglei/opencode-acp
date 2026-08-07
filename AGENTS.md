@@ -116,13 +116,10 @@ opencode-acp/
 │   │   └── truncate.ts               # Age-based deactivation + old-gen summary truncation
 │   │
 │   ├── commands/                     # /acp slash commands
-│   │   ├── index.ts                  # Command barrel (context, stats, manual, decompress, recompress, help)
+│   │   ├── index.ts                  # Command barrel (context, stats, export)
 │   │   ├── context.ts                # /acp context — show current context usage
 │   │   ├── stats.ts                  # /acp stats — show compression statistics
-│   │   ├── manual.ts                 # /acp manual — toggle/trigger manual mode
-│   │   ├── help.ts                   # /acp help — show available commands
-│   │   ├── decompress.ts             # /acp decompress — restore compressed content
-│   │   ├── recompress.ts             # /acp recompress — re-run compression
+│   │   ├── export.ts                 # /acp export — export compression blocks to markdown
 │   │   └── compression-targets.ts    # Target selection for manual compression
 │   │
 │   ├── ui/
@@ -180,7 +177,7 @@ index.ts (Plugin Entry — registers hooks + tools)
     │       └─► stripStaleMetadata() → clean up removed messages' metadata
     │
     ├─► Command Hook (command.execute.before)
-    │       └─► /acp {context|stats|manual|decompress|recompress|help}
+    │       └─► /acp {help|context|stats|export}
     │           (also accepts /dcp for backward compatibility)
     │
     ├─► Event Hook (event)
