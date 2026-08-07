@@ -446,6 +446,16 @@ ACP 是 DCP 的直接替代品。迁移步骤：
 
 ## 更新日志
 
+### v1.14.13 — 正式版（v1.14.12 以来 3 个 PR）
+
+正式版发布，`allowSubAgents` 从实验性参数提升为正式参数（默认：`true`），并更新了配置文档的推荐设置。
+
+**包含的 PR**：
+- **#276** — 将 `allowSubAgents` 从 `experimental` 提升为顶层配置字段，默认值从 `false` 改为 `true`。子 Agent 会话现在默认启用压缩。完全向后兼容：旧的 `experimental.allowSubAgents` 配置仍然有效（顶层优先级更高）。更新了全部 4 个 hook 调用点、schema、配置验证和 6 个文档文件。双 Agent 审查通过（Oracle + Explore，均 APPROVE）。
+- **#280, #281** — 更新文档中的推荐配置：`maxContextLimit: 70%`、`minContextLimit: 70%`，简化 `protectedTools`。
+
+**安装**：`opencode plugin opencode-acp@stable --global`
+
 ### v1.14.13-dev.1 — Dev 预发布版（v1.14.12 以来 1 个 PR）
 
 Dev 预发布版，包含 PR #276。发布到 `dev` npm tag 供早期测试。

@@ -492,6 +492,16 @@ For the complete list with root cause analysis, see the [bug tracker](https://gi
 
 ## Changelog
 
+### v1.14.13 — Stable Release (3 PRs since v1.14.12)
+
+Stable release with `allowSubAgents` promoted to a top-level config field (default: `true`), plus config documentation updates.
+
+**PRs included**:
+- **#276** — Promote `allowSubAgents` from `experimental` to top-level config field, change default from `false` to `true`. Subagent sessions now get compression by default. Fully backward compatible: old `experimental.allowSubAgents` configs still work (top-level takes priority). Updated all 4 hook sites, schema, config validation, and 6 documentation files. Dual-agent reviewed (Oracle + Explore, both APPROVE).
+- **#280, #281** — Update recommended config in documentation: `maxContextLimit: 70%`, `minContextLimit: 70%`, simplified `protectedTools`.
+
+**Install**: `opencode plugin opencode-acp@stable --global`
+
 ### v1.14.13-dev.1 — Dev Prerelease (1 PR since v1.14.12)
 
 Dev prerelease covering PR #276. Published to `dev` npm tag for early testing.
