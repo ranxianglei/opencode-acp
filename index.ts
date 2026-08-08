@@ -1,29 +1,26 @@
 import type { Plugin } from "@opencode-ai/plugin"
 import { getConfig } from "./lib/config"
 import {
-    createAcpStatusTool,
-    createAcpContextRecapTool,
-    createCompressRangeTool,
-    createDecompressTool,
-    createSearchContextTool,
-} from "./lib/compress"
-import {
     compressDisabledByOpencode,
     hasExplicitToolPermission,
     type HostPermissionSnapshot,
 } from "./lib/host-permissions"
 import { Logger } from "./lib/logger"
-import { SessionStateRegistry } from "./lib/state"
-import { PromptStore } from "./lib/prompts/store"
-import {
-    createChatMessageTransformHandler,
-    createCommandExecuteHandler,
-    createEventHandler,
-    createSystemPromptHandler,
-    createTextCompleteHandler,
-} from "./lib/hooks"
 import { configureClientAuth, isSecureMode } from "./lib/auth"
 import { startAutoUpdate } from "./lib/update"
+import {
+    createCoreRuntime,
+    createSessionModelLimits,
+    createSystemPromptHandler,
+    createChatMessageTransformHandler,
+    createTextCompleteHandler,
+    createCommandExecuteHandler,
+    createEventHandler,
+    createCompressTool,
+    createDecompressTool,
+    createSearchContextTool,
+    createAcpStatusTool,
+} from "./lib/kernel"
 
 const server: Plugin = (async (ctx) => {
     const config = getConfig(ctx)
@@ -33,62 +30,49 @@ const server: Plugin = (async (ctx) => {
     }
 
     const logger = new Logger(config.debug)
-    const registry = new SessionStateRegistry(logger)
-    const prompts = new PromptStore(logger, ctx.directory, config.experimental.customPrompts)
+
+    if (isSecureMode()) {
+        configureClientAuth(ctx.client)
+    }
+
+    logger.info("ACP (acp-kernel) initialized")
+
+    startAutoUpdate(ctx, config.autoUpdate)
+
+    const runtime = createCoreRuntime()
+    const modelLimits = createSessionModelLimits()
+
     const hostPermissions: HostPermissionSnapshot = {
         global: undefined,
         agents: {},
     }
 
-    if (isSecureMode()) {
-        configureClientAuth(ctx.client)
-        // logger.info("Secure mode detected, configured client authentication")
-    }
-
-    logger.info("DCP initialized")
-
-    startAutoUpdate(ctx, config.autoUpdate)
-
-    const compressToolContext = {
+    const toolContext = {
         client: ctx.client,
-        registry,
-        logger,
+        runtime,
         config,
-        prompts,
+        logger,
+        modelLimits,
     }
 
     return {
-        "experimental.chat.system.transform": createSystemPromptHandler(
-            registry,
-            logger,
-            config,
-            prompts,
-        ),
+        "experimental.chat.system.transform": createSystemPromptHandler(logger, config, modelLimits),
         "experimental.chat.messages.transform": createChatMessageTransformHandler(
             ctx.client,
-            registry,
+            runtime,
             logger,
             config,
-            prompts,
-            hostPermissions,
+            modelLimits,
         ) as any,
         "experimental.text.complete": createTextCompleteHandler(),
-        "command.execute.before": createCommandExecuteHandler(
-            ctx.client,
-            registry,
-            logger,
-            config,
-            ctx.directory,
-            hostPermissions,
-        ),
-        event: createEventHandler(registry, logger),
+        "command.execute.before": createCommandExecuteHandler(ctx.client, runtime, logger, config, modelLimits),
+        event: createEventHandler(logger),
         tool: {
             ...(config.compress.permission !== "deny" && {
-                compress: createCompressRangeTool(compressToolContext),
-                decompress: createDecompressTool(compressToolContext),
-                search_context: createSearchContextTool(compressToolContext),
-                acp_status: createAcpStatusTool(compressToolContext),
-                acp_context_recap: createAcpContextRecapTool(compressToolContext),
+                compress: createCompressTool(toolContext),
+                decompress: createDecompressTool(toolContext),
+                search_context: createSearchContextTool(toolContext),
+                acp_status: createAcpStatusTool(toolContext),
             }),
         },
         config: async (opencodeConfig) => {
