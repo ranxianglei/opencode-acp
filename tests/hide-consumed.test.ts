@@ -482,4 +482,188 @@ describe("hideConsumedCompressCalls", () => {
         assert.equal(hidden, 3, "5 orphaned - 2 kept = 3 hidden")
         assert.equal(messages.length, 4, "user + 2 kept + user = 4 messages")
     })
+
+    it("batched compress: rewrites kept part to drop consumed sibling entries (issue #288)", () => {
+        const b5 = makeBlock({
+            blockId: 5,
+            active: true,
+            compressMessageId: "msg-batch",
+            compressCallId: "call-batch",
+            startId: "m5",
+            endId: "m6",
+            tier: 1,
+        })
+        const b8 = makeBlock({
+            blockId: 8,
+            active: false,
+            deactivatedByBlockId: 9,
+            compressMessageId: "msg-batch",
+            compressCallId: "call-batch",
+            startId: "m8",
+            endId: "m9",
+            tier: 1,
+        })
+        const b9 = makeBlock({
+            blockId: 9,
+            active: true,
+            compressMessageId: "msg-t2",
+            compressCallId: "call-t2",
+            tier: 2,
+        })
+
+        const state = makeState([b5, b8, b9])
+        const messages: WithParts[] = [
+            { info: { id: "msg-user-1", role: "user" } as any, parts: [{ type: "text", text: "Hi" }] },
+            {
+                info: { id: "msg-batch", role: "assistant" } as any,
+                parts: [
+                    {
+                        type: "tool",
+                        tool: "compress",
+                        callID: "call-batch",
+                        state: {
+                            status: "completed",
+                            input: {
+                                content: [
+                                    { startId: "m5", endId: "m6", summary: "live entry summary" },
+                                    { startId: "m8", endId: "m9", summary: "consumed entry summary" },
+                                ],
+                            },
+                        },
+                    },
+                ],
+            },
+            {
+                info: { id: "msg-t2", role: "assistant" } as any,
+                parts: [{ type: "tool", tool: "compress", callID: "call-t2", state: { status: "completed" } }],
+            },
+        ]
+
+        const hidden = hideConsumedCompressCalls(state as SessionState, messages)
+
+        assert.equal(hidden, 0, "kept batch is not fully removed")
+        const batchMsg = messages.find((m) => m.info.id === "msg-batch")!
+        assert.ok(batchMsg, "batch tool-call message survives (one live sibling)")
+        const part = batchMsg.parts.find((p: any) => p.type === "tool" && p.tool === "compress") as any
+        assert.ok(part, "compress part kept")
+        const content = part.state.input.content
+        assert.equal(content.length, 1, "consumed entry dropped, live entry retained")
+        assert.equal(content[0].startId, "m5", "retained entry is the live block's range")
+        assert.equal(content[0].summary, "live entry summary")
+    })
+
+    it("batched compress: no rewrite when all sibling blocks are live", () => {
+        const b5 = makeBlock({
+            blockId: 5,
+            active: true,
+            compressMessageId: "msg-batch",
+            compressCallId: "call-batch",
+            startId: "m5",
+            endId: "m6",
+        })
+        const b8 = makeBlock({
+            blockId: 8,
+            active: true,
+            compressMessageId: "msg-batch",
+            compressCallId: "call-batch",
+            startId: "m8",
+            endId: "m9",
+        })
+
+        const state = makeState([b5, b8])
+        const messages: WithParts[] = [
+            { info: { id: "msg-user-1", role: "user" } as any, parts: [{ type: "text", text: "Hi" }] },
+            {
+                info: { id: "msg-batch", role: "assistant" } as any,
+                parts: [
+                    {
+                        type: "tool",
+                        tool: "compress",
+                        callID: "call-batch",
+                        state: {
+                            status: "completed",
+                            input: {
+                                content: [
+                                    { startId: "m5", endId: "m6", summary: "S1" },
+                                    { startId: "m8", endId: "m9", summary: "S2" },
+                                ],
+                            },
+                        },
+                    },
+                ],
+            },
+        ]
+
+        const hidden = hideConsumedCompressCalls(state as SessionState, messages)
+
+        assert.equal(hidden, 0)
+        const part = messages
+            .find((m) => m.info.id === "msg-batch")!
+            .parts.find((p: any) => p.type === "tool" && p.tool === "compress") as any
+        assert.equal(part.state.input.content.length, 2, "both live entries retained, no rewrite")
+    })
+
+    it("batched compress: fully removed when all sibling blocks consumed", () => {
+        const b5 = makeBlock({
+            blockId: 5,
+            active: false,
+            deactivatedByBlockId: 9,
+            compressMessageId: "msg-batch",
+            compressCallId: "call-batch",
+            startId: "m5",
+            endId: "m6",
+        })
+        const b8 = makeBlock({
+            blockId: 8,
+            active: false,
+            deactivatedByBlockId: 9,
+            compressMessageId: "msg-batch",
+            compressCallId: "call-batch",
+            startId: "m8",
+            endId: "m9",
+        })
+        const b9 = makeBlock({
+            blockId: 9,
+            active: true,
+            compressMessageId: "msg-t2",
+            compressCallId: "call-t2",
+            tier: 2,
+        })
+
+        const state = makeState([b5, b8, b9])
+        const messages: WithParts[] = [
+            { info: { id: "msg-user-1", role: "user" } as any, parts: [{ type: "text", text: "Hi" }] },
+            {
+                info: { id: "msg-batch", role: "assistant" } as any,
+                parts: [
+                    { type: "text", text: "Batching" },
+                    {
+                        type: "tool",
+                        tool: "compress",
+                        callID: "call-batch",
+                        state: {
+                            status: "completed",
+                            input: {
+                                content: [
+                                    { startId: "m5", endId: "m6", summary: "S1" },
+                                    { startId: "m8", endId: "m9", summary: "S2" },
+                                ],
+                            },
+                        },
+                    },
+                ],
+            },
+        ]
+
+        const hidden = hideConsumedCompressCalls(state as SessionState, messages)
+
+        assert.equal(hidden, 1, "fully-consumed batch dropped")
+        const batchMsg = messages.find((m) => m.info.id === "msg-batch")!
+        assert.ok(batchMsg, "message survives via text part")
+        assert.equal(
+            batchMsg.parts.filter((p: any) => p.type === "tool" && p.tool === "compress").length,
+            0,
+            "no compress part remains",
+        )
+    })
 })
