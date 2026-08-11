@@ -93,3 +93,34 @@ first — the old `checkPhantomBlock` could not express "skip these, keep those"
 - `lib/compress/search.ts` — optional logger warn on clamp.
 - `lib/compress/range-utils.ts` — thread optional logger through `resolveRanges`.
 - `tests/phantom-block.test.ts` — 11 new tests.
+
+## Dual-agent review (AGENTS.md §5.3 / §5.6) — both APPROVE, no blockers
+
+Reviewer 1 (oracle) and Reviewer 2 (general) independently verified correctness,
+backward-compat, state-integrity, and type safety. Convergent actionable concern:
+the partial-failure SUCCESS path in `range.ts` (the PR's headline behavior) and
+the clamp warn (fix B) were untested — only the underlying helpers were covered.
+
+### Review-driven refinement (commits 3)
+
+- Extracted `partitionPhantomPlans(identification, totalPlans): PhantomPartition`
+  (discriminated union `clean | all-phantom | partial`) and
+  `buildPhantomSkipNotice(identification)` into `lib/compress/pipeline.ts`.
+  `range.ts` now consumes the helper instead of an inline branch. Pure function →
+  the all-vs-some-vs-clean decision + skip-notice format are now unit-testable
+  and guard against refactor regressions (e.g. silently switching the comparison
+  to a filtered-list length).
+- Added 6 tests in `tests/phantom-block.test.ts` (clean / all-phantom / partial /
+  multi-phantom plural / details-survive-filtering / singular-vs-plural notice).
+- Added 2 tests in `tests/compress-search.test.ts` (clamp warn fires on
+  out-of-range endId; no warn on in-range resolve).
+
+Verification after refinement: `tsc --noEmit` 0 errors; full suite 976 pass / 0
+fail (+8 from the 968 baseline); build success (dist/index.js 391 KB).
+
+### Review concern NOT addressed here (follow-up)
+
+`tsconfig.json` excludes `tests/**` from typecheck, so test-factory completeness
+(§5.6 "config completeness") is structurally unenforceable — same gap class as
+the PR #207 baseline-reset bug. This is pre-existing and out of scope for #290;
+tracked as a follow-up.

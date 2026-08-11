@@ -275,6 +275,57 @@ export function buildPhantomErrorMessage(details: PhantomPlanDetail[]): string {
 }
 
 /**
+ * Outcome of classifying a batch against its phantom identification (issue #290).
+ * - `clean`: no phantom entries — compress everything.
+ * - `all-phantom`: every entry is phantom — caller throws via {@link buildPhantomErrorMessage}.
+ * - `partial`: some entries are phantom — caller drops `dropIndices`, compresses the rest,
+ *   and surfaces `notice` in the success return.
+ */
+export type PhantomPartition =
+    | { kind: "clean" }
+    | { kind: "all-phantom"; details: PhantomPlanDetail[] }
+    | { kind: "partial"; dropIndices: number[]; details: PhantomPlanDetail[]; notice: string }
+
+/**
+ * Partition a batch of plans based on its phantom identification. Pure helper
+ * extracted so the all-vs-some-vs-clean decision and skip-notice construction
+ * are independently unit-testable (issue #290 review concern C1).
+ *
+ * @param identification Result of {@link identifyPhantomPlans}.
+ * @param totalPlans     Count of plans in the batch (before any filtering).
+ */
+export function partitionPhantomPlans(
+    identification: PhantomIdentification,
+    totalPlans: number,
+): PhantomPartition {
+    if (identification.phantomIndices.length === 0) {
+        return { kind: "clean" }
+    }
+    if (identification.phantomIndices.length === totalPlans) {
+        return { kind: "all-phantom", details: identification.details }
+    }
+    return {
+        kind: "partial",
+        dropIndices: identification.phantomIndices,
+        details: identification.details,
+        notice: buildPhantomSkipNotice(identification),
+    }
+}
+
+/**
+ * Build the concise skip-notice shown when a partial batch drops phantom entries
+ * (issue #290 fix A — model-facing success return).
+ */
+export function buildPhantomSkipNotice(identification: PhantomIdentification): string {
+    const skippedNums = identification.details.map((d) => `#${d.index + 1}`).join(", ")
+    const noun = identification.phantomIndices.length === 1 ? "entry" : "entries"
+    return (
+        `Skipped ${identification.phantomIndices.length} already-compressed ${noun} (${skippedNums}) ` +
+        `— they are no-ops; the remaining entries were compressed.`
+    )
+}
+
+/**
  * Stateless check: reject compression plans that would produce phantom blocks
  * (0 new direct messages, 0 compressed tokens). A phantom block occurs when
  * every message in the effective range is already active under an existing

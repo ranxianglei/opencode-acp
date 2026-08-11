@@ -8,6 +8,7 @@ import {
     snapshotCompressionState,
     restoreCompressionState,
     identifyPhantomPlans,
+    partitionPhantomPlans,
     buildPhantomErrorMessage,
     type NotificationEntry,
 } from "./pipeline"
@@ -280,29 +281,34 @@ export function createCompressRangeTool(factoryCtx: ToolFactoryContext): ReturnT
 
             // Issue #290: drop phantom entries and compress the rest. Must run
             // BEFORE snapshot/apply so dropped entries leave no ghost blocks.
-            const phantomId = identifyPhantomPlans(
-                ctx.state,
-                preparedPlans.map((p) => ({
-                    messageIds: p.selection.messageIds,
-                    consumedBlockIds: p.consumedBlockIds,
-                })),
+            const partition = partitionPhantomPlans(
+                identifyPhantomPlans(
+                    ctx.state,
+                    preparedPlans.map((p) => ({
+                        messageIds: p.selection.messageIds,
+                        consumedBlockIds: p.consumedBlockIds,
+                    })),
+                ),
+                preparedPlans.length,
             )
             let phantomSkipNotice: string | null = null
-            if (phantomId.phantomIndices.length > 0) {
-                ctx.logger.warn("Batch compress: phantom entries detected", {
-                    phantomCount: phantomId.phantomIndices.length,
+            if (partition.kind === "all-phantom") {
+                ctx.logger.warn("Batch compress: ALL entries phantom", {
                     totalCount: preparedPlans.length,
-                    phantomIndices: phantomId.phantomIndices,
-                    details: phantomId.details,
+                    details: partition.details,
                 })
-                if (phantomId.phantomIndices.length === preparedPlans.length) {
-                    throw new Error(buildPhantomErrorMessage(phantomId.details))
-                }
-                const dropSet = new Set(phantomId.phantomIndices)
+                throw new Error(buildPhantomErrorMessage(partition.details))
+            }
+            if (partition.kind === "partial") {
+                ctx.logger.warn("Batch compress: phantom entries detected", {
+                    phantomCount: partition.dropIndices.length,
+                    totalCount: preparedPlans.length,
+                    phantomIndices: partition.dropIndices,
+                    details: partition.details,
+                })
+                const dropSet = new Set(partition.dropIndices)
                 preparedPlans = preparedPlans.filter((_, i) => !dropSet.has(i))
-                const skippedNums = phantomId.details.map((d) => `#${d.index + 1}`).join(", ")
-                const noun = phantomId.phantomIndices.length === 1 ? "entry" : "entries"
-                phantomSkipNotice = `Skipped ${phantomId.phantomIndices.length} already-compressed ${noun} (${skippedNums}) — they are no-ops; the remaining entries were compressed.`
+                phantomSkipNotice = partition.notice
             }
 
             const acknowledgeRisk = (args as { acknowledgeRisk?: boolean }).acknowledgeRisk === true

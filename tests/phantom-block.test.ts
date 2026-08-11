@@ -2,8 +2,10 @@ import assert from "node:assert/strict"
 import test from "node:test"
 import {
     buildPhantomErrorMessage,
+    buildPhantomSkipNotice,
     checkPhantomBlock,
     identifyPhantomPlans,
+    partitionPhantomPlans,
 } from "../lib/compress/pipeline"
 import type { CompressionBlock, PrunedMessageEntry, SessionState } from "../lib/state/types"
 
@@ -363,4 +365,108 @@ test("checkPhantomBlock returns null when identifyPhantomPlans finds nothing", (
     activateMessage(state, "m1", 1)
     const result = checkPhantomBlock(state, [{ messageIds: ["m1", "m2"], consumedBlockIds: [] }])
     assert.equal(result, null)
+})
+
+// --- partitionPhantomPlans: the batch all-vs-some-vs-clean decision (issue #290) ---
+
+test("partitionPhantomPlans returns clean when no entries are phantom", () => {
+    const id = identifyPhantomPlans(makeState(), [
+        { messageIds: ["m1"], consumedBlockIds: [] },
+        { messageIds: ["m2"], consumedBlockIds: [] },
+    ])
+    const partition = partitionPhantomPlans(id, 2)
+    assert.deepEqual(partition, { kind: "clean" })
+})
+
+test("partitionPhantomPlans returns all-phantom when every entry is phantom", () => {
+    const state = makeState()
+    activateMessage(state, "m1", 1)
+    activateMessage(state, "m2", 1)
+    const id = identifyPhantomPlans(state, [
+        { messageIds: ["m1"], consumedBlockIds: [] },
+        { messageIds: ["m2"], consumedBlockIds: [] },
+    ])
+    assert.deepEqual(id.phantomIndices, [0, 1])
+    const partition = partitionPhantomPlans(id, 2)
+    assert.equal(partition.kind, "all-phantom")
+    if (partition.kind !== "all-phantom") return
+    assert.equal(partition.details.length, 2)
+    assert.equal(partition.details[0]!.index, 0)
+    assert.equal(partition.details[1]!.index, 1)
+})
+
+test("partitionPhantomPlans returns partial (drop + notice) when some entries are phantom", () => {
+    const state = makeState()
+    activateMessage(state, "m2", 1)
+    // 3 plans: [0] valid, [1] phantom, [2] valid
+    const id = identifyPhantomPlans(state, [
+        { messageIds: ["m1"], consumedBlockIds: [] },
+        { messageIds: ["m2"], consumedBlockIds: [] },
+        { messageIds: ["m3"], consumedBlockIds: [] },
+    ])
+    assert.deepEqual(id.phantomIndices, [1])
+    const partition = partitionPhantomPlans(id, 3)
+    assert.equal(partition.kind, "partial")
+    if (partition.kind !== "partial") return
+    assert.deepEqual(partition.dropIndices, [1])
+    assert.equal(partition.details.length, 1)
+    assert.equal(partition.details[0]!.index, 1)
+    assert.match(partition.notice, /Skipped 1 already-compressed entry \(#2\)/)
+    assert.match(partition.notice, /remaining entries were compressed/)
+})
+
+test("partitionPhantomPlans partial with multiple phantoms uses plural + lists all numbers", () => {
+    const state = makeState()
+    activateMessage(state, "m1", 1)
+    activateMessage(state, "m3", 1)
+    // 4 plans: [0] phantom, [1] valid, [2] phantom, [3] valid
+    const id = identifyPhantomPlans(state, [
+        { messageIds: ["m1"], consumedBlockIds: [] },
+        { messageIds: ["m2"], consumedBlockIds: [] },
+        { messageIds: ["m3"], consumedBlockIds: [] },
+        { messageIds: ["m4"], consumedBlockIds: [] },
+    ])
+    assert.deepEqual(id.phantomIndices, [0, 2])
+    const partition = partitionPhantomPlans(id, 4)
+    assert.equal(partition.kind, "partial")
+    if (partition.kind !== "partial") return
+    assert.deepEqual(partition.dropIndices, [0, 2])
+    assert.match(partition.notice, /Skipped 2 already-compressed entries \(#1, #3\)/)
+})
+
+test("partitionPhantomPlans partial keeps its original details even when filtered later", () => {
+    // Guards against a refactor that re-derives details from the filtered plan
+    // list (which would drop the diagnostics for the phantom entries).
+    const state = makeState()
+    activateMessage(state, "m1", 1)
+    const id = identifyPhantomPlans(state, [
+        { messageIds: ["m1"], consumedBlockIds: [] },
+        { messageIds: ["m2"], consumedBlockIds: [] },
+    ])
+    const partition = partitionPhantomPlans(id, 2)
+    if (partition.kind !== "partial") throw new Error("expected partial")
+    // details[0] must describe the DROPPED (phantom) plan, not a surviving one.
+    assert.equal(partition.details.length, 1)
+    assert.equal(partition.details[0]!.index, 0)
+    assert.deepEqual(partition.details[0]!.owningBlockIds, [1])
+})
+
+test("buildPhantomSkipNotice singular vs plural", () => {
+    assert.match(
+        buildPhantomSkipNotice({
+            phantomIndices: [3],
+            details: [{ index: 3, consumedMessageIds: [], owningBlockIds: [] }],
+        }),
+        /1 already-compressed entry/,
+    )
+    assert.match(
+        buildPhantomSkipNotice({
+            phantomIndices: [0, 2],
+            details: [
+                { index: 0, consumedMessageIds: [], owningBlockIds: [] },
+                { index: 2, consumedMessageIds: [], owningBlockIds: [] },
+            ],
+        }),
+        /2 already-compressed entries \(#1, #3\)/,
+    )
 })
