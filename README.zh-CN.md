@@ -446,6 +446,16 @@ ACP 是 DCP 的直接替代品。迁移步骤：
 
 ## 更新日志
 
+### v1.14.14-dev.1 — Dev 预发布版（v1.14.13 以来 2 个 PR）
+
+Dev 预发布版，包含两个压缩子系统修复：批量调用的 summary 泄漏（#288）和批量压缩的全有或全无中断（#290）。发布到 `dev` npm tag 供早期测试。
+
+**包含的 PR**：
+- **#288**（经 #289）— `hideConsumedCompressCalls` 的 keep-set 以 `compressCallId` 为键，在批量压缩下是 1:N 关系（一次工具调用，多个 `content[]` 条目共享一个 callId）。当 T2 蒸馏只消费了部分兄弟块时，存活的兄弟块会救下整个工具 part，永久泄漏已消费的 summary——且因 compress 是默认受保护工具而无法回收。修复：改为按块（`startId::endId`）标记可见性；对混合存活状态的保留批次，重写存活工具 part 的 `state.input.content` 以丢弃已消费条目的 summary。全部消费的批次仍整体移除。文件：`lib/compress/hide-consumed.ts`。测试：`tests/hide-consumed.test.ts` +3（核心回归测试已验证修复前会失败）。
+- **#290**（经 #291）— 批量 `compress` 在任一 `content[]` 条目只含已压缩消息时整体中断（`Compression range N contains only already-compressed messages`），导致有效条目未执行；错误也未说明哪个条目/ID/块冲突，迫使反复试错重试。修复：(A) 部分失败批次——新增 `identifyPhantomPlans` 丢弃 phantom 条目并压缩其余，返回简洁的跳过提示；(C) 全 phantom 抛错时附详细诊断（条目序号 + 已消费 ID + 所属块）；(B) `clampMessageRef` 静默平移边界时发出警告。抽出 `partitionPhantomPlans` + `buildPhantomSkipNotice` 纯函数使批量决策逻辑可测试。`checkPhantomBlock` 保持原有契约不变。文件：`lib/compress/{pipeline,range,search,range-utils}.ts`。测试：+19。双 agent review（Oracle + General，均 APPROVE）。
+
+**安装**：`opencode plugin opencode-acp@dev --global`
+
 ### v1.14.13 — 正式版（v1.14.12 以来 3 个 PR）
 
 正式版发布，`allowSubAgents` 从实验性参数提升为正式参数（默认：`true`），并更新了配置文档的推荐设置。
