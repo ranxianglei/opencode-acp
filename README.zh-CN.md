@@ -446,7 +446,17 @@ ACP 是 DCP 的直接替代品。迁移步骤：
 
 ## 更新日志
 
-### v1.14.14 — 正式版（v1.14.13 以来 2 个 PR）
+ ### v1.14.15 — 固定 nudge 增长阈值为 50,000 tokens
+
+**问题**：T2/T3 nudge 增长阈值按模型上下文窗口的 5% 计算（通过 `context-compress-algorithms` 的 `resolveAdaptiveNudgeGrowth` 钳制在 20K–50K）。对于低于 1M 上下文的模型，这会产生更小的阈值（例如 200K 时为 10K，400K 时为 20K），导致 nudge 触发过于频繁、过度压缩。
+
+**修复**：在默认配置（`lib/config.ts`）中设置固定默认值 `compress.nudgeGrowthTokens: 50000`，通过 `lib/messages/inject/inject.ts` 中已有的 `config.compress?.nudgeGrowthTokens ?? resolveAdaptiveNudgeGrowth(...)` 钩子覆盖自适应值。使 opencode-acp 与 `acp-kernel` 的并行改动（v0.0.19）保持一致。`emergencyThresholdPercent: "98%"` 兜底仍与增长阈值无关地触发。用户可通过配置中的 `compress.nudgeGrowthTokens` 覆盖。
+
+文件：`lib/config.ts`。测试：976 通过（无测试断言该默认值）。
+
+**安装**：`opencode plugin opencode-acp@latest --global`
+
+ ### v1.14.14 — 正式版（v1.14.13 以来 2 个 PR）
 
 正式版，包含两个压缩子系统修复：批量调用的 summary 泄漏（#288）和批量压缩的全有或全无中断（#290）。发布到 `latest` npm tag。
 
