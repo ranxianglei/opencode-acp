@@ -7,7 +7,8 @@ import {
     prepareSession,
     snapshotCompressionState,
     restoreCompressionState,
-    checkPhantomBlock,
+    identifyPhantomPlans,
+    buildPhantomErrorMessage,
     type NotificationEntry,
 } from "./pipeline"
 import {
@@ -126,7 +127,7 @@ export function createCompressRangeTool(factoryCtx: ToolFactoryContext): ReturnT
                 toolCtx,
                 `Compress Range: ${input.topic ?? "(batch)"}`,
             )
-            const resolvedPlans = resolveRanges(input, searchContext, ctx.state)
+            const resolvedPlans = resolveRanges(input, searchContext, ctx.state, ctx.logger)
             validateNonOverlapping(resolvedPlans)
 
             const filteredPlans = resolvedPlans
@@ -190,7 +191,7 @@ export function createCompressRangeTool(factoryCtx: ToolFactoryContext): ReturnT
             }
 
             const notifications: NotificationEntry[] = []
-            const preparedPlans: Array<{
+            let preparedPlans: Array<{
                 entry: (typeof filteredPlans)[number]["entry"]
                 selection: (typeof filteredPlans)[number]["selection"]
                 anchorMessageId: string
@@ -277,17 +278,31 @@ export function createCompressRangeTool(factoryCtx: ToolFactoryContext): ReturnT
                 })
             }
 
-            const phantomError = checkPhantomBlock(
+            // Issue #290: drop phantom entries and compress the rest. Must run
+            // BEFORE snapshot/apply so dropped entries leave no ghost blocks.
+            const phantomId = identifyPhantomPlans(
                 ctx.state,
                 preparedPlans.map((p) => ({
                     messageIds: p.selection.messageIds,
                     consumedBlockIds: p.consumedBlockIds,
                 })),
             )
-            if (phantomError) throw phantomError
+            let phantomSkipNotice: string | null = null
+            if (phantomId.phantomIndices.length > 0) {
+                ctx.logger.warn("Batch compress: phantom entries detected", {
+                    phantomCount: phantomId.phantomIndices.length,
+                    totalCount: preparedPlans.length,
+                    phantomIndices: phantomId.phantomIndices,
+                })
+                if (phantomId.phantomIndices.length === preparedPlans.length) {
+                    throw new Error(buildPhantomErrorMessage(phantomId.details))
+                }
+                const dropSet = new Set(phantomId.phantomIndices)
+                preparedPlans = preparedPlans.filter((_, i) => !dropSet.has(i))
+                phantomSkipNotice = buildPhantomErrorMessage(phantomId.details)
+            }
 
-            const acknowledgeRisk =
-                (args as { acknowledgeRisk?: boolean }).acknowledgeRisk === true
+            const acknowledgeRisk = (args as { acknowledgeRisk?: boolean }).acknowledgeRisk === true
 
             const qualityGateRetryPendingBefore = ctx.state.qualityGateRetryPending
 
@@ -370,20 +385,15 @@ export function createCompressRangeTool(factoryCtx: ToolFactoryContext): ReturnT
                     })
                 }
 
-                await finalizeSession(
-                    ctx,
-                    toolCtx,
-                    rawMessages,
-                    notifications,
-                    input.topic,
-                )
+                await finalizeSession(ctx, toolCtx, rawMessages, notifications, input.topic)
             } catch (error) {
                 restoreCompressionState(ctx.state, snapshot)
                 ctx.state.qualityGateRetryPending = qualityGateRetryPendingBefore
                 throw error
             }
 
-            return `Compressed ${totalCompressedMessages} messages into ${COMPRESSED_BLOCK_HEADER}.\nIMPORTANT: This was an automatic context compression. You MUST continue your previous task exactly where you left off. Do NOT ask the user what to do next.\n💡 Tip: Use search_context('keyword') to find compressed content when you need it later.`
+            const skippedNote = phantomSkipNotice !== null ? `\n⚠️ ${phantomSkipNotice}\n` : ""
+            return `Compressed ${totalCompressedMessages} messages into ${COMPRESSED_BLOCK_HEADER}.${skippedNote}\nIMPORTANT: This was an automatic context compression. You MUST continue your previous task exactly where you left off. Do NOT ask the user what to do next.\n💡 Tip: Use search_context('keyword') to find compressed content when you need it later.`
         },
     })
 }

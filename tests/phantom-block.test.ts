@@ -1,6 +1,10 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { checkPhantomBlock } from "../lib/compress/pipeline"
+import {
+    buildPhantomErrorMessage,
+    checkPhantomBlock,
+    identifyPhantomPlans,
+} from "../lib/compress/pipeline"
 import type { CompressionBlock, PrunedMessageEntry, SessionState } from "../lib/state/types"
 
 function makeBlock(overrides: Partial<CompressionBlock> = {}): CompressionBlock {
@@ -59,7 +63,7 @@ function makeState(overrides: Partial<SessionState> = {}): SessionState {
         stats: { pruneTokenCounter: 0, totalPruneTokens: 0 },
         compressionTiming: {} as any,
         toolParameters: new Map(),
-            toolIdList: [],
+        toolIdList: [],
         messageIds: { byRawId: new Map(), byRef: new Map(), nextRef: 1 },
         lastCompaction: 0,
         currentTurn: 0,
@@ -69,7 +73,12 @@ function makeState(overrides: Partial<SessionState> = {}): SessionState {
     }
 }
 
-function activateMessage(state: SessionState, messageId: string, blockId: number, tokenCount = 50): void {
+function activateMessage(
+    state: SessionState,
+    messageId: string,
+    blockId: number,
+    tokenCount = 50,
+): void {
     const existing = state.prune.messages.byMessageId.get(messageId)
     if (existing) {
         if (!existing.allBlockIds.includes(blockId)) existing.allBlockIds.push(blockId)
@@ -87,7 +96,9 @@ function activateMessage(state: SessionState, messageId: string, blockId: number
 
 test("checkPhantomBlock returns null when all messages are new (not in any block)", () => {
     const state = makeState()
-    const result = checkPhantomBlock(state, [{ messageIds: ["m1", "m2", "m3"], consumedBlockIds: [] }])
+    const result = checkPhantomBlock(state, [
+        { messageIds: ["m1", "m2", "m3"], consumedBlockIds: [] },
+    ])
     assert.equal(result, null)
 })
 
@@ -151,7 +162,9 @@ test("checkPhantomBlock returns null when consuming a block plus adding a new me
     activateMessage(state, "m2", 10)
 
     // m3 is new → not phantom
-    const result = checkPhantomBlock(state, [{ messageIds: ["m1", "m2", "m3"], consumedBlockIds: [10] }])
+    const result = checkPhantomBlock(state, [
+        { messageIds: ["m1", "m2", "m3"], consumedBlockIds: [10] },
+    ])
     assert.equal(result, null)
 })
 
@@ -218,4 +231,136 @@ test("checkPhantomBlock error message includes range index for multi-plan batche
     ])
     assert.ok(result instanceof Error)
     assert.match(result!.message, /range 3/i)
+})
+
+// --- identifyPhantomPlans: batch-aware diagnostics (issue #290 fix A/C) ---
+
+test("identifyPhantomPlans returns no phantoms when all plans have new messages", () => {
+    const state = makeState()
+    const result = identifyPhantomPlans(state, [
+        { messageIds: ["m1"], consumedBlockIds: [] },
+        { messageIds: ["m2", "m3"], consumedBlockIds: [] },
+    ])
+    assert.deepEqual(result.phantomIndices, [])
+    assert.deepEqual(result.details, [])
+})
+
+test("identifyPhantomPlans marks a phantom entry and reports owning block + consumed IDs", () => {
+    const state = makeState()
+    activateMessage(state, "m2", 7)
+    const result = identifyPhantomPlans(state, [
+        { messageIds: ["m1"], consumedBlockIds: [] },
+        { messageIds: ["m2"], consumedBlockIds: [] },
+    ])
+    assert.deepEqual(result.phantomIndices, [1])
+    assert.equal(result.details.length, 1)
+    const detail = result.details[0]!
+    assert.equal(detail.index, 1)
+    assert.deepEqual(detail.consumedMessageIds, ["m2"])
+    assert.deepEqual(detail.owningBlockIds, [7])
+})
+
+test("identifyPhantomPlans reports ALL phantom entries in a mixed batch (not just the first)", () => {
+    const state = makeState()
+    activateMessage(state, "m1", 2)
+    activateMessage(state, "m3", 3)
+    const result = identifyPhantomPlans(state, [
+        { messageIds: ["m1"], consumedBlockIds: [] },
+        { messageIds: ["m2"], consumedBlockIds: [] },
+        { messageIds: ["m3"], consumedBlockIds: [] },
+    ])
+    assert.deepEqual(result.phantomIndices, [0, 2])
+    assert.equal(result.details.length, 2)
+    assert.equal(result.details[0]!.index, 0)
+    assert.deepEqual(result.details[0]!.owningBlockIds, [2])
+    assert.equal(result.details[1]!.index, 2)
+    assert.deepEqual(result.details[1]!.owningBlockIds, [3])
+})
+
+test("identifyPhantomPlans keeps the multi-consumed single-tier carve-out (not phantom)", () => {
+    const state = makeState()
+    const blockA = makeBlock({ blockId: 10, tier: 1, effectiveMessageIds: ["m1", "m2"] })
+    const blockB = makeBlock({ blockId: 11, tier: 1, effectiveMessageIds: ["m3", "m4"] })
+    state.prune.messages.blocksById.set(10, blockA)
+    state.prune.messages.blocksById.set(11, blockB)
+    for (const mid of ["m1", "m2", "m3", "m4"]) activateMessage(state, mid, 10)
+
+    const result = identifyPhantomPlans(state, [
+        { messageIds: ["m1", "m2", "m3", "m4"], consumedBlockIds: [10, 11] },
+    ])
+    assert.deepEqual(result.phantomIndices, [])
+})
+
+test("identifyPhantomPlans treats deactivated (GC'd) messages as new", () => {
+    const state = makeState()
+    state.prune.messages.byMessageId.set("m1", {
+        tokenCount: 50,
+        allBlockIds: [1],
+        activeBlockIds: [],
+    })
+    const result = identifyPhantomPlans(state, [{ messageIds: ["m1"], consumedBlockIds: [] }])
+    assert.deepEqual(result.phantomIndices, [])
+})
+
+test("identifyPhantomPlans dedups owning block IDs across multiple consumed messages", () => {
+    const state = makeState()
+    activateMessage(state, "m1", 5)
+    activateMessage(state, "m2", 5)
+    activateMessage(state, "m2", 9)
+    const result = identifyPhantomPlans(state, [{ messageIds: ["m1", "m2"], consumedBlockIds: [] }])
+    assert.deepEqual(result.phantomIndices, [0])
+    const detail = result.details[0]!
+    assert.deepEqual(detail.owningBlockIds, [5, 9])
+})
+
+// --- buildPhantomErrorMessage: diagnostics surface (issue #290 fix C) ---
+
+test("buildPhantomErrorMessage includes entry index, consumed IDs, and owning block refs", () => {
+    const msg = buildPhantomErrorMessage([
+        { index: 1, consumedMessageIds: ["m2", "m3"], owningBlockIds: [7] },
+    ])
+    assert.match(msg, /Entry 2/)
+    assert.match(msg, /m2, m3/)
+    assert.match(msg, /b7/)
+    assert.match(msg, /already-compressed/)
+    assert.match(msg, /0 new direct messages/)
+})
+
+test("buildPhantomErrorMessage lists multiple phantom entries", () => {
+    const msg = buildPhantomErrorMessage([
+        { index: 0, consumedMessageIds: ["m1"], owningBlockIds: [2] },
+        { index: 2, consumedMessageIds: ["m3"], owningBlockIds: [3] },
+    ])
+    assert.match(msg, /2 compress entries/)
+    assert.match(msg, /Entry 1/)
+    assert.match(msg, /Entry 3/)
+    assert.match(msg, /b2/)
+    assert.match(msg, /b3/)
+})
+
+test("buildPhantomErrorMessage handles empty owning blocks (stale ref) without throwing", () => {
+    const msg = buildPhantomErrorMessage([{ index: 0, consumedMessageIds: [], owningBlockIds: [] }])
+    assert.match(msg, /stale ref/)
+    assert.match(msg, /Entry 1/)
+})
+
+// --- checkPhantomBlock delegation preserved ---
+
+test("checkPhantomBlock delegates to identifyPhantomPlans (first phantom → Error)", () => {
+    const state = makeState()
+    activateMessage(state, "m2", 1)
+    const result = checkPhantomBlock(state, [
+        { messageIds: ["m1"], consumedBlockIds: [] },
+        { messageIds: ["m2"], consumedBlockIds: [] },
+    ])
+    assert.ok(result instanceof Error)
+    assert.match(result!.message, /range 2/i)
+    assert.match(result!.message, /already-compressed/)
+})
+
+test("checkPhantomBlock returns null when identifyPhantomPlans finds nothing", () => {
+    const state = makeState()
+    activateMessage(state, "m1", 1)
+    const result = checkPhantomBlock(state, [{ messageIds: ["m1", "m2"], consumedBlockIds: [] }])
+    assert.equal(result, null)
 })
