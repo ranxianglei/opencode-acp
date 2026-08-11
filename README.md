@@ -492,6 +492,16 @@ For the complete list with root cause analysis, see the [bug tracker](https://gi
 
 ## Changelog
 
+### v1.14.15 — Pin nudge growth to fixed 50,000 tokens
+
+**Problem**: The T2/T3 nudge growth threshold was computed as 5% of the model context window (clamped 20K–50K via `resolveAdaptiveNudgeGrowth` from `context-compress-algorithms`). For sub-1M-context models this produced smaller thresholds (e.g. 10K at 200K, 20K at 400K), causing nudges to fire too eagerly and over-compress.
+
+**Fix**: Set a fixed default `compress.nudgeGrowthTokens: 50000` in the default config (`lib/config.ts`), overriding the adaptive value through the existing `config.compress?.nudgeGrowthTokens ?? resolveAdaptiveNudgeGrowth(...)` hook at `lib/messages/inject/inject.ts`. Aligns opencode-acp with the parallel `acp-kernel` change (v0.0.19). The `emergencyThresholdPercent: "98%"` backstop still fires regardless of growth threshold. Users can override via `compress.nudgeGrowthTokens` in their config.
+
+Files: `lib/config.ts`. Tests: 976 pass (no test asserts the default value).
+
+**Install**: `opencode plugin opencode-acp@latest --global`
+
 ### v1.14.14 — Stable Release (2 PRs since v1.14.13)
 
 Stable release covering two compress-subsystem fixes: the batched-call summary leak (#288) and the batch-compress all-or-nothing abort (#290). Published to the `latest` npm tag.

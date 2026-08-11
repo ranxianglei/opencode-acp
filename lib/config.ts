@@ -205,6 +205,7 @@ const defaultConfig: PluginConfig = {
         minCompressRange: 5000,
         minNudgeGrowthRatio: 0.45,
         minNudgeGrowthFloor: 5000,
+        nudgeGrowthTokens: 50000,
         emergencyThresholdPercent: "98%",
         maxVisibleSegments: 50,
         keepEmbedMaxChars: 2000,
