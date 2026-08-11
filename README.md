@@ -492,6 +492,16 @@ For the complete list with root cause analysis, see the [bug tracker](https://gi
 
 ## Changelog
 
+### v1.14.14 — Stable Release (2 PRs since v1.14.13)
+
+Stable release covering two compress-subsystem fixes: the batched-call summary leak (#288) and the batch-compress all-or-nothing abort (#290). Published to the `latest` npm tag.
+
+**PRs included**:
+- **#288** (via #289) — `hideConsumedCompressCalls` keyed its keep-set on `compressCallId`, which is 1:N under batched compress (one tool call, multiple `content[]` entries share one callId). When a T2 distillation consumed only some siblings, a surviving sibling rescued the whole tool part, permanently leaking the consumed summaries — unreclaimable because compress is a default protected tool. Fix: key visibility per-block (on `startId::endId`) instead of per-callId; for kept batches with mixed liveness, rewrite the surviving tool part's `state.input.content` to drop consumed entries' summaries. All-consumed batches still fully removed. Files: `lib/compress/hide-consumed.ts`. Tests: +3 in `tests/hide-consumed.test.ts` (core regression verified to FAIL pre-fix).
+- **#290** (via #291) — Batch `compress` aborted entirely when any single `content[]` entry contained only already-compressed messages (`Compression range N contains only already-compressed messages`), leaving valid entries unexecuted; the error also omitted which entry/IDs/blocks conflicted, forcing trial-and-error retries. Fix: (A) partial-failure batches — new `identifyPhantomPlans` drops phantom entries and compresses the rest, returning a concise skip notice; (C) detailed diagnostics on the all-phantom throw (entry index + consumed IDs + owning block); (B) a clamp warning when `clampMessageRef` silently shifts a boundary. Extracted `partitionPhantomPlans` + `buildPhantomSkipNotice` pure helpers for testable batch decision logic. `checkPhantomBlock` keeps its exact legacy contract. Files: `lib/compress/{pipeline,range,search,range-utils}.ts`. Tests: +19. Dual-agent reviewed (Oracle + General, both APPROVE).
+
+**Install**: `opencode plugin opencode-acp@latest --global`
+
 ### v1.14.14-dev.1 — Dev Prerelease (2 PRs since v1.14.13)
 
 Dev prerelease covering two compress-subsystem fixes: the batched-call summary leak (#288) and the batch-compress all-or-nothing abort (#290). Published to the `dev` npm tag for early testing.
