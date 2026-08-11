@@ -38,10 +38,13 @@ Verified call sites:
 Replaced the `checkPhantomBlock` throw with:
 - `identifyPhantomPlans` runs BEFORE `snapshotCompressionState`/apply (ordering
   invariant: dropped entries must leave no ghost blocks).
-- ALL phantom → `throw buildPhantomErrorMessage(details)`.
-- SOME phantom → filter them out, set `phantomSkipNotice`, continue. The
-  notice is appended to the success return so the model sees which entries
-  were dropped + why.
+- ALL phantom → `throw buildPhantomErrorMessage(details)` (verbose diagnostics
+  — entry index + consumed IDs + owning blocks — so the model can correct).
+- SOME phantom → filter them out, `ctx.logger.warn(...)` with full details,
+  and a CONCISE skip notice in the success return (one line: which entry
+  numbers were dropped + "no-ops, remaining compressed"). Verbose diagnostics
+  stay only on the all-fail throw; the success path is warn-flavored, not a
+  verbose dump (per reviewer direction: "warn 最好").
 
 ### B. Clamp warning — `lib/compress/search.ts`
 

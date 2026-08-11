@@ -293,13 +293,16 @@ export function createCompressRangeTool(factoryCtx: ToolFactoryContext): ReturnT
                     phantomCount: phantomId.phantomIndices.length,
                     totalCount: preparedPlans.length,
                     phantomIndices: phantomId.phantomIndices,
+                    details: phantomId.details,
                 })
                 if (phantomId.phantomIndices.length === preparedPlans.length) {
                     throw new Error(buildPhantomErrorMessage(phantomId.details))
                 }
                 const dropSet = new Set(phantomId.phantomIndices)
                 preparedPlans = preparedPlans.filter((_, i) => !dropSet.has(i))
-                phantomSkipNotice = buildPhantomErrorMessage(phantomId.details)
+                const skippedNums = phantomId.details.map((d) => `#${d.index + 1}`).join(", ")
+                const noun = phantomId.phantomIndices.length === 1 ? "entry" : "entries"
+                phantomSkipNotice = `Skipped ${phantomId.phantomIndices.length} already-compressed ${noun} (${skippedNums}) — they are no-ops; the remaining entries were compressed.`
             }
 
             const acknowledgeRisk = (args as { acknowledgeRisk?: boolean }).acknowledgeRisk === true
