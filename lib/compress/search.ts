@@ -55,6 +55,7 @@ export function resolveBoundaryIds(
     state: SessionState,
     startId: string,
     endId: string,
+    logger?: { warn(message: string, data?: any): void },
 ): { startReference: BoundaryReference; endReference: BoundaryReference } {
     const lookup = buildBoundaryLookup(context, state)
     const issues: string[] = []
@@ -86,21 +87,33 @@ export function resolveBoundaryIds(
     // (model guessed m00019 but only m00018 exists), clamp to the last visible
     // message instead of failing hard. Only applies to numeric message refs (mN),
     // not block refs (bN) — block refs must match exactly.
+    //
+    // Issue #290 fix B: warn when clamping so the shift is observable. Silent
+    // clamping can re-select consumed ranges downstream and trigger phantom
+    // rejection; logging makes the cause traceable.
     if (!startReference && parsedStartId.kind === "message") {
+        const requestedRef = parsedStartId.ref
         const clamped = clampMessageRef(parsedStartId, context, state)
         if (clamped) {
             startReference = lookup.get(clamped.ref)
             if (startReference) {
                 parsedStartId.ref = clamped.ref
+                logger?.warn(
+                    `compress startId ${requestedRef} not available — clamped to ${clamped.ref}`,
+                )
             }
         }
     }
     if (!endReference && parsedEndId.kind === "message") {
+        const requestedRef = parsedEndId.ref
         const clamped = clampMessageRef(parsedEndId, context, state)
         if (clamped) {
             endReference = lookup.get(clamped.ref)
             if (endReference) {
                 parsedEndId.ref = clamped.ref
+                logger?.warn(
+                    `compress endId ${requestedRef} not available — clamped to ${clamped.ref}`,
+                )
             }
         }
     }
@@ -134,7 +147,7 @@ export function resolveBoundaryIds(
     // but anchor message ordering can differ. Auto-swap prevents compress failures
     // that cause models to give up without compressing.
     if (startReference.rawIndex > endReference.rawIndex) {
-        [startReference, endReference] = [endReference, startReference]
+        ;[startReference, endReference] = [endReference, startReference]
     }
 
     // [FIX Issue #247] Auto-extend range boundaries to prevent splitting
@@ -153,10 +166,7 @@ export function resolveBoundaryIds(
         endReference.rawIndex,
     )
 
-    if (
-        adjusted.startIndex < startReference.rawIndex &&
-        startReference.kind === "message"
-    ) {
+    if (adjusted.startIndex < startReference.rawIndex && startReference.kind === "message") {
         const msg = context.rawMessages[adjusted.startIndex]
         if (msg) {
             startReference = {
@@ -167,10 +177,7 @@ export function resolveBoundaryIds(
         }
     }
 
-    if (
-        adjusted.endIndex > endReference.rawIndex &&
-        endReference.kind === "message"
-    ) {
+    if (adjusted.endIndex > endReference.rawIndex && endReference.kind === "message") {
         const msg = context.rawMessages[adjusted.endIndex]
         if (msg) {
             endReference = {
@@ -481,9 +488,7 @@ function buildSearchPreview(text: string, firstTerm: string): string {
         const start = Math.max(0, matchIdx - 50)
         const end = Math.min(text.length, matchIdx + 150)
         return (
-            (start > 0 ? "..." : "") +
-            text.substring(start, end) +
-            (end < text.length ? "..." : "")
+            (start > 0 ? "..." : "") + text.substring(start, end) + (end < text.length ? "..." : "")
         )
     }
     return text.substring(0, 200) + (text.length > 200 ? "..." : "")
@@ -495,9 +500,7 @@ export function createSearchContextTool(factoryCtx: ToolFactoryContext): ReturnT
     return tool({
         description: SEARCH_CONTEXT_TOOL_DESCRIPTION,
         args: {
-            query: tool.schema
-                .string()
-                .describe("Search query — keywords or phrase to find"),
+            query: tool.schema.string().describe("Search query — keywords or phrase to find"),
             limit: tool.schema
                 .number()
                 .optional()
@@ -505,7 +508,9 @@ export function createSearchContextTool(factoryCtx: ToolFactoryContext): ReturnT
             deep: tool.schema
                 .boolean()
                 .optional()
-                .describe("If true, also search visible (uncompressed) messages. Slower but more thorough (default: false)"),
+                .describe(
+                    "If true, also search visible (uncompressed) messages. Slower but more thorough (default: false)",
+                ),
         },
         async execute(args, toolCtx) {
             const ctx = resolveToolContext(factoryCtx, toolCtx.sessionID)
@@ -518,7 +523,7 @@ export function createSearchContextTool(factoryCtx: ToolFactoryContext): ReturnT
 
             const queryTerms = query.split(/\s+/).filter((t) => t.length > 0)
             const results: SearchResult[] = []
-            const MIN_RELEVANCE = 0.10
+            const MIN_RELEVANCE = 0.1
 
             const blocksById = ctx.state.prune.messages.blocksById
             for (const [blockId, block] of blocksById) {
@@ -541,7 +546,7 @@ export function createSearchContextTool(factoryCtx: ToolFactoryContext): ReturnT
                     // Summary matches (lower weight, compounds with frequency)
                     const summaryCount = countOccurrences(summary, term)
                     if (summaryCount > 0) {
-                        relevance += Math.min(summaryCount * 0.04, 0.20)
+                        relevance += Math.min(summaryCount * 0.04, 0.2)
                         termHit = true
                     }
                     if (termHit) termsHit++

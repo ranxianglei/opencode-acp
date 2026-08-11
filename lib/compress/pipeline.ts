@@ -23,10 +23,7 @@ export function snapshotCompressionState(state: SessionState): CompressionSnapsh
     }
 }
 
-export function restoreCompressionState(
-    state: SessionState,
-    snapshot: CompressionSnapshot,
-): void {
+export function restoreCompressionState(state: SessionState, snapshot: CompressionSnapshot): void {
     state.prune.messages = structuredClone(snapshot.messages)
     state.stats = { ...snapshot.stats }
 }
@@ -106,9 +103,7 @@ export async function finalizeSession(
             ctx.logger,
         )
         for (const failure of qualityReport.failures) {
-            const metrics = Object.fromEntries(
-                failure.result.metrics.map((m) => [m.name, m.value]),
-            )
+            const metrics = Object.fromEntries(failure.result.metrics.map((m) => [m.name, m.value]))
             ctx.logger.warn("Compression quality gate FAILED", {
                 blockId: failure.blockId,
                 algorithm: ctx.config.qualityGate.algorithm,
@@ -160,29 +155,55 @@ export function getLastVisibleMessageId(
 }
 
 /**
- * Stateless check: reject compression plans that would produce phantom blocks
- * (0 new direct messages, 0 compressed tokens). A phantom block occurs when
- * every message in the effective range is already active under an existing
- * compression block. Returns an Error to throw if any plan is phantom.
- *
- * Fix for issue #93: empty compression blocks waste context (summary overhead
- * with no token savings) and cause compression loops — the model sees 0 tokens
- * removed, retries the same range, creates another phantom, endlessly.
- *
- * A message is "new" (will be newly compressed) if it is NOT currently active
- * under any block. Messages active under consumed blocks are still "already
- * compressed" — re-labeling them under a new block does not newly hide them
- * (matches applyCompressionState's newlyCompressedMessageIds computation).
+ * Per-phantom diagnostics used in error / skip-notice messages (issue #290).
  */
-export function checkPhantomBlock(
+export interface PhantomPlanDetail {
+    /** 0-based index in the input plans array. */
+    index: number
+    /** Sample of message IDs in the effective set that are already compressed. */
+    consumedMessageIds: string[]
+    /** Block IDs owning those messages (sorted ascending). */
+    owningBlockIds: number[]
+}
+
+export interface PhantomIdentification {
+    /** Indices of plans that are phantom (no new messages to compress). */
+    phantomIndices: number[]
+    /** Per-phantom diagnostics for error / skip-notice messages. */
+    details: PhantomPlanDetail[]
+}
+
+/**
+ * Identify which plans in a batch are phantom (would produce 0 new compressed
+ * messages). Stateless pre-check mirroring applyCompressionState's
+ * newlyCompressedMessageIds computation: a message is "new" iff it has no
+ * byMessageId entry OR its activeBlockIds is empty.
+ *
+ * Returns per-plan diagnostics so callers can implement partial-failure
+ * batches (issue #290 fix A): skip phantom entries, compress the valid ones,
+ * and report which entries / IDs / blocks conflicted (fix C).
+ *
+ * Multi-consumed single-tier carve-out: a higher-tier distillation that merges
+ * sibling blocks of the SAME tier is allowed even when every message is
+ * already active under those siblings (the merge itself is the value).
+ * Matches the historical exception in checkPhantomBlock.
+ *
+ * Fix for issue #93/#290: empty compression blocks waste context (summary
+ * overhead with no token savings) and cause compression loops.
+ */
+export function identifyPhantomPlans(
     state: SessionState,
     plans: Array<{ messageIds: string[]; consumedBlockIds: number[] }>,
-): Error | null {
+): PhantomIdentification {
+    const phantomIndices: number[] = []
+    const details: PhantomPlanDetail[] = []
+
     for (let i = 0; i < plans.length; i++) {
         const plan = plans[i]
+        if (!plan) continue
 
         // Build effective message set: selection messages + inherited from
-        // consumed blocks (mirrors applyCompressionState lines 79-93).
+        // consumed blocks (mirrors applyCompressionState).
         const effective = new Set(plan.messageIds)
         for (const consumedId of plan.consumedBlockIds) {
             const block = state.prune.messages.blocksById.get(consumedId)
@@ -198,26 +219,144 @@ export function checkPhantomBlock(
             return !entry || entry.activeBlockIds.length === 0
         })
 
-        if (!hasNew) {
-            if (plan.consumedBlockIds.length >= 2) {
-                const tiers = new Set(
-                    plan.consumedBlockIds.map(
-                        (id) => state.prune.messages.blocksById.get(id)?.tier ?? 1,
-                    ),
-                )
-                if (tiers.size === 1) {
-                    continue
-                }
-            }
-            return new Error(
-                `Compression range ${i + 1} contains only already-compressed messages ` +
-                    "(0 new direct messages, 0 tokens saved). Nothing to compress — " +
-                    'pick a range with visible, uncompressed content. Use `acp_status({scope:"uncompressed"})` ' +
-                    "to see which ranges are still compressible.",
+        if (hasNew) continue
+
+        // Multi-consumed single-tier exception (T2+ distillation merging
+        // same-tier sibling blocks) — not phantom.
+        if (plan.consumedBlockIds.length >= 2) {
+            const tiers = new Set(
+                plan.consumedBlockIds.map(
+                    (id) => state.prune.messages.blocksById.get(id)?.tier ?? 1,
+                ),
             )
+            if (tiers.size === 1) continue
         }
+
+        phantomIndices.push(i)
+
+        const consumedMessageIds: string[] = []
+        const owningBlockIds = new Set<number>()
+        for (const mid of effective) {
+            const entry = state.prune.messages.byMessageId.get(mid)
+            if (entry && entry.activeBlockIds.length > 0) {
+                consumedMessageIds.push(mid)
+                for (const bid of entry.activeBlockIds) owningBlockIds.add(bid)
+            }
+        }
+        details.push({
+            index: i,
+            consumedMessageIds: consumedMessageIds.slice(0, 8),
+            owningBlockIds: [...owningBlockIds].sort((a, b) => a - b),
+        })
     }
-    return null
+
+    return { phantomIndices, details }
+}
+
+export function buildPhantomErrorMessage(details: PhantomPlanDetail[]): string {
+    const lines = details.map((d) => {
+        const ids =
+            d.consumedMessageIds.length > 0
+                ? d.consumedMessageIds.join(", ")
+                : "(empty effective set)"
+        const blocks =
+            d.owningBlockIds.length > 0
+                ? d.owningBlockIds.map((b) => `b${b}`).join(", ")
+                : "(no active block — likely a stale ref)"
+        return `  • Entry ${d.index + 1}: all messages already compressed. Consumed IDs (sample): ${ids}. Owning block(s): ${blocks}.`
+    })
+    const noun = details.length === 1 ? "One compress entry" : `${details.length} compress entries`
+    return (
+        `${noun} contain only already-compressed messages (0 new direct messages, 0 tokens saved):\n` +
+        lines.join("\n") +
+        `\nNothing to compress in those entries — pick ranges with visible, uncompressed content. ` +
+        `Use \`acp_status({scope:"uncompressed"})\` to see which ranges are still compressible.`
+    )
+}
+
+/**
+ * Outcome of classifying a batch against its phantom identification (issue #290).
+ * - `clean`: no phantom entries — compress everything.
+ * - `all-phantom`: every entry is phantom — caller throws via {@link buildPhantomErrorMessage}.
+ * - `partial`: some entries are phantom — caller drops `dropIndices`, compresses the rest,
+ *   and surfaces `notice` in the success return.
+ */
+export type PhantomPartition =
+    | { kind: "clean" }
+    | { kind: "all-phantom"; details: PhantomPlanDetail[] }
+    | { kind: "partial"; dropIndices: number[]; details: PhantomPlanDetail[]; notice: string }
+
+/**
+ * Partition a batch of plans based on its phantom identification. Pure helper
+ * extracted so the all-vs-some-vs-clean decision and skip-notice construction
+ * are independently unit-testable (issue #290 review concern C1).
+ *
+ * @param identification Result of {@link identifyPhantomPlans}.
+ * @param totalPlans     Count of plans in the batch (before any filtering).
+ */
+export function partitionPhantomPlans(
+    identification: PhantomIdentification,
+    totalPlans: number,
+): PhantomPartition {
+    if (identification.phantomIndices.length === 0) {
+        return { kind: "clean" }
+    }
+    if (identification.phantomIndices.length === totalPlans) {
+        return { kind: "all-phantom", details: identification.details }
+    }
+    return {
+        kind: "partial",
+        dropIndices: identification.phantomIndices,
+        details: identification.details,
+        notice: buildPhantomSkipNotice(identification),
+    }
+}
+
+/**
+ * Build the concise skip-notice shown when a partial batch drops phantom entries
+ * (issue #290 fix A — model-facing success return).
+ */
+export function buildPhantomSkipNotice(identification: PhantomIdentification): string {
+    const skippedNums = identification.details.map((d) => `#${d.index + 1}`).join(", ")
+    const noun = identification.phantomIndices.length === 1 ? "entry" : "entries"
+    return (
+        `Skipped ${identification.phantomIndices.length} already-compressed ${noun} (${skippedNums}) ` +
+        `— they are no-ops; the remaining entries were compressed.`
+    )
+}
+
+/**
+ * Stateless check: reject compression plans that would produce phantom blocks
+ * (0 new direct messages, 0 compressed tokens). A phantom block occurs when
+ * every message in the effective range is already active under an existing
+ * compression block. Returns an Error for the FIRST phantom plan, or null.
+ *
+ * Legacy single-error API — kept for backward compatibility. Batch-aware
+ * callers should use {@link identifyPhantomPlans} + {@link buildPhantomErrorMessage}
+ * to implement partial-failure batches (issue #290 fix A).
+ *
+ * Fix for issue #93: empty compression blocks waste context (summary overhead
+ * with no token savings) and cause compression loops — the model sees 0 tokens
+ * removed, retries the same range, creates another phantom, endlessly.
+ *
+ * A message is "new" (will be newly compressed) if it is NOT currently active
+ * under any block. Messages active under consumed blocks are still "already
+ * compressed" — re-labeling them under a new block does not newly hide them
+ * (matches applyCompressionState's newlyCompressedMessageIds computation).
+ */
+export function checkPhantomBlock(
+    state: SessionState,
+    plans: Array<{ messageIds: string[]; consumedBlockIds: number[] }>,
+): Error | null {
+    const { details } = identifyPhantomPlans(state, plans)
+    if (details.length === 0) return null
+    const first = details[0]!
+    return new Error(
+        `Compression range ${first.index + 1} contains only already-compressed messages ` +
+            "(0 new direct messages, 0 tokens saved). Nothing to compress — " +
+            'pick a range with visible, uncompressed content. Use `acp_status({scope:"uncompressed"})` ' +
+            "to see which ranges are still compressible.",
+    )
 }
 
 /**

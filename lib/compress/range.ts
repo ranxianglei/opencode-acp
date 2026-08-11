@@ -7,7 +7,9 @@ import {
     prepareSession,
     snapshotCompressionState,
     restoreCompressionState,
-    checkPhantomBlock,
+    identifyPhantomPlans,
+    partitionPhantomPlans,
+    buildPhantomErrorMessage,
     type NotificationEntry,
 } from "./pipeline"
 import {
@@ -126,7 +128,7 @@ export function createCompressRangeTool(factoryCtx: ToolFactoryContext): ReturnT
                 toolCtx,
                 `Compress Range: ${input.topic ?? "(batch)"}`,
             )
-            const resolvedPlans = resolveRanges(input, searchContext, ctx.state)
+            const resolvedPlans = resolveRanges(input, searchContext, ctx.state, ctx.logger)
             validateNonOverlapping(resolvedPlans)
 
             const filteredPlans = resolvedPlans
@@ -190,7 +192,7 @@ export function createCompressRangeTool(factoryCtx: ToolFactoryContext): ReturnT
             }
 
             const notifications: NotificationEntry[] = []
-            const preparedPlans: Array<{
+            let preparedPlans: Array<{
                 entry: (typeof filteredPlans)[number]["entry"]
                 selection: (typeof filteredPlans)[number]["selection"]
                 anchorMessageId: string
@@ -277,17 +279,39 @@ export function createCompressRangeTool(factoryCtx: ToolFactoryContext): ReturnT
                 })
             }
 
-            const phantomError = checkPhantomBlock(
-                ctx.state,
-                preparedPlans.map((p) => ({
-                    messageIds: p.selection.messageIds,
-                    consumedBlockIds: p.consumedBlockIds,
-                })),
+            // Issue #290: drop phantom entries and compress the rest. Must run
+            // BEFORE snapshot/apply so dropped entries leave no ghost blocks.
+            const partition = partitionPhantomPlans(
+                identifyPhantomPlans(
+                    ctx.state,
+                    preparedPlans.map((p) => ({
+                        messageIds: p.selection.messageIds,
+                        consumedBlockIds: p.consumedBlockIds,
+                    })),
+                ),
+                preparedPlans.length,
             )
-            if (phantomError) throw phantomError
+            let phantomSkipNotice: string | null = null
+            if (partition.kind === "all-phantom") {
+                ctx.logger.warn("Batch compress: ALL entries phantom", {
+                    totalCount: preparedPlans.length,
+                    details: partition.details,
+                })
+                throw new Error(buildPhantomErrorMessage(partition.details))
+            }
+            if (partition.kind === "partial") {
+                ctx.logger.warn("Batch compress: phantom entries detected", {
+                    phantomCount: partition.dropIndices.length,
+                    totalCount: preparedPlans.length,
+                    phantomIndices: partition.dropIndices,
+                    details: partition.details,
+                })
+                const dropSet = new Set(partition.dropIndices)
+                preparedPlans = preparedPlans.filter((_, i) => !dropSet.has(i))
+                phantomSkipNotice = partition.notice
+            }
 
-            const acknowledgeRisk =
-                (args as { acknowledgeRisk?: boolean }).acknowledgeRisk === true
+            const acknowledgeRisk = (args as { acknowledgeRisk?: boolean }).acknowledgeRisk === true
 
             const qualityGateRetryPendingBefore = ctx.state.qualityGateRetryPending
 
@@ -370,20 +394,15 @@ export function createCompressRangeTool(factoryCtx: ToolFactoryContext): ReturnT
                     })
                 }
 
-                await finalizeSession(
-                    ctx,
-                    toolCtx,
-                    rawMessages,
-                    notifications,
-                    input.topic,
-                )
+                await finalizeSession(ctx, toolCtx, rawMessages, notifications, input.topic)
             } catch (error) {
                 restoreCompressionState(ctx.state, snapshot)
                 ctx.state.qualityGateRetryPending = qualityGateRetryPendingBefore
                 throw error
             }
 
-            return `Compressed ${totalCompressedMessages} messages into ${COMPRESSED_BLOCK_HEADER}.\nIMPORTANT: This was an automatic context compression. You MUST continue your previous task exactly where you left off. Do NOT ask the user what to do next.\n💡 Tip: Use search_context('keyword') to find compressed content when you need it later.`
+            const skippedNote = phantomSkipNotice !== null ? `\n⚠️ ${phantomSkipNotice}\n` : ""
+            return `Compressed ${totalCompressedMessages} messages into ${COMPRESSED_BLOCK_HEADER}.${skippedNote}\nIMPORTANT: This was an automatic context compression. You MUST continue your previous task exactly where you left off. Do NOT ask the user what to do next.\n💡 Tip: Use search_context('keyword') to find compressed content when you need it later.`
         },
     })
 }

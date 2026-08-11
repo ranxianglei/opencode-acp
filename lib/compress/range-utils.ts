@@ -13,8 +13,7 @@ import type {
 const BLOCK_PLACEHOLDER_REGEX = /\(b(\d+)\)|\{block_(\d+)\}/gi
 
 export function validateArgs(args: CompressRangeToolArgs): void {
-    const hasTopLevelTopic =
-        typeof args.topic === "string" && args.topic.trim().length > 0
+    const hasTopLevelTopic = typeof args.topic === "string" && args.topic.trim().length > 0
 
     if (!Array.isArray(args.content) || args.content.length === 0) {
         throw new Error("content is required and must be a non-empty array")
@@ -36,8 +35,7 @@ export function validateArgs(args: CompressRangeToolArgs): void {
             throw new Error(`${prefix}.summary is required and must be a non-empty string`)
         }
 
-        const hasEntryTopic =
-            typeof entry?.topic === "string" && entry.topic.trim().length > 0
+        const hasEntryTopic = typeof entry?.topic === "string" && entry.topic.trim().length > 0
         if (!hasEntryTopic && !hasTopLevelTopic) {
             throw new Error(
                 `${prefix} needs a topic — provide ${prefix}.topic or the top-level topic`,
@@ -50,6 +48,7 @@ export function resolveRanges(
     args: CompressRangeToolArgs,
     searchContext: SearchContext,
     state: SessionState,
+    logger?: { warn(message: string, data?: any): void },
 ): ResolvedRangeCompression[] {
     return args.content.map((entry, index) => {
         const normalizedEntry = {
@@ -67,6 +66,7 @@ export function resolveRanges(
             state,
             normalizedEntry.startId,
             normalizedEntry.endId,
+            logger,
         )
         const selection = resolveSelection(searchContext, startReference, endReference)
 
@@ -215,4 +215,3 @@ export function appendMissingBlockSummaries(
         consumedBlockIds: [...consumedBlockIds],
     }
 }
-

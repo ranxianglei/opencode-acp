@@ -7,7 +7,12 @@ import {
     resolveAnchorMessageId,
 } from "../lib/compress/search"
 import type { BoundaryReference, SearchContext } from "../lib/compress/types"
-import type { CompressionBlock, PrunedMessageEntry, SessionState, WithParts } from "../lib/state/types"
+import type {
+    CompressionBlock,
+    PrunedMessageEntry,
+    SessionState,
+    WithParts,
+} from "../lib/state/types"
 
 // --- Factory helpers ---
 
@@ -130,7 +135,7 @@ function makeState(overrides: Partial<SessionState> = {}): SessionState {
         stats: { pruneTokenCounter: 0, totalPruneTokens: 0 },
         compressionTiming: {} as any,
         toolParameters: new Map(),
-            toolIdList: [],
+        toolIdList: [],
         messageIds: { byRawId: new Map(), byRef: new Map(), nextRef: 1 },
         lastCompaction: 0,
         currentTurn: 0,
@@ -140,7 +145,10 @@ function makeState(overrides: Partial<SessionState> = {}): SessionState {
     }
 }
 
-function makeContext(rawMessages: WithParts[], blocks: Map<number, CompressionBlock> = new Map()): SearchContext {
+function makeContext(
+    rawMessages: WithParts[],
+    blocks: Map<number, CompressionBlock> = new Map(),
+): SearchContext {
     const rawMessagesById = new Map<string, WithParts>()
     const rawIndexById = new Map<string, number>()
     for (let i = 0; i < rawMessages.length; i++) {
@@ -255,19 +263,13 @@ test("resolveBoundaryIds resolves block IDs correctly", () => {
 test("resolveBoundaryIds throws on invalid startId format", () => {
     const ctx = makeContext([])
     const state = makeState()
-    assert.throws(
-        () => resolveBoundaryIds(ctx, state, "invalid", "m00001"),
-        /startId is invalid/,
-    )
+    assert.throws(() => resolveBoundaryIds(ctx, state, "invalid", "m00001"), /startId is invalid/)
 })
 
 test("resolveBoundaryIds throws on unknown message ref", () => {
     const ctx = makeContext([])
     const state = makeState()
-    assert.throws(
-        () => resolveBoundaryIds(ctx, state, "m00099", "m00100"),
-        /not available/,
-    )
+    assert.throws(() => resolveBoundaryIds(ctx, state, "m00099", "m00100"), /not available/)
 })
 
 test("resolveBoundaryIds failure error includes visible range and acp_status pointer", () => {
@@ -347,6 +349,45 @@ test("resolveBoundaryIds clamps out-of-range startId to last visible message", (
     const { startReference, endReference } = resolveBoundaryIds(ctx, state, "m00019", "m00020")
     assert.equal(startReference.messageId, "raw-b")
     assert.equal(endReference.messageId, "raw-b")
+})
+
+test("resolveBoundaryIds warns via logger when clamping out-of-range boundaries (issue #290 fix B)", () => {
+    const msg1 = makeAssistantMessage("raw-a", "first")
+    const msg2 = makeAssistantMessage("raw-b", "second")
+    const ctx = makeContext([msg1, msg2])
+
+    const state = makeState()
+    state.messageIds.byRef.set("m00001", "raw-a")
+    state.messageIds.byRef.set("m00002", "raw-b")
+    state.messageIds.byRawId.set("raw-a", "m00001")
+    state.messageIds.byRawId.set("raw-b", "m00002")
+
+    const warns: string[] = []
+    const logger = { warn: (msg: string) => warns.push(msg) }
+
+    resolveBoundaryIds(ctx, state, "m00001", "m00019", logger)
+
+    assert.equal(warns.length, 1)
+    assert.match(warns[0]!, /compress endId m00019 not available — clamped to m00002/)
+})
+
+test("resolveBoundaryIds does not warn when boundaries resolve without clamping", () => {
+    const msg1 = makeAssistantMessage("raw-a", "first")
+    const msg2 = makeAssistantMessage("raw-b", "second")
+    const ctx = makeContext([msg1, msg2])
+
+    const state = makeState()
+    state.messageIds.byRef.set("m00001", "raw-a")
+    state.messageIds.byRef.set("m00002", "raw-b")
+    state.messageIds.byRawId.set("raw-a", "m00001")
+    state.messageIds.byRawId.set("raw-b", "m00002")
+
+    const warns: string[] = []
+    const logger = { warn: (msg: string) => warns.push(msg) }
+
+    resolveBoundaryIds(ctx, state, "m00001", "m00002", logger)
+
+    assert.equal(warns.length, 0)
 })
 
 test("resolveBoundaryIds auto-swaps reversed boundaries (Bug 34)", () => {
@@ -473,10 +514,7 @@ test("resolveSelection throws on empty selection", () => {
     const startRef: BoundaryReference = { kind: "message", rawIndex: 0, messageId: "a" }
     const endRef: BoundaryReference = { kind: "message", rawIndex: 0, messageId: "a" }
 
-    assert.throws(
-        () => resolveSelection(ctx, startRef, endRef),
-        /Failed to map boundary matches/,
-    )
+    assert.throws(() => resolveSelection(ctx, startRef, endRef), /Failed to map boundary matches/)
 })
 
 test("resolveSelection includes messageTokenById for selected messages", () => {
@@ -510,16 +548,10 @@ test("resolveAnchorMessageId returns anchorMessageId for compressed-block kind",
 
 test("resolveAnchorMessageId throws for compressed-block without anchorMessageId", () => {
     const ref: BoundaryReference = { kind: "compressed-block", rawIndex: 5, blockId: 3 }
-    assert.throws(
-        () => resolveAnchorMessageId(ref),
-        /Failed to map boundary matches/,
-    )
+    assert.throws(() => resolveAnchorMessageId(ref), /Failed to map boundary matches/)
 })
 
 test("resolveAnchorMessageId throws for message kind without messageId", () => {
     const ref: BoundaryReference = { kind: "message", rawIndex: 0 }
-    assert.throws(
-        () => resolveAnchorMessageId(ref),
-        /Failed to map boundary matches/,
-    )
+    assert.throws(() => resolveAnchorMessageId(ref), /Failed to map boundary matches/)
 })
