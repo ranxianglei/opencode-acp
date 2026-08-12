@@ -446,6 +446,16 @@ ACP 是 DCP 的直接替代品。迁移步骤：
 
 ## 更新日志
 
+ ### v1.14.16 — 将上下文 limit 提升至 80%
+
+**问题**：压缩阈值原为 `maxContextLimit: 55%` / `minContextLimit: 45%`。上下文一旦超过模型窗口的 55% 就会触发强「超限」nudge。配合 v1.14.15 固定的 50K 增长阈值，压缩仍较早介入，可用上下文未被充分利用。
+
+**修复**：将 `compress.maxContextLimit`（`"55%"` → `"80%"`）和 `compress.minContextLimit`（`"45%"` → `"80%"`）**同时**提升至 80%（`lib/config.ts`）。压缩现在等到上下文超过 80% 才触发强「超限」nudge。把 `minContextLimit` 设为与 `maxContextLimit` 相同，彻底移除旧的 45% 提前介入区间 —— `minContextLimit` 只影响 nudge 提示语气（`tipsVariant`），不决定是否触发；实际 nudge 判定为 `growthSinceLastNudge >= nudgeGrowthTokens || overMaxLimit`，两者都设 80% 使行为统一，并去掉无意义的早期提示语气。`emergencyThresholdPercent: "98%"` 兜底不变。用户可通过配置中的 `compress.maxContextLimit` / `compress.minContextLimit` 覆盖。
+
+文件：`lib/config.ts`。测试：976 通过。
+
+**安装**：`opencode plugin opencode-acp@latest --global`
+
  ### v1.14.15 — 固定 nudge 增长阈值为 50,000 tokens
 
 **问题**：T2/T3 nudge 增长阈值按模型上下文窗口的 5% 计算（通过 `context-compress-algorithms` 的 `resolveAdaptiveNudgeGrowth` 钳制在 20K–50K）。对于低于 1M 上下文的模型，这会产生更小的阈值（例如 200K 时为 10K，400K 时为 20K），导致 nudge 触发过于频繁、过度压缩。
