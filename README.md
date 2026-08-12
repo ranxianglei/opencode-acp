@@ -492,6 +492,16 @@ For the complete list with root cause analysis, see the [bug tracker](https://gi
 
 ## Changelog
 
+### v1.14.16 — Raise context limits to 80%
+
+**Problem**: The compression thresholds were `maxContextLimit: 55%` / `minContextLimit: 45%`. The strong "over-limit" nudge fired as soon as context exceeded 55% of the model window. Combined with the fixed 50K growth threshold (v1.14.15), this still engaged compression relatively early, leaving usable context unused.
+
+**Fix**: Raise **both** `compress.maxContextLimit` (`"55%"` → `"80%"`) and `compress.minContextLimit` (`"45%"` → `"80%"`) in `lib/config.ts`. Compression now waits until context exceeds 80% before firing the strong "over-limit" nudge. Setting `minContextLimit` equal to `maxContextLimit` removes the legacy 45% early-engagement band entirely — `minContextLimit` only affects the nudge tip *tone* (`tipsVariant`), never whether a nudge fires; the actual nudge decision is `growthSinceLastNudge >= nudgeGrowthTokens || overMaxLimit`, so aligning both at 80% makes behavior uniform and drops the meaningless early tip tone. The `emergencyThresholdPercent: "98%"` backstop is unchanged. Users can override via `compress.maxContextLimit` / `compress.minContextLimit` in their config.
+
+Files: `lib/config.ts`. Tests: 976 pass.
+
+**Install**: `opencode plugin opencode-acp@latest --global`
+
 ### v1.14.15 — Pin nudge growth to fixed 50,000 tokens
 
 **Problem**: The T2/T3 nudge growth threshold was computed as 5% of the model context window (clamped 20K–50K via `resolveAdaptiveNudgeGrowth` from `context-compress-algorithms`). For sub-1M-context models this produced smaller thresholds (e.g. 10K at 200K, 20K at 400K), causing nudges to fire too eagerly and over-compress.
