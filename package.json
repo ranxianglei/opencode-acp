@@ -19,6 +19,7 @@
     "scripts": {
         "clean": "rm -rf dist",
         "build": "npm run clean && tsup && tsc --emitDeclarationOnly",
+        "prepare": "npm run build",
         "verify:package": "node scripts/verify-package.mjs",
         "check:package": "npm run build && npm run verify:package",
         "prepublishOnly": "npm run check:package",
