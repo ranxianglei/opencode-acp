@@ -15,6 +15,7 @@ jobs:
         runs-on: ubuntu-latest
         permissions:
             contents: write
+            pull-requests: write
         steps:
             - uses: actions/checkout@v4
               with:
@@ -148,3 +149,84 @@ jobs:
                   prerelease: ${{ steps.version.outputs.is_prerelease }}
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+            - name: Report published version on PR
+              if: steps.check.outputs.is_release == 'true' && success()
+              uses: actions/github-script@v7
+              with:
+                  script: |
+                      const version = '${{ steps.version.outputs.version }}';
+                      const npmTag = '${{ steps.version.outputs.npm_tag }}';
+                      const isPrerelease = '${{ steps.version.outputs.is_prerelease }}' === 'true';
+
+                      // Find the merged PR associated with this commit
+                      const prs = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+                          owner: context.repo.owner,
+                          repo: context.repo.repo,
+                          commit_sha: context.sha
+                      });
+
+                      const prNumber = prs.data[0]?.number;
+                      if (!prNumber) {
+                          core.info('No associated PR found — skipping comment');
+                          return;
+                      }
+
+                      const installCmd = isPrerelease
+                          ? 'opencode plugin opencode-acp@dev --global'
+                          : 'opencode plugin opencode-acp@latest --global';
+
+                      const body = [
+                          `✅ **Published \`opencode-acp@${version}\`** to npm \`${npmTag}\` tag.`,
+                          '',
+                          '```bash',
+                          installCmd,
+                          '```',
+                          '',
+                          `[npm](https://www.npmjs.com/package/opencode-acp/v/${version}) | [GitHub Release](https://github.com/${context.repo.owner}/${context.repo.repo}/releases/tag/v${version})`
+                      ].join('\n');
+
+                      await github.rest.issues.createComment({
+                          owner: context.repo.owner,
+                          repo: context.repo.repo,
+                          issue_number: prNumber,
+                          body
+                      });
+
+                      core.info(`Commented on PR #${prNumber}: published ${version} to ${npmTag}`);
+
+            - name: Report promote-stable on PR
+              if: steps.check.outputs.is_promote_stable == 'true' && success()
+              uses: actions/github-script@v7
+              with:
+                  script: |
+                      const version = '${{ steps.check.outputs.stable_version }}';
+
+                      const prs = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+                          owner: context.repo.owner,
+                          repo: context.repo.repo,
+                          commit_sha: context.sha
+                      });
+
+                      const prNumber = prs.data[0]?.number;
+                      if (!prNumber) {
+                          core.info('No associated PR found — skipping comment');
+                          return;
+                      }
+
+                      const body = [
+                          `✅ **Promoted \`opencode-acp@${version}\`** to npm \`stable\` tag.`,
+                          '',
+                          '```bash',
+                          'opencode plugin opencode-acp@stable --global',
+                          '```'
+                      ].join('\n');
+
+                      await github.rest.issues.createComment({
+                          owner: context.repo.owner,
+                          repo: context.repo.repo,
+                          issue_number: prNumber,
+                          body
+                      });
+
+                      core.info(`Commented on PR #${prNumber}: promoted ${version} to stable`);
