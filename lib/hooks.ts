@@ -292,11 +292,10 @@ export function createCommandExecuteHandler(
             const sub = input.arguments?.trim().toLowerCase()
             if (sub === "stats" || sub === "status") {
                 await handleStatsCommand(commandCtx)
-                throw new Error("__DCP_CONTEXT_HANDLED__")
+                return
             }
 
             await handleContextCommand(commandCtx)
-            throw new Error("__DCP_CONTEXT_HANDLED__")
         }
     }
 }
