@@ -6,7 +6,6 @@ import { mkdirSync } from "node:fs"
 import {
     evaluatePreCommitQuality,
     buildQualityRejectionError,
-    buildPreemptiveAcknowledgeError,
 } from "../lib/compress/quality-gate"
 import { createCompressRangeTool } from "../lib/compress/range"
 import { createSessionState, resetSessionState, type WithParts } from "../lib/state"
@@ -259,16 +258,6 @@ test("buildQualityRejectionError computes ratio and retention from plan data", (
     assert.ok(error.message.includes("100 chars"), "should show summary chars")
 })
 
-test("buildPreemptiveAcknowledgeError explains the parameter is invalid without pending rejection", () => {
-    const error = buildPreemptiveAcknowledgeError()
-    assert.ok(error.message.includes("acknowledgeRisk"), "should mention the parameter name")
-    assert.ok(
-        error.message.includes("no quality gate rejection is pending"),
-        "should explain why it's invalid",
-    )
-    assert.ok(error.message.includes("Remove it"), "should tell model to remove it")
-})
-
 test("qualityGateRetryPending defaults to false", () => {
     const state = createSessionState()
     assert.equal(state.qualityGateRetryPending, false)
@@ -395,29 +384,47 @@ test("integration: acknowledgeRisk bypasses quality after rejection", async () =
     assert.equal(state.prune.messages.blocksById.size, 1, "one block should be committed")
 })
 
-test("integration: preemptive acknowledgeRisk without prior rejection is rejected", async () => {
+test("integration: preemptive acknowledgeRisk is a no-op — quality still runs (#301)", async () => {
     const sessionID = `ses-int-preempt-${Date.now()}`
     const rawMessages = buildIntegrationMessages(sessionID)
     const state = createSessionState()
     const config = buildConfig(true)
     const tool = buildToolContext(state, config, rawMessages)
 
+    // Bad summary + preemptive acknowledgeRisk: quality must still reject.
     await assert.rejects(
         tool.execute(
             {
                 topic: "Auth analysis",
-                content: [{ startId: "m00001", endId: "m00004", summary: "Good enough summary with keywords." }],
+                content: [{ startId: "m00001", endId: "m00004", summary: "Bad." }],
                 acknowledgeRisk: true,
-            } as any,
+            },
             { ...toolCtx, sessionID },
         ),
         (err: Error) => {
-            assert.ok(err.message.includes("no quality gate rejection is pending"), `should be preemptive error, got: ${err.message}`)
+            assert.ok(err.message.includes("QUALITY GATE FAILURE"), `should be quality rejection, got: ${err.message}`)
             return true
         },
     )
-    assert.equal(state.qualityGateRetryPending, false, "flag should stay false")
-    assert.equal(state.prune.messages.blocksById.size, 0, "no blocks committed")
+    assert.equal(state.qualityGateRetryPending, true, "rejection arms the flag even when acknowledgeRisk was passed")
+
+    // Fresh session: good summary + preemptive acknowledgeRisk (flag=false)
+    // succeeds, with an ignore note in the result.
+    const sessionID2 = `ses-int-preempt2-${Date.now()}`
+    const state2 = createSessionState()
+    const tool2 = buildToolContext(state2, config, buildIntegrationMessages(sessionID2))
+    const result = await tool2.execute(
+        {
+            topic: "Auth analysis",
+            content: [{ startId: "m00001", endId: "m00004", summary: "Authentication system design analysis. File: lib/auth.ts:142 holds the token refresh logic. Critical bug: retry lacked exponential backoff; fixed with base=1000ms, max=30000ms. Decision: JWT over session cookies for stateless architecture. lib/auth.test.ts now covers refresh edge cases. Performance overhead 3ms per refresh attempt, acceptable." }],
+            acknowledgeRisk: true,
+        },
+        { ...toolCtx, sessionID: sessionID2 },
+    )
+    assert.ok(result.includes("Compressed"), "good summary succeeds despite preemptive acknowledgeRisk")
+    assert.ok(result.includes("acknowledgeRisk was ignored"), "result notes the ignored flag")
+    assert.equal(state2.qualityGateRetryPending, false, "flag stays false")
+    assert.equal(state2.prune.messages.blocksById.size, 1, "one block committed")
 })
 
 test("integration: flag cleared on successful non-acknowledgeRisk compression", async () => {

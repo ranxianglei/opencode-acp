@@ -39,7 +39,6 @@ import {
 import type { CompressRangeToolArgs } from "./types"
 import { resolveKeepMarkers } from "./keep-markers"
 import {
-    buildPreemptiveAcknowledgeError,
     buildQualityRejectionError,
     evaluatePreCommitQuality,
 } from "./quality-gate"
@@ -315,13 +314,18 @@ export function createCompressRangeTool(factoryCtx: ToolFactoryContext): ReturnT
 
             const qualityGateRetryPendingBefore = ctx.state.qualityGateRetryPending
 
-            if (acknowledgeRisk && !ctx.state.qualityGateRetryPending) {
-                throw buildPreemptiveAcknowledgeError()
+            // #301: the model routinely carries acknowledgeRisk over from
+            // non-quality errors (e.g. argument validation failures), which
+            // used to hard-fail with "no rejection pending". Without a pending
+            // quality-gate rejection the flag is a no-op instead — quality
+            // still runs. Only a real rejection arms the bypass.
+            const bypassQuality = acknowledgeRisk && ctx.state.qualityGateRetryPending
+            const ignoredAcknowledgeRisk = acknowledgeRisk && !ctx.state.qualityGateRetryPending
+            if (ignoredAcknowledgeRisk) {
+                ctx.logger.warn("compress: acknowledgeRisk ignored — no quality gate rejection pending")
             }
-            if (acknowledgeRisk) {
-                ctx.state.qualityGateRetryPending = false
-            } else {
-                ctx.state.qualityGateRetryPending = false
+            ctx.state.qualityGateRetryPending = false
+            if (!bypassQuality) {
                 for (const plan of preparedPlans) {
                     const result = evaluatePreCommitQuality(
                         rawMessages,
@@ -402,7 +406,10 @@ export function createCompressRangeTool(factoryCtx: ToolFactoryContext): ReturnT
             }
 
             const skippedNote = phantomSkipNotice !== null ? `\n⚠️ ${phantomSkipNotice}\n` : ""
-            return `Compressed ${totalCompressedMessages} messages into ${COMPRESSED_BLOCK_HEADER}.${skippedNote}\nIMPORTANT: This was an automatic context compression. You MUST continue your previous task exactly where you left off. Do NOT ask the user what to do next.\n💡 Tip: Use search_context('keyword') to find compressed content when you need it later.`
+            const ackNote = ignoredAcknowledgeRisk
+                ? `\n⚠️ acknowledgeRisk was ignored: no quality gate rejection was pending, so quality checks ran normally. Only pass it when retrying immediately after a quality gate rejection.\n`
+                : ""
+            return `Compressed ${totalCompressedMessages} messages into ${COMPRESSED_BLOCK_HEADER}.${skippedNote}${ackNote}\nIMPORTANT: This was an automatic context compression. You MUST continue your previous task exactly where you left off. Do NOT ask the user what to do next.\n💡 Tip: Use search_context('keyword') to find compressed content when you need it later.`
         },
     })
 }
