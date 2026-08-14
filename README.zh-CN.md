@@ -446,6 +446,16 @@ ACP 是 DCP 的直接替代品。迁移步骤：
 
 ## 更新日志
 
+### v1.14.19 — 彻底修复发版流水线（npm 10 `--ignore-scripts` 失效）
+
+**问题**：v1.14.18（#306）已合并但依然没有发布 —— `release.yml` 又在同一步骤失败。v1.14.18 修复失败的根本原因：CI 运行器是 Node 22（npm 10.9.x），而 **npm 10 在 `npm pack` 时即使传了 `--ignore-scripts` 也照样执行 `prepare` 生命周期钩子**。v1.14.18 的修复（`npm pack --ignore-scripts`）在 npm 11 上有效，在 npm 10 上是空操作。prepare 一旦执行，tsup 会把 `CLI Building entry: index.ts` 写到 **stdout**，破坏 `verify-package.mjs` 里的 `JSON.parse`（`SyntaxError: Unexpected token`）。
+
+**修复**：把 `prepare` 构建的 stdout 重定向到 stderr：`package.json` 中改为 `"prepare": "npm run build 1>&2"`。构建输出（信息性）走 stderr，stdout 无论 npm 版本、无论 `--ignore-scripts` 是否生效都保持纯 JSON。已在本地用 npm 10.9.9 实证验证：`npm pack --dry-run --json` 现在返回合法 JSON（173 个 tarball 条目），带与不带 `--ignore-scripts` 均通过。v1.14.18 加的 `--ignore-scripts` 标志保留（npm 10 上无害，npm 11 上跳过多余重建）。`npm install github:...#branch` 路径不受影响 —— prepare 照常执行并构建 `dist/`。
+
+文件：`package.json`。测试：976 通过；`check:package` 在 npm 10.9.9 和 npm 11.12.1 上均绿。
+
+**安装**：`opencode plugin opencode-acp@latest --global`
+
 ### v1.14.18 — 取代未能发布的 v1.14.17；修复发版流水线
 
 **问题**：v1.14.17 已合并（#305）但从未发布 —— \`release.yml\` 在 \`npm run check:package\` 一步失败：#298 新增的 \`prepare\` 钩子（\`npm run build\`）会在 \`verify-package.mjs\` 的 \`npm pack --json\` 期间运行，tsup 的 \`CLI Building entry: index.ts\` 输出污染 stdout，导致 \`JSON.parse\` 报错（\`SyntaxError: Unexpected token 'C'\`）。
