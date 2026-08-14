@@ -23,7 +23,7 @@ THE FORMAT OF COMPRESS
   ]
 }
 \`\`\`
-Each entry needs a topic — either its own or the top-level fallback.`
+Each entry MAY have a topic. Missing topics fall back to the top-level topic, then to an automatic one derived from the summary.`
 
 export const MESSAGE_FORMAT_EXTENSION = `
 THE FORMAT OF COMPRESS

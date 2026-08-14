@@ -52,7 +52,7 @@ export interface CompressRangeEntry {
 }
 
 export interface CompressRangeToolArgs {
-    /** Fallback topic for entries without their own. Optional if every entry has one. */
+    /** Fallback topic for entries without their own. Fully optional — missing topics are derived from the summary. */
     topic?: string
     content: CompressRangeEntry[]
     summaryMaxChars?: number
