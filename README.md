@@ -492,6 +492,16 @@ For the complete list with root cause analysis, see the [bug tracker](https://gi
 
 ## Changelog
 
+### v1.14.17 — Eliminate compress retry dead-ends (#301)
+
+**Problem**: Two compress arguments hard-failed on first use and produced confusing error loops instead of actionable feedback. (1) The model learned "add `acknowledgeRisk: true` to retry" from quality-gate rejection templates, then carried the flag into *every* retry — including retries after non-quality errors (e.g. a missing topic), where no quality-gate rejection was pending, hitting `Parameter "acknowledgeRisk": true was provided, but no quality gate rejection is pending` (issue #301). (2) `content[0] needs a topic — provide content[0].topic or the top-level topic` hard-failed compress calls whose entries had no topic and no top-level fallback.
+
+**Fix**: Both parameters are now tolerant. `acknowledgeRisk` without a pending rejection is a no-op — quality checks still run (the gate's protection is unchanged: bypass is only armed by a real quality-gate rejection), and a successful result carries an `⚠️ acknowledgeRisk was ignored: ...` note teaching correct usage. Topics are fully optional: an entry without its own topic falls back to the top-level topic, then to one derived from the summary's first line (markdown headings stripped, capped at 80 chars), so `search_context` always has something searchable.
+
+Files: `lib/compress/range.ts`, `lib/compress/range-utils.ts` (new `deriveFallbackTopic`), `lib/compress/quality-gate/rejection.ts` (removed `buildPreemptiveAcknowledgeError`), `lib/compress/types.ts`, `lib/prompts/compress-range.ts`, `lib/prompts/extensions/tool.ts`, `lib/state/types.ts`. Tests: 976 pass.
+
+**Install**: `opencode plugin opencode-acp@latest --global`
+
 ### v1.14.16 — Raise context limits to 80%
 
 **Problem**: The compression thresholds were `maxContextLimit: 55%` / `minContextLimit: 45%`. The strong "over-limit" nudge fired as soon as context exceeded 55% of the model window. Combined with the fixed 50K growth threshold (v1.14.15), this still engaged compression relatively early, leaving usable context unused.

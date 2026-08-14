@@ -446,6 +446,16 @@ ACP 是 DCP 的直接替代品。迁移步骤：
 
 ## 更新日志
 
+### v1.14.17 — 消除 compress 重试死循环（#301）
+
+**问题**：两个 compress 参数在首次使用时硬报错，产生令人困惑的错误循环而非可执行的反馈。(1) 模型从质量门拒绝模板学到「重试要加 `acknowledgeRisk: true`」，于是把它带进了所有重试——包括非质量错误（如缺 topic）之后的重试，此时没有 pending 的质量门拒绝，撞上 `Parameter "acknowledgeRisk": true was provided, but no quality gate rejection is pending`（issue #301）。(2) `content[0] needs a topic — provide content[0].topic or the top-level topic` 在 entry 无 topic 且无顶层 fallback 时硬报错。
+
+**修复**：两个参数均改为宽容处理。无 pending 拒绝时的 `acknowledgeRisk` 为 no-op——质量检查照常运行（质量门保护不变：bypass 只由真实的质量门拒绝解锁），成功结果附带 `⚠️ acknowledgeRisk was ignored: ...` 提示教模型正确用法。topic 完全可选：entry 无自有 topic 时依次回退到顶层 topic、再到从 summary 首行派生的 topic（去 markdown 标题符、截断 80 字符），保证 `search_context` 始终有可检索内容。
+
+文件：`lib/compress/range.ts`、`lib/compress/range-utils.ts`（新增 `deriveFallbackTopic`）、`lib/compress/quality-gate/rejection.ts`（移除 `buildPreemptiveAcknowledgeError`）、`lib/compress/types.ts`、`lib/prompts/compress-range.ts`、`lib/prompts/extensions/tool.ts`、`lib/state/types.ts`。测试：976 通过。
+
+**安装**：`opencode plugin opencode-acp@latest --global`
+
  ### v1.14.16 — 将上下文 limit 提升至 80%
 
 **问题**：压缩阈值原为 `maxContextLimit: 55%` / `minContextLimit: 45%`。上下文一旦超过模型窗口的 55% 就会触发强「超限」nudge。配合 v1.14.15 固定的 50K 增长阈值，压缩仍较早介入，可用上下文未被充分利用。
