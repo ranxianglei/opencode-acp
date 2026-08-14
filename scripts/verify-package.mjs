@@ -199,7 +199,12 @@ function validateRuntimeImportGraph() {
 }
 
 function validatePackedFiles() {
-    const output = execFileSync("npm", ["pack", "--dry-run", "--json"], {
+    // --ignore-scripts: the `prepare` hook (added in #298) runs `npm run build`,
+    // whose tsup output ("CLI Building entry: index.ts") pollutes stdout and
+    // breaks JSON.parse. dist/ is already built by `check:package` before this
+    // runs, and pr-artifact.yml publishes with --ignore-scripts for the same
+    // reason.
+    const output = execFileSync("npm", ["pack", "--dry-run", "--json", "--ignore-scripts"], {
         cwd: root,
         encoding: "utf8",
     })

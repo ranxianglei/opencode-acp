@@ -446,6 +446,16 @@ ACP 是 DCP 的直接替代品。迁移步骤：
 
 ## 更新日志
 
+### v1.14.18 — 取代未能发布的 v1.14.17；修复发版流水线
+
+**问题**：v1.14.17 已合并（#305）但从未发布 —— \`release.yml\` 在 \`npm run check:package\` 一步失败：#298 新增的 \`prepare\` 钩子（\`npm run build\`）会在 \`verify-package.mjs\` 的 \`npm pack --json\` 期间运行，tsup 的 \`CLI Building entry: index.ts\` 输出污染 stdout，导致 \`JSON.parse\` 报错（\`SyntaxError: Unexpected token 'C'\`）。
+
+**修复**：\`scripts/verify-package.mjs\` 改为执行 \`npm pack --dry-run --json --ignore-scripts\` —— 跳过 \`prepare\` 钩子，与 \`pr-artifact.yml\` 发布时使用 \`--ignore-scripts\` 的做法一致。\`dist/\` 由 \`check:package\` 前置构建步骤产出，打包语义不变。
+
+文件：\`scripts/verify-package.mjs\`。测试：976 通过；\`check:package\` 绿。
+
+**安装**：`opencode plugin opencode-acp@latest --global`
+
 ### v1.14.17 — PR 预览构建发布 npm + 发版发布反馈（#298）
 
 **问题**：合并前无法安装测试 PR 的构建产物；发版合并后 PR 上也没有确认发布到了 npm 的哪个版本。
