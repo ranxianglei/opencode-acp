@@ -446,6 +446,16 @@ ACP 是 DCP 的直接替代品。迁移步骤：
 
 ## 更新日志
 
+### v1.14.17 — PR 预览构建发布 npm + 发版发布反馈（#298）
+
+**问题**：合并前无法安装测试 PR 的构建产物；发版合并后 PR 上也没有确认发布到了 npm 的哪个版本。
+
+**修复**（#298）：新增 \`.github/workflows/pr-artifact.yml\` —— 每个指向 master 的 PR：构建插件、以 \`pr-<N>\` tag 发布到 npm（版本 \`<base>-pr.<N>.<run>\`）、上传 tarball + \`dist/\` 作为 workflow artifact（保留 30 天）、在 PR 上评论安装指引。\`release.yml\` 另在发版合并后于关联 PR 评论已发布版本。本版本不含插件运行时行为变更。
+
+文件：\`.github/workflows/pr-artifact.yml\`、\`.github/workflows/release.yml\`。测试：976 通过。
+
+**安装**：`opencode plugin opencode-acp@latest --global`
+
  ### v1.14.16 — 将上下文 limit 提升至 80%
 
 **问题**：压缩阈值原为 `maxContextLimit: 55%` / `minContextLimit: 45%`。上下文一旦超过模型窗口的 55% 就会触发强「超限」nudge。配合 v1.14.15 固定的 50K 增长阈值，压缩仍较早介入，可用上下文未被充分利用。
