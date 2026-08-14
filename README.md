@@ -492,6 +492,16 @@ For the complete list with root cause analysis, see the [bug tracker](https://gi
 
 ## Changelog
 
+### v1.14.18 — Supersedes unpublished v1.14.17; fix release pipeline
+
+**Problem**: v1.14.17 was merged (#305) but never published — `release.yml` failed at `npm run check:package` because the `prepare` hook added in #298 (`npm run build`) runs during `npm pack --json` inside `verify-package.mjs`, and tsup's `CLI Building entry: index.ts` stdout output breaks `JSON.parse` (`SyntaxError: Unexpected token 'C'`).
+
+**Fix**: `scripts/verify-package.mjs` now runs `npm pack --dry-run --json --ignore-scripts` — skipping the `prepare` hook, consistent with `pr-artifact.yml` which already publishes with `--ignore-scripts`. `dist/` is already built by `check:package`'s preceding build step, so packing semantics are unchanged.
+
+Files: `scripts/verify-package.mjs`. Tests: 976 pass; `check:package` green.
+
+**Install**: `opencode plugin opencode-acp@latest --global`
+
 ### v1.14.17 — Per-PR npm preview builds + release publishing feedback (#298)
 
 **Problem**: There was no way to install and test a PR's build before merging, and after a release merge nothing on the PR confirmed which version was published to npm.
