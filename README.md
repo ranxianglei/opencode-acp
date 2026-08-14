@@ -492,6 +492,16 @@ For the complete list with root cause analysis, see the [bug tracker](https://gi
 
 ## Changelog
 
+### v1.14.19 — Fix release pipeline for real (npm 10 `--ignore-scripts` bug)
+
+**Problem**: v1.14.18 (#306) was merged but still never published — `release.yml` failed at the exact same step. Root cause of the failed fix: the CI runner uses Node 22 (npm 10.9.x), and **npm 10 runs the `prepare` lifecycle hook during `npm pack` even when `--ignore-scripts` is passed**. v1.14.18's fix (`npm pack --ignore-scripts`) works on npm 11 but is a no-op on npm 10. When prepare runs, tsup writes `CLI Building entry: index.ts` to **stdout**, breaking `JSON.parse` in `verify-package.mjs` (`SyntaxError: Unexpected token`).
+
+**Fix**: Redirect the `prepare` build's stdout to stderr: `"prepare": "npm run build 1>&2"` in `package.json`. Build output (informational) goes to stderr; stdout stays pure JSON regardless of npm version or whether `--ignore-scripts` works. Verified empirically with npm 10.9.9 locally: `npm pack --dry-run --json` now returns valid JSON (173 tarball entries) both with and without `--ignore-scripts`. The `--ignore-scripts` flag added in v1.14.18 is kept (harmless on npm 10, skips the redundant rebuild on npm 11). The `npm install github:...#branch` path still works — prepare still runs and still builds `dist/`.
+
+Files: `package.json`. Tests: 976 pass; `check:package` green on npm 10.9.9 and npm 11.12.1.
+
+**Install**: `opencode plugin opencode-acp@latest --global`
+
 ### v1.14.18 — Supersedes unpublished v1.14.17; fix release pipeline
 
 **Problem**: v1.14.17 was merged (#305) but never published — `release.yml` failed at `npm run check:package` because the `prepare` hook added in #298 (`npm run build`) runs during `npm pack --json` inside `verify-package.mjs`, and tsup's `CLI Building entry: index.ts` stdout output breaks `JSON.parse` (`SyntaxError: Unexpected token 'C'`).
