@@ -492,6 +492,16 @@ For the complete list with root cause analysis, see the [bug tracker](https://gi
 
 ## Changelog
 
+### v1.14.17 — Per-PR npm preview builds + release publishing feedback (#298)
+
+**Problem**: There was no way to install and test a PR's build before merging, and after a release merge nothing on the PR confirmed which version was published to npm.
+
+**Fix** (#298): New `.github/workflows/pr-artifact.yml` — on every PR to master: build the plugin, publish it to npm under a `pr-<N>` tag (version `<base>-pr.<N>.<run>`), upload the tarball + `dist/` as a workflow artifact (30-day retention), and comment install instructions on the PR. `release.yml` additionally comments the published version on the associated PR after a release merge. No plugin runtime changes in this release.
+
+Files: `.github/workflows/pr-artifact.yml`, `.github/workflows/release.yml`. Tests: 976 pass.
+
+**Install**: `opencode plugin opencode-acp@latest --global`
+
 ### v1.14.16 — Raise context limits to 80%
 
 **Problem**: The compression thresholds were `maxContextLimit: 55%` / `minContextLimit: 45%`. The strong "over-limit" nudge fired as soon as context exceeded 55% of the model window. Combined with the fixed 50K growth threshold (v1.14.15), this still engaged compression relatively early, leaving usable context unused.
