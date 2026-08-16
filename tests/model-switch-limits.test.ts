@@ -130,6 +130,7 @@ function createMockPrompts() {
                 iterationNudge: "iteration nudge",
                 manualExtension: "",
                 subagentExtension: "",
+                decompressExtension: "",
             }
         },
     }
@@ -154,6 +155,7 @@ async function runTransform(opts: {
     currentTokens: number
     modelId: string
     initialLimit: number
+    initialModel?: { providerID: string; modelID: string }
     catalog?: Array<[providerId: string, modelId: string, limit: number]>
 }): Promise<{ text: string; state: SessionState }> {
     const tempDir = mkdtempSync(join(tmpdir(), "acp-model-switch-"))
@@ -164,6 +166,13 @@ async function runTransform(opts: {
         const state = createSessionState()
         state.sessionId = SID
         state.modelContextLimit = opts.initialLimit
+        // Simulates the identity pair the system hook would have recorded
+        // alongside the limit; omitting it simulates a legacy persisted state
+        // (saved before the pair existed).
+        if (opts.initialModel) {
+            state.modelProviderID = opts.initialModel.providerID
+            state.modelID = opts.initialModel.modelID
+        }
 
         const registry = createTestRegistry(state)
         for (const [providerId, modelId, limit] of opts.catalog ?? []) {
@@ -213,18 +222,54 @@ test("model switch to larger window: 26% usage must NOT fire a 50% emergency nud
     assert.equal(state.nudges.lastNudgeShownTokens, undefined, "no nudge baseline recorded")
 })
 
-test("unknown model in catalog keeps previous limit (documents pre-fix path)", async () => {
-    // No catalog entry for the new model: reconciliation cannot run and the
-    // stale 200K limit computes a 100K threshold → 260K fires. This is exactly
-    // the issue #312 symptom and the fallback behavior when the catalog misses.
+test("catalog miss + model switch invalidates the stale limit (legacy state)", async () => {
+    // No catalog entry for the new model AND the state carries no identity
+    // pair (legacy persisted state): the messages hook cannot CORRECT the
+    // limit, so it invalidates it instead of computing a 100K threshold from
+    // the stale 200K window. The #312 false positive is eliminated even when
+    // the catalog misses; system.transform refreshes the pair later in this
+    // same request.
     const { text, state } = await runTransform({
         currentTokens: 260_000,
         modelId: NEW_MODEL,
         initialLimit: OLD_LIMIT,
     })
 
-    assert.equal(state.modelContextLimit, OLD_LIMIT)
-    assert.ok(text.includes("Context limit reached"), "stale-limit path still fires (bug symptom)")
+    assert.equal(state.modelContextLimit, undefined, "stale limit must be invalidated")
+    assert.equal(state.modelProviderID, PROVIDER)
+    assert.equal(state.modelID, NEW_MODEL)
+    assert.ok(!text.includes("Context limit reached"), "no emergency math against unknown window")
+})
+
+test("catalog miss + identity mismatch invalidates the stale limit", async () => {
+    // Same as above, but the state KNOWS its limit belongs to OLD_MODEL — the
+    // recorded-identity check (not the legacy heuristic) drives the fix.
+    const { text, state } = await runTransform({
+        currentTokens: 260_000,
+        modelId: NEW_MODEL,
+        initialLimit: OLD_LIMIT,
+        initialModel: { providerID: PROVIDER, modelID: OLD_MODEL },
+    })
+
+    assert.equal(state.modelContextLimit, undefined)
+    assert.equal(state.modelID, NEW_MODEL)
+    assert.ok(!text.includes("Context limit reached"))
+})
+
+test("catalog miss + same identity keeps the limit (no needless blindness)", async () => {
+    // Catalog misses but the request names the SAME model the limit was
+    // recorded for (e.g. fresh instance after failed hydration): the limit is
+    // still trusted — percentage math stays enabled instead of blinding
+    // every such turn. 260K on 200K = 130% ≥ 50% → emergency still fires.
+    const { text, state } = await runTransform({
+        currentTokens: 260_000,
+        modelId: OLD_MODEL,
+        initialLimit: OLD_LIMIT,
+        initialModel: { providerID: PROVIDER, modelID: OLD_MODEL },
+    })
+
+    assert.equal(state.modelContextLimit, OLD_LIMIT, "same-identity limit must be kept")
+    assert.ok(text.includes("Context limit reached"), "130% of 200K still fires the emergency")
 })
 
 test("model switch to smaller window: emergency fires when actually over threshold", async () => {
@@ -266,6 +311,30 @@ test("system.transform records model limit even when session state is absent", a
 
     assert.equal(registry.resolveModelLimit(PROVIDER, NEW_MODEL), NEW_LIMIT)
     assert.equal(registry.resolveModelLimit(PROVIDER, "other"), undefined)
+})
+
+test("system.transform records the model identity alongside the limit", async () => {
+    const state = createSessionState()
+    state.sessionId = SID
+    const registry = createTestRegistry(state)
+    const handler = createSystemPromptHandler(
+        registry,
+        new Logger(false),
+        buildConfig(),
+        createMockPrompts(),
+    )
+
+    await handler(
+        {
+            sessionID: SID,
+            model: { id: NEW_MODEL, providerID: PROVIDER, limit: { context: NEW_LIMIT } },
+        },
+        { system: ["base system prompt"] },
+    )
+
+    assert.equal(state.modelContextLimit, NEW_LIMIT)
+    assert.equal(state.modelProviderID, PROVIDER)
+    assert.equal(state.modelID, NEW_MODEL)
 })
 
 test("registry catalog ignores invalid entries and unknown lookups", () => {

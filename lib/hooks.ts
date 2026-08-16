@@ -98,6 +98,10 @@ export function createSystemPromptHandler(
         const state = input.sessionID ? registry.get(input.sessionID) : undefined
         if (state && input.model?.limit?.context) {
             state.modelContextLimit = input.model.limit.context
+            // [FIX #312 follow-up] Record WHICH model the limit belongs to so
+            // the messages hook can detect staleness on a catalog miss.
+            state.modelProviderID = input.model?.providerID
+            state.modelID = input.model?.id
         }
 
         if (!state || (state.isSubAgent && !config.allowSubAgents)) {
@@ -179,8 +183,6 @@ export function createChatMessageTransformHandler(
             // value still reflects the previous model. Reconcile it from the
             // catalog entry for the model named on this request's user message
             // before any consumer (filters, GC, nudge thresholds) reads it.
-            // Unknown model → keep the previous value; the system hook
-            // refreshes it later in this same request anyway.
             const requestModel = (
                 lastUserMessage.info as { model?: { providerID?: string; modelID?: string } }
             ).model
@@ -190,6 +192,26 @@ export function createChatMessageTransformHandler(
             )
             if (requestModelLimit !== undefined) {
                 state.modelContextLimit = requestModelLimit
+                state.modelProviderID = requestModel?.providerID
+                state.modelID = requestModel?.modelID
+            } else if (
+                // [FIX #312 fallback] Catalog miss: we cannot CORRECT the
+                // limit, but we can tell when it belongs to a DIFFERENT model.
+                // Invalidate instead of letting every percentage threshold
+                // below run against the wrong window (#312's false positive).
+                // States persisted before this identity pair existed carry no
+                // identity and are treated as stale for the same reason.
+                // Consumers already tolerate undefined — fresh sessions run
+                // with it until the first system.transform sets the pair.
+                requestModel?.providerID &&
+                requestModel?.modelID &&
+                state.modelContextLimit !== undefined &&
+                (state.modelProviderID !== requestModel.providerID ||
+                    state.modelID !== requestModel.modelID)
+            ) {
+                state.modelContextLimit = undefined
+                state.modelProviderID = requestModel.providerID
+                state.modelID = requestModel.modelID
             }
             await updatePerTurnState(state, logger, messages)
         }
