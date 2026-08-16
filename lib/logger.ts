@@ -73,7 +73,9 @@ export class Logger {
     }
 
     private async write(level: string, component: string, message: string, data?: any) {
-        if (!this.enabled) return
+        // ERROR and WARN are written even when debug logging is off, so that
+        // failures remain visible in the daily log by default.
+        if (!this.enabled && level !== "ERROR" && level !== "WARN") return
 
         try {
             await this.ensureLogDir()
@@ -106,13 +108,11 @@ export class Logger {
     }
 
     warn(message: string, data?: any) {
-        if (!this.enabled) return
         const component = this.getCallerFile(2)
         return this.write("WARN", component, message, data)
     }
 
     error(message: string, data?: any) {
-        if (!this.enabled) return
         const component = this.getCallerFile(2)
         return this.write("ERROR", component, message, data)
     }
