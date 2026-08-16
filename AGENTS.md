@@ -402,7 +402,7 @@ grep -c 'your-feature-name' ~/.cache/opencode/packages/opencode-acp@latest/node_
 
 ```
 ~/.config/opencode/logs/acp/context/<session_id>/<timestamp>.json   # per-request message snapshots
-~/.config/opencode/logs/acp/daily/<date>.log                        # session load/save events
+~/.config/opencode/logs/acp/daily/<date>.log                        # WARN/ERROR always; INFO/DEBUG when debug: true
 ```
 
 ### 3.5 npm Publishing
