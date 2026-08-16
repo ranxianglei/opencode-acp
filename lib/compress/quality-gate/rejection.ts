@@ -73,11 +73,3 @@ Without acknowledgeRisk: true, the compression will be rejected again.`
 
     return new Error(message)
 }
-
-export function buildPreemptiveAcknowledgeError(): Error {
-    return new Error(
-        'Parameter "acknowledgeRisk": true was provided, but no quality gate rejection is pending. ' +
-            "This parameter is only valid immediately after a compression was rejected by the quality gate. " +
-            "Remove it and try again.",
-    )
-}
