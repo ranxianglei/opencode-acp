@@ -8,6 +8,44 @@ import type {
 import { isIgnoredUserMessage, messageHasCompress } from "../messages/query"
 import { isMessageWithInfo } from "../messages/shape"
 import { countTokens } from "../token-utils"
+/**
+ * Sync the cached `modelContextLimit` against the current turn's model.
+ *
+ * `modelContextLimit` is written only by the system.transform handler, which
+ * fires AFTER messages.transform within each turn (prompt.ts triggers
+ * messages.transform, then handle.process → llm.ts triggers system.transform).
+ * On the first transform after a model switch (e.g. 200K → 1M), the limit
+ * still describes the PREVIOUS model's window, so every percentage-based
+ * threshold (emergencyThresholdPercent, min/maxContextLimit, adaptive nudge
+ * growth) is computed against the stale window (issue #312: a 50% emergency
+ * fired at 26% of the new 1M window).
+ *
+ * On mismatch, invalidate the limit so the affected transform takes the
+ * standard "limit unknown" path; system.transform repopulates the correct
+ * value (plus the new identity) later in the same turn.
+ *
+ * Returns true when a model switch (or unknown provenance) was detected.
+ */
+export function syncModelIdentity(
+    state: SessionState,
+    providerID: string | undefined,
+    modelID: string | undefined,
+): boolean {
+    if (providerID === undefined || modelID === undefined) {
+        return false
+    }
+    if (state.modelProviderID === providerID && state.modelID === modelID) {
+        return false
+    }
+    // Model changed — or the limit's provenance is unknown (state file written
+    // by an older version without the identity fields). A limit that cannot be
+    // attributed to the current model is a stale guess: surface "unknown"
+    // rather than distorted percentages.
+    state.modelContextLimit = undefined
+    state.modelProviderID = providerID
+    state.modelID = modelID
+    return true
+}
 
 // [FIX Bug 3] Added summary check to match getCurrentTokenUsage exclusion logic
 export const isMessageCompacted = (state: SessionState, msg: WithParts): boolean => {

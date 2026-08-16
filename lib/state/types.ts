@@ -143,6 +143,14 @@ export interface SessionState {
     lastCompaction: number
     currentTurn: number
     modelContextLimit: number | undefined
+    /**
+     * Model identity that `modelContextLimit` was captured for. Together with
+     * `modelID`, lets the messages transform detect a model switch BEFORE the
+     * system.transform hook refreshes the limit (it fires later in the same
+     * turn), so a stale limit is never used for threshold math (issue #312).
+     */
+    modelProviderID?: string
+    modelID?: string
     systemPromptTokens: number | undefined
     /**
      * Transient flag (NOT persisted): set to true when a compress call is rejected

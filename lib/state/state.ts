@@ -171,6 +171,8 @@ export function createSessionState(): SessionState {
         lastCompaction: 0,
         currentTurn: 0,
         modelContextLimit: undefined,
+        modelProviderID: undefined,
+        modelID: undefined,
         systemPromptTokens: undefined,
         qualityGateRetryPending: false,
     }
@@ -211,6 +213,8 @@ export function resetSessionState(state: SessionState): void {
     state.lastCompaction = 0
     state.currentTurn = 0
     state.modelContextLimit = undefined
+    state.modelProviderID = undefined
+    state.modelID = undefined
     state.systemPromptTokens = undefined
     state.qualityGateRetryPending = false
 }
@@ -304,6 +308,12 @@ export async function ensureSessionInitialized(
     }
     if (typeof persisted.modelContextLimit === "number" && persisted.modelContextLimit > 0) {
         state.modelContextLimit = persisted.modelContextLimit
+    }
+    if (typeof persisted.modelProviderID === "string") {
+        state.modelProviderID = persisted.modelProviderID
+    }
+    if (typeof persisted.modelID === "string") {
+        state.modelID = persisted.modelID
     }
 
     const applied = applyPendingCompressionDurations(state)

@@ -24,6 +24,7 @@ import {
 } from "./compress/timing"
 import { filterMessages, filterMessagesInPlace } from "./messages/shape"
 import { getLastUserMessage } from "./messages/query"
+import { getModelInfo } from "./messages/inject/utils"
 import { truncateLargeToolOutputs } from "./messages/truncate-tools"
 import {
     handleContextCommand,
@@ -36,6 +37,7 @@ import { hideFailedCompressCalls } from "./compress/hide-failed"
 import { applyMessageFilters } from "./messages/filter/apply"
 import { ensureBuiltinFiltersRegistered } from "./messages/filter/builtin"
 import { createSessionState, saveSessionState, syncToolCache, updatePerTurnState, type SessionStateRegistry } from "./state"
+import { syncModelIdentity } from "./state/utils"
 import { cacheSystemPromptTokens } from "./ui/utils"
 import { sendIgnoredMessage } from "./ui/notification"
 import { runBatchCleanup } from "./gc/merge"
@@ -75,7 +77,11 @@ export function createSystemPromptHandler(
     return async (
         input: {
             sessionID?: string
-            model: { limit: { context: number; input?: number; output?: number } }
+            model: {
+                id: string
+                providerID: string
+                limit: { context: number; input?: number; output?: number }
+            }
         },
         output: { system: string[] },
     ) => {
@@ -84,6 +90,8 @@ export function createSystemPromptHandler(
         const state = input.sessionID ? registry.get(input.sessionID) : undefined
         if (state && input.model?.limit?.context) {
             state.modelContextLimit = input.model.limit.context
+            state.modelProviderID = input.model.providerID
+            state.modelID = input.model.id
         }
 
         if (!state || (state.isSubAgent && !config.allowSubAgents)) {
@@ -159,6 +167,26 @@ export function createChatMessageTransformHandler(
                 config,
             )
             await updatePerTurnState(state, logger, messages)
+            // [FIX #312] system.transform (which refreshes modelContextLimit)
+            // fires AFTER this transform, so on the first turn after a model
+            // switch the cached limit still describes the previous model's
+            // window. Invalidate it; the "limit unknown" path applies for this
+            // transform only.
+            const { providerId, modelId } = getModelInfo(messages)
+            const prevIdentity = state.modelID
+            const prevModel = prevIdentity ? `${state.modelProviderID}/${prevIdentity}` : undefined
+            if (syncModelIdentity(state, providerId, modelId)) {
+                const target = `${providerId}/${modelId}`
+                if (prevIdentity) {
+                    logger.debug(
+                        `Model switch detected (${prevModel} → ${target}); invalidated stale modelContextLimit`,
+                    )
+                } else {
+                    logger.debug(
+                        `Model identity established (${target}); limit awaits system.transform`,
+                    )
+                }
+            }
         }
 
         syncCompressPermissionState(state, config, hostPermissions, output.messages)
