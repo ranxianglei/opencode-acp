@@ -3,7 +3,7 @@
 - Task ID: `2026-08-16_default-error-logging`
 - Home Repo: `opencode-acp`
 - Created: 2026-08-16
-- Status: InProgress
+- Status: Done
 - Priority: P1
 - Owner: ranxianglei
 - References: user report — "用户说任务报错 我应该让他找什么日志"

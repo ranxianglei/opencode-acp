@@ -19,6 +19,7 @@
 | Commit | Description |
 |--------|-------------|
 | `2ccbf25` | fix: write ERROR/WARN to daily log even when debug is off |
+| `d2eb475` | test: restore prior XDG_CONFIG_HOME + per-test date in logger tests (dual-review P3 fixes) |
 
 ### Key Files
 
@@ -74,7 +75,7 @@ node --import tsx --test tests/logger.test.ts
 ## 6. Lessons Learned (optional)
 
 - What went well: single-gate design in `write()` keeps the decision in one place; tests isolate the log dir via `XDG_CONFIG_HOME`.
-- What could be improved: component attribution in tests is environment-dependent (runner frames) — assertions match structure, not exact component names.
+- What could be improved: dual-agent review (LoggerReviewerA + TestReviewerB on PR #311) flagged P3 items — WARN amplification on corrupted state file (accepted, documented), per-call getCallerFile cost (negligible), REQ status mismatch (fixed: REQ now `Done`), env restore-instead-of-delete (fixed in tests/logger.test.ts: `withConfigHome` helper), midnight date flake (fixed: date computed inside `setup()`).
 - Reusable conclusions: level-based gating is cheaper and safer than promoting debug sites to info; keep high-frequency DEBUG sites gated.
 
 ## 7. Follow-ups (optional)
