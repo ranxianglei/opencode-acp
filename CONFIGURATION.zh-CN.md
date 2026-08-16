@@ -57,7 +57,7 @@ ACP 从最多三层配置文件中读取（后加载的覆盖先加载的）：
 - **类型：** `boolean`
 - **默认值：** `false`
 - **状态：** ACTIVE
-- **说明：** 启用调试模式。设为 `true` 时，ACP 在每次压缩后发送聊天通知，显示块详情。同时启用按请求的调试日志，输出到 `~/.config/opencode/logs/acp/`。
+- **说明：** 启用调试模式。设为 `true` 时，ACP 在每次压缩后发送聊天通知，显示块详情，并启用 INFO/DEBUG 日志与按请求的上下文快照（`~/.config/opencode/logs/acp/`）。无论此开关如何设置，WARN/ERROR 始终写入 `~/.config/opencode/logs/acp/daily/<日期>.log`。
 
 #### `pruneNotification`
 - **类型：** `"off" | "minimal" | "detailed"`

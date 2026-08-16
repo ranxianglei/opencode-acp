@@ -30,6 +30,9 @@ export function applyMessageFilters(
 
     const result: ApplyResult = { partsFiltered: 0, partsDropped: 0, partsModified: 0 }
     const total = messages.length
+    // WARN reaches the daily log even with debug off, and a broken filter throws
+    // for every message×part — report each filter once per pass, not per message.
+    const warnedFilters = new Set<string>()
 
     const buildCtx = (text: string, role: string, i: number): MessageFilterContext => ({
         text,
@@ -89,11 +92,14 @@ export function applyMessageFilters(
                 try {
                     decision = filter.filter(filterCtx)
                 } catch (err) {
-                    logger.warn("Message filter threw error", {
-                        filter: filter.name,
-                        error: err instanceof Error ? err.message : String(err),
-                        messageIndex: i,
-                    })
+                    if (!warnedFilters.has(filter.name)) {
+                        warnedFilters.add(filter.name)
+                        logger.warn("Message filter threw error", {
+                            filter: filter.name,
+                            error: err instanceof Error ? err.message : String(err),
+                            messageIndex: i,
+                        })
+                    }
                     continue
                 }
                 if (decision.action === "keep") continue

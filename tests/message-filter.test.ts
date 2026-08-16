@@ -549,3 +549,39 @@ describe("omo-mode-injection filter (v1.1.0)", () => {
         assert.equal(result.action, "keep")
     })
 })
+
+describe("filter error handling", () => {
+    beforeEach(() => clearMessageFilters())
+
+    it("a throwing filter warns once per pass, not once per message", () => {
+        const throwing: MessageFilter = {
+            name: "always-throws",
+            version: "1.0.0",
+            description: "test",
+            filter() {
+                throw new Error("boom")
+            },
+        }
+        registerMessageFilter(throwing)
+
+        const warnCalls: unknown[][] = []
+        const logger: MockLogger = {
+            debug: () => {},
+            info: () => {},
+            warn: (...args: unknown[]) => warnCalls.push(args),
+        }
+
+        const messages: WithParts[] = Array.from({ length: 5 }, (_, i) => ({
+            info: { id: `msg-${i}`, role: "user", time: i } as WithParts["info"],
+            parts: [{ type: "text", text: `message ${i}` }],
+        }))
+        const config = { enabled: true, filters: { "always-throws": { enabled: true } } }
+        const stats = applyMessageFilters(messages, config, logger, {
+            sessionId: "ses-test",
+            isSubAgent: false,
+        })
+
+        assert.equal(warnCalls.length, 1, "filter that throws on every message should warn exactly once per pass")
+        assert.equal(stats.partsDropped, 0, "a throwing filter must not drop the message")
+    })
+})

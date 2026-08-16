@@ -57,7 +57,7 @@ Status legend: **ACTIVE** = currently used | **DEPRECATED** = accepted but no ef
 - **Type:** `boolean`
 - **Default:** `false`
 - **Status:** ACTIVE
-- **Description:** Enable debug mode. When `true`, ACP sends a chat notification after each compression showing block details. Also enables per-request debug logs at `~/.config/opencode/logs/acp/`.
+- **Description:** Enable debug mode. When `true`, ACP sends a chat notification after each compression showing block details, and enables INFO/DEBUG logs plus per-request context snapshots at `~/.config/opencode/logs/acp/`. WARN/ERROR lines are always written to `~/.config/opencode/logs/acp/daily/<date>.log` regardless of this flag.
 
 #### `pruneNotification`
 - **Type:** `"off" | "minimal" | "detailed"`

@@ -284,7 +284,8 @@ Each level overrides the previous, so project settings take priority over global
     // Automatically update npm-installed ACP when a newer npm latest is available.
     // Version-locked plugin specs are not updated.
     "autoUpdate": true,
-    // Enable debug logging to ~/.config/opencode/logs/acp/
+    // Enable INFO/DEBUG logging + per-request snapshots to ~/.config/opencode/logs/acp/
+    // (WARN/ERROR are always logged to daily/<date>.log)
     "debug": false,
     // Notification display: "off", "minimal", or "detailed"
     "pruneNotification": "off",

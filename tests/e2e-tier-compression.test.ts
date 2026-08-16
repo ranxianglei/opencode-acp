@@ -784,7 +784,7 @@ test("applyCompressionState: T1 block gets effectiveCompressedTokens = compresse
 test("tier-aware decompress: default restores one level up (T2→T1)", async () => {
     const tmpDir = mkdtempSync(join(tmpdir(), "acp-tier-decomp-"))
     const registry = createTestRegistry(tmpDir)
-    const logger = new Logger({ level: "error" })
+    const logger = new Logger(false)
     const config = buildConfig()
 
     const t1 = makeCompressionBlock(1, 1000, "T1 work", 1, 10, "u1")
@@ -822,7 +822,7 @@ test("tier-aware decompress: default restores one level up (T2→T1)", async () 
 test("tier-aware decompress: full:true restores to original (T2→raw)", async () => {
     const tmpDir = mkdtempSync(join(tmpdir(), "acp-tier-decomp-full-"))
     const registry = createTestRegistry(tmpDir)
-    const logger = new Logger({ level: "error" })
+    const logger = new Logger(false)
     const config = buildConfig()
 
     const t1 = makeCompressionBlock(1, 1000, "T1 work", 1, 10, "u1")
