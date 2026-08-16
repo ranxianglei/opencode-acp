@@ -28,6 +28,7 @@ export function createTestRegistry(seedState: SessionState) {
         states.set(seedState.sessionId, seedState)
     }
     const sharedTiming = seedState.compressionTiming
+    const modelLimits = new Map<string, number>()
     return {
         compressionTiming: sharedTiming,
         get size() {
@@ -51,6 +52,21 @@ export function createTestRegistry(seedState: SessionState) {
         },
         all() {
             return [...states.values()]
+        },
+        recordModelLimit(
+            providerId: string | undefined,
+            modelId: string | undefined,
+            limit: number | undefined,
+        ) {
+            if (!providerId || !modelId || typeof limit !== "number" || limit <= 0) return
+            modelLimits.set(`${providerId}/${modelId}`, limit)
+        },
+        resolveModelLimit(
+            providerId: string | undefined,
+            modelId: string | undefined,
+        ): number | undefined {
+            if (!providerId || !modelId) return undefined
+            return modelLimits.get(`${providerId}/${modelId}`)
         },
     }
 }

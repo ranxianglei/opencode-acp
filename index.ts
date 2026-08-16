@@ -45,6 +45,13 @@ const server: Plugin = (async (ctx) => {
         // logger.info("Secure mode detected, configured client authentication")
     }
 
+    // [FIX #312] Seed the model-limit catalog so the FIRST request after a
+    // model switch resolves the new model's context window (the per-request
+    // system.transform refresh only fills entries for models already used in
+    // this instance). Fire-and-forget: failures fall back to per-request
+    // refresh, which is the pre-fix behavior.
+    registry.hydrateModelLimitsFromClient(ctx.client).catch(() => {})
+
     logger.info("DCP initialized")
 
     startAutoUpdate(ctx, config.autoUpdate)
