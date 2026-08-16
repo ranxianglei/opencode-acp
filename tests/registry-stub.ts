@@ -1,4 +1,5 @@
 import { createSessionState, type SessionState } from "../lib/state"
+import { createModelLimitCatalog } from "../lib/state/model-limits"
 
 // Test helper: builds a SessionStateRegistry stub that resolves any sessionID
 // to a single state. Compress-tool unit tests operate on one state per test, so
@@ -28,7 +29,9 @@ export function createTestRegistry(seedState: SessionState) {
         states.set(seedState.sessionId, seedState)
     }
     const sharedTiming = seedState.compressionTiming
-    const modelLimits = new Map<string, number>()
+    // Same implementation the real registry uses — composing the factory here
+    // instead of hand-rolling a copy keeps the stub from drifting.
+    const modelLimits = createModelLimitCatalog()
     return {
         compressionTiming: sharedTiming,
         get size() {
@@ -58,15 +61,13 @@ export function createTestRegistry(seedState: SessionState) {
             modelId: string | undefined,
             limit: number | undefined,
         ) {
-            if (!providerId || !modelId || typeof limit !== "number" || limit <= 0) return
-            modelLimits.set(`${providerId}/${modelId}`, limit)
+            modelLimits.record(providerId, modelId, limit)
         },
         resolveModelLimit(
             providerId: string | undefined,
             modelId: string | undefined,
         ): number | undefined {
-            if (!providerId || !modelId) return undefined
-            return modelLimits.get(`${providerId}/${modelId}`)
+            return modelLimits.resolve(providerId, modelId)
         },
     }
 }
