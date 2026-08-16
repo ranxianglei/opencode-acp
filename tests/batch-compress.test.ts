@@ -4,7 +4,7 @@ import { join } from "node:path"
 import { tmpdir } from "node:os"
 import { mkdirSync } from "node:fs"
 import { createCompressRangeTool } from "../lib/compress/range"
-import { validateArgs } from "../lib/compress/range-utils"
+import { validateArgs, deriveFallbackTopic } from "../lib/compress/range-utils"
 import { createSessionState, type WithParts } from "../lib/state"
 import type { PluginConfig } from "../lib/config"
 import { Logger } from "../lib/logger"
@@ -143,40 +143,41 @@ test("validateArgs: mixed — some entries have topic, others use fallback", () 
     assert.doesNotThrow(() => validateArgs(args))
 })
 
-test("validateArgs: no topic at all — entry without topic and no fallback", () => {
+test("validateArgs: no topic at all — valid, topic is derived from the summary (#301)", () => {
     const args = {
         content: [
             { startId: "m00001", endId: "m00003", summary: "..." },
         ],
     }
-    assert.throws(
-        () => validateArgs(args as CompressRangeToolArgs),
-        /content\[0\] needs a topic/,
-    )
+    assert.doesNotThrow(() => validateArgs(args as CompressRangeToolArgs))
 })
 
-test("validateArgs: one entry without topic in a no-topical batch", () => {
+test("validateArgs: one entry without topic in a no-topical batch — valid (#301)", () => {
     const args = {
         content: [
             { topic: "First", startId: "m00001", endId: "m00003", summary: "..." },
             { startId: "m00004", endId: "m00006", summary: "..." },
         ],
     }
-    assert.throws(
-        () => validateArgs(args as CompressRangeToolArgs),
-        /content\[1\] needs a topic/,
-    )
+    assert.doesNotThrow(() => validateArgs(args as CompressRangeToolArgs))
 })
 
-test("validateArgs: empty top-level topic with entry lacking topic", () => {
+test("validateArgs: empty top-level topic with entry lacking topic — valid (#301)", () => {
     const args = {
         topic: "   ",
         content: [{ startId: "m00001", endId: "m00003", summary: "..." }],
     }
-    assert.throws(
-        () => validateArgs(args as CompressRangeToolArgs),
-        /content\[0\] needs a topic/,
+    assert.doesNotThrow(() => validateArgs(args as CompressRangeToolArgs))
+})
+
+test("deriveFallbackTopic: uses first meaningful line, strips markdown headings, caps length", () => {
+    assert.equal(
+        deriveFallbackTopic("## API Gateway 设计\n\n详细内容……"),
+        "API Gateway 设计",
     )
+    const long = "A".repeat(120)
+    assert.equal(deriveFallbackTopic(long), `${"A".repeat(77)}...`)
+    assert.equal(deriveFallbackTopic(""), "compressed range")
 })
 
 

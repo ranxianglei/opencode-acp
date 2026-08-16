@@ -12,9 +12,17 @@ import type {
 
 const BLOCK_PLACEHOLDER_REGEX = /\(b(\d+)\)|\{block_(\d+)\}/gi
 
-export function validateArgs(args: CompressRangeToolArgs): void {
-    const hasTopLevelTopic = typeof args.topic === "string" && args.topic.trim().length > 0
+/** #301 follow-up: topic is optional — derive a short searchable topic from the summary. */
+export function deriveFallbackTopic(summary: string): string {
+    const firstLine =
+        summary
+            .split("\n")
+            .map((line) => line.replace(/^#{1,6}\s*/, "").trim())
+            .find((line) => line.length > 0) ?? "compressed range"
+    return firstLine.length > 80 ? `${firstLine.slice(0, 77)}...` : firstLine
+}
 
+export function validateArgs(args: CompressRangeToolArgs): void {
     if (!Array.isArray(args.content) || args.content.length === 0) {
         throw new Error("content is required and must be a non-empty array")
     }
@@ -35,12 +43,6 @@ export function validateArgs(args: CompressRangeToolArgs): void {
             throw new Error(`${prefix}.summary is required and must be a non-empty string`)
         }
 
-        const hasEntryTopic = typeof entry?.topic === "string" && entry.topic.trim().length > 0
-        if (!hasEntryTopic && !hasTopLevelTopic) {
-            throw new Error(
-                `${prefix} needs a topic — provide ${prefix}.topic or the top-level topic`,
-            )
-        }
     }
 }
 
@@ -55,7 +57,9 @@ export function resolveRanges(
             topic:
                 typeof entry.topic === "string" && entry.topic.trim().length > 0
                     ? entry.topic.trim()
-                    : undefined,
+                    : typeof args.topic === "string" && args.topic.trim().length > 0
+                      ? undefined
+                      : deriveFallbackTopic(entry.summary),
             startId: entry.startId.trim(),
             endId: entry.endId.trim(),
             summary: entry.summary,
