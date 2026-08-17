@@ -28,3 +28,11 @@
 
 - TypeScript: 0 errors
 - Tests: 954 pass, 0 fail
+
+## Follow-up (2026-08-17): bare /acp shows status (aligned with pi-acp)
+
+- pi-acp's `/acp` (no args) shows the full status report (same handler as `/acp-status`)
+- Bare `/acp` now shows compression status (same as `/acp stats`) instead of help text; `/acp help` shows the command list
+- `buildHelpText()`: `/acp` line updated + new `/acp help` line
+- README.md / README.zh-CN.md command table: `/acp` row updated
+- tests/hooks-permission.test.ts: comment updated (behavioral assertion unchanged)

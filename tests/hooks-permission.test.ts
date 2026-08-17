@@ -161,7 +161,7 @@ test("command execute works even when effective permission resolves to deny (inf
         { global: undefined, agents: {} },
     )
 
-    // /acp (no args) now shows help — works regardless of compress permission
+    // /acp (no args) now shows compression status — works regardless of compress permission
     try {
         await handler({ command: "dcp", sessionID: "session-1", arguments: "" }, output)
     } catch (e: any) {

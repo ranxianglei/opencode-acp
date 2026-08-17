@@ -292,11 +292,12 @@ function buildHelpText(): string {
     return [
         "[ACP] Available commands:",
         "",
-        "  /acp              Show this help",
+        "  /acp              Show compression status (same as /acp stats)",
         "  /acp context      Token usage breakdown (system, user, assistant, tools)",
         "  /acp stats        Compression status: blocks, context usage, ranges",
         "  /acp export       Export active compression blocks to markdown",
         "                   Options: --output <path>, --tier t1,t2,t3, --stdout, --append",
+        "  /acp help         Show this help",
         "",
         "Also accepts /dcp for backward compatibility.",
     ].join("\n")
@@ -344,7 +345,7 @@ export function createCommandExecuteHandler(
             }
 
             const sub = input.arguments?.trim().toLowerCase()
-            if (sub === "stats" || sub === "status") {
+            if (sub === "stats" || sub === "status" || sub === "") {
                 await handleStatsCommand(commandCtx)
                 throw new Error("__DCP_CONTEXT_HANDLED__")
             }
@@ -355,7 +356,7 @@ export function createCommandExecuteHandler(
                 throw new Error("__DCP_CONTEXT_HANDLED__")
             }
 
-            if (sub === "help" || sub === "") {
+            if (sub === "help") {
                 await sendIgnoredMessage(
                     client,
                     input.sessionID,

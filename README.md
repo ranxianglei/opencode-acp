@@ -235,9 +235,9 @@ ACP provides an `/acp` slash command (also accepts `/dcp` for backward compatibi
 
 | Command                 | Description                                                                                                                                |
 | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `/acp`                  | Shows available ACP commands                                                                                                               |
+| `/acp`                  | Show compression status (same as `/acp stats`). Use `/acp help` for the command list                                                       |
 | `/acp context`          | Token usage breakdown by category (system, user, assistant, tools, etc.) and how much has been saved through pruning                       |
-| `/acp stats`            | Cumulative pruning statistics across all sessions                                                                                          |
+| `/acp stats`            | Compression status: blocks, context usage, ranges (same report as the `acp_status` tool)                                                   |
 | `/acp export`           | Export active compression blocks to a markdown file. Options: `--output <path>`, `--tier t1,t2,t3`, `--stdout`, `--append`                |
 
 ---
