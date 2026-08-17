@@ -511,7 +511,7 @@ All changes MUST follow this workflow:
 | **NEVER merge PRs — ABSOLUTE PROHIBITION, no exceptions**               | PR merges are a **human-only operation**. The Agent MUST NEVER merge any PR, under ANY circumstances. See [§5.1.1.2](#5112-pr-merge-absolute-prohibition) for the full policy. |
 | **NEVER remove and re-apply GitHub branch protection to force changes** | This is a circumvention of the merge policy. If protection blocks a push, the correct response is to create a PR.           |
 | **NEVER delete branches or tags without human confirmation**            | Preserve work for review.                                                                                                   |
-| **NEVER modify `version` field in `package.json` on non-release branches** | Version bumps happen ONLY on `YYYY-MM-DD_release-v*` branches (see §5.4.2). Regular feature/fix PRs MUST NOT touch the `version` field. The CI changelog check (§5.4.1) enforces this indirectly: if `version` changes, `README.md` and `README.zh-CN.md` MUST also be modified with a `### v{VERSION}` header. Violating this rule causes version-number drift across non-release PRs (e.g., v1.13.0 → v1.13.1 in a feature PR) which makes release bookkeeping unpredictable and can lead to skipped or duplicated npm publishes. |
+| **NEVER modify `version` field in `package.json` on non-release branches** | Version bumps happen ONLY on `YYYY-MM-DD_release-v*` branches (see §5.4.2). Regular feature/fix PRs MUST NOT touch the `version` field. The CI changelog check (§5.4.1) enforces this indirectly: if `version` changes, `CHANGELOG.md` and `CHANGELOG.zh-CN.md` MUST also be modified with a `### v{VERSION}` header. Violating this rule causes version-number drift across non-release PRs (e.g., v1.13.0 → v1.13.1 in a feature PR) which makes release bookkeeping unpredictable and can lead to skipped or duplicated npm publishes. |
 
 ### 5.1.1.2 PR Merge — Absolute Prohibition
 
@@ -606,7 +606,7 @@ Two GitHub Actions workflows enforce AGENTS.md standards and automate releases:
 |-------|------------------|--------|
 | Branch name | Matches `YYYY-MM-DD_short-title` (regex: `^\d{4}-\d{2}-\d{2}_[a-z0-9.-]+$`) | `scripts/ci/check-pr.sh` |
 | Devlog | `devlog/{branch-name}/REQ.md` and `WORKLOG.md` exist | same |
-| Changelog | If `package.json` version changed, `README.md` and `README.zh-CN.md` must be modified and contain `### v{VERSION}` | same |
+| Changelog | If `package.json` version changed, `CHANGELOG.md` and `CHANGELOG.zh-CN.md` must be modified and contain `### v{VERSION}` | same |
 
 **`release.yml`** — triggers on push to master (PR merge):
 
@@ -636,8 +636,8 @@ The branch name MUST match `YYYY-MM-DD_release-v{VERSION}` for auto-tagging to w
 
 ```bash
 # Edit package.json — bump version
-# Edit README.md — add changelog entry under "## Changelog"
-# Edit README.zh-CN.md — add changelog entry under "## 更新日志"
+# Edit CHANGELOG.md — add changelog entry at the top (under "# Changelog")
+# Edit CHANGELOG.zh-CN.md — add changelog entry at the top (under "# 更新日志")
 # Create devlog/YYYY-MM-DD_release-v{VERSION}/REQ.md + WORKLOG.md
 ```
 
@@ -739,7 +739,7 @@ git checkout -b YYYY-MM-DD_release-v{VERSION}-dev
 # 2. Set a prerelease version in package.json (MUST contain a hyphen)
 #    e.g., "1.12.7-dev.1", "1.13.0-beta.1", "2.0.0-rc.1"
 
-# 3. Add changelog entries to README.md and README.zh-CN.md
+# 3. Add changelog entries to CHANGELOG.md and CHANGELOG.zh-CN.md
 #    (header must contain ### v{VERSION} including the suffix, e.g. ### v1.12.7-dev.1)
 
 # 4. Create devlog entry
