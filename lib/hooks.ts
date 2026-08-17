@@ -30,6 +30,7 @@ import {
     handleStatsCommand,
 } from "./commands"
 import { handleExportCommand } from "./commands/export"
+import { sendIgnoredMessage } from "./ui/notification"
 import { type HostPermissionSnapshot } from "./host-permissions"
 import { compressPermission, syncCompressPermissionState } from "./compress-permission"
 import { hideConsumedCompressCalls } from "./compress/hide-consumed"
