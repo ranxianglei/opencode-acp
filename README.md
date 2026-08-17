@@ -490,6 +490,21 @@ For the complete list with root cause analysis, see the [bug tracker](https://gi
 
 ## Changelog
 
+### v1.14.21 — /acp command fixes and completion (permission gate, export, help) (#286)
+
+**Problem**: Three gaps in the `/acp` command suite: (1) when the compress permission was `deny`, ALL `/acp` subcommands were silently swallowed (the gate is a pre-#233 leftover from when `/acp` triggered compression; every current subcommand is read-only or user-initiated); (2) bare `/acp` showed behavior inconsistent with the README and diverged from pi-acp (whose bare `/acp` shows the status report, same handler as `/acp-status`); (3) the requested `/acp export` command (#265) was unimplemented.
+
+**Fix**:
+- Removed the compress-permission `deny` gate from the command handler — `/acp` subcommands (context/stats/export) work regardless of compress permission; they are all read-only or user-initiated file writes.
+- Bare `/acp` (and `/dcp`) now shows the compression status report (same as `/acp stats`), aligned with pi-acp; `/acp help` shows the command list.
+- New `/acp export`: exports active compression blocks to markdown (`--output <path>`, `--tier t1,t2,t3`, `--stdout`, `--append`).
+
+Files: `lib/hooks.ts`, `lib/commands/export.ts`, `AGENTS.md`, `README.md`, `README.zh-CN.md`. Tests: `tests/hooks-permission.test.ts` updated.
+
+Closes: #285, #265.
+
+**Install**: `opencode plugin opencode-acp@latest --global`
+
 ### v1.14.20 — Post-v1.14.19 fix batch (modelContextLimit lifecycle, inactive-block decompress, logging)
 
 **Problem**: Five clusters of post-v1.14.19 issues: (1) `modelContextLimit` stayed stale after a model switch (#312) — within one LLM request the messages hook runs before the system hook refreshes the limit, and on a catalog miss (fresh instance + failed hydration) the previous model's window survived, so every percentage threshold misfired (#315); (2) `decompress` failed on standalone inactive blocks and inactive blocks were invisible in `acp_status` (#193); (3) a preemptive `acknowledgeRisk: true` (carried over from a non-quality error) hard-failed with "no quality gate rejection is pending" (#301); (4) debug nudge notifications used `sendIgnoredMessage` causing phantom turns, the debug recommendation-filter log spammed every turn, and ERROR/WARN lines only reached the daily log when debug was on (#311, #278, #279).
