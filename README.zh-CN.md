@@ -447,6 +447,20 @@ ACP 是 DCP 的直接替代品。迁移步骤：
 
 ## 更新日志
 
+### v1.14.20 — v1.14.19 之后的修复批次（modelContextLimit 生命周期、inactive block 解压缩、日志）
+
+**问题**：五类 v1.14.19 之后发现的问题：（1）`modelContextLimit` 在模型切换后失效（#312）——同一次 LLM 请求内，messages hook 先于 system hook 刷新窗口值，而目录未命中时（新实例 + 水合失败），上一个模型的窗口值会一直残留，导致所有按百分比计算的阈值误触发（#315）；（2）`decompress` 对独立的 inactive block 报 `Block not found`，且 inactive block 在 `acp_status` 里完全不可见（#193）；（3）预防式 `acknowledgeRisk: true`（从非质量门禁错误里带过来的）直接报错 `no quality gate rejection is pending`（#301）；（4）debug nudge 通知用 `sendIgnoredMessage` 触发幽灵回合（#311），debug 推荐过滤日志每回合刷屏，ERROR/WARN 在 debug 关闭时不进日常日志（#311、#278、#279）。
+
+**修复**：
+- #314 + #315：模型切换时从模型限制目录重新对齐 `state.modelContextLimit`；目录未命中时记录 (provider, model) 身份对，请求的身份与记录不一致时使窗口值失效（一致则保留；未记录身份的旧持久化状态按失效处理，升级后每个会话盲一轮）。目录提取到 `lib/state/model-limits.ts`；水合失败现在会记日志（成功 info 带条目数，失败 warn），不再静默降级。
+- #193：`decompress` 接受独立的 inactive block（嵌套 block 重定向不变）；`acp_status scope=compressed` 现在列出所有 block，inactive 的带 `[inactive]` 标记，并显示 active/inactive 计数（overview 仍只显示 active）。
+- #303：没有待处理的质量门禁拒绝时，`acknowledgeRisk` 变为 no-op + 用法提示，不再报错 —— 真正的质量门禁拒绝才会武装 bypass，门禁保护不受影响。
+- #278/#279/#311：debug 通知不再用 `sendIgnoredMessage`（幽灵回合循环消失）；推荐过滤日志改为 `shouldInject` 后才输出（不再每回合刷屏）；ERROR/WARN 在 debug 关闭时也写入日常日志。
+
+文件：`lib/compress/range.ts`、`lib/state/model-limits.ts`、`lib/state/types.ts`、`index.ts`、`lib/state/registry.ts`。测试：1003 通过。
+
+**安装**：`opencode plugin opencode-acp@latest --global`
+
 ### v1.14.19 — 彻底修复发版流水线（npm 10 `--ignore-scripts` 失效）
 
 **问题**：v1.14.18（#306）已合并但依然没有发布 —— `release.yml` 又在同一步骤失败。v1.14.18 修复失败的根本原因：CI 运行器是 Node 22（npm 10.9.x），而 **npm 10 在 `npm pack` 时即使传了 `--ignore-scripts` 也照样执行 `prepare` 生命周期钩子**。v1.14.18 的修复（`npm pack --ignore-scripts`）在 npm 11 上有效，在 npm 10 上是空操作。prepare 一旦执行，tsup 会把 `CLI Building entry: index.ts` 写到 **stdout**，破坏 `verify-package.mjs` 里的 `JSON.parse`（`SyntaxError: Unexpected token`）。

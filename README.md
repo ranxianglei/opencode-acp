@@ -493,6 +493,20 @@ For the complete list with root cause analysis, see the [bug tracker](https://gi
 
 ## Changelog
 
+### v1.14.20 — Post-v1.14.19 fix batch (modelContextLimit lifecycle, inactive-block decompress, logging)
+
+**Problem**: Five clusters of post-v1.14.19 issues: (1) `modelContextLimit` stayed stale after a model switch (#312) — within one LLM request the messages hook runs before the system hook refreshes the limit, and on a catalog miss (fresh instance + failed hydration) the previous model's window survived, so every percentage threshold misfired (#315); (2) `decompress` failed on standalone inactive blocks and inactive blocks were invisible in `acp_status` (#193); (3) a preemptive `acknowledgeRisk: true` (carried over from a non-quality error) hard-failed with "no quality gate rejection is pending" (#301); (4) debug nudge notifications used `sendIgnoredMessage` causing phantom turns, the debug recommendation-filter log spammed every turn, and ERROR/WARN lines only reached the daily log when debug was on (#311, #278, #279).
+
+**Fix**:
+- #314 + #315: reconcile `state.modelContextLimit` from the model-limit catalog on model switch; record the (provider, model) identity pair alongside the limit and, on a catalog miss, invalidate it when the request's model identity mismatches (match keeps it; legacy persisted states without an identity are treated as stale — one blind turn per upgraded session). The catalog is extracted to `lib/state/model-limits.ts`; failed hydration now logs (info with entry count on success, warn on zero entries/failure) instead of degrading silently.
+- #193: `decompress` accepts standalone inactive blocks (nested-block redirect unchanged) and `decompress toFile` writes the real block content; `acp_status scope=compressed` now lists all blocks with an `[inactive]` marker plus active/inactive counts (overview still shows active blocks only).
+- #303: `acknowledgeRisk` without a pending quality-gate rejection is now a no-op with a usage-teaching note instead of an error — only a real quality-gate rejection arms the bypass, so the gate's protection is unchanged.
+- #278/#279/#311: debug notifications no longer use `sendIgnoredMessage` (phantom turn loop gone); the recommendation-filter log is gated behind `shouldInject` (no more per-turn noise); ERROR/WARN are written to the daily log even when debug is off.
+
+Files: `lib/compress/range.ts`, `lib/state/model-limits.ts`, `lib/state/types.ts`, `index.ts`, `lib/state/registry.ts`. Tests: 1003 pass.
+
+**Install**: `opencode plugin opencode-acp@latest --global`
+
 ### v1.14.19 — Fix release pipeline for real (npm 10 `--ignore-scripts` bug)
 
 **Problem**: v1.14.18 (#306) was merged but still never published — `release.yml` failed at the exact same step. Root cause of the failed fix: the CI runner uses Node 22 (npm 10.9.x), and **npm 10 runs the `prepare` lifecycle hook during `npm pack` even when `--ignore-scripts` is passed**. v1.14.18's fix (`npm pack --ignore-scripts`) works on npm 11 but is a no-op on npm 10. When prepare runs, tsup writes `CLI Building entry: index.ts` to **stdout**, breaking `JSON.parse` in `verify-package.mjs` (`SyntaxError: Unexpected token`).
