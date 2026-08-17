@@ -435,6 +435,13 @@ function renderCompressedDrilldown(
     lines.push("")
 
     const shown = sorted.slice(0, limit)
+    const activeCount = sorted.filter((b) => b.active).length
+    const inactiveCount = sorted.length - activeCount
+    if (inactiveCount > 0) {
+        lines.push(`${activeCount} active, ${inactiveCount} inactive/consumed`)
+        lines.push("")
+    }
+
     for (const b of shown) {
         const survived = b.survivedCount ?? 0
         const gen = b.generation ?? "young"
@@ -443,11 +450,12 @@ function renderCompressedDrilldown(
             b.includedBlockIds && b.includedBlockIds.length > 0
                 ? ` nested=[${b.includedBlockIds.map((n) => `b${n}`).join(",")}]`
                 : ""
+        const status = b.active ? "" : " [inactive]"
         const topic = b.topic || "(no topic)"
         const tier = tierLabel(b)
         const effTokens = getEffectiveCompressedTokens(b, blocksById)
         lines.push(
-            `  b${b.blockId} (${tier})  ${formatTokens(effTokens)}→${formatTokens(b.summaryTokens)}  ${formatAge(b.createdAt)}  ${formatIdRange(b)}  age=${survived} ${gen} eff=${effCount}${consumed}`,
+            `  b${b.blockId} (${tier})  ${formatTokens(effTokens)}→${formatTokens(b.summaryTokens)}  ${formatAge(b.createdAt)}  ${formatIdRange(b)}  age=${survived} ${gen} eff=${effCount}${consumed}${status}`,
         )
         lines.push(`    "${topic}"`)
     }
@@ -509,10 +517,10 @@ export function buildStatusReport(
     const limit = options?.limit ?? 30
 
     const msgState = renderCtx.state.prune.messages
-    const activeIds = Array.from(msgState.activeBlockIds).sort((a, b) => a - b)
-    const allBlocks = activeIds
-        .map((id) => msgState.blocksById.get(id))
-        .filter((b): b is NonNullable<typeof b> => b !== undefined && b.active)
+    const allBlocks = Array.from(msgState.blocksById.values()).sort(
+        (a, b) => a.blockId - b.blockId,
+    )
+    const activeBlocks = allBlocks.filter((b) => b.active)
 
     const lines: string[] = []
 
@@ -538,7 +546,7 @@ export function buildStatusReport(
                 visibleMsgs,
                 summaryTokens,
                 systemTokens,
-                allBlocks,
+                activeBlocks,
                 false,
                 rawMessages,
                 renderCtx,

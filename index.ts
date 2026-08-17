@@ -45,6 +45,34 @@ const server: Plugin = (async (ctx) => {
         // logger.info("Secure mode detected, configured client authentication")
     }
 
+    // [FIX #312] Seed the model-limit catalog so the FIRST request after a
+    // model switch resolves the new model's context window (the per-request
+    // system.transform refresh only fills entries for models already used in
+    // this instance). Fire-and-forget — never blocks init; outcome is logged
+    // so a silent degrade (empty catalog / failed fetch) is debuggable. On
+    // failure the fallback is per-request refresh, the pre-fix behavior.
+    registry.hydrateModelLimitsFromClient(ctx.client).then(
+        (recorded) => {
+            if (recorded > 0) {
+                logger.info("Model limit catalog seeded from provider config", {
+                    models: recorded,
+                })
+            } else {
+                logger.warn(
+                    "Model limit catalog seeding recorded no entries — " +
+                        "falling back to per-request refresh (system.transform)",
+                )
+            }
+        },
+        (error) => {
+            logger.warn(
+                "Model limit catalog seeding failed — " +
+                    "falling back to per-request refresh (system.transform)",
+                { error: error instanceof Error ? error.message : String(error) },
+            )
+        },
+    )
+
     logger.info("DCP initialized")
 
     startAutoUpdate(ctx, config.autoUpdate)

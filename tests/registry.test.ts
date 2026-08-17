@@ -1,3 +1,4 @@
+import "./test-env"
 /**
  * Tests for the real SessionStateRegistry (not the test stub).
  *

@@ -284,7 +284,8 @@ Each level overrides the previous, so project settings take priority over global
     // Automatically update npm-installed ACP when a newer npm latest is available.
     // Version-locked plugin specs are not updated.
     "autoUpdate": true,
-    // Enable debug logging to ~/.config/opencode/logs/acp/
+    // Enable INFO/DEBUG logging + per-request snapshots to ~/.config/opencode/logs/acp/
+    // (WARN/ERROR are always logged to daily/<date>.log)
     "debug": false,
     // Notification display: "off", "minimal", or "detailed"
     "pruneNotification": "off",
@@ -491,6 +492,36 @@ For the complete list with root cause analysis, see the [bug tracker](https://gi
 ---
 
 ## Changelog
+
+### v1.14.19 — Fix release pipeline for real (npm 10 `--ignore-scripts` bug)
+
+**Problem**: v1.14.18 (#306) was merged but still never published — `release.yml` failed at the exact same step. Root cause of the failed fix: the CI runner uses Node 22 (npm 10.9.x), and **npm 10 runs the `prepare` lifecycle hook during `npm pack` even when `--ignore-scripts` is passed**. v1.14.18's fix (`npm pack --ignore-scripts`) works on npm 11 but is a no-op on npm 10. When prepare runs, tsup writes `CLI Building entry: index.ts` to **stdout**, breaking `JSON.parse` in `verify-package.mjs` (`SyntaxError: Unexpected token`).
+
+**Fix**: Redirect the `prepare` build's stdout to stderr: `"prepare": "npm run build 1>&2"` in `package.json`. Build output (informational) goes to stderr; stdout stays pure JSON regardless of npm version or whether `--ignore-scripts` works. Verified empirically with npm 10.9.9 locally: `npm pack --dry-run --json` now returns valid JSON (173 tarball entries) both with and without `--ignore-scripts`. The `--ignore-scripts` flag added in v1.14.18 is kept (harmless on npm 10, skips the redundant rebuild on npm 11). The `npm install github:...#branch` path still works — prepare still runs and still builds `dist/`.
+
+Files: `package.json`. Tests: 976 pass; `check:package` green on npm 10.9.9 and npm 11.12.1.
+
+**Install**: `opencode plugin opencode-acp@latest --global`
+
+### v1.14.18 — Supersedes unpublished v1.14.17; fix release pipeline
+
+**Problem**: v1.14.17 was merged (#305) but never published — `release.yml` failed at `npm run check:package` because the `prepare` hook added in #298 (`npm run build`) runs during `npm pack --json` inside `verify-package.mjs`, and tsup's `CLI Building entry: index.ts` stdout output breaks `JSON.parse` (`SyntaxError: Unexpected token 'C'`).
+
+**Fix**: `scripts/verify-package.mjs` now runs `npm pack --dry-run --json --ignore-scripts` — skipping the `prepare` hook, consistent with `pr-artifact.yml` which already publishes with `--ignore-scripts`. `dist/` is already built by `check:package`'s preceding build step, so packing semantics are unchanged.
+
+Files: `scripts/verify-package.mjs`. Tests: 976 pass; `check:package` green.
+
+**Install**: `opencode plugin opencode-acp@latest --global`
+
+### v1.14.17 — Per-PR npm preview builds + release publishing feedback (#298)
+
+**Problem**: There was no way to install and test a PR's build before merging, and after a release merge nothing on the PR confirmed which version was published to npm.
+
+**Fix** (#298): New `.github/workflows/pr-artifact.yml` — on every PR to master: build the plugin, publish it to npm under a `pr-<N>` tag (version `<base>-pr.<N>.<run>`), upload the tarball + `dist/` as a workflow artifact (30-day retention), and comment install instructions on the PR. `release.yml` additionally comments the published version on the associated PR after a release merge. No plugin runtime changes in this release.
+
+Files: `.github/workflows/pr-artifact.yml`, `.github/workflows/release.yml`. Tests: 976 pass.
+
+**Install**: `opencode plugin opencode-acp@latest --global`
 
 ### v1.14.16 — Raise context limits to 80%
 

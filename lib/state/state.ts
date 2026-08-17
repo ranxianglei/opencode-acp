@@ -7,6 +7,7 @@ import {
     type PendingCompressionDuration,
 } from "../compress/timing"
 import { loadSessionState, saveSessionState } from "./persistence"
+import { createModelLimitCatalog } from "./model-limits"
 import { rebuildCompressionState } from "./rebuild"
 import {
     isSubAgentSession,
@@ -69,7 +70,38 @@ export class SessionStateRegistry {
         pendingByCallId: new Map<string, PendingCompressionDuration>(),
     }
 
+    // [FIX #312] Model-limit catalog (full rationale in ./model-limits.ts):
+    // lets the messages hook reconcile state.modelContextLimit against the
+    // model named on the request's user message instead of waiting one turn
+    // for the system hook. Shared implementation — the test registry stub
+    // composes the same factory.
+    private readonly catalog = createModelLimitCatalog()
+
     constructor(private readonly logger: Logger) {}
+
+    recordModelLimit(
+        providerId: string | undefined,
+        modelId: string | undefined,
+        limit: number | undefined,
+    ): void {
+        this.catalog.record(providerId, modelId, limit)
+    }
+
+    resolveModelLimit(
+        providerId: string | undefined,
+        modelId: string | undefined,
+    ): number | undefined {
+        return this.catalog.resolve(providerId, modelId)
+    }
+
+    /**
+     * Best-effort one-time seed from the host's provider catalog
+     * (`client.config.providers()` → GET /config/providers). Never throws;
+     * returns the number of model-limit entries recorded.
+     */
+    hydrateModelLimitsFromClient(client: unknown): Promise<number> {
+        return this.catalog.hydrateFromClient(client)
+    }
 
     get(sessionId: string): SessionState | undefined {
         return this.states.get(sessionId)

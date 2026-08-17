@@ -278,10 +278,11 @@ export async function sendCompressNotification(
     toastMessage =
         config.pruneNotification === "minimal" ? toastMessage : truncateToastBody(toastMessage)
 
+    // [DEBUG] Use toast + logger only. Do NOT use sendIgnoredMessage — it writes
+    // an ignored:true user msg to DB that opencode's runtime loop detects as
+    // "last user" (role-only) → phantom turn → infinite loop (issue #20 floor 1734).
     if (config.debug) {
-        const chatMessage =
-            config.pruneNotification === "minimal" ? message : truncateToastBody(message)
-        await sendIgnoredMessage(client, sessionId, chatMessage, params, logger)
+        logger.debug(`[ACP Debug] Compress notification:\n${message}`)
     }
 
     await client.tui.showToast({

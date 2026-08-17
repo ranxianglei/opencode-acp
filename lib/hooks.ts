@@ -37,7 +37,6 @@ import { applyMessageFilters } from "./messages/filter/apply"
 import { ensureBuiltinFiltersRegistered } from "./messages/filter/builtin"
 import { createSessionState, saveSessionState, syncToolCache, updatePerTurnState, type SessionStateRegistry } from "./state"
 import { cacheSystemPromptTokens } from "./ui/utils"
-import { sendIgnoredMessage } from "./ui/notification"
 import { runBatchCleanup } from "./gc/merge"
 import { getCurrentTokenUsage } from "./token-utils"
 
@@ -75,10 +74,24 @@ export function createSystemPromptHandler(
     return async (
         input: {
             sessionID?: string
-            model: { limit: { context: number; input?: number; output?: number } }
+            model: {
+                id?: string
+                providerID?: string
+                limit: { context: number; input?: number; output?: number }
+            }
         },
         output: { system: string[] },
     ) => {
+        // [FIX #312] Record the live limit for this model BEFORE the state
+        // guard below: the catalog is stateless and must keep accepting
+        // entries even when the session state has not been created yet, so
+        // the messages hook can reconcile a model switch on its next call.
+        registry.recordModelLimit(
+            input.model?.providerID,
+            input.model?.id,
+            input.model?.limit?.context,
+        )
+
         // messages.transform creates the session state before this fires; if
         // absent (internal-agent early-return), there is nothing to attribute.
         const state = input.sessionID ? registry.get(input.sessionID) : undefined
@@ -158,6 +171,25 @@ export function createChatMessageTransformHandler(
                 messages,
                 config,
             )
+
+            // [FIX #312] system.transform (the only writer of
+            // state.modelContextLimit) fires AFTER messages.transform within
+            // one request, so on the first request after a model switch the
+            // value still reflects the previous model. Reconcile it from the
+            // catalog entry for the model named on this request's user message
+            // before any consumer (filters, GC, nudge thresholds) reads it.
+            // Unknown model → keep the previous value; the system hook
+            // refreshes it later in this same request anyway.
+            const requestModel = (
+                lastUserMessage.info as { model?: { providerID?: string; modelID?: string } }
+            ).model
+            const requestModelLimit = registry.resolveModelLimit(
+                requestModel?.providerID,
+                requestModel?.modelID,
+            )
+            if (requestModelLimit !== undefined) {
+                state.modelContextLimit = requestModelLimit
+            }
             await updatePerTurnState(state, logger, messages)
         }
 
@@ -203,22 +235,11 @@ export function createChatMessageTransformHandler(
             compressionPriorities,
             config.debug
                 ? (text: string) => {
+                      // sendIgnoredMessage writes an ignored:true user msg to DB.
+                      // opencode's runtime loop detects it as "last user" (role-only,
+                      // ignores the flag) → phantom turn → compress → notification →
+                      // infinite loop. Use logger.debug + toast instead.
                       logger.debug(`[ACP Debug] Nudge injected:\n${text}`)
-                      if (state.sessionId && lastUserMessage) {
-                          const userInfo = lastUserMessage.info as any
-                          sendIgnoredMessage(
-                              client,
-                              state.sessionId,
-                              `[ACP Debug Nudge]\n${text}`,
-                              {
-                                  providerId: userInfo.model?.providerID,
-                                  modelId: userInfo.model?.modelID,
-                                  agent: userInfo.agent,
-                                  variant: userInfo.variant,
-                              },
-                              logger,
-                          ).catch(() => {})
-                      }
                       client.tui
                           .showToast({
                               body: {

@@ -1,3 +1,4 @@
+import "./test-env"
 import assert from "node:assert/strict"
 import test from "node:test"
 import { createCompressRangeTool } from "../lib/compress/range"
