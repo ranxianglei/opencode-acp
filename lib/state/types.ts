@@ -155,7 +155,8 @@ export interface SessionState {
      * Lifecycle:
      * - Quality fails → flag = true → rejection error returned
      * - Retry with acknowledgeRisk:true + flag=true → accepted, flag = false
-     * - acknowledgeRisk:true + flag=false → error "no rejection pending, remove parameter"
+     * - acknowledgeRisk:true + flag=false → IGNORED (no-op): quality runs
+     *   normally, result carries an "acknowledgeRisk was ignored" note (#301)
      * - Normal call (no acknowledgeRisk) → quality runs normally
      */
     qualityGateRetryPending: boolean
