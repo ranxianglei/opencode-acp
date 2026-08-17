@@ -444,6 +444,21 @@ ACP 是 DCP 的直接替代品。迁移步骤：
 
 ## 更新日志
 
+### v1.14.21 — /acp 命令修复与补全（权限门、export、help）(#286)
+
+**问题**：`/acp` 命令族的三个缺口：（1）压缩权限为 `deny` 时，**所有** `/acp` 子命令被静默吞掉（该门是 #233 之前 `/acp` 会触发压缩的残留；现在的子命令全是只读或用户发起的）；（2）无参 `/acp` 行为与 README 描述不一致，且与 pi-acp 不对齐（pi-acp 无参 `/acp` 显示状态报告，与 `/acp-status` 同一 handler）；（3）需求 `/acp export` 导出命令（#265）未实现。
+
+**修复**：
+- 从命令处理器移除压缩权限 `deny` 门——`/acp` 子命令（context/stats/export）现在无论压缩权限如何都能用，它们全部只读或用户发起的文件写入。
+- 无参 `/acp`（和 `/dcp`）现在显示压缩状态报告（同 `/acp stats`），对齐 pi-acp；`/acp help` 显示命令列表。
+- 新增 `/acp export`：将 active 压缩块导出为 markdown（`--output <path>`、`--tier t1,t2,t3`、`--stdout`、`--append`）。
+
+文件：`lib/hooks.ts`、`lib/commands/export.ts`、`AGENTS.md`、`README.md`、`README.zh-CN.md`。测试：`tests/hooks-permission.test.ts` 更新。
+
+关闭：#285、#265。
+
+**安装**：`opencode plugin opencode-acp@latest --global`
+
 ### v1.14.20 — v1.14.19 之后的修复批次（modelContextLimit 生命周期、inactive block 解压缩、日志）
 
 **问题**：五类 v1.14.19 之后发现的问题：（1）`modelContextLimit` 在模型切换后失效（#312）——同一次 LLM 请求内，messages hook 先于 system hook 刷新窗口值，而目录未命中时（新实例 + 水合失败），上一个模型的窗口值会一直残留，导致所有按百分比计算的阈值误触发（#315）；（2）`decompress` 对独立的 inactive block 报 `Block not found`，且 inactive block 在 `acp_status` 里完全不可见（#193）；（3）预防式 `acknowledgeRisk: true`（从非质量门禁错误里带过来的）直接报错 `no quality gate rejection is pending`（#301）；（4）debug nudge 通知用 `sendIgnoredMessage` 触发幽灵回合（#311），debug 推荐过滤日志每回合刷屏，ERROR/WARN 在 debug 关闭时不进日常日志（#311、#278、#279）。
