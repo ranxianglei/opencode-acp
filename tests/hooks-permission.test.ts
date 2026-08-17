@@ -142,7 +142,7 @@ test("chat message transform drops messages without info instead of crashing", a
     assert.equal(output.messages.length, 0)
 })
 
-test("command execute exits after effective permission resolves to deny", async () => {
+test("command execute works even when effective permission resolves to deny (informational commands)", async () => {
     let sessionMessagesCalls = 0
     const output = { parts: [] as any[] }
     const handler = createCommandExecuteHandler(
@@ -161,10 +161,14 @@ test("command execute exits after effective permission resolves to deny", async 
         { global: undefined, agents: {} },
     )
 
-    await handler({ command: "dcp", sessionID: "session-1", arguments: "context" }, output)
+    // /acp (no args) now shows compression status — works regardless of compress permission
+    try {
+        await handler({ command: "dcp", sessionID: "session-1", arguments: "" }, output)
+    } catch (e: any) {
+        if (e?.message !== "__DCP_CONTEXT_HANDLED__") throw e
+    }
 
     assert.equal(sessionMessagesCalls, 1)
-    assert.deepEqual(output.parts, [])
 })
 
 test("text complete strips hallucinated metadata tags", async () => {

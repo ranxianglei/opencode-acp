@@ -190,13 +190,10 @@ ACP 提供 `/acp` 斜杠命令（为向后兼容也接受 `/dcp`）：
 
 | 命令                    | 说明                                                                                                                |
 | ----------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `/acp`                  | 显示可用的 ACP 命令                                                                                                 |
+| `/acp`                  | 显示压缩状态（同 `/acp stats`）；`/acp help` 查看命令列表                                                                            |
 | `/acp context`          | 按类别（system、user、assistant、tools 等）显示 token 用量明细，以及通过剪枝节省的量                                |
-| `/acp stats`            | 跨所有会话的累计剪枝统计                                                                                            |
-| `/acp manual [on\|off]` | 切换手动模式。开启后，AI 不会自动使用上下文管理工具                                                                 |
-| `/acp compress [focus]` | 触发一次 `compress` 工具执行。可选的焦点文本指示要压缩的内容，遵循当前 `compress.mode`                              |
-| `/acp decompress <n>`   | 按 ID 恢复特定的活动压缩。不带参数运行时显示可用的压缩 ID、token 大小和主题                                         |
-| `/acp recompress <n>`   | 按 ID 重新应用用户解压的压缩。不带参数运行时显示可重新压缩的 ID、token 大小和主题                                   |
+| `/acp stats`            | 压缩状态：压缩块、上下文用量、推荐范围（与 `acp_status` 工具同一报告）                                                          |
+| `/acp export`           | 导出活动压缩块到 markdown 文件。选项：`--output <path>`、`--tier t1,t2,t3`、`--stdout`、`--append`                   |
 
 ---
 

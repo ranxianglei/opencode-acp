@@ -235,13 +235,10 @@ ACP provides an `/acp` slash command (also accepts `/dcp` for backward compatibi
 
 | Command                 | Description                                                                                                                                |
 | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `/acp`                  | Shows available ACP commands                                                                                                               |
+| `/acp`                  | Show compression status (same as `/acp stats`). Use `/acp help` for the command list                                                       |
 | `/acp context`          | Token usage breakdown by category (system, user, assistant, tools, etc.) and how much has been saved through pruning                       |
-| `/acp stats`            | Cumulative pruning statistics across all sessions                                                                                          |
-| `/acp manual [on\|off]` | Toggle manual mode. When on, the AI will not autonomously use context management tools                                                     |
-| `/acp compress [focus]` | Trigger a single compress tool execution. Optional focus text directs what content to compress, following the active `compress.mode`       |
-| `/acp decompress <n>`   | Restore a specific active compression by ID. Running without an argument shows available compression IDs, token sizes, and topics          |
-| `/acp recompress <n>`   | Re-apply a user-decompressed compression by ID. Running without an argument shows recompressible IDs, token sizes, and topics              |
+| `/acp stats`            | Compression status: blocks, context usage, ranges (same report as the `acp_status` tool)                                                   |
+| `/acp export`           | Export active compression blocks to a markdown file. Options: `--output <path>`, `--tier t1,t2,t3`, `--stdout`, `--append`                |
 
 ---
 
