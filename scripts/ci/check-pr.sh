@@ -5,7 +5,7 @@
 #   1. Branch name matches YYYY-MM-DD_short-title
 #   2. devlog/{branch-name}/REQ.md exists
 #   3. devlog/{branch-name}/WORKLOG.md exists
-#   4. If package.json version changed, README.md or README.zh-CN.md
+#   4. If package.json version changed, CHANGELOG.md or CHANGELOG.zh-CN.md
 #      must be modified AND contain the new version in changelog
 #
 # Usage: ./scripts/ci/check-pr.sh [branch-name] [base-branch]
@@ -81,26 +81,26 @@ elif [ "$CURRENT_VERSION" = "$BASE_VERSION" ]; then
 else
     echo "  Version change: $BASE_VERSION → $CURRENT_VERSION"
 
-    # Check if README.md or README.zh-CN.md was modified
-    README_CHANGED=$(git diff --name-only "$BASE"...HEAD -- README.md README.zh-CN.md 2>/dev/null | wc -l)
+    # Check if CHANGELOG.md or CHANGELOG.zh-CN.md was modified
+    CHANGELOG_CHANGED=$(git diff --name-only "$BASE"...HEAD -- CHANGELOG.md CHANGELOG.zh-CN.md 2>/dev/null | wc -l)
 
-    if [ "$README_CHANGED" -eq 0 ]; then
-        fail "Version bumped ($BASE_VERSION → $CURRENT_VERSION) but no README changelog update found"
-        echo "  AGENTS.md requires changelog entries in README.md and README.zh-CN.md for version changes"
+    if [ "$CHANGELOG_CHANGED" -eq 0 ]; then
+        fail "Version bumped ($BASE_VERSION → $CURRENT_VERSION) but no CHANGELOG update found"
+        echo "  AGENTS.md requires changelog entries in CHANGELOG.md and CHANGELOG.zh-CN.md for version changes"
     else
-        pass "README files modified — checking version string..."
+        pass "CHANGELOG files modified — checking version string..."
 
         # Check that the new version appears in the changelog
-        if grep -q "v${CURRENT_VERSION}\|### v${CURRENT_VERSION}" README.md 2>/dev/null; then
-            pass "README.md changelog contains v$CURRENT_VERSION"
+        if grep -q "v${CURRENT_VERSION}\|### v${CURRENT_VERSION}" CHANGELOG.md 2>/dev/null; then
+            pass "CHANGELOG.md contains v$CURRENT_VERSION"
         else
-            fail "README.md changelog does not contain '### v$CURRENT_VERSION'"
+            fail "CHANGELOG.md does not contain '### v$CURRENT_VERSION'"
         fi
 
-        if grep -q "v${CURRENT_VERSION}\|### v${CURRENT_VERSION}" README.zh-CN.md 2>/dev/null; then
-            pass "README.zh-CN.md changelog contains v$CURRENT_VERSION"
+        if grep -q "v${CURRENT_VERSION}\|### v${CURRENT_VERSION}" CHANGELOG.zh-CN.md 2>/dev/null; then
+            pass "CHANGELOG.zh-CN.md contains v$CURRENT_VERSION"
         else
-            fail "README.zh-CN.md changelog does not contain '### v$CURRENT_VERSION'"
+            fail "CHANGELOG.zh-CN.md does not contain '### v$CURRENT_VERSION'"
         fi
     fi
 fi
