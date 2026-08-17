@@ -203,6 +203,8 @@ export function createSessionState(): SessionState {
         lastCompaction: 0,
         currentTurn: 0,
         modelContextLimit: undefined,
+        modelProviderID: undefined,
+        modelID: undefined,
         systemPromptTokens: undefined,
         qualityGateRetryPending: false,
     }
@@ -243,6 +245,8 @@ export function resetSessionState(state: SessionState): void {
     state.lastCompaction = 0
     state.currentTurn = 0
     state.modelContextLimit = undefined
+    state.modelProviderID = undefined
+    state.modelID = undefined
     state.systemPromptTokens = undefined
     state.qualityGateRetryPending = false
 }
@@ -336,6 +340,11 @@ export async function ensureSessionInitialized(
     }
     if (typeof persisted.modelContextLimit === "number" && persisted.modelContextLimit > 0) {
         state.modelContextLimit = persisted.modelContextLimit
+        // Restore the identity pair together with the limit (persisted as a
+        // pair in saveSessionState) so the messages-hook staleness check
+        // survives restarts. Invalid/absent limit → fresh undefined pair.
+        state.modelProviderID = persisted.modelProviderID
+        state.modelID = persisted.modelID
     }
 
     const applied = applyPendingCompressionDurations(state)

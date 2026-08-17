@@ -60,12 +60,18 @@ test("loadSessionState round-trips saved state", async () => {
     state.stats.totalPruneTokens = 999
     state.nudges.contextLimitAnchors.add("anchor-1")
     state.nudges.contextLimitAnchors.add("anchor-2")
+    state.modelContextLimit = 200_000
+    state.modelProviderID = "prov"
+    state.modelID = "model-1m"
 
     await saveSessionState(state, logger)
     const loaded = await loadSessionState(TEST_SESSION, logger)
 
     assert.ok(loaded, "loaded state should not be null")
     assert.equal(loaded!.stats.totalPruneTokens, 999)
+    assert.equal(loaded!.modelContextLimit, 200_000)
+    assert.equal(loaded!.modelProviderID, "prov")
+    assert.equal(loaded!.modelID, "model-1m")
     assert.ok(loaded!.nudges.contextLimitAnchors.includes("anchor-1"))
     assert.ok(loaded!.nudges.contextLimitAnchors.includes("anchor-2"))
     await cleanup()

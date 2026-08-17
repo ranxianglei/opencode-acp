@@ -58,6 +58,8 @@ export interface PersistedSessionState {
     messageIds?: PersistedMessageIds
     lastCompaction?: number
     modelContextLimit?: number
+    modelProviderID?: string
+    modelID?: string
 }
 
 function getStorageDir(): string {
@@ -139,6 +141,8 @@ export async function saveSessionState(
         },
         lastCompaction: sessionState.lastCompaction,
         modelContextLimit: sessionState.modelContextLimit,
+        modelProviderID: sessionState.modelProviderID,
+        modelID: sessionState.modelID,
     }
 
     await writePersistedSessionState(sessionState.sessionId, state, logger)

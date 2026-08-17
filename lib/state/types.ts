@@ -143,6 +143,9 @@ export interface SessionState {
     lastCompaction: number
     currentTurn: number
     modelContextLimit: number | undefined
+    /** [FIX #312 follow-up] Identity of the model `modelContextLimit` was recorded for. Written together with the limit by the system hook; lets the messages hook detect a stale limit when the catalog misses. */
+    modelProviderID: string | undefined
+    modelID: string | undefined
     systemPromptTokens: number | undefined
     /**
      * Transient flag (NOT persisted): set to true when a compress call is rejected
