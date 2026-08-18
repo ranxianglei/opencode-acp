@@ -1,5 +1,24 @@
 # Changelog
 
+### v1.14.22 — Stable system prompt token estimate (#255)
+
+**Problem**: After ACP compression physically removes the true first assistant message from visible history, nudge and `acp_status` each re-derived the system prompt token estimate from the _first visible assistant_ — a much later turn whose `input` includes large accumulated history. Both inflated the estimate (a real ~10K system reported as ~200K), and because each consumer saw a different message view (post-prune transform array vs. a fresh store fetch), the two numbers diverged from each other. The `state.systemPromptTokens` cache (written pre-prune every turn) existed but was never read.
+
+**Fix**: Wire both consumers to the existing cache:
+- `cacheSystemPromptTokens` (`lib/ui/utils.ts`) — write-if-undefined guard: once a stable positive estimate is cached (measured pre-prune each turn at `lib/hooks.ts:233`, before `prune()` degrades the array), later degraded post-compression arrays never overwrite it.
+- `estimateContextComposition` (`lib/messages/inject/utils.ts`, nudge path) — prefers `state.systemPromptTokens` when positive; falls back to the original `estimateSystemPromptTokens(messages)` when `undefined` (old behavior, byte-for-byte).
+- `collectVisibleMessages` (`lib/compress/status.ts`, shared by `acp_status` and `/acp stats` via `buildStatusReport`) — same cache preference and fallback.
+
+Known limitations (documented, intentional non-goals): the cache is in-session only — a restart after host compaction may re-measure from degraded history; mid-session AGENTS.md / instruction changes do not invalidate the cache.
+
+Repo (non-runtime): changelog moved from the READMEs into dedicated `CHANGELOG.md` / `CHANGELOG.zh-CN.md` (#320, closes #318); READMEs keep a one-line pointer.
+
+Files: `lib/ui/utils.ts`, `lib/messages/inject/utils.ts`, `lib/compress/status.ts`. Tests: `tests/inject-utils-pure.test.ts`, `tests/inject.test.ts`, `tests/acp-status.test.ts` (1010 pass), including the §5.7 multi-turn growth-cycle test; Docker E2E 12/12 with a new `nudgeSystemTokensStable` verifier.
+
+Closes: #255.
+
+**Install**: `opencode plugin opencode-acp@latest --global`
+
 ### v1.14.21 — /acp command fixes and completion (permission gate, export, help) (#286)
 
 **Problem**: Three gaps in the `/acp` command suite: (1) when the compress permission was `deny`, ALL `/acp` subcommands were silently swallowed (the gate is a pre-#233 leftover from when `/acp` triggered compression; every current subcommand is read-only or user-initiated); (2) bare `/acp` showed behavior inconsistent with the README and diverged from pi-acp (whose bare `/acp` shows the status report, same handler as `/acp-status`); (3) the requested `/acp export` command (#265) was unimplemented.
