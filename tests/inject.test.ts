@@ -8,6 +8,9 @@ import { homedir } from "os"
 import type { PluginConfig } from "../lib/config"
 import { Logger } from "../lib/logger"
 import { injectMessageIds, injectCompressNudges } from "../lib/messages/inject/inject"
+import { cacheSystemPromptTokens } from "../lib/ui/utils"
+import { estimateContextComposition } from "../lib/messages/inject/utils"
+import { countTokens } from "../lib/token-utils"
 import { createSyntheticUserMessage } from "../lib/messages/utils"
 import { createSessionState, ensureSessionInitialized, type WithParts } from "../lib/state"
 import { saveSessionState, loadSessionState } from "../lib/state/persistence"
@@ -1658,5 +1661,78 @@ test("T2 cadence: does NOT immediately re-fire after compress attempt (T2 loop b
         false,
         "phase 3: T2 should NOT re-fire with growth < growthFloor (the T2 loop bug)",
     )
+})
+
+function buildMultiTurn(n: number, input: number, toolOutputChars: number): WithParts[] {
+    const msgs: WithParts[] = []
+    for (let i = 1; i <= n; i++) {
+        msgs.push(userMsg(`u${i}`, `task ${i}`))
+        msgs.push(
+            assistantMsgWithTokens(`a${i}`, `result ${i}`, { input, output: 20_000 }, [
+                toolPart(`t${i}`, "x".repeat(toolOutputChars)),
+            ]),
+        )
+    }
+    return msgs
+}
+
+test("Issue #255: stable system prompt cache survives compression in multi-turn nudge cycle (§5.7)", () => {
+    const state = createSessionState()
+    state.modelContextLimit = 1_000_000
+    const config = buildConfig()
+    config.compress.maxContextLimit = 800_000
+    config.compress.minContextLimit = 200_000
+    config.compress.preserveRecentMessages = 20
+
+    // Turn 1: full history — first assistant input ≈ system + first user
+    const turn1: WithParts[] = [
+        userMsg("u1", "hello"),
+        assistantMsgWithTokens("a1", "done", { input: 10_000, output: 5_000 }),
+    ]
+    cacheSystemPromptTokens(state, turn1)
+    const stableSystem = state.systemPromptTokens
+    assert.ok(stableSystem !== undefined && stableSystem > 0, "first measurement caches a stable system estimate")
+    assert.equal(stableSystem, 10_000 - countTokens("hello"))
+
+    injectCompressNudges(state, config, logger, turn1, {} as any)
+    assert.equal(state.nudges.shouldInjectThisTurn, false, "turn 1: baseline only")
+    assert.equal(state.nudges.lastPerMessageNudgeTokens, 15_000, "turn 1: baseline = first assistant input+output")
+
+    // Turn 2: 25 rounds of growth → nudge fires. 50 messages exceed the 20-msg
+    // protection window so compressible ranges exist. First assistant in this
+    // array is a later turn (input 300K) — composition must still use the cache.
+    const turn2 = buildMultiTurn(25, 300_000, 40_000)
+    cacheSystemPromptTokens(state, turn2)
+    assert.equal(state.systemPromptTokens, stableSystem, "turn 2: degraded array must not overwrite the cache")
+    injectCompressNudges(state, config, logger, turn2, {} as any)
+    assert.equal(state.nudges.shouldInjectThisTurn, true, "turn 2: 335K growth ≥ 50K threshold → nudge")
+    assert.equal(state.nudges.lastNudgeShownTokens, 320_000, "turn 2: nudge shown tokens recorded")
+
+    const comp2 = estimateContextComposition(turn2, state)
+    assert.equal(comp2.systemTokens, stableSystem, "turn 2: composition uses cached system, not inflated 300K-4 estimate")
+
+    // Turn 3: compress → new baseline
+    const turn3: WithParts[] = [
+        userMsg("u3", "compress now"),
+        assistantMsgWithTokens("a3", "done", { input: 350_000, output: 10_000 }, [
+            compressToolPart("c1", "compressed"),
+        ]),
+    ]
+    injectCompressNudges(state, config, logger, turn3, {} as any)
+    assert.equal(state.nudges.lastPerMessageNudgeTokens, 360_000, "turn 3: compress sets new baseline to post-compression tokens")
+    assert.equal(state.nudges.compressBaselineSet, true, "turn 3: baseline locked after compress")
+
+    // Turn 4: post-compression growth → nudge again. Visible history no longer
+    // contains the true first assistant; first visible assistant input ≈ 460K.
+    const turn4 = buildMultiTurn(25, 460_000, 40_000)
+    cacheSystemPromptTokens(state, turn4)
+    assert.equal(state.systemPromptTokens, stableSystem, "turn 4: cache must NOT be overwritten by degraded array")
+    injectCompressNudges(state, config, logger, turn4, {} as any)
+    assert.equal(state.nudges.shouldInjectThisTurn, true, "turn 4: 110K growth from post-compress baseline → nudge again")
+    assert.equal(state.nudges.lastPerMessageNudgeTokens, 360_000, "turn 4: baseline preserved (only compress resets)")
+
+    const comp4 = estimateContextComposition(turn4, state)
+    assert.equal(comp4.systemTokens, stableSystem, "turn 4: composition still uses stable cached system, not inflated 460K estimate")
+    assert.ok(comp4.systemTokens < 200_000, "turn 4: system estimate must not inflate to later assistant input")
 })
 

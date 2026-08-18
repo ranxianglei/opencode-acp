@@ -18,6 +18,7 @@ interface VerifyExpectations {
     maxCompressCallsVisible?: number
     lastRequestCompressCalls?: number
     maxNudgeCount?: number
+    nudgeSystemTokensStable?: boolean
 }
 
 interface VerifyScenario {
@@ -32,6 +33,7 @@ interface RequestObservation {
     nudgeDetected: boolean
     isChild: boolean
     isAuxiliary: boolean
+    nudgeSystemTokens?: number
 }
 
 const statePath = process.argv[2]
@@ -285,6 +287,17 @@ if (expect.maxNudgeCount !== undefined) {
         `nudgeCount <= ${expect.maxNudgeCount}`,
         nudgeCount <= expect.maxNudgeCount,
         `got ${nudgeCount} nudge detections across ${parentObs.length} requests`,
+    )
+}
+
+if (expect.nudgeSystemTokensStable) {
+    const systemValues = parentObs
+        .filter((o) => o.nudgeDetected && o.nudgeSystemTokens !== undefined)
+        .map((o) => o.nudgeSystemTokens)
+    assert(
+        `nudgeSystemTokensStable: all ${systemValues.length} nudge observations report the same system prompt estimate`,
+        systemValues.length >= 2 && new Set(systemValues).size === 1,
+        `got ${JSON.stringify(systemValues)} — compression changed visible history, so system was re-estimated from a later assistant`,
     )
 }
 

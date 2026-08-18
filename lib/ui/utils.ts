@@ -54,6 +54,13 @@ export function formatProgressBar(
 }
 
 export function cacheSystemPromptTokens(state: SessionState, messages: WithParts[]): void {
+    // [FIX #255] Never overwrite a stable positive cache - after compression
+    // the first visible assistant's input includes large history, inflating
+    // the estimate.
+    if (state.systemPromptTokens !== undefined && state.systemPromptTokens > 0) {
+        return
+    }
+
     let firstInputTokens = 0
     for (const msg of messages) {
         if (msg.info.role !== "assistant") {

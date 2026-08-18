@@ -28,6 +28,7 @@
         "maxBlockCount": 5,
         "nudgeBaselineSet": true,
         "maxCompressCallsVisible": 2,
-        "maxNudgeCount": 10
+        "maxNudgeCount": 10,
+        "nudgeSystemTokensStable": true
     }
 }
