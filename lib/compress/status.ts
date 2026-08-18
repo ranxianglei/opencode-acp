@@ -172,7 +172,14 @@ function collectVisibleMessages(
         }
     })
 
-    return { messages: result, summaryTokens, systemTokens: estimateSystemPromptTokens(rawMessages) }
+    return {
+        messages: result,
+        summaryTokens,
+        systemTokens:
+            ctx.state.systemPromptTokens !== undefined && ctx.state.systemPromptTokens > 0
+                ? ctx.state.systemPromptTokens
+                : estimateSystemPromptTokens(rawMessages),
+    }
 }
 
 function renderOverview(

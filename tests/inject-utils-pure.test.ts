@@ -1,6 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 import { computeShouldNudge, resolveAdaptiveNudgeGrowth, estimateContextComposition } from "../lib/messages/inject/utils"
+import { cacheSystemPromptTokens } from "../lib/ui/utils"
 import { estimateSystemPromptTokens } from "../lib/token-utils"
 import { countTokens } from "../lib/token-utils"
 import type { WithParts } from "../lib/state"
@@ -447,3 +448,71 @@ test("estimateContextComposition: non-compress tools unaffected by summary class
     assert.ok(c.toolTokens > 0)
     assert.equal(c.total, c.toolTokens)
 })
+
+test("estimateContextComposition: prefers cached state.systemPromptTokens over degraded estimate (#255)", () => {
+    const userText = "later turn user message"
+    const messages = [
+        {
+            info: { id: "u2", role: "user" } as any,
+            parts: [{ type: "text", text: userText }] as any,
+        },
+        mkAssistantWithTokens(200_000),
+    ]
+    const state = {
+        systemPromptTokens: 10_000,
+        messageIds: { byRawId: new Map(), byRef: new Map(), nextRef: 2 },
+    } as any
+    const c = estimateContextComposition(messages, state)
+    assert.equal(c.systemTokens, 10_000, "systemTokens must come from cached state, not the degraded estimate")
+    assert.equal(c.total, 10_000 + c.toolTokens + c.summaryTokens + c.messageTokens)
+})
+
+test("estimateContextComposition: falls back to fresh estimate when cache is undefined (#255)", () => {
+    const userText = "later turn user message"
+    const messages = [
+        {
+            info: { id: "u2", role: "user" } as any,
+            parts: [{ type: "text", text: userText }] as any,
+        },
+        mkAssistantWithTokens(200_000),
+    ]
+    const state = {
+        systemPromptTokens: undefined,
+        messageIds: { byRawId: new Map(), byRef: new Map(), nextRef: 2 },
+    } as any
+    const c = estimateContextComposition(messages, state)
+    assert.equal(c.systemTokens, 200_000 - countTokens(userText))
+})
+
+test("cacheSystemPromptTokens: does not overwrite stable positive cache with degraded estimate (#255)", () => {
+    const state = { systemPromptTokens: 10_000 } as any
+    const degraded = [
+        {
+            info: { id: "u2", role: "user" } as any,
+            parts: [{ type: "text", text: "later turn user message" }] as any,
+        },
+        mkAssistantWithTokens(200_000),
+    ]
+    cacheSystemPromptTokens(state, degraded)
+    assert.equal(state.systemPromptTokens, 10_000, "stable cache must survive degraded message arrays")
+})
+
+test("cacheSystemPromptTokens: writes initial estimate when cache is undefined (#255)", () => {
+    const state = { systemPromptTokens: undefined } as any
+    const firstTurn = [
+        {
+            info: { id: "u1", role: "user" } as any,
+            parts: [{ type: "text", text: "first task" }] as any,
+        },
+        mkAssistantWithTokens(10_000),
+    ]
+    cacheSystemPromptTokens(state, firstTurn)
+    assert.equal(state.systemPromptTokens, 10_000 - countTokens("first task"))
+})
+
+test("cacheSystemPromptTokens: keeps undefined when no reliable assistant token data (#255)", () => {
+    const state = { systemPromptTokens: undefined } as any
+    cacheSystemPromptTokens(state, [mkText("u1", "no assistant yet")])
+    assert.equal(state.systemPromptTokens, undefined)
+})
+

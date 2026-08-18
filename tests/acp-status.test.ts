@@ -409,3 +409,33 @@ test("acp_status: overview (no scope) excludes inactive blocks from count and to
     assert.doesNotMatch(result, /2 active/)
     assert.doesNotMatch(result, /"dead"/)
 })
+
+test("acp_status: overview prefers cached systemPromptTokens over degraded visible messages (#255)", async () => {
+    const mockMsgs = [
+        {
+            info: {
+                id: "raw-later",
+                role: "assistant",
+                tokens: { input: 200_000, output: 100, cache: { read: 0, write: 0 } },
+            },
+            parts: [{ type: "text", text: "ok" }],
+        },
+    ]
+    const mockClient = makeMockClient(mockMsgs)
+    const state = makeState([], new Map())
+    state.systemPromptTokens = 10_000
+    const ctx: ToolFactoryContext = {
+        client: mockClient,
+        registry: singletonRegistry(state),
+        logger: { enabled: false } as any,
+        config: {} as any,
+        prompts: { reload: () => {} } as any,
+    }
+    const statusTool = createAcpStatusTool(ctx)
+    const result = await statusTool.execute({} as any, { sessionID: SID } as any)
+
+    assert.match(result, /CONTEXT BREAKDOWN/)
+    assert.match(result, /10\.0K system/)
+    assert.doesNotMatch(result, /200\.0K system/)
+})
+

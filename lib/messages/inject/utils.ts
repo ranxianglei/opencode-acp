@@ -562,7 +562,10 @@ export function estimateContextComposition(
         .map(([tool, tokens]) => ({ tool, tokens }))
         .sort((a, b) => b.tokens - a.tokens)
 
-    const systemTokens = estimateSystemPromptTokens(messages)
+    const systemTokens =
+        state?.systemPromptTokens !== undefined && state.systemPromptTokens > 0
+            ? state.systemPromptTokens
+            : estimateSystemPromptTokens(messages)
 
     return {
         toolTokens,
