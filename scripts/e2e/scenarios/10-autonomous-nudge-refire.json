@@ -1,6 +1,6 @@
 {
     "name": "autonomous-nudge-refire",
-    "description": "Issue #176 regression: Autonomous session (single user message, bash tool calls grow context). Tests that after first nudge\u2192compress, continued growth triggers a SECOND nudge\u2192compress. Before fix: nudge permanently stuck after first compress. After fix: second nudge fires and second compress succeeds.",
+    "description": "Issue #176 regression: Autonomous session (single user message, bash tool calls grow context). Tests that after first nudge→compress, continued growth triggers a SECOND nudge→compress. Before fix: nudge permanently stuck after first compress. After fix: second nudge fires and second compress succeeds.",
     "acpConfig": {
         "compress": {
             "minCompressRange": 0,

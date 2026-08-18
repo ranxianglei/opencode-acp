@@ -18,6 +18,7 @@ interface VerifyExpectations {
     maxCompressCallsVisible?: number
     lastRequestCompressCalls?: number
     maxNudgeCount?: number
+    nudgeSystemTokensStable?: boolean
 }
 
 interface VerifyScenario {
@@ -32,6 +33,7 @@ interface RequestObservation {
     nudgeDetected: boolean
     isChild: boolean
     isAuxiliary: boolean
+    nudgeSystemTokens?: number
 }
 
 const statePath = process.argv[2]
