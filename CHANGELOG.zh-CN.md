@@ -1,5 +1,24 @@
 # 更新日志
 
+### v1.14.22 — 稳定的 system prompt token 估计 (#255)
+
+**问题**：ACP 压缩把真正的首条 assistant 消息从可见历史中物理剪掉后，nudge 和 `acp_status` 各自从"第一个可见 assistant"（实际是后轮次，其 `input` 含大量累积历史）重新推导 system prompt token 估计。两者都会把估计值吹大（真实 ~10K 的 system 被报成 ~200K），且因各用各的消息视图（剪枝后的 transform 数组 vs 重新拉取的 store），两个数字还会互相不一致。`state.systemPromptTokens` 缓存（每轮在剪枝前写入）一直存在，但从未被读取。
+
+**修复**：把两个消费方接到既有缓存上：
+- `cacheSystemPromptTokens`（`lib/ui/utils.ts`）——write-if-undefined 守卫：稳定正值缓存后（每轮在剪枝前于 `lib/hooks.ts:233` 测得，早于 `prune()` 退化数组），后续压缩后的退化数组不再覆盖它。
+- `estimateContextComposition`（`lib/messages/inject/utils.ts`，nudge 路径）——`state.systemPromptTokens` 为正时优先使用；`undefined` 时 fallback 到原有 `estimateSystemPromptTokens(messages)`（旧行为，逐字节一致）。
+- `collectVisibleMessages`（`lib/compress/status.ts`，`acp_status` 与 `/acp stats` 经 `buildStatusReport` 共用）——同样的缓存优先与 fallback。
+
+已知限制（有意留的 non-goal，已文档化）：缓存仅 session 内有效——host compaction 后重启可能从退化历史重测；session 中修改 AGENTS.md / 指令不会使缓存失效。
+
+仓库（非运行时）：changelog 从 README 移到独立的 `CHANGELOG.md` / `CHANGELOG.zh-CN.md`（#320，关闭 #318）；README 只留一行指针。
+
+文件：`lib/ui/utils.ts`、`lib/messages/inject/utils.ts`、`lib/compress/status.ts`。测试：`tests/inject-utils-pure.test.ts`、`tests/inject.test.ts`、`tests/acp-status.test.ts`（1010 通过），含 §5.7 多轮增长周期测试；Docker E2E 12/12（含新增 `nudgeSystemTokensStable` 验证器）。
+
+关闭：#255。
+
+**安装**：`opencode plugin opencode-acp@latest --global`
+
 ### v1.14.21 — /acp 命令修复与补全（权限门、export、help）(#286)
 
 **问题**：`/acp` 命令族的三个缺口：（1）压缩权限为 `deny` 时，**所有** `/acp` 子命令被静默吞掉（该门是 #233 之前 `/acp` 会触发压缩的残留；现在的子命令全是只读或用户发起的）；（2）无参 `/acp` 行为与 README 描述不一致，且与 pi-acp 不对齐（pi-acp 无参 `/acp` 显示状态报告，与 `/acp-status` 同一 handler）；（3）需求 `/acp export` 导出命令（#265）未实现。
