@@ -438,4 +438,3 @@ test("acp_status: overview prefers cached systemPromptTokens over degraded visib
     assert.match(result, /10\.0K system/)
     assert.doesNotMatch(result, /200\.0K system/)
 })
-

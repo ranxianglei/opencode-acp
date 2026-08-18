@@ -515,4 +515,3 @@ test("cacheSystemPromptTokens: keeps undefined when no reliable assistant token 
     cacheSystemPromptTokens(state, [mkText("u1", "no assistant yet")])
     assert.equal(state.systemPromptTokens, undefined)
 })
-
