@@ -3,7 +3,7 @@
 - Task ID: `2026-08-18_fix-system-prompt-tokens`
 - Home Repo: `opencode-acp`
 - Created: 2026-08-18
-- Status: InProgress
+- Status: Done
 - Priority: P1
 - Owner: beatrice
 - References: Issue #255

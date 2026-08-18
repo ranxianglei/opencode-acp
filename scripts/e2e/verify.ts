@@ -288,6 +288,17 @@ if (expect.maxNudgeCount !== undefined) {
     )
 }
 
+if (expect.nudgeSystemTokensStable) {
+    const systemValues = parentObs
+        .filter((o) => o.nudgeDetected && o.nudgeSystemTokens !== undefined)
+        .map((o) => o.nudgeSystemTokens)
+    assert(
+        `nudgeSystemTokensStable: all ${systemValues.length} nudge observations report the same system prompt estimate`,
+        systemValues.length >= 2 && new Set(systemValues).size === 1,
+        `got ${JSON.stringify(systemValues)} — compression changed visible history, so system was re-estimated from a later assistant`,
+    )
+}
+
 console.log()
 if (failed > 0) {
     console.error(`FAIL: ${failed} assertion(s) failed, ${passed} passed`)

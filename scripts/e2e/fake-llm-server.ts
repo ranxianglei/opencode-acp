@@ -82,6 +82,7 @@ export interface RequestObservation {
     /** Count of `compress` tool_use calls visible to the LLM in this request */
     compressCallCount: number
     nudgeDetected: boolean
+    nudgeSystemTokens?: number
     isChild: boolean
     isAuxiliary: boolean
 }
@@ -100,10 +101,11 @@ function recordObservation(
     messageCount: number,
     compressCallCount: number,
     nudgeDetected: boolean,
+    nudgeSystemTokens: number | undefined,
     isChild: boolean,
     isAuxiliary: boolean,
 ): void {
-    observations.requests.push({ turn, inputTokens, messageCount, compressCallCount, nudgeDetected, isChild, isAuxiliary })
+    observations.requests.push({ turn, inputTokens, messageCount, compressCallCount, nudgeDetected, nudgeSystemTokens, isChild, isAuxiliary })
     try {
         writeFileSync(OBSERVATIONS_FILE, JSON.stringify(observations, null, 2))
     } catch {
@@ -199,7 +201,7 @@ async function handleChatCompletion(req: Request): Promise<Response> {
 
     const isAuxiliary = tools.length === 0
 
-    recordObservation(readTurnCounter(), inputTokens, messages.length, compressCallCount, nudgeDetected, isChild, isAuxiliary)
+    recordObservation(readTurnCounter(), inputTokens, messages.length, compressCallCount, nudgeDetected, extractNudgeSystemTokens(messages), isChild, isAuxiliary)
 
     log(
         `  body: stream=${isStream} msgs=${messages.length} ` +
@@ -377,6 +379,22 @@ function detectNudge(messages: any[]): boolean {
         }
     }
     return false
+}
+
+function extractNudgeSystemTokens(messages: any[]): number | undefined {
+    const breakdownRe = /Breakdown: ([0-9.]+)K? system/
+    for (const msg of messages) {
+        if (msg?.role === "user") {
+            const text = extractMessageText(msg)
+            const match = text.match(breakdownRe)
+            if (match) {
+                const value = parseFloat(match[1])
+                const kilo = text.includes(`${match[1]}K system`)
+                return kilo ? Math.round(value * 1000) : Math.round(value)
+            }
+        }
+    }
+    return undefined
 }
 
 function handleNudgeCompressStep(
