@@ -349,7 +349,8 @@ export const injectCompressNudges = (
 
     const allProtected = contextRanges.compressible.length === 0 && contextRanges.protected.length > 0
     const allInProtectedZone = protectedRefs.size > 0 && unprotectedCompressible.length === 0
-    const nothingToCompress = allProtected || allInProtectedZone
+    const allBelowMin = contextRanges.compressible.length > 0 && recommendedRanges.length === 0
+    const nothingToCompress = allProtected || allInProtectedZone || allBelowMin
     const shouldInjectNudge = nudgeAllowed && (!nothingToCompress || emergencyOverride)
     let shouldInject = shouldInjectNudge
 

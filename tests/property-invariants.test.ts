@@ -26,6 +26,7 @@ import {
     buildCompressibleRanges,
     excludeProtectedRanges,
     filterRecommendedRanges,
+    EFFECTIVE_MIN_COMPRESSIBLE_TOKENS,
     type CompressibleRange,
 } from "../lib/messages/inject/utils"
 import { injectCompressNudges } from "../lib/messages/inject/inject"
@@ -399,15 +400,17 @@ test("INV4c: computeShouldNudge returns false when growth step not met and not o
 })
 
 // ═══════════════════════════════════════════════════════════════════════
-// INV5: filterRecommendedRanges — always returns all input ranges
+// INV5: filterRecommendedRanges — no context-relative suppression
 // ═══════════════════════════════════════════════════════════════════════
 // Issue #251 regression: filterRecommendedRanges used to suppress ranges
 // below a context-relative threshold (5% of modelContextLimit). At 1M context
 // this meant 50K+ of compressible content was never recommended.
-// New invariant: ALL input ranges are always returned (no suppression).
-// The minCompressRange backstop in range.ts handles garbage filtering.
+// Invariant: every range ABOVE the pipeline-aligned effective floor
+// (EFFECTIVE_MIN_COMPRESSIBLE_TOKENS) is returned — no context-relative
+// suppression. Ranges below the floor are dropped because the pipeline's
+// minCompressRange would reject them anyway (retry-loop fix).
 
-test("INV5: filterRecommendedRanges always returns all input ranges", () => {
+test("INV5: filterRecommendedRanges keeps every range above the effective floor", () => {
     fc.assert(
         fc.property(
             fc.array(
@@ -415,22 +418,23 @@ test("INV5: filterRecommendedRanges always returns all input ranges", () => {
                     startRef: fc.string({ minLength: 2, maxLength: 6 }).map((s) => "m" + s.slice(1)),
                     endRef: fc.string({ minLength: 2, maxLength: 6 }).map((s) => "m" + s.slice(1)),
                     count: fc.integer({ min: 1, max: 10 }),
-                    tokens: fc.integer({ min: 100, max: 50_000 }),
+                    tokens: fc.integer({ min: EFFECTIVE_MIN_COMPRESSIBLE_TOKENS, max: 50_000 }),
                     toolPct: fc.integer({ min: 0, max: 100 }),
                     textPct: fc.integer({ min: 0, max: 100 }),
                 }),
                 { minLength: 1, maxLength: 20 },
             ),
             (ranges) => {
+                const withEffective = ranges.map((r) => ({ ...r, effectiveTokens: r.tokens }))
                 const result = filterRecommendedRanges(
-                    ranges as CompressibleRange[],
+                    withEffective as CompressibleRange[],
                     [],
                     {},
                 )
                 assert.equal(
                     result.length,
                     ranges.length,
-                    `Input has ${ranges.length} ranges but got ${result.length} — suppression should not occur`,
+                    `Input has ${ranges.length} above-floor ranges but got ${result.length} — suppression should not occur`,
                 )
             },
         ),
