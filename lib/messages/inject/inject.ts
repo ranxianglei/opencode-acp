@@ -352,8 +352,16 @@ export const injectCompressNudges = (
     const allInProtectedZone = protectedRefs.size > 0 && unprotectedCompressible.length === 0
     const allBelowMin = contextRanges.compressible.length > 0 && recommendedRanges.length === 0
     const nothingToCompress = allProtected || allInProtectedZone || allBelowMin
-    const shouldInjectNudge = nudgeAllowed && (!nothingToCompress || emergencyOverride)
-    let shouldInject = shouldInjectNudge
+    // Issue #216 residual: emergency + nothing-to-compress must not demand
+    // compression (no valid targets → phantom-retry loop, incident
+    // ses_7fb5cbc8). Emit a cadence-gated /compact notice instead.
+    const emergencyNoTargets = emergencyOverride && nothingToCompress
+    const noticeCadenceMet =
+        state.nudges.lastNudgeShownTokens === undefined ||
+        (growthSinceBaseline !== undefined && growthSinceBaseline >= growthFloor)
+    const shouldInjectNudge = nudgeAllowed && !nothingToCompress
+    const shouldInjectNotice = emergencyNoTargets && noticeCadenceMet
+    let shouldInject = shouldInjectNudge || shouldInjectNotice
 
     // Keep lastNudgeShownTokens when nothingToCompress — resetting it
     // reintroduces the nudge loop (baseline wiped → stale growthReference
@@ -534,9 +542,21 @@ export const injectCompressNudges = (
         }
 
         // maxLimit strong alert + lastNudgeShownTokens + block aging guidance
-        if (effectiveTipsVariant === "maxLimit") {
+        if (effectiveTipsVariant === "maxLimit" && !emergencyNoTargets) {
             tipsText =
                 '\n\n⚠️ Context limit reached — compress now. Prioritize consumed tool outputs.\n\n' + HOW_TO_COMPRESS_RULES + '\n\n{ "topic": "...", "content": [{ "startId": "<ID>", "endId": "<ID>", "summary": "..." }] }\n\nOnly use IDs from visible messages above. Compress older work first.'
+        } else if (shouldInjectNotice) {
+            const emergencyPct =
+                currentTokens !== undefined && modelContextLimit !== undefined && modelContextLimit > 0
+                    ? Math.round((currentTokens / modelContextLimit) * 100)
+                    : undefined
+            tipsText =
+                `\n\n🚨 Context is critically full${emergencyPct !== undefined ? ` (${emergencyPct}% of limit)` : ""} and there is nothing left that can be safely compressed.` +
+                `\nDo NOT retry compress on the same ranges — they will keep failing.` +
+                `\nRecommended actions:` +
+                `\n1. Use OpenCode's built-in /compact to compact the whole session` +
+                `\n2. Or start a new session (this session's compression summaries remain available)` +
+                `\n3. Or ask the user to relax protected-tool / preserve-recent settings`
         }
         // Intentionally do NOT update lastPerMessageNudgeTokens here — nudges
         // repeat every turn until the model actually compresses.
