@@ -38,3 +38,9 @@
 
 PR #325 (`2026-08-20_effective-compressible-accounting`) — the notice depends on
 that PR's honest `nothingToCompress` (effective-token accounting + `allBelowMin`).
+
+## Update: notice recommends /acp export first
+
+User feedback: export is the better first recommendation — archive before destructive actions.
+Notice order now: 1. /acp export (archive) 2. /compact or new session 3. relax protections.
+Export alone does NOT free context; it preserves block summaries to a file.

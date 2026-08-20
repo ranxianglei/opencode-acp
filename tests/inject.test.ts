@@ -858,6 +858,7 @@ test("emergency + all content protected emits /compact notice, not compress inst
     )
 
     const injected = suffixText(messages)
+    assert.ok(injected.includes("/acp export"), "notice recommends archiving via /acp export first")
     assert.ok(injected.includes("/compact"), "notice recommends /compact")
     assert.ok(
         !injected.includes("Context limit reached — compress now"),

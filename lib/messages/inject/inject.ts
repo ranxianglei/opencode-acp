@@ -553,9 +553,9 @@ export const injectCompressNudges = (
             tipsText =
                 `\n\n🚨 Context is critically full${emergencyPct !== undefined ? ` (${emergencyPct}% of limit)` : ""} and there is nothing left that can be safely compressed.` +
                 `\nDo NOT retry compress on the same ranges — they will keep failing.` +
-                `\nRecommended actions:` +
-                `\n1. Use OpenCode's built-in /compact to compact the whole session` +
-                `\n2. Or start a new session (this session's compression summaries remain available)` +
+                `\nRecommended actions (in order):` +
+                `\n1. Run /acp export — archive this session's compression summaries to a file so nothing is lost` +
+                `\n2. Then use OpenCode's built-in /compact to compact the whole session, or start a new session` +
                 `\n3. Or ask the user to relax protected-tool / preserve-recent settings`
         }
         // Intentionally do NOT update lastPerMessageNudgeTokens here — nudges
