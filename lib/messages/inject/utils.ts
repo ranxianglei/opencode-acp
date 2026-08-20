@@ -232,13 +232,7 @@ export function computeShouldNudge(params: {
     return policy.computeShouldNudge(params)
 }
 
-export function resolveAdaptiveNudgeGrowth(modelContextLimit: number | undefined): number {
-    const policy = getDefaultTriggerPolicy()
-    if (!policy) {
-        return 6000
-    }
-    return policy.resolveAdaptiveNudgeGrowth(modelContextLimit)
-}
+export const DEFAULT_NUDGE_GROWTH_TOKENS = 50_000
 
 export function addAnchor(
     anchorMessageIds: Set<string>,

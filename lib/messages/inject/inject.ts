@@ -38,7 +38,7 @@ import {
     getNudgeFrequency,
     getModelInfo,
     isContextOverLimits,
-    resolveAdaptiveNudgeGrowth,
+    DEFAULT_NUDGE_GROWTH_TOKENS,
 } from "./utils"
 import { buildCompressedBlockGuidance } from "../../prompts/extensions/nudge"
 import { COMPRESS_PHILOSOPHY, HOW_TO_COMPRESS_RULES, TIER2_DISTILL_RULES, TIER3_CONDENSE_RULES } from "context-compress-algorithms/prompts"
@@ -247,8 +247,7 @@ export const injectCompressNudges = (
     const suffixMessage = createSuffixMessage(messages)
 
 
-    const nudgeGrowthTokens =
-        config.compress?.nudgeGrowthTokens ?? resolveAdaptiveNudgeGrowth(modelContextLimit)
+    const nudgeGrowthTokens = config.compress?.nudgeGrowthTokens ?? DEFAULT_NUDGE_GROWTH_TOKENS
 
     // ── Growth floor gate (anti-thrashing) ──────────────────────────────
     // Nudge output is suppressed unless context grew by at least growthFloor

@@ -187,9 +187,9 @@ ACP 从最多三层配置文件中读取（后加载的覆盖先加载的）：
 
 #### `compress.nudgeGrowthTokens`
 - **类型：** `number`
-- **默认值：** `undefined`（自动计算）
+- **默认值：** `50000`（固定值）
 - **状态：** ACTIVE
-- **说明：** 覆盖自动计算的 nudge 增长阈值。当上下文自上次 nudge 以来增长超过此 token 数时，ACP 触发 nudge。未设置时，ACP 按 `max(minNudgeGrowthFloor, minNudgeGrowthRatio × modelContextLimit)` 计算。
+- **说明：** nudge 增长阈值。当上下文自上次 nudge 以来增长超过此 token 数时，ACP 触发 nudge。默认值为固定值，所有模型上下文窗口大小一致（此前按窗口百分比缩放——v1.14.23 移除，因会导致小窗口模型 nudge 频率约 4 倍偏高）。
 
 #### `compress.toolOutputNudgeThreshold`
 - **类型：** `number`

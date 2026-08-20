@@ -187,9 +187,9 @@ Core compression behavior.
 
 #### `compress.nudgeGrowthTokens`
 - **Type:** `number`
-- **Default:** `undefined` (auto-calculated)
+- **Default:** `50000` (fixed)
 - **Status:** ACTIVE
-- **Description:** Override the auto-calculated nudge growth threshold. ACP nudges when context grows by this many tokens since the last nudge. If unset, ACP calculates it as `max(minNudgeGrowthFloor, minNudgeGrowthRatio × modelContextLimit)`.
+- **Description:** The nudge growth threshold. ACP nudges when context grows by this many tokens since the last nudge. The default is a fixed value, identical for all model context window sizes (was previously scaled as a percentage of the window — removed in v1.14.23 because it made small-window models nudge ~4× more often).
 
 #### `compress.toolOutputNudgeThreshold`
 - **Type:** `number`
