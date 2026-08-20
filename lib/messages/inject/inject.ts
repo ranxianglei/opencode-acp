@@ -255,8 +255,8 @@ export const injectCompressNudges = (
     // after a small compress or when anchors accumulate with negligible growth.
     //
     //   growthFloor = max(minNudgeGrowthFloor, minNudgeGrowthRatio × nudgeGrowthTokens)
-    //     1M model:   max(5000, 0.45×50000) = 22500
-    //     100K model: max(5000, 0.45×6000)  = 5000
+    //   Default: max(5000, 0.45×50000) = 22500 — uniform for all models
+    //   (config override example: nudgeGrowthTokens=6000 → max(5000, 2700) = 5000)
     //
     // Only bypassed at emergencyThresholdPercent (default 98%) — near-overflow
     // always fires regardless of growth.

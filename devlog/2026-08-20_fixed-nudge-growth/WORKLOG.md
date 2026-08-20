@@ -18,3 +18,16 @@
 - Full suite: 1004 pass / 0 fail
 - E2E scenarios 06/09/10/11/12: 5/5 pass locally
 - Deployed to ~/.cache/opencode/packages/opencode-acp@latest/
+
+## Update: review fixes (Explore findings + CI e2e failure)
+
+- **CI e2e 08-nudge-with-protection failed** (`blockCount 0`): scenario acpConfig REPLACES the
+  base config wholesale (write_acp_config override), so its compress object lost the
+  nudgeGrowthTokens pin → fixed 50K default → growth never reached it. Previously undefined →
+  adaptive(100K)=6000 fired. Fix: scenario 08 compress now pins `nudgeGrowthTokens: 6000`.
+  Local: 08 + 06 pass.
+- dcp.schema.json toolOutputNudgeThreshold description: dropped stale adaptive formula text.
+- CONFIGURATION.{md,zh-CN}.md minNudgeGrowthRatio/minNudgeGrowthFloor: formula corrected to
+  `× nudgeGrowthTokens` (was wrongly `× modelContextLimit`).
+- inject.ts growthFloor comment: removed window-dependent examples.
+- tests/inject.test.ts: 2 stale comments updated.

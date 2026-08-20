@@ -247,13 +247,13 @@ ACP 从最多三层配置文件中读取（后加载的覆盖先加载的）：
 - **类型：** `number`
 - **默认值：** `0.45`
 - **状态：** ACTIVE
-- **说明：** 用于计算 nudge 增长下限的模型上下文限制比例。值越大 = nudge 频率越低。
+- **说明：** 用于计算 nudge 增长下限的 `nudgeGrowthTokens` 比例。值越大 = nudge 频率越低。
 
 #### `compress.minNudgeGrowthFloor`
 - **类型：** `number`
 - **默认值：** `5000`
 - **状态：** ACTIVE
-- **说明：** nudge 增长阈值的最小 token 数。实际阈值为 `max(此值, minNudgeGrowthRatio × modelContextLimit)`。
+- **说明：** nudge 增长阈值的最小 token 数。实际阈值为 `max(此值, minNudgeGrowthRatio × nudgeGrowthTokens)`。
 
 #### `compress.emergencyThresholdPercent`
 - **类型：** `number | \`${number}%\``

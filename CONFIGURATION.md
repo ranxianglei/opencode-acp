@@ -247,13 +247,13 @@ Core compression behavior.
 - **Type:** `number`
 - **Default:** `0.45`
 - **Status:** ACTIVE
-- **Description:** Ratio of model context limit used to calculate the nudge growth floor. Higher value = less frequent nudges.
+- **Description:** Ratio of `nudgeGrowthTokens` used to calculate the nudge growth floor. Higher value = less frequent nudges.
 
 #### `compress.minNudgeGrowthFloor`
 - **Type:** `number`
 - **Default:** `5000`
 - **Status:** ACTIVE
-- **Description:** Minimum nudge growth threshold in tokens. The actual threshold is `max(this, minNudgeGrowthRatio × modelContextLimit)`.
+- **Description:** Minimum nudge growth threshold in tokens. The actual threshold is `max(this, minNudgeGrowthRatio × nudgeGrowthTokens)`.
 
 #### `compress.emergencyThresholdPercent`
 - **Type:** `number | \`${number}%\``
