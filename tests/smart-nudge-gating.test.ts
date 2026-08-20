@@ -141,3 +141,31 @@ test("protected ranges do not affect filtering logic", () => {
     const withProtected = filterRecommendedRanges(ranges, protectedRanges, OPTS)
     assert.deepEqual(withProtected, withoutProtected)
 })
+test("config-derived floor: minCompressRange 0 disables the size floor (E2E config)", () => {
+    const subFloor = [makeRange("m00001", "m00002", 2, 300)]
+    const kept = filterRecommendedRanges(subFloor, [], {
+        ...OPTS,
+        minEffectiveTokens: 0,
+    })
+    assert.equal(kept.length, 1, "minCompressRange 0 → pipeline accepts any size → range shown")
+})
+
+test("config-derived floor: phantom guard still drops effective-0 ranges at floor 0", () => {
+    const phantomBait = [makeRange("m00001", "m00002", 2, 900, 100, 0)]
+    const kept = filterRecommendedRanges(phantomBait, [], {
+        ...OPTS,
+        minEffectiveTokens: 0,
+    })
+    assert.equal(kept.length, 0, "all-soft-filtered range is phantom bait regardless of floor")
+})
+
+test("config-derived floor: higher minCompressRange raises the floor", () => {
+    const range = [makeRange("m00001", "m00002", 2, 2000)]
+    const defaultFloor = filterRecommendedRanges(range, [], OPTS)
+    const raisedFloor = filterRecommendedRanges(range, [], {
+        ...OPTS,
+        minEffectiveTokens: 5000,
+    })
+    assert.equal(defaultFloor.length, 1)
+    assert.equal(raisedFloor.length, 0, "2000 effective tokens < 20000-char minCompressRange ÷ 4")
+})

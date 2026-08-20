@@ -794,18 +794,37 @@ export function buildCompressibleRanges(
 
 export interface RangeFilterOptions {
     logger?: { debug: (msg: string, data?: any) => void }
+    minEffectiveTokens?: number
 }
 
 /**
- * Token floor for a range to stay in the recommendation list, aligned with
- * the compress pipeline's minCompressRange backstop (5000 chars ÷ 4 chars/token).
- * Ranges whose effective compressible content falls below this would be
- * rejected by the pipeline's minimum-size check, so recommending them only
- * invites guaranteed-failed compress calls (the retry loop observed in
- * issue #37 session ses_7fb5cbc8: displayed "10.8K compressible" resolved
- * to 3066 chars in the pipeline → rejected → model retried ×10).
+ * DEFAULT token floor for a range to stay in the recommendation list, aligned
+ * with the compress pipeline's default minCompressRange (5000 chars ÷ 4
+ * chars/token). The actual floor is derived from the configured
+ * `compress.minCompressRange` via `resolveEffectiveFloor` so the recommendation
+ * tracks the pipeline's real rejection threshold. Ranges whose effective
+ * compressible content falls below the floor would be rejected by the
+ * pipeline's minimum-size check, so recommending them only invites
+ * guaranteed-failed compress calls (the retry loop observed in issue #37
+ * session ses_7fb5cbc8: displayed "10.8K compressible" resolved to 3066 chars
+ * in the pipeline → rejected → model retried ×10).
  */
 export const EFFECTIVE_MIN_COMPRESSIBLE_TOKENS = 1250
+
+/**
+ * Derive the effective-token recommendation floor from the pipeline's
+ * char-based `compress.minCompressRange` (÷ 4 chars/token). When
+ * minCompressRange is 0 the pipeline's size check is disabled, so the floor
+ * is 0 — but the universal phantom guard (`effective > 0`) still applies in
+ * filterRecommendedRanges: a range whose every message is soft-filtered
+ * produces a phantom plan the pipeline always rejects.
+ */
+export function resolveEffectiveFloor(config: {
+    compress?: { minCompressRange?: number }
+}): number {
+    const minChars = config.compress?.minCompressRange ?? 5000
+    return minChars > 0 ? Math.floor(minChars / 4) : 0
+}
 
 /**
  * Filter compressible ranges for the recommendation list.
@@ -838,9 +857,10 @@ export function filterRecommendedRanges(
         return []
     }
 
+    const floor = options.minEffectiveTokens ?? EFFECTIVE_MIN_COMPRESSIBLE_TOKENS
     const kept = compressible.filter((r) => {
         const effective = r.effectiveTokens ?? r.tokens
-        return effective >= EFFECTIVE_MIN_COMPRESSIBLE_TOKENS
+        return effective > 0 && effective >= floor
     })
 
     const result = kept.map((r, i) =>
@@ -850,8 +870,12 @@ export function filterRecommendedRanges(
     log?.("filterRecommendedRanges: effective-token floor applied", {
         inputRanges: compressible.length,
         outputRanges: result.length,
+        floor,
         dropped: compressible
-            .filter((r) => (r.effectiveTokens ?? r.tokens) < EFFECTIVE_MIN_COMPRESSIBLE_TOKENS)
+            .filter((r) => {
+                const effective = r.effectiveTokens ?? r.tokens
+                return effective <= 0 || effective < floor
+            })
             .map((r) => `${r.startRef}–${r.endRef} (${r.effectiveTokens ?? r.tokens} eff tokens)`),
     })
 

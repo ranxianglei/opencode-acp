@@ -32,6 +32,7 @@ import {
     estimateContextComposition,
     excludeProtectedRanges,
     filterRecommendedRanges,
+    resolveEffectiveFloor,
     findLastNonIgnoredMessage,
     formatCompressibleRanges,
     getIterationNudgeThreshold,
@@ -343,7 +344,7 @@ export const injectCompressNudges = (
     const recommendedRanges = filterRecommendedRanges(
         unprotectedCompressible,
         contextRanges.protected,
-        { logger },
+        { logger, minEffectiveTokens: resolveEffectiveFloor(config) },
     )
     const hasRecommendations = recommendedRanges.length > 0
 

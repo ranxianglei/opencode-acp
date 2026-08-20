@@ -41,3 +41,17 @@
 - §5.7.3 surgical revert (floor disabled + allBelowMin=false): both incident
   regression tests FAIL; fix re-applied and suite green again.
 - build: 881.32 KB sourcemap / dist built successfully.
+
+## Update: config-derived floor (E2E fix + Oracle review finding)
+
+E2E scenario 06-nudge-triggered failed (`blockCount >= 1 — got 0`): the E2E harness config sets
+`minCompressRange: 0` (pipeline accepts any size), but the recommendation floor was hardcoded at
+1250 — ranges dropped, nudge silenced, no compress. Same mismatch Oracle review flagged for user
+configs that raise/lower `minCompressRange`.
+
+- `resolveEffectiveFloor(config)` in utils.ts: floor = `minCompressRange ÷ 4` (÷4 chars/token), 0 when disabled
+- `filterRecommendedRanges` takes `minEffectiveTokens` option; universal phantom guard `effective > 0` always applies
+- inject.ts passes `resolveEffectiveFloor(config)`
+- +3 tests (floor 0 passthrough, phantom guard at floor 0, raised floor)
+
+Verification: typecheck clean, full suite green, E2E scenarios 06/09/10/11/12 pass locally (5/5).
