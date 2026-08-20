@@ -31,3 +31,15 @@
   `× nudgeGrowthTokens` (was wrongly `× modelContextLimit`).
 - inject.ts growthFloor comment: removed window-dependent examples.
 - tests/inject.test.ts: 2 stale comments updated.
+
+## Update 2: Oracle review fixes
+
+- dcp.schema.json nudgeGrowthTokens description: removed stale adaptive formula + harmful
+  "Must be unset (not 6000)" advice; now documents fixed 50000 default + derived gates.
+- lib/state/model-limits.ts: removed "adaptive nudge growth" from the percentage-threshold
+  list (no longer window-derived).
+- Oracle's scenario 08 finding (threshold 6000→50000 via config-replace semantics) was the
+  CI e2e failure root cause — already fixed in previous commit (2906d77).
+- Left as-is (LOW): trigger-policy-integration.test.ts still tests the cc-alg policy's
+  resolveAdaptiveNudgeGrowth method (dependency API contract, now unwired from inject);
+  fixed-default constant test (change-detector, guards accidental drift).
