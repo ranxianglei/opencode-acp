@@ -861,6 +861,10 @@ test("emergency + all content protected emits /compact notice, not compress inst
     assert.ok(injected.includes("/acp export"), "notice recommends archiving via /acp export first")
     assert.ok(injected.includes("/compact"), "notice recommends /compact")
     assert.ok(
+        injected.includes("reply/message tool"),
+        "notice frames the advice as model-actionable (inform user), not user-command execution",
+    )
+    assert.ok(
         !injected.includes("Context limit reached — compress now"),
         "no compress-now demand when nothing is compressible (phantom-retry loop driver)",
     )

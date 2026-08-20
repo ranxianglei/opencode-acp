@@ -44,3 +44,16 @@ that PR's honest `nothingToCompress` (effective-token accounting + `allBelowMin`
 User feedback: export is the better first recommendation — archive before destructive actions.
 Notice order now: 1. /acp export (archive) 2. /compact or new session 3. relax protections.
 Export alone does NOT free context; it preserves block summaries to a file.
+
+## Update 3: headless-actionable notice text (v3)
+
+Incident ses_7fb5c607 (billion-context-omp): headless `opencode run` model read
+"1. Run /acp export 2. use /compact" as instructions it should execute, retried
+compares/status 18 turns, context overflowed (233K > 262K), API 400. Slash
+commands are user-only — the model can never run them in any mode.
+
+- Notice reframed: model's only viable action is informing the user via its
+  reply/message tool; user-side steps (/acp export → /compact / new session,
+  or relax protections) become the content of that message.
+- Added "Then stop retrying and await the user's response."
+- Test asserts the reply/message-tool framing.
