@@ -912,6 +912,41 @@ test("emergency notice is cadence-gated across turns — no per-turn nagging (is
     assert.equal(state.nudges.lastNudgeShownTokens, 1_005_000, "turn 3: baseline advanced")
 })
 
+test("emergency + everything inside preserve-recent zone emits notice, not compress demand (production config)", () => {
+    // §5.7.1 (production config): ordinary content inside the preserve-recent window → allInProtectedZone → notice.
+    const state = createSessionState()
+    state.modelContextLimit = 1_000_000
+    state.nudges.lastPerMessageNudgeTokens = 980_000
+    state.messageIds.byRawId.set("u1", "m00001")
+    state.messageIds.byRawId.set("a1", "m00002")
+
+    const config = buildConfig()
+    config.compress.preserveRecentMessages = 20
+    config.compress.preserveRecentTokens = 5_000
+    config.compress.maxContextLimit = 500_000
+    config.compress.minContextLimit = 200_000
+
+    const messages: WithParts[] = [
+        userMsg("u1", "hello"),
+        assistantMsgWithTokens("a1", "done", { input: 970_000, output: 10_000 }, [
+            toolPart("c1", "x".repeat(40_000)),
+        ]),
+    ]
+    injectCompressNudges(state, config, logger, messages, {} as any)
+
+    assert.equal(
+        state.nudges.shouldInjectThisTurn,
+        true,
+        "emergency + preserve-recent zone → notice injected",
+    )
+    const injected = suffixText(messages)
+    assert.ok(injected.includes("critically full"), "notice text present")
+    assert.ok(
+        !injected.includes("Context limit reached — compress now"),
+        "no compress-now demand when everything is in the preserve-recent zone",
+    )
+})
+
 test("emergency with sub-floor ranges emits notice — phantom-retry loop regression (incident ses_7fb5cbc8)", () => {
     // Incident shape: ranges LOOK compressible by raw size but effective tokens
     // fall below the minCompressRange floor → pipeline rejects every attempt.
