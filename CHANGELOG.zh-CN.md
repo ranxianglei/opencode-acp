@@ -1,5 +1,18 @@
 # 更新日志
 
+### v1.14.24 — 默认开启的决策级日志与可配置 logLevel
+
+**问题**：ACP 默认几乎不向磁盘写任何日志——除非开 `debug: true`，文件日志器始终禁用。任何诊断问题（"nudge 为何注入/被抑制？"、"本轮 transform 管线做了什么？"、"自动更新为何没触发？"）都得开着 debug 复现。全项目只有约 62 处日志调用，INFO 级完全被丢弃。
+
+**修复**（#332）：
+- 日志器引入等级 `debug|info|warn|error|silent`，按等级门控写入；布尔构造保持完全向后兼容（`false`→仅 warn，`true`→debug）。
+- 新增 `logLevel` 配置（默认 `"info"`）：决策事件默认写入 `~/.config/opencode/logs/acp/daily/YYYY-MM-DD.log`——插件初始化、每请求 transform 摘要（消息数、前后 token、上下文使用率 %、nudge 标记）、会话中模型切换、nudge 注入/抑制决策（触发层级、使用率 %、基线以来增量、增长下限、推荐区间）、紧急 `/compact` 通知、自动更新检查生命周期。
+- `debug: true` 仍覆盖为完整 debug 冗长度 + 每请求上下文快照。
+- 无效 `logLevel` 值（配置校验仅警告不拦截）回退到旧布尔映射，绝不静默丢掉所有日志；被门控等级跳过栈捕获开销。
+- 更新 `dcp.schema.json`、CONFIGURATION ×2、README ×2；新增 5 个日志等级语义测试。
+
+**安装**：`opencode plugin opencode-acp@latest --global`
+
 ### v1.14.23 — 修复批次：有效可压缩记账、紧急无目标通知、固定增长阈值、tag 感知自动更新
 
 **问题**：v1.14.22 以来的四个修复簇：（1）nudge 记账把被压缩管线软过滤的消息（受保护锚点、空消息、最后一条用户消息）算作"可压缩"，模型被指向幻影区间，每次失败重试又重新武装同一个 nudge —— 即 issue #37 的连续压缩死循环（floors 156-175，约 10 次幻影重试）；（2）紧急覆盖 + 无有效压缩目标时，ACP 仍每轮要求"立即压缩"（约 12 次失败压缩；#216 残留，经 emergency 路径活过了 v1.14.4 修复）；（3）`nudgeGrowthTokens` 自适应默认 `min(50K, max(6K, modelContextLimit×5%))`，相同配置下 262K 与 1M 模型的 nudge 节奏相差 5 倍——且自 v1.14.15 起，带任意 compress 配置键的用户拿到自适应值，完全不配的用户反而拿到固定 50K；（4）`opencode-acp@stable` 安装的自动更新从不触发（裸 dist-tag 词过不了可更新判定），且对比硬编码的 `latest` dist-tag —— 对 tag 安装永远无法落地（#328）。
