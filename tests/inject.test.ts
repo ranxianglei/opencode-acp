@@ -823,11 +823,11 @@ test("nudge suppressed when all content is protected (nothing to compress)", () 
     )
 })
 
-test("emergency override fires even when all content is protected", () => {
+test("emergency + all content protected emits /compact notice, not compress instructions (issue #216 residual)", () => {
     const state = createSessionState()
     state.modelContextLimit = 1_000_000
     state.nudges.lastPerMessageNudgeTokens = 980_000
-    state.nudges.lastNudgeShownTokens = 980_000
+    // No lastNudgeShownTokens → notice cadence met on first turn
     state.messageIds.byRawId.set("a1", "m00001")
 
     const config = buildConfig()
@@ -849,7 +849,138 @@ test("emergency override fires even when all content is protected", () => {
     assert.equal(
         state.nudges.shouldInjectThisTurn,
         true,
-        "98% emergency override fires even when all content is protected",
+        "98% emergency with all-protected content → notice injected (cadence-gated)",
+    )
+    assert.equal(
+        state.nudges.lastNudgeShownTokens,
+        980_000,
+        "notice sets the nudge baseline so the cadence gate applies next turn",
+    )
+
+    const injected = suffixText(messages)
+    assert.ok(injected.includes("/acp export"), "notice recommends archiving via /acp export first")
+    assert.ok(injected.includes("/compact"), "notice recommends /compact")
+    assert.ok(
+        injected.includes("reply/message tool"),
+        "notice frames the advice as model-actionable (inform user), not user-command execution",
+    )
+    assert.ok(
+        !injected.includes("Context limit reached — compress now"),
+        "no compress-now demand when nothing is compressible (phantom-retry loop driver)",
+    )
+    assert.ok(
+        !injected.includes("Compressible ranges"),
+        "no compressible-ranges list — there is nothing valid to compress",
+    )
+})
+
+test("emergency notice is cadence-gated across turns — no per-turn nagging (issue #216 residual)", () => {
+    const state = createSessionState()
+    state.modelContextLimit = 1_000_000
+    state.nudges.lastPerMessageNudgeTokens = 980_000
+    state.messageIds.byRawId.set("a1", "m00001")
+    state.messageIds.byRawId.set("a2", "m00002")
+    state.messageIds.byRawId.set("a3", "m00003")
+
+    const config = buildConfig()
+    config.compress.protectedTools = ["skill"]
+    config.compress.maxContextLimit = 500_000
+    config.compress.minContextLimit = 200_000
+
+    const protectedTurn = (id: string, input: number, output = 2_000) =>
+        assistantMsgWithTokens(id, "done", { input, output }, [
+            {
+                id: `skill-${id}`, messageID: id, sessionID: SID,
+                type: "tool" as const, tool: "skill", callID: `call-${id}`,
+                state: { status: "completed" as const, input: {}, output: "x".repeat(4_000) },
+            },
+        ])
+
+    // Turn 1: emergency (980K = 98% of 1M) + all protected, fresh baseline → notice fires
+    injectCompressNudges(state, config, logger, [protectedTurn("a1", 978_000)], {} as any)
+    assert.equal(state.nudges.shouldInjectThisTurn, true, "turn 1: notice fires")
+    assert.equal(state.nudges.lastNudgeShownTokens, 980_000, "turn 1: baseline set to current")
+
+    // Turn 2: growth 3K < growthFloor 22.5K → notice silent
+    injectCompressNudges(state, config, logger, [protectedTurn("a2", 981_000)], {} as any)
+    assert.equal(state.nudges.shouldInjectThisTurn, false, "turn 2: below growth floor → silent")
+    assert.equal(state.nudges.lastNudgeShownTokens, 980_000, "turn 2: baseline preserved")
+
+    // Turn 3: growth 25K ≥ growthFloor 22.5K → notice re-fires
+    injectCompressNudges(state, config, logger, [protectedTurn("a3", 999_000, 6_000)], {} as any)
+    assert.equal(
+        state.nudges.shouldInjectThisTurn,
+        true,
+        "turn 3: growth 25K ≥ 22.5K floor → notice re-fires",
+    )
+    assert.equal(state.nudges.lastNudgeShownTokens, 1_005_000, "turn 3: baseline advanced")
+})
+
+test("emergency + everything inside preserve-recent zone emits notice, not compress demand (production config)", () => {
+    // §5.7.1 (production config): ordinary content inside the preserve-recent window → allInProtectedZone → notice.
+    const state = createSessionState()
+    state.modelContextLimit = 1_000_000
+    state.nudges.lastPerMessageNudgeTokens = 980_000
+    state.messageIds.byRawId.set("u1", "m00001")
+    state.messageIds.byRawId.set("a1", "m00002")
+
+    const config = buildConfig()
+    config.compress.preserveRecentMessages = 20
+    config.compress.preserveRecentTokens = 5_000
+    config.compress.maxContextLimit = 500_000
+    config.compress.minContextLimit = 200_000
+
+    const messages: WithParts[] = [
+        userMsg("u1", "hello"),
+        assistantMsgWithTokens("a1", "done", { input: 970_000, output: 10_000 }, [
+            toolPart("c1", "x".repeat(40_000)),
+        ]),
+    ]
+    injectCompressNudges(state, config, logger, messages, {} as any)
+
+    assert.equal(
+        state.nudges.shouldInjectThisTurn,
+        true,
+        "emergency + preserve-recent zone → notice injected",
+    )
+    const injected = suffixText(messages)
+    assert.ok(injected.includes("critically full"), "notice text present")
+    assert.ok(
+        !injected.includes("Context limit reached — compress now"),
+        "no compress-now demand when everything is in the preserve-recent zone",
+    )
+})
+
+test("emergency with sub-floor ranges emits notice — phantom-retry loop regression (incident ses_7fb5cbc8)", () => {
+    // Incident shape: ranges LOOK compressible by raw size but effective tokens
+    // fall below the minCompressRange floor → pipeline rejects every attempt.
+    const state = createSessionState()
+    state.modelContextLimit = 1_000_000
+    state.nudges.lastPerMessageNudgeTokens = 980_000
+    state.messageIds.byRawId.set("u1", "m00001")
+    state.messageIds.byRawId.set("a1", "m00002")
+
+    const config = buildConfig()
+    config.compress.maxContextLimit = 500_000
+    config.compress.minContextLimit = 200_000
+
+    const messages: WithParts[] = [
+        userMsg("u1", "hello"),
+        assistantMsgWithTokens("a1", "done", { input: 970_000, output: 10_000 }, [
+            toolPart("c1", "x".repeat(2_000)),
+        ]),
+    ]
+    injectCompressNudges(state, config, logger, messages, {} as any)
+
+    assert.equal(state.nudges.shouldInjectThisTurn, true, "emergency fires")
+    const injected = suffixText(messages)
+    assert.ok(
+        injected.includes("/compact"),
+        "allBelowMin at emergency → /compact notice, not compress demand",
+    )
+    assert.ok(
+        !injected.includes("Context limit reached — compress now"),
+        "no compress-now demand for sub-floor ranges",
     )
 })
 
@@ -1089,8 +1220,8 @@ test("emergency override fires even when filter has no recommendations", () => {
     )
 })
 
-test("growth floor: 5000 floor on small-context models", () => {
-    // 100K model: nudgeGrowthTokens = max(6000, 100K×5%) = 6000
+test("growth floor: 5000 floor when nudgeGrowthTokens configured low", () => {
+    // Explicit nudgeGrowthTokens=6000 (config override; fixed default is 50K)
     // growthFloor = max(5000, 0.45×6000) = max(5000, 2700) = 5000
     // Growth of 4K < 5000 → suppressed. Growth of 6K >= 5000 → fires.
     const state = createSessionState()
@@ -1100,6 +1231,7 @@ test("growth floor: 5000 floor on small-context models", () => {
     state.messageIds.byRawId.set("a1", "m00002")
 
     const config = buildConfig()
+    config.compress.nudgeGrowthTokens = 6_000
     config.compress.maxContextLimit = 60_000
     config.compress.minContextLimit = 20_000
 

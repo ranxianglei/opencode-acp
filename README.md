@@ -123,8 +123,8 @@ stateDiagram-v2
 - **T1** fires when raw context exceeds the configured limit. The model sees
   compressible ranges and writes a detailed summary preserving file paths,
   signatures, decisions, and rationale.
-- **T2** fires when T1 summary tokens reach `nudgeGrowthTokens` (default 5% of
-  context window). The model distills old T1 blocks — keeping decisions and
+- **T2** fires when T1 summary tokens reach `nudgeGrowthTokens` (fixed default
+  50000). The model distills old T1 blocks — keeping decisions and
   outcomes, dropping verbose process details.
 - **T3** fires when T2 summary tokens reach the same threshold. The model
   condenses to bare facts (shipped releases, key bugs, architecture decisions).

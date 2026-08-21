@@ -97,7 +97,8 @@ write_acp_config() {
         "preserveRecentTokens": 0,
         "preserveLastUserMessage": false,
         "maxContextLimit": 20000,
-        "minContextLimit": 10000
+        "minContextLimit": 10000,
+        "nudgeGrowthTokens": 6000
     },
     "qualityGate": {
         "enabled": true,

@@ -32,13 +32,14 @@ import {
     estimateContextComposition,
     excludeProtectedRanges,
     filterRecommendedRanges,
+    resolveEffectiveFloor,
     findLastNonIgnoredMessage,
     formatCompressibleRanges,
     getIterationNudgeThreshold,
     getNudgeFrequency,
     getModelInfo,
     isContextOverLimits,
-    resolveAdaptiveNudgeGrowth,
+    DEFAULT_NUDGE_GROWTH_TOKENS,
 } from "./utils"
 import { buildCompressedBlockGuidance } from "../../prompts/extensions/nudge"
 import { COMPRESS_PHILOSOPHY, HOW_TO_COMPRESS_RULES, TIER2_DISTILL_RULES, TIER3_CONDENSE_RULES } from "context-compress-algorithms/prompts"
@@ -247,8 +248,7 @@ export const injectCompressNudges = (
     const suffixMessage = createSuffixMessage(messages)
 
 
-    const nudgeGrowthTokens =
-        config.compress?.nudgeGrowthTokens ?? resolveAdaptiveNudgeGrowth(modelContextLimit)
+    const nudgeGrowthTokens = config.compress?.nudgeGrowthTokens ?? DEFAULT_NUDGE_GROWTH_TOKENS
 
     // ── Growth floor gate (anti-thrashing) ──────────────────────────────
     // Nudge output is suppressed unless context grew by at least growthFloor
@@ -256,8 +256,8 @@ export const injectCompressNudges = (
     // after a small compress or when anchors accumulate with negligible growth.
     //
     //   growthFloor = max(minNudgeGrowthFloor, minNudgeGrowthRatio × nudgeGrowthTokens)
-    //     1M model:   max(5000, 0.45×50000) = 22500
-    //     100K model: max(5000, 0.45×6000)  = 5000
+    //   Default: max(5000, 0.45×50000) = 22500 — uniform for all models
+    //   (config override example: nudgeGrowthTokens=6000 → max(5000, 2700) = 5000)
     //
     // Only bypassed at emergencyThresholdPercent (default 98%) — near-overflow
     // always fires regardless of growth.
@@ -343,15 +343,24 @@ export const injectCompressNudges = (
     const recommendedRanges = filterRecommendedRanges(
         unprotectedCompressible,
         contextRanges.protected,
-        { logger },
+        { logger, minEffectiveTokens: resolveEffectiveFloor(config) },
     )
     const hasRecommendations = recommendedRanges.length > 0
 
     const allProtected = contextRanges.compressible.length === 0 && contextRanges.protected.length > 0
     const allInProtectedZone = protectedRefs.size > 0 && unprotectedCompressible.length === 0
-    const nothingToCompress = allProtected || allInProtectedZone
-    const shouldInjectNudge = nudgeAllowed && (!nothingToCompress || emergencyOverride)
-    let shouldInject = shouldInjectNudge
+    const allBelowMin = contextRanges.compressible.length > 0 && recommendedRanges.length === 0
+    const nothingToCompress = allProtected || allInProtectedZone || allBelowMin
+    // Issue #216 residual: emergency + nothing-to-compress must not demand
+    // compression (no valid targets → phantom-retry loop, incident
+    // ses_7fb5cbc8). Emit a cadence-gated /compact notice instead.
+    const emergencyNoTargets = emergencyOverride && nothingToCompress
+    const noticeCadenceMet =
+        state.nudges.lastNudgeShownTokens === undefined ||
+        (growthSinceBaseline !== undefined && growthSinceBaseline >= growthFloor)
+    const shouldInjectNudge = nudgeAllowed && !nothingToCompress
+    const shouldInjectNotice = emergencyNoTargets && noticeCadenceMet
+    let shouldInject = shouldInjectNudge || shouldInjectNotice
 
     // Keep lastNudgeShownTokens when nothingToCompress — resetting it
     // reintroduces the nudge loop (baseline wiped → stale growthReference
@@ -532,9 +541,22 @@ export const injectCompressNudges = (
         }
 
         // maxLimit strong alert + lastNudgeShownTokens + block aging guidance
-        if (effectiveTipsVariant === "maxLimit") {
+        if (effectiveTipsVariant === "maxLimit" && !emergencyNoTargets) {
             tipsText =
                 '\n\n⚠️ Context limit reached — compress now. Prioritize consumed tool outputs.\n\n' + HOW_TO_COMPRESS_RULES + '\n\n{ "topic": "...", "content": [{ "startId": "<ID>", "endId": "<ID>", "summary": "..." }] }\n\nOnly use IDs from visible messages above. Compress older work first.'
+        } else if (shouldInjectNotice) {
+            const emergencyPct =
+                currentTokens !== undefined && modelContextLimit !== undefined && modelContextLimit > 0
+                    ? Math.round((currentTokens / modelContextLimit) * 100)
+                    : undefined
+            tipsText =
+                `\n\n🚨 Context is critically full${emergencyPct !== undefined ? ` (${emergencyPct}% of limit)` : ""} and there is nothing left that can be safely compressed.` +
+                `\nDo NOT retry compress on the same ranges — they will keep failing.` +
+                `\nYou cannot execute user commands yourself. Act now via your reply/message tool:` +
+                `\n- Inform the user that context is full and compression is exhausted` +
+                `\n- Recommend they run /acp export (archives compression summaries to a file), then /compact or start a new session` +
+                `\n- Alternatively, ask them to relax protected-tool / preserve-recent settings so compression becomes possible` +
+                `\nThen stop retrying and await the user's response.`
         }
         // Intentionally do NOT update lastPerMessageNudgeTokens here — nudges
         // repeat every turn until the model actually compresses.

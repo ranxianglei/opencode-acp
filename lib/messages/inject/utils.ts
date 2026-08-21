@@ -232,13 +232,7 @@ export function computeShouldNudge(params: {
     return policy.computeShouldNudge(params)
 }
 
-export function resolveAdaptiveNudgeGrowth(modelContextLimit: number | undefined): number {
-    const policy = getDefaultTriggerPolicy()
-    if (!policy) {
-        return 6000
-    }
-    return policy.resolveAdaptiveNudgeGrowth(modelContextLimit)
-}
+export const DEFAULT_NUDGE_GROWTH_TOKENS = 50_000
 
 export function addAnchor(
     anchorMessageIds: Set<string>,
@@ -589,6 +583,16 @@ export interface CompressibleRange {
     endRef: string
     count: number
     tokens: number
+    /**
+     * Tokens that would actually survive the compress pipeline's soft
+     * filters (last-user-message, no-meaningful-content). The pipeline
+     * silently drops those messages from plans, so `tokens` overstates
+     * what a compression would free. Recommendations and displays use
+     * this field to stay honest (phantom-loop fix, issue #37 session
+     * ses_7fb5cbc8: ranges shown as "10.8K compressible" resolved to
+     * 3066 chars in the pipeline → min-size rejection → retry loop).
+     */
+    effectiveTokens: number
     toolPct: number
     textPct: number
     dangerous?: boolean
@@ -623,6 +627,8 @@ export function buildCompressibleRanges(
         ref: string
         refNum: number
         tokens: number
+        effectiveTokens: number
+        meaningful: boolean
         isTool: boolean
         isUser: boolean
     }[] = []
@@ -632,7 +638,9 @@ export function buildCompressibleRanges(
         tokens: number
         tools: string[]
     }[] = []
-    for (const msg of messages) {
+    const lastUserRefIdx: number[] = []
+    for (let mi = 0; mi < messages.length; mi++) {
+        const msg = messages[mi]
         if (isSyntheticMessage(msg)) continue
         const ref = state.messageIds.byRawId.get(msg.info.id)
         if (!ref) continue
@@ -673,15 +681,28 @@ export function buildCompressibleRanges(
 
         let tokens = 0
         let isTool = false
+        let hasMeaningfulPart = false
         for (const part of msg.parts || []) {
             if (part.type === "text" && typeof (part as any).text === "string") {
                 tokens += Math.round(((part as any).text as string).length / 4)
+                if ((part as any).text.trim().length > 0) hasMeaningfulPart = true
             } else if (part.type !== "text" && part.type !== "reasoning") {
                 tokens += Math.round(JSON.stringify(part).length / 4)
                 isTool = true
+                hasMeaningfulPart = true
             }
         }
-        msgInfo.push({ ref, refNum: rn, tokens, isTool, isUser: msg.info.role === "user" })
+        if (msg.info.role === "user" && !isIgnoredUserMessage(msg)) {
+            lastUserRefIdx.length = 0
+            lastUserRefIdx.push(msgInfo.length)
+        }
+        msgInfo.push({ ref, refNum: rn, tokens, effectiveTokens: 0, meaningful: hasMeaningfulPart, isTool, isUser: msg.info.role === "user" })
+    }
+
+    const lastUserIdx = lastUserRefIdx.length > 0 ? lastUserRefIdx[0] : -1
+    for (let i = 0; i < msgInfo.length; i++) {
+        const info = msgInfo[i]
+        info.effectiveTokens = i !== lastUserIdx && info.meaningful ? info.tokens : 0
     }
 
     const groups: CompressibleRange[] = []
@@ -711,6 +732,7 @@ export function buildCompressibleRanges(
                 endRef: info.ref,
                 count: 1,
                 tokens: info.tokens,
+                effectiveTokens: info.effectiveTokens,
                 toolPct: info.isTool ? 100 : 0,
                 textPct: info.isTool ? 0 : 100,
             }
@@ -718,6 +740,7 @@ export function buildCompressibleRanges(
             cur.endRef = info.ref
             cur.count++
             cur.tokens += info.tokens
+            cur.effectiveTokens += info.effectiveTokens
             if (info.isTool) {
                 cur.toolPct = Math.round((cur.toolPct * (cur.count - 1) + 100) / cur.count)
             } else {
@@ -765,22 +788,55 @@ export function buildCompressibleRanges(
 
 export interface RangeFilterOptions {
     logger?: { debug: (msg: string, data?: any) => void }
+    minEffectiveTokens?: number
+}
+
+/**
+ * DEFAULT token floor for a range to stay in the recommendation list, aligned
+ * with the compress pipeline's default minCompressRange (5000 chars ÷ 4
+ * chars/token). The actual floor is derived from the configured
+ * `compress.minCompressRange` via `resolveEffectiveFloor` so the recommendation
+ * tracks the pipeline's real rejection threshold. Ranges whose effective
+ * compressible content falls below the floor would be rejected by the
+ * pipeline's minimum-size check, so recommending them only invites
+ * guaranteed-failed compress calls (the retry loop observed in issue #37
+ * session ses_7fb5cbc8: displayed "10.8K compressible" resolved to 3066 chars
+ * in the pipeline → rejected → model retried ×10).
+ */
+export const EFFECTIVE_MIN_COMPRESSIBLE_TOKENS = 1250
+
+/**
+ * Derive the effective-token recommendation floor from the pipeline's
+ * char-based `compress.minCompressRange` (÷ 4 chars/token). When
+ * minCompressRange is 0 the pipeline's size check is disabled, so the floor
+ * is 0 — but the universal phantom guard (`effective > 0`) still applies in
+ * filterRecommendedRanges: a range whose every message is soft-filtered
+ * produces a phantom plan the pipeline always rejects.
+ */
+export function resolveEffectiveFloor(config: {
+    compress?: { minCompressRange?: number }
+}): number {
+    const minChars = config.compress?.minCompressRange ?? 5000
+    return minChars > 0 ? Math.floor(minChars / 4) : 0
 }
 
 /**
  * Filter compressible ranges for the recommendation list.
  *
- * All ranges are shown to the model — the model decides what to compress.
- * The last segment is always marked `dangerous: true` (it may still be in
- * active use; the model is warned in the suffix text).
+ * Ranges whose effective compressible content (after the pipeline's soft
+ * filters: last-user-message, no-meaningful-content) falls below
+ * EFFECTIVE_MIN_COMPRESSIBLE_TOKENS are dropped — the pipeline's
+ * minCompressRange check would reject them anyway. The last surviving
+ * segment is marked `dangerous: true` (it may still be in active use).
  *
  * Issue #251: Previously this function used `growthThreshold` (5% of context
  * window = 50K at 1M) as an aggregate gate — if "effective compressible"
  * was below the threshold, ALL ranges were suppressed and the nudge was
  * hidden. At large context windows, individual ranges rarely exceeded this
  * threshold, so compression was permanently blocked. The aggregate gate
- * has been removed; `minCompressRange` in `range.ts` (5000 chars) already
- * prevents garbage compressions as a backstop.
+ * has been removed. The per-range effective floor below is 1250 tokens —
+ * far below #251's 50K, and matched to the pipeline's own acceptance
+ * criteria rather than the context size.
  */
 export function filterRecommendedRanges(
     compressible: CompressibleRange[],
@@ -795,13 +851,26 @@ export function filterRecommendedRanges(
         return []
     }
 
-    const result = compressible.map((r, i) =>
-        i === compressible.length - 1 ? { ...r, dangerous: true } : r,
+    const floor = options.minEffectiveTokens ?? EFFECTIVE_MIN_COMPRESSIBLE_TOKENS
+    const kept = compressible.filter((r) => {
+        const effective = r.effectiveTokens ?? r.tokens
+        return effective > 0 && effective >= floor
+    })
+
+    const result = kept.map((r, i) =>
+        i === kept.length - 1 ? { ...r, dangerous: true } : r,
     )
 
-    log?.("filterRecommendedRanges: passthrough (last segment marked dangerous)", {
+    log?.("filterRecommendedRanges: effective-token floor applied", {
         inputRanges: compressible.length,
         outputRanges: result.length,
+        floor,
+        dropped: compressible
+            .filter((r) => {
+                const effective = r.effectiveTokens ?? r.tokens
+                return effective <= 0 || effective < floor
+            })
+            .map((r) => `${r.startRef}–${r.endRef} (${r.effectiveTokens ?? r.tokens} eff tokens)`),
     })
 
     return result
@@ -833,8 +902,12 @@ export function formatCompressibleRanges(
     if (!protectedRanges || protectedRanges.length === 0) {
         if (ranges.length === 0) return ""
         const lines = ranges.map((r) => {
+            const eff = r.effectiveTokens ?? r.tokens
+            const size = eff < r.tokens
+                ? `${fmt(eff)} effective of ${fmt(r.tokens)}`
+                : fmt(r.tokens)
             const suffix = r.dangerous ? "  ⚠️ NOT recommended unless you are certain. If you MUST compress this, pass `dangerous: true`." : ""
-            return `  ${r.startRef}–${r.endRef}  ${r.count} msgs  ${fmt(r.tokens)} [tool ${r.toolPct}% | text ${r.textPct}%]${suffix}`
+            return `  ${r.startRef}–${r.endRef}  ${r.count} msgs  ${size} [tool ${r.toolPct}% | text ${r.textPct}%]${suffix}`
         })
         return `Compressible ranges (oldest first):\n${lines.join("\n")}`
     }
@@ -851,7 +924,7 @@ export function formatCompressibleRanges(
             tokens: r.tokens,
             toolPct: r.toolPct,
             textPct: r.textPct,
-            compressibleTokens: r.tokens,
+            compressibleTokens: r.effectiveTokens ?? r.tokens,
             compressibleCount: r.count,
             protectedTokens: 0,
             protectedCount: 0,
