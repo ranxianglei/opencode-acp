@@ -236,8 +236,11 @@ ACP 使用自己的配置文件，按以下顺序搜索：
     // 自动更新 npm 安装的 ACP：跟踪安装所用 dist-tag/规范（@stable 跟随 stable，@latest 跟随 latest）。
     // 版本锁定的规范不会被更新。
     "autoUpdate": true,
-    // Enable INFO/DEBUG logging + per-request snapshots to ~/.config/opencode/logs/acp/
-    // (WARN/ERROR are always logged to daily/<date>.log)
+    // 文件日志级别: "debug" | "info" | "warn" | "error" | "silent"
+    // 默认 "info"：决策级事件（压缩提示、转换摘要、更新检查）落盘到
+    // ~/.config/opencode/logs/acp/daily/<日期>.log
+    "logLevel": "info",
+    // 启用完整 DEBUG 日志 + 按请求快照（优先于 logLevel）
     "debug": false,
     // Notification display: "off", "minimal", or "detailed"
     "pruneNotification": "detailed",

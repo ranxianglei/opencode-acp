@@ -1,3 +1,5 @@
+/** ACP version, injected at build time by tsup define */
+declare const ACP_VERSION: string | undefined
 import type { Plugin } from "@opencode-ai/plugin"
 import { getConfig } from "./lib/config"
 import {
@@ -32,7 +34,15 @@ const server: Plugin = (async (ctx) => {
         return {}
     }
 
-    const logger = new Logger(config.debug)
+    const logger = new Logger(config.debug, config.debug ? "debug" : config.logLevel)
+    logger.info("ACP plugin initialized", {
+        version: typeof ACP_VERSION !== "undefined" ? ACP_VERSION : "dev",
+        workspace: ctx.directory,
+        logLevel: logger.level,
+        debug: config.debug,
+        autoUpdate: config.autoUpdate,
+        secureMode: isSecureMode(),
+    })
     const registry = new SessionStateRegistry(logger)
     const prompts = new PromptStore(logger, ctx.directory, config.experimental.customPrompts)
     const hostPermissions: HostPermissionSnapshot = {
@@ -75,7 +85,7 @@ const server: Plugin = (async (ctx) => {
 
     logger.info("DCP initialized")
 
-    startAutoUpdate(ctx, config.autoUpdate)
+    startAutoUpdate(ctx, config.autoUpdate, logger)
 
     const compressToolContext = {
         client: ctx.client,

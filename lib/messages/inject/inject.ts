@@ -473,6 +473,13 @@ export const injectCompressNudges = (
 
             appendToLastTextPart(suffixMessage, tierText)
             shouldInject = true
+            logger.info(`Tier ${tc.triggerTier} trigger nudge injected`, {
+                session: state.sessionId,
+                action,
+                targetTier: tc.targetTier,
+                blocks: candidates.length,
+                candidateTokens,
+            })
             if (tc.triggerTier === 2) {
                 state.nudges.lastTier2NudgeTokens = currentTokens
             } else {
@@ -484,6 +491,37 @@ export const injectCompressNudges = (
 
     state.nudges.shouldInjectThisTurn = shouldInject
 
+    // Decision-level audit trail: written at the default `info` level so nudge
+    // behavior is diagnosable from the daily log without `debug: true`.
+    const usagePct =
+        currentTokens !== undefined && modelContextLimit
+            ? `${((currentTokens / modelContextLimit) * 100).toFixed(1)}%`
+            : undefined
+    if (shouldInjectNudge) {
+        logger.info("Compression nudge injected", {
+            session: state.sessionId,
+            trigger: emergencyOverride ? "emergency" : "growth",
+            currentTokens,
+            usagePct,
+            growthSinceBaseline,
+            growthFloor,
+            recommendedRanges: recommendedRanges.length,
+        })
+    } else if (shouldInjectNotice) {
+        logger.info("Emergency /compact notice injected (no compressible targets)", {
+            session: state.sessionId,
+            currentTokens,
+            usagePct,
+        })
+    } else if (nudgeAllowed && nothingToCompress) {
+        logger.info("Nudge suppressed: nothing to compress", {
+            session: state.sessionId,
+            reason: allProtected ? "all_protected" : allInProtectedZone ? "in_protected_zone" : "below_effective_floor",
+            currentTokens,
+            usagePct,
+            compressibleRanges: contextRanges.compressible.length,
+        })
+    }
     // Only log recommendation filter when a nudge is actually being injected —
     // avoids noisy per-turn logging when there's nothing to compress.
     if (shouldInject && config.debug && contextRanges.compressible.length > 0) {

@@ -4,6 +4,7 @@ import { homedir } from "os"
 import { parse } from "jsonc-parser/lib/esm/main.js"
 import type { PluginInput } from "@opencode-ai/plugin"
 import { VALID_CONFIG_KEYS, getInvalidConfigKeys, validateConfigTypes, type ValidationError } from "./config-validation"
+import type { LogLevel } from "./logger"
 
 
 type Permission = "ask" | "allow" | "deny"
@@ -84,6 +85,8 @@ export interface PluginConfig {
     enabled: boolean
     autoUpdate: boolean
     debug: boolean
+    /** Log verbosity when `debug` is false; `debug: true` forces full debug logging. Default: "info". */
+    logLevel: LogLevel
     allowSubAgents: boolean
     pruneNotification: "off" | "minimal" | "detailed"
     pruneNotificationType: "chat" | "toast"
@@ -174,6 +177,7 @@ const defaultConfig: PluginConfig = {
     enabled: true,
     autoUpdate: true,
     debug: false,
+    logLevel: "info",
     allowSubAgents: true,
     pruneNotification: "off",
     // [FIX #20] Default to toast — chat-mode notifications inject an empty
@@ -498,6 +502,7 @@ function mergeLayer(config: PluginConfig, data: Record<string, any>): PluginConf
         enabled: data.enabled ?? config.enabled,
         autoUpdate: data.autoUpdate ?? config.autoUpdate,
         debug: data.debug ?? config.debug,
+        logLevel: data.logLevel ?? config.logLevel,
         allowSubAgents: data.allowSubAgents ?? data.experimental?.allowSubAgents ?? config.allowSubAgents,
         pruneNotification: data.pruneNotification ?? config.pruneNotification,
         pruneNotificationType: data.pruneNotificationType ?? config.pruneNotificationType,

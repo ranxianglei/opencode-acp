@@ -191,6 +191,7 @@ export function createChatMessageTransformHandler(
                 requestModel?.providerID,
                 requestModel?.modelID,
             )
+            const prevModelID = state.modelID
             if (requestModelLimit !== undefined) {
                 state.modelContextLimit = requestModelLimit
                 state.modelProviderID = requestModel?.providerID
@@ -213,6 +214,14 @@ export function createChatMessageTransformHandler(
                 state.modelContextLimit = undefined
                 state.modelProviderID = requestModel.providerID
                 state.modelID = requestModel.modelID
+            }
+            if (requestModel?.modelID && requestModel.modelID !== prevModelID) {
+                logger.info("Model switched mid-session", {
+                    session: state.sessionId,
+                    from: prevModelID,
+                    to: requestModel.modelID,
+                    contextLimit: state.modelContextLimit,
+                })
             }
             await updatePerTurnState(state, logger, messages)
         }
@@ -282,6 +291,20 @@ export function createChatMessageTransformHandler(
         hideFailedCompressCalls(output.messages)
         stripStaleMetadata(output.messages)
         dropEmptyMessages(output.messages)
+        const postTokens = getCurrentTokenUsage(state, output.messages)
+        logger.info("Chat transform complete", {
+            session: state.sessionId,
+            model: state.modelID,
+            messages: output.messages.length,
+            prePruneTokens,
+            postTokens,
+            contextLimit: state.modelContextLimit,
+            usagePct:
+                postTokens !== undefined && state.modelContextLimit
+                    ? `${((postTokens / state.modelContextLimit) * 100).toFixed(1)}%`
+                    : undefined,
+            nudged: state.nudges.shouldInjectThisTurn,
+        })
 
         if (state.sessionId) {
             await logger.saveContext(state.sessionId, output.messages)

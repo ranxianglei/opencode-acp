@@ -3,7 +3,7 @@ import test from "node:test"
 import { mkdtempSync, readFileSync, existsSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { Logger } from "../lib/logger"
+import { Logger, type LogLevel } from "../lib/logger"
 
 // Point the Logger at a throwaway XDG_CONFIG_HOME so daily logs land in a temp dir.
 function setup(): { configHome: string; logFile: string } {
@@ -101,5 +101,73 @@ test("log line format: timestamp, padded level, component, message, version", as
         assert.equal(level, "ERROR")
         assert.match(component, /^[\w:/.]+:$/)
         assert.match(line, /: boom \| v=(dev|\d+\.\d+\.\d+)$/)
+    })
+})
+
+test("explicit info level: INFO/WARN/ERROR write, DEBUG gated (default-on logging)", async () => {
+    const { configHome, logFile } = setup()
+    await withConfigHome(configHome, async () => {
+        const logger = new Logger(false, "info")
+
+        await logger.info("decision event", { tier: 1 })
+        await logger.warn("warn event")
+        await logger.error("error event")
+        await logger.debug("debug gated")
+
+        const lines = readLines(logFile)
+        assert.equal(lines.length, 3)
+        assert.match(lines[0], /\bINFO\s+[\w:/.]+: decision event \| tier=1 \| v=/)
+        assert.match(lines[1], /\bWARN\s+/)
+        assert.match(lines[2], /\bERROR\s+/)
+    })
+})
+
+test("explicit silent level: nothing writes, even errors", async () => {
+    const { configHome, logFile } = setup()
+    await withConfigHome(configHome, async () => {
+        const logger = new Logger(true, "silent")
+
+        await logger.error("swallowed")
+        assert.equal(existsSync(logFile), false)
+    })
+})
+
+test("error level: only ERROR writes", async () => {
+    const { configHome, logFile } = setup()
+    await withConfigHome(configHome, async () => {
+        const logger = new Logger(false, "error")
+
+        await logger.warn("gated")
+        await logger.error("kept")
+
+        const lines = readLines(logFile)
+        assert.equal(lines.length, 1)
+        assert.match(lines[0], /\bERROR\s+[\w:/.]+: kept \| v=/)
+    })
+})
+
+test("enabled getter reflects explicit level, not the boolean flag", async () => {
+    const { configHome } = setup()
+    await withConfigHome(configHome, async () => {
+        assert.equal(new Logger(false).enabled, false)
+        assert.equal(new Logger(true).enabled, true)
+        assert.equal(new Logger(false, "info").enabled, false)
+        assert.equal(new Logger(true, "info").enabled, false)
+        assert.equal(new Logger(false, "debug").enabled, true)
+    })
+})
+
+test("invalid explicit level falls back to legacy mapping instead of silencing all logs", async () => {
+    const { configHome, logFile } = setup()
+    await withConfigHome(configHome, async () => {
+        // Config validation is warn-only: a typo like "verbose" reaches the
+        // constructor at runtime. It must degrade to the boolean mapping
+        // (false → warn), never to "every gate fails → nothing writes".
+        const logger = new Logger(false, "verbose" as LogLevel)
+        await logger.error("even errors must survive a bad level")
+        assert.equal(readLines(logFile).length, 1)
+
+        const logger2 = new Logger(true, "verbose" as LogLevel)
+        assert.equal(logger2.level, "debug")
     })
 })

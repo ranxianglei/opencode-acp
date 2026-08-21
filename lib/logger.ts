@@ -8,14 +8,51 @@ declare const ACP_VERSION: string | undefined
 
 const LOG_VERSION = typeof ACP_VERSION !== "undefined" ? ACP_VERSION : "dev"
 
+/**
+ * Log verbosity. Production default is `info` — decision-level events
+ * (nudge tiers, compression runs, gate verdicts, config resolution) are
+ * written to the daily log WITHOUT requiring `debug: true`. `debug` adds
+ * per-message detail and per-request context snapshots; `warn`/`error`
+ * reduce to failures only; `silent` disables file output entirely.
+ */
+export type LogLevel = "debug" | "info" | "warn" | "error" | "silent"
+
+const LEVEL_RANK: Record<LogLevel, number> = {
+    debug: 10,
+    info: 20,
+    warn: 30,
+    error: 40,
+    silent: 99,
+}
+
 export class Logger {
     private logDir: string
-    public enabled: boolean
+    /** Resolved verbosity; replaces the old boolean `enabled` flag. */
+    public readonly level: LogLevel
 
-    constructor(enabled: boolean) {
-        this.enabled = enabled
+    /**
+     * @param enabled legacy boolean toggle — `true` maps to `debug`,
+     *                `false` maps to `warn` (errors + warnings only).
+     * @param level   explicit verbosity; when given it wins over `enabled`.
+     */
+    constructor(enabled: boolean, level?: LogLevel) {
+        // Config validation is warn-only, so an invalid `logLevel` string can
+        // reach us at runtime. Unknown levels must never zero out logging
+        // (LEVEL_RANK[x] === undefined fails every gate, dropping even ERROR);
+        // fall back to the legacy boolean mapping instead.
+        const resolved = level !== undefined && LEVEL_RANK[level] !== undefined ? level : undefined
+        this.level = resolved ?? (enabled ? "debug" : "warn")
         const configHome = process.env.XDG_CONFIG_HOME || join(homedir(), ".config")
         this.logDir = join(configHome, "opencode", "logs", "acp")
+    }
+
+    /** Back-compat view of the old flag: true only at full debug verbosity. */
+    get enabled(): boolean {
+        return this.level === "debug"
+    }
+
+    private shouldWrite(level: LogLevel): boolean {
+        return LEVEL_RANK[level] >= LEVEL_RANK[this.level]
     }
 
     private async ensureLogDir() {
@@ -72,10 +109,10 @@ export class Logger {
         }
     }
 
-    private async write(level: string, component: string, message: string, data?: any) {
-        // ERROR and WARN are written even when debug logging is off, so that
-        // failures remain visible in the daily log by default.
-        if (!this.enabled && level !== "ERROR" && level !== "WARN") return
+    private async write(level: string, component: string, message: string, data?: unknown) {
+        // Levels below the resolved verbosity are dropped here; WARN/ERROR
+        // still land by default because the production default is `info`.
+        if (!this.shouldWrite(level.toLowerCase() as LogLevel)) return
 
         try {
             await this.ensureLogDir()
@@ -95,14 +132,14 @@ export class Logger {
         } catch (error) {}
     }
 
-    info(message: string, data?: any) {
-        if (!this.enabled) return
+    info(message: string, data?: unknown) {
+        if (!this.shouldWrite("info")) return
         const component = this.getCallerFile(2)
         return this.write("INFO", component, message, data)
     }
 
-    debug(message: string, data?: any) {
-        if (!this.enabled) return
+    debug(message: string, data?: unknown) {
+        if (!this.shouldWrite("debug")) return
         const component = this.getCallerFile(2)
         return this.write("DEBUG", component, message, data)
     }
@@ -215,8 +252,8 @@ export class Logger {
         })
     }
 
-    async saveContext(sessionId: string, messages: any[]) {
-        if (!this.enabled) return
+    async saveContext(sessionId: string, messages: unknown[]) {
+        if (this.level !== "debug") return
 
         try {
             const contextDir = join(this.logDir, "context", sessionId)

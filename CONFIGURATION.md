@@ -57,7 +57,13 @@ Status legend: **ACTIVE** = currently used | **DEPRECATED** = accepted but no ef
 - **Type:** `boolean`
 - **Default:** `false`
 - **Status:** ACTIVE
-- **Description:** Enable debug mode. When `true`, ACP sends a chat notification after each compression showing block details, and enables INFO/DEBUG logs plus per-request context snapshots at `~/.config/opencode/logs/acp/`. WARN/ERROR lines are always written to `~/.config/opencode/logs/acp/daily/<date>.log` regardless of this flag.
+- **Description:** Enable debug mode. When `true`, ACP sends a chat notification after each compression showing block details, and sets `logLevel` to `debug` (INFO/DEBUG logs plus per-request context snapshots at `~/.config/opencode/logs/acp/`). This flag overrides `logLevel` when set to `true`.
+
+#### `logLevel`
+- **Type:** `"debug" | "info" | "warn" | "error" | "silent"`
+- **Default:** `"info"`
+- **Status:** ACTIVE
+- **Description:** File log verbosity for `~/.config/opencode/logs/acp/daily/<date>.log`. Default `info` writes decision-level events by default (nudge decisions, transform summaries, auto-update checks, model switches). `warn`/`error` reduce output; `silent` disables file logging entirely; `debug` additionally enables per-request context snapshots and verbose dumps. Ignored when `debug: true`.
 
 #### `pruneNotification`
 - **Type:** `"off" | "minimal" | "detailed"`
