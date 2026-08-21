@@ -1,5 +1,18 @@
 # Changelog
 
+### v1.14.24 — Default-on decision-level logging with configurable logLevel
+
+**Problem**: ACP wrote almost nothing to disk by default — the file logger stayed disabled unless `debug: true`, so every diagnostic question ("why was the nudge injected / suppressed?", "what did the transform pipeline do this turn?", "why didn't auto-update fire?") required reproducing with debug enabled. Project-wide there were only ~62 logger calls, and INFO was dropped entirely.
+
+**Fix** (#332):
+- Logger gains severity levels `debug|info|warn|error|silent` with rank-gated writes; the boolean constructor keeps exact back-compat (`false`→warn-only, `true`→debug).
+- New `logLevel` config (default `"info"`): decision events now land in `~/.config/opencode/logs/acp/daily/YYYY-MM-DD.log` by default — plugin init, per-request transform summary (message count, tokens before/after, context usage %, nudge flag), mid-session model switch, nudge inject/suppress decisions (trigger tier, usage %, growth-since-baseline, growth floor, recommended ranges), emergency `/compact` notice, auto-update check lifecycle.
+- `debug: true` still overrides everything to full debug verbosity plus per-request context snapshots.
+- Invalid `logLevel` values (config validation is warn-only) clamp to the legacy boolean mapping instead of silencing all logs; gated levels skip stack-capture overhead.
+- `dcp.schema.json`, CONFIGURATION ×2, README ×2 updated; 5 new logger level-semantics tests.
+
+**Install**: `opencode plugin opencode-acp@latest --global`
+
 ### v1.14.23 — Fix batch: effective compressible accounting, emergency no-target notice, fixed growth threshold, tag-aware auto-update
 
 **Problem**: Four fix clusters since v1.14.22: (1) nudge accounting counted messages the compression pipeline soft-filters (protected anchors, empty messages, last user message) as "compressible", so the model was pointed at phantom ranges and every failed retry re-armed the same nudge — the repeated-compression loop of issue #37 (floors 156-175, ~10 phantom retries); (2) under emergency override with nothing valid to compress, ACP still demanded "compress now" every turn (~12 failed compressions; #216 residual surviving the v1.14.4 fix through the emergency path); (3) `nudgeGrowthTokens` defaulted adaptively to `min(50K, max(6K, modelContextLimit×5%))`, so nudge cadence silently scaled 5× between a 262K and a 1M model with identical configs — and since v1.14.15 users with any compress key got the adaptive value while users with none got fixed 50K; (4) auto-update never fired for `opencode-acp@stable` installs (bare dist-tag words failed the updatable-spec gate) and compared against the hardcoded `latest` dist-tag, which can never land for a tagged install (#328).
