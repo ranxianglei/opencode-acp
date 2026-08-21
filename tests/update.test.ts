@@ -71,6 +71,19 @@ test("isAutoUpdatableSpec still rejects exact pins and non-registry specs", () =
     assert.equal(isAutoUpdatableSpec("git+https://example.com/repo.git"), false)
 })
 
+test("isVersionNewer updates within dev and pr-N preview channels", () => {
+    // Same PR, new CI preview build: numeric pre-release identifiers compare numerically
+    assert.equal(isVersionNewer("1.14.22-pr.327.47", "1.14.22-pr.327.46"), true)
+    assert.equal(isVersionNewer("1.14.22-pr.327.46", "1.14.22-pr.327.47"), false)
+    assert.equal(isVersionNewer("1.14.22-pr.327.46", "1.14.22-pr.327.46"), false)
+    // dev track moves forward
+    assert.equal(isVersionNewer("1.14.23-dev.0", "1.14.14-dev.1"), true)
+    // release outranks preview of the same version (semver precedence) — but channel
+    // pinning means an @pr-327 install is only ever compared against the pr-327 tag,
+    // never against latest/stable releases
+    assert.equal(isVersionNewer("1.14.22", "1.14.22-pr.327.46"), true)
+})
+
 test("specUpdateTag tracks installed dist-tag; ranges fall back to latest", () => {
     assert.equal(specUpdateTag("stable"), "stable")
     assert.equal(specUpdateTag("pr-327"), "pr-327")
