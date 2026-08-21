@@ -57,7 +57,13 @@ ACP 从最多三层配置文件中读取（后加载的覆盖先加载的）：
 - **类型：** `boolean`
 - **默认值：** `false`
 - **状态：** ACTIVE
-- **说明：** 启用调试模式。设为 `true` 时，ACP 在每次压缩后发送聊天通知，显示块详情，并启用 INFO/DEBUG 日志与按请求的上下文快照（`~/.config/opencode/logs/acp/`）。无论此开关如何设置，WARN/ERROR 始终写入 `~/.config/opencode/logs/acp/daily/<日期>.log`。
+- **说明：** 启用调试模式。设为 `true` 时，ACP 在每次压缩后发送聊天通知，显示块详情，并将 `logLevel` 置为 `debug`（INFO/DEBUG 日志与按请求的上下文快照，`~/.config/opencode/logs/acp/`）。设为 `true` 时此开关优先于 `logLevel`。
+
+#### `logLevel`
+- **类型：** `"debug" | "info" | "warn" | "error" | "silent"`
+- **默认值：** `"info"`
+- **状态：** ACTIVE
+- **说明：** 文件日志详细级别（`~/.config/opencode/logs/acp/daily/<日期>.log`）。默认 `info`：默认落盘决策级事件（压缩提示决策、转换摘要、自动更新检查、模型切换等）。`warn`/`error` 减少输出；`silent` 完全关闭文件日志；`debug` 额外启用按请求的上下文快照与详细转储。`debug: true` 时忽略此配置。
 
 #### `pruneNotification`
 - **类型：** `"off" | "minimal" | "detailed"`

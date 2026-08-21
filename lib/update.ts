@@ -1,3 +1,4 @@
+import type { Logger } from "./logger"
 import { readFile, rm } from "node:fs/promises"
 import { basename, dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -16,14 +17,34 @@ type UpdateResult =
 
 const PACKAGE_NAME = "opencode-acp"
 
-export function startAutoUpdate(ctx: PluginInput, enabled: boolean): void {
-    if (!enabled) return
+export function startAutoUpdate(ctx: PluginInput, enabled: boolean, logger?: Logger): void {
+    if (!enabled) {
+        logger?.info("Auto-update disabled by config")
+        return
+    }
+    logger?.info("Auto-update check starting")
+
 
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 10_000)
-    void checkAutoUpdate(controller.signal)
+    void checkAutoUpdate(controller.signal, logger)
         .then((result) => {
-            if (!result.updated) return
+            if (!result.updated) {
+                if ("error" in result) {
+                    logger?.warn("Auto-update failed", {
+                        error: result.error,
+                        name: result.name,
+                        current: result.current,
+                        latest: result.latest,
+                    })
+                }
+                return
+            }
+            logger?.info("Auto-update applied update", {
+                name: result.name,
+                from: result.current,
+                to: result.latest,
+            })
             setTimeout(() => {
                 ctx.client.tui.showToast({
                     body: {
@@ -39,23 +60,43 @@ export function startAutoUpdate(ctx: PluginInput, enabled: boolean): void {
         .finally(() => clearTimeout(timeout))
 }
 
-async function checkAutoUpdate(signal: AbortSignal): Promise<UpdateResult> {
+async function checkAutoUpdate(signal: AbortSignal, logger?: Logger): Promise<UpdateResult> {
     const packageDir = await findPackageDir(PACKAGE_NAME)
-    if (!packageDir) return { updated: false }
-
+    if (!packageDir) {
+        logger?.info("Auto-update skipped: package dir not found")
+        return { updated: false }
+    }
+ 
     const pkg = await readPackageJson(join(packageDir, "package.json"))
-    if (!pkg?.name || !pkg.version) return { updated: false }
-
+    if (!pkg?.name || !pkg.version) {
+        logger?.info("Auto-update skipped: package.json unreadable", { packageDir })
+        return { updated: false }
+    }
+ 
     const target = await updateTarget(packageDir, pkg.name)
-    if (!target) return { updated: false }
-
-    // Update within the channel the user installed from (dist-tag), not the
-    // global `latest` dist-tag: an @stable install must follow `stable`.
+    if (!target) {
+        logger?.info("Auto-update skipped: no update target", { name: pkg.name, version: pkg.version })
+        return { updated: false }
+    }
+ 
+     // Update within the channel the user installed from (dist-tag), not the
+     // global `latest` dist-tag: an @stable install must follow `stable`.
     const tag = specUpdateTag(target.spec)
-    if (!tag) return { updated: false }
-
+    if (!tag) {
+        logger?.info("Auto-update skipped: spec not auto-updatable", { spec: target.spec })
+        return { updated: false }
+    }
+ 
     const latest = await fetchLatestVersion(pkg.name, tag, signal)
-    if (!latest || !isVersionNewer(latest, pkg.version)) return { updated: false }
+    if (!latest) {
+        logger?.info("Auto-update skipped: no version published for tag", { name: pkg.name, tag })
+        return { updated: false }
+    }
+    if (!isVersionNewer(latest, pkg.version)) {
+        logger?.info("Auto-update: already up to date", { name: pkg.name, tag, current: pkg.version, latest })
+        return { updated: false }
+    }
+    logger?.info("Auto-update: newer version available", { name: pkg.name, tag, current: pkg.version, latest })
 
     try {
         await rm(target.removeDir, { recursive: true, force: true })

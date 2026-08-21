@@ -23,7 +23,13 @@
         "debug": {
             "type": "boolean",
             "default": false,
-            "description": "Enable debug logging"
+            "description": "Enable full debug logging (overrides logLevel)"
+        },
+        "logLevel": {
+            "type": "string",
+            "enum": ["debug", "info", "warn", "error", "silent"],
+            "default": "info",
+            "description": "Log verbosity: decision-level events (info) are written by default. debug adds per-message detail; warn/error/silent reduce output."
         },
         "pruneNotification": {
             "type": "string",

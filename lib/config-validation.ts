@@ -8,6 +8,7 @@ export const VALID_CONFIG_KEYS = new Set([
     "enabled",
     "autoUpdate",
     "debug",
+    "logLevel",
     "showUpdateToasts",
     "allowSubAgents",
     "pruneNotification",

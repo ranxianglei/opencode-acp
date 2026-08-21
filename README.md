@@ -282,8 +282,11 @@ Each level overrides the previous, so project settings take priority over global
     // on the installed dist-tag/spec (@stable follows stable, @latest follows latest).
     // Version-locked plugin specs are not updated.
     "autoUpdate": true,
-    // Enable INFO/DEBUG logging + per-request snapshots to ~/.config/opencode/logs/acp/
-    // (WARN/ERROR are always logged to daily/<date>.log)
+    // File log verbosity: "debug" | "info" | "warn" | "error" | "silent".
+    // Default "info" writes decision-level events (nudges, transforms, updates)
+    // to ~/.config/opencode/logs/acp/daily/<date>.log
+    "logLevel": "info",
+    // Enable full DEBUG logging + per-request snapshots (overrides logLevel)
     "debug": false,
     // Notification display: "off", "minimal", or "detailed"
     "pruneNotification": "off",

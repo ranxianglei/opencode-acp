@@ -103,3 +103,56 @@ test("log line format: timestamp, padded level, component, message, version", as
         assert.match(line, /: boom \| v=(dev|\d+\.\d+\.\d+)$/)
     })
 })
+
+test("explicit info level: INFO/WARN/ERROR write, DEBUG gated (default-on logging)", async () => {
+    const { configHome, logFile } = setup()
+    await withConfigHome(configHome, async () => {
+        const logger = new Logger(false, "info")
+
+        await logger.info("decision event", { tier: 1 })
+        await logger.warn("warn event")
+        await logger.error("error event")
+        await logger.debug("debug gated")
+
+        const lines = readLines(logFile)
+        assert.equal(lines.length, 3)
+        assert.match(lines[0], /\bINFO\s+[\w:/.]+: decision event \| tier=1 \| v=/)
+        assert.match(lines[1], /\bWARN\s+/)
+        assert.match(lines[2], /\bERROR\s+/)
+    })
+})
+
+test("explicit silent level: nothing writes, even errors", async () => {
+    const { configHome, logFile } = setup()
+    await withConfigHome(configHome, async () => {
+        const logger = new Logger(true, "silent")
+
+        await logger.error("swallowed")
+        assert.equal(existsSync(logFile), false)
+    })
+})
+
+test("error level: only ERROR writes", async () => {
+    const { configHome, logFile } = setup()
+    await withConfigHome(configHome, async () => {
+        const logger = new Logger(false, "error")
+
+        await logger.warn("gated")
+        await logger.error("kept")
+
+        const lines = readLines(logFile)
+        assert.equal(lines.length, 1)
+        assert.match(lines[0], /\bERROR\s+[\w:/.]+: kept \| v=/)
+    })
+})
+
+test("enabled getter reflects explicit level, not the boolean flag", async () => {
+    const { configHome } = setup()
+    await withConfigHome(configHome, async () => {
+        assert.equal(new Logger(false).enabled, false)
+        assert.equal(new Logger(true).enabled, true)
+        assert.equal(new Logger(false, "info").enabled, false)
+        assert.equal(new Logger(true, "info").enabled, false)
+        assert.equal(new Logger(false, "debug").enabled, true)
+    })
+})
