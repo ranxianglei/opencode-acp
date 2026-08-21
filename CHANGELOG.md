@@ -1,5 +1,21 @@
 # Changelog
 
+### v1.14.23 — Fix batch: effective compressible accounting, emergency no-target notice, fixed growth threshold, tag-aware auto-update
+
+**Problem**: Four fix clusters since v1.14.22: (1) nudge accounting counted messages the compression pipeline soft-filters (protected anchors, empty messages, last user message) as "compressible", so the model was pointed at phantom ranges and every failed retry re-armed the same nudge — the repeated-compression loop of issue #37 (floors 156-175, ~10 phantom retries); (2) under emergency override with nothing valid to compress, ACP still demanded "compress now" every turn (~12 failed compressions; #216 residual surviving the v1.14.4 fix through the emergency path); (3) `nudgeGrowthTokens` defaulted adaptively to `min(50K, max(6K, modelContextLimit×5%))`, so nudge cadence silently scaled 5× between a 262K and a 1M model with identical configs — and since v1.14.15 users with any compress key got the adaptive value while users with none got fixed 50K; (4) auto-update never fired for `opencode-acp@stable` installs (bare dist-tag words failed the updatable-spec gate) and compared against the hardcoded `latest` dist-tag, which can never land for a tagged install (#328).
+
+**Fix**:
+- **#325** `CompressibleRange.effectiveTokens` counts only messages that survive pipeline soft-filters; `resolveEffectiveFloor` derives the floor from `minCompressRange÷4` (0 when `minCompressRange: 0`); universal `effective > 0` guard stops phantom-range recommendations; `nothingToCompress` extended with `allBelowMin`. Fixes the phantom retry loop of issue #37.
+- **#326** emergency + no valid targets now emits a single actionable `/compact` notice (via reply tool) instead of demanding compressions that cannot succeed — closes the #216 residual.
+- **#327** `nudgeGrowthTokens` is a fixed `50000` default for all models (T2/T3 tier triggers and growthFloor uniform at 22.5K); `compress.nudgeGrowthTokens` remains the single tuning knob.
+- **#330** auto-update tracks the dist-tag the plugin was installed from (`@stable` follows `stable`, `@pr-N` follows `pr-N`, ranges follow `latest`); registry version check hits `/name/<tag`; version-locked and non-registry specs never update. Closes #328.
+
+Files: `lib/messages/inject/inject.ts`, `lib/messages/inject/utils.ts`, `lib/update.ts`, `dcp.schema.json`, docs (README×2, CONFIGURATION×2). Tests: 1024 pass / 0 fail; E2E scenarios pass with pinned scenario configs.
+
+Closes: #328 (also resolves the phantom-loop and emergency-demand symptoms of #37/#216).
+
+**Install**: `opencode plugin opencode-acp@latest --global`
+
 ### v1.14.22 — Stable system prompt token estimate (#255)
 
 **Problem**: After ACP compression physically removes the true first assistant message from visible history, nudge and `acp_status` each re-derived the system prompt token estimate from the _first visible assistant_ — a much later turn whose `input` includes large accumulated history. Both inflated the estimate (a real ~10K system reported as ~200K), and because each consumer saw a different message view (post-prune transform array vs. a fresh store fetch), the two numbers diverged from each other. The `state.systemPromptTokens` cache (written pre-prune every turn) existed but was never read.
