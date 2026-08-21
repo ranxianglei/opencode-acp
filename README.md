@@ -278,7 +278,8 @@ Each level overrides the previous, so project settings take priority over global
     "$schema": "https://raw.githubusercontent.com/ranxianglei/opencode-acp/master/dcp.schema.json",
     // Enable or disable the plugin
     "enabled": true,
-    // Automatically update npm-installed ACP when a newer npm latest is available.
+    // Automatically update npm-installed ACP when a newer version is available
+    // on the installed dist-tag/spec (@stable follows stable, @latest follows latest).
     // Version-locked plugin specs are not updated.
     "autoUpdate": true,
     // Enable INFO/DEBUG logging + per-request snapshots to ~/.config/opencode/logs/acp/
