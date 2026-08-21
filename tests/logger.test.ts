@@ -3,7 +3,7 @@ import test from "node:test"
 import { mkdtempSync, readFileSync, existsSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { Logger } from "../lib/logger"
+import { Logger, type LogLevel } from "../lib/logger"
 
 // Point the Logger at a throwaway XDG_CONFIG_HOME so daily logs land in a temp dir.
 function setup(): { configHome: string; logFile: string } {
@@ -154,5 +154,20 @@ test("enabled getter reflects explicit level, not the boolean flag", async () =>
         assert.equal(new Logger(false, "info").enabled, false)
         assert.equal(new Logger(true, "info").enabled, false)
         assert.equal(new Logger(false, "debug").enabled, true)
+    })
+})
+
+test("invalid explicit level falls back to legacy mapping instead of silencing all logs", async () => {
+    const { configHome, logFile } = setup()
+    await withConfigHome(configHome, async () => {
+        // Config validation is warn-only: a typo like "verbose" reaches the
+        // constructor at runtime. It must degrade to the boolean mapping
+        // (false → warn), never to "every gate fails → nothing writes".
+        const logger = new Logger(false, "verbose" as LogLevel)
+        await logger.error("even errors must survive a bad level")
+        assert.equal(readLines(logFile).length, 1)
+
+        const logger2 = new Logger(true, "verbose" as LogLevel)
+        assert.equal(logger2.level, "debug")
     })
 })

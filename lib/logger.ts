@@ -36,7 +36,12 @@ export class Logger {
      * @param level   explicit verbosity; when given it wins over `enabled`.
      */
     constructor(enabled: boolean, level?: LogLevel) {
-        this.level = level ?? (enabled ? "debug" : "warn")
+        // Config validation is warn-only, so an invalid `logLevel` string can
+        // reach us at runtime. Unknown levels must never zero out logging
+        // (LEVEL_RANK[x] === undefined fails every gate, dropping even ERROR);
+        // fall back to the legacy boolean mapping instead.
+        const resolved = level !== undefined && LEVEL_RANK[level] !== undefined ? level : undefined
+        this.level = resolved ?? (enabled ? "debug" : "warn")
         const configHome = process.env.XDG_CONFIG_HOME || join(homedir(), ".config")
         this.logDir = join(configHome, "opencode", "logs", "acp")
     }
@@ -128,11 +133,13 @@ export class Logger {
     }
 
     info(message: string, data?: unknown) {
+        if (!this.shouldWrite("info")) return
         const component = this.getCallerFile(2)
         return this.write("INFO", component, message, data)
     }
 
     debug(message: string, data?: unknown) {
+        if (!this.shouldWrite("debug")) return
         const component = this.getCallerFile(2)
         return this.write("DEBUG", component, message, data)
     }
