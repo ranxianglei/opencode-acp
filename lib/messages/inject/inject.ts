@@ -39,7 +39,7 @@ import {
     getNudgeFrequency,
     getModelInfo,
     isContextOverLimits,
-    resolveAdaptiveNudgeGrowth,
+    DEFAULT_NUDGE_GROWTH_TOKENS,
 } from "./utils"
 import { buildCompressedBlockGuidance } from "../../prompts/extensions/nudge"
 import { COMPRESS_PHILOSOPHY, HOW_TO_COMPRESS_RULES, TIER2_DISTILL_RULES, TIER3_CONDENSE_RULES } from "context-compress-algorithms/prompts"
@@ -248,8 +248,7 @@ export const injectCompressNudges = (
     const suffixMessage = createSuffixMessage(messages)
 
 
-    const nudgeGrowthTokens =
-        config.compress?.nudgeGrowthTokens ?? resolveAdaptiveNudgeGrowth(modelContextLimit)
+    const nudgeGrowthTokens = config.compress?.nudgeGrowthTokens ?? DEFAULT_NUDGE_GROWTH_TOKENS
 
     // ── Growth floor gate (anti-thrashing) ──────────────────────────────
     // Nudge output is suppressed unless context grew by at least growthFloor
@@ -257,8 +256,8 @@ export const injectCompressNudges = (
     // after a small compress or when anchors accumulate with negligible growth.
     //
     //   growthFloor = max(minNudgeGrowthFloor, minNudgeGrowthRatio × nudgeGrowthTokens)
-    //     1M model:   max(5000, 0.45×50000) = 22500
-    //     100K model: max(5000, 0.45×6000)  = 5000
+    //   Default: max(5000, 0.45×50000) = 22500 — uniform for all models
+    //   (config override example: nudgeGrowthTokens=6000 → max(5000, 2700) = 5000)
     //
     // Only bypassed at emergencyThresholdPercent (default 98%) — near-overflow
     // always fires regardless of growth.

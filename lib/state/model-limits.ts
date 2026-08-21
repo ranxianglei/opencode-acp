@@ -6,8 +6,8 @@
  * triggers messages.transform, then llm/request.ts triggers system.transform
  * during handle.process). state.modelContextLimit is written only by the
  * system hook, so on the first request after a model switch every percentage
- * threshold (emergencyThresholdPercent, min/maxContextLimit "%", adaptive
- * nudge growth, GC tiers) is still computed against the PREVIOUS model's
+ * threshold (emergencyThresholdPercent, min/maxContextLimit "%", GC tiers) is
+ * still computed against the PREVIOUS model's
  * limit. This catalog lets the messages hook reconcile against the model
  * named on the request's user message instead of waiting one turn.
  *

@@ -2,7 +2,9 @@
     "name": "nudge-with-protection",
     "description": "Nudge→compress flow WITH production protection enabled (preserveRecentMessages:5, preserveLastUserMessage:true). Tests the exact bug fixed in PR #210/#212: nudge fires, model compresses, protected messages are soft-filtered (not hard-rejected). Verifies block created + nudge baseline set + protected messages survived.",
     "acpConfig": {
-        "experimental": { "allowSubAgents": true },
+        "experimental": {
+            "allowSubAgents": true
+        },
         "compress": {
             "minCompressRange": 0,
             "maxSummaryLengthHard": 20000,
@@ -10,7 +12,8 @@
             "preserveRecentTokens": 0,
             "preserveLastUserMessage": true,
             "maxContextLimit": 20000,
-            "minContextLimit": 10000
+            "minContextLimit": 10000,
+            "nudgeGrowthTokens": 6000
         },
         "qualityGate": {
             "enabled": true,

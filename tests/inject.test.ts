@@ -1220,8 +1220,8 @@ test("emergency override fires even when filter has no recommendations", () => {
     )
 })
 
-test("growth floor: 5000 floor on small-context models", () => {
-    // 100K model: nudgeGrowthTokens = max(6000, 100K×5%) = 6000
+test("growth floor: 5000 floor when nudgeGrowthTokens configured low", () => {
+    // Explicit nudgeGrowthTokens=6000 (config override; fixed default is 50K)
     // growthFloor = max(5000, 0.45×6000) = max(5000, 2700) = 5000
     // Growth of 4K < 5000 → suppressed. Growth of 6K >= 5000 → fires.
     const state = createSessionState()
@@ -1231,6 +1231,7 @@ test("growth floor: 5000 floor on small-context models", () => {
     state.messageIds.byRawId.set("a1", "m00002")
 
     const config = buildConfig()
+    config.compress.nudgeGrowthTokens = 6_000
     config.compress.maxContextLimit = 60_000
     config.compress.minContextLimit = 20_000
 

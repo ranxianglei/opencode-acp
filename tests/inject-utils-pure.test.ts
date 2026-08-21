@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { computeShouldNudge, resolveAdaptiveNudgeGrowth, estimateContextComposition } from "../lib/messages/inject/utils"
+import { computeShouldNudge, DEFAULT_NUDGE_GROWTH_TOKENS, estimateContextComposition } from "../lib/messages/inject/utils"
 import { cacheSystemPromptTokens } from "../lib/ui/utils"
 import { estimateSystemPromptTokens } from "../lib/token-utils"
 import { countTokens } from "../lib/token-utils"
@@ -183,36 +183,8 @@ test("regression: post-compress lastNudgeTokens=currentTokens prevents immediate
     assert.equal(afterGrowth.shouldNudge, true)
 })
 
-test("resolveAdaptiveNudgeGrowth: undefined limit returns floor", () => {
-    assert.equal(resolveAdaptiveNudgeGrowth(undefined), 6000)
-})
-
-test("resolveAdaptiveNudgeGrowth: zero/negative limit returns floor", () => {
-    assert.equal(resolveAdaptiveNudgeGrowth(0), 6000)
-    assert.equal(resolveAdaptiveNudgeGrowth(-100), 6000)
-})
-
-test("resolveAdaptiveNudgeGrowth: tiny context floored at 6K", () => {
-    assert.equal(resolveAdaptiveNudgeGrowth(10_000), 6000)
-    assert.equal(resolveAdaptiveNudgeGrowth(50_000), 6000)
-    assert.equal(resolveAdaptiveNudgeGrowth(100_000), 6000)
-})
-
-test("resolveAdaptiveNudgeGrowth: 128K mainstream model", () => {
-    assert.equal(resolveAdaptiveNudgeGrowth(128_000), 6400)
-})
-
-test("resolveAdaptiveNudgeGrowth: 200K → 10K", () => {
-    assert.equal(resolveAdaptiveNudgeGrowth(200_000), 10_000)
-})
-
-test("resolveAdaptiveNudgeGrowth: 1M → 50K (5% exact)", () => {
-    assert.equal(resolveAdaptiveNudgeGrowth(1_000_000), 50_000)
-})
-
-test("resolveAdaptiveNudgeGrowth: multi-million capped at 50K", () => {
-    assert.equal(resolveAdaptiveNudgeGrowth(2_000_000), 50_000)
-    assert.equal(resolveAdaptiveNudgeGrowth(10_000_000), 50_000)
+test("DEFAULT_NUDGE_GROWTH_TOKENS: fixed default, independent of window size", () => {
+    assert.equal(DEFAULT_NUDGE_GROWTH_TOKENS, 50_000)
 })
 
 function mkText(id: string, text: string): WithParts {
