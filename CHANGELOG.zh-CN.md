@@ -1,5 +1,21 @@
 # 更新日志
 
+### v1.14.23 — 修复批次：有效可压缩记账、紧急无目标通知、固定增长阈值、tag 感知自动更新
+
+**问题**：v1.14.22 以来的四个修复簇：（1）nudge 记账把被压缩管线软过滤的消息（受保护锚点、空消息、最后一条用户消息）算作"可压缩"，模型被指向幻影区间，每次失败重试又重新武装同一个 nudge —— 即 issue #37 的连续压缩死循环（floors 156-175，约 10 次幻影重试）；（2）紧急覆盖 + 无有效压缩目标时，ACP 仍每轮要求"立即压缩"（约 12 次失败压缩；#216 残留，经 emergency 路径活过了 v1.14.4 修复）；（3）`nudgeGrowthTokens` 自适应默认 `min(50K, max(6K, modelContextLimit×5%))`，相同配置下 262K 与 1M 模型的 nudge 节奏相差 5 倍——且自 v1.14.15 起，带任意 compress 配置键的用户拿到自适应值，完全不配的用户反而拿到固定 50K；（4）`opencode-acp@stable` 安装的自动更新从不触发（裸 dist-tag 词过不了可更新判定），且对比硬编码的 `latest` dist-tag —— 对 tag 安装永远无法落地（#328）。
+
+**修复**：
+- **#325** `CompressibleRange.effectiveTokens` 只统计通过管线软过滤的消息；`resolveEffectiveFloor` 由 `minCompressRange÷4` 推导（`minCompressRange: 0` 时为 0）；统一的 `effective > 0` 守卫阻止幻影区间推荐；`nothingToCompress` 扩展 `allBelowMin`。修复 issue #37 的幻影重试循环。
+- **#326** 紧急 + 无有效目标时改发一条可执行的 `/compact` 通知（经 reply 工具），不再要求不可能成功的压缩 —— 关闭 #216 残留。
+- **#327** `nudgeGrowthTokens` 对所有模型固定默认 `50000`（T2/T3 层触发与 growthFloor 统一为 22.5K）；`compress.nudgeGrowthTokens` 仍是唯一调节旋钮。
+- **#330** 自动更新跟踪安装时所用 dist-tag（`@stable` 跟随 `stable`，`@pr-N` 跟随 `pr-N`，范围规范跟随 `latest`）；registry 版本检查改查 `/name/<tag>`；版本锁定与非 registry 规范永不更新。关闭 #328。
+
+文件：`lib/messages/inject/inject.ts`、`lib/messages/inject/utils.ts`、`lib/update.ts`、`dcp.schema.json`、文档（README×2、CONFIGURATION×2）。测试：1024 通过 / 0 失败；E2E 场景在钉住场景配置后全部通过。
+
+关闭：#328（同时解决 #37/#216 的幻影循环与紧急命令症状）。
+
+**安装**：`opencode plugin opencode-acp@latest --global`
+
 ### v1.14.22 — 稳定的 system prompt token 估计 (#255)
 
 **问题**：ACP 压缩把真正的首条 assistant 消息从可见历史中物理剪掉后，nudge 和 `acp_status` 各自从"第一个可见 assistant"（实际是后轮次，其 `input` 含大量累积历史）重新推导 system prompt token 估计。两者都会把估计值吹大（真实 ~10K 的 system 被报成 ~200K），且因各用各的消息视图（剪枝后的 transform 数组 vs 重新拉取的 store），两个数字还会互相不一致。`state.systemPromptTokens` 缓存（每轮在剪枝前写入）一直存在，但从未被读取。
