@@ -46,14 +46,19 @@ async function checkAutoUpdate(signal: AbortSignal): Promise<UpdateResult> {
     const pkg = await readPackageJson(join(packageDir, "package.json"))
     if (!pkg?.name || !pkg.version) return { updated: false }
 
-    const latest = await fetchLatestVersion(pkg.name, signal)
+    const target = await updateTarget(packageDir, pkg.name)
+    if (!target) return { updated: false }
+
+    // Update within the channel the user installed from (dist-tag), not the
+    // global `latest` dist-tag: an @stable install must follow `stable`.
+    const tag = specUpdateTag(target.spec)
+    if (!tag) return { updated: false }
+
+    const latest = await fetchLatestVersion(pkg.name, tag, signal)
     if (!latest || !isVersionNewer(latest, pkg.version)) return { updated: false }
 
-    const removeDir = await updateRemoveDir(packageDir, pkg.name)
-    if (!removeDir) return { updated: false }
-
     try {
-        await rm(removeDir, { recursive: true, force: true })
+        await rm(target.removeDir, { recursive: true, force: true })
     } catch {
         return {
             updated: false,
@@ -79,7 +84,14 @@ async function findPackageDir(name: string) {
     }
 }
 
-export async function updateRemoveDir(packageDir: string, name: string) {
+export type UpdateTarget = {
+    /** Wrapper directory to remove so opencode reinstalls on next start. */
+    removeDir: string
+    /** Installed plugin spec (from the wrapper directory name, e.g. `stable`, `^1.14.0`). */
+    spec: string
+}
+
+export async function updateTarget(packageDir: string, name: string): Promise<UpdateTarget | undefined> {
     const packageParent = dirname(packageDir)
     const nodeModulesDir = basename(packageParent).startsWith("@")
         ? dirname(packageParent)
@@ -91,7 +103,11 @@ export async function updateRemoveDir(packageDir: string, name: string) {
     const spec = wrapperSpec(wrapperDir, name) ?? wrapperPkg?.dependencies?.[name]
     if (!spec || !isAutoUpdatableSpec(spec)) return undefined
 
-    return wrapperDir
+    return { removeDir: wrapperDir, spec }
+}
+
+export async function updateRemoveDir(packageDir: string, name: string) {
+    return (await updateTarget(packageDir, name))?.removeDir
 }
 
 function wrapperSpec(wrapperDir: string, name: string) {
@@ -115,7 +131,33 @@ export function isAutoUpdatableSpec(spec: string) {
     if (/^[~^]/.test(value)) return true
     if (/^(?:>=|>|<=|<)/.test(value)) return true
     if (/\s+(?:\|\||-|[<>=])\s+/.test(value)) return true
+    if (isDistTag(value)) return true
     return false
+}
+
+/**
+ * Registry dist-tag the auto-updater should track for a spec.
+ *
+ * - `stable`, `dev`, `pr-327`, `latest` → that dist-tag
+ * - ranges (`^1.2.3`, `>=1.0.0`, `*`) → `latest`
+ * - exact pins / non-registry specs → undefined (never auto-update)
+ */
+export function specUpdateTag(spec: string) {
+    const value = spec.trim()
+    if (!isAutoUpdatableSpec(value)) return undefined
+    if (value === "*") return "latest"
+    if (isDistTag(value)) return value
+    return "latest"
+}
+
+function isDistTag(value: string) {
+    // npm dist-tag names contain no `/`, `@`, `:`, or whitespace. Anything with
+    // those is a path/git/URL spec; a bare exact version (or x-range) is a pin,
+    // not a tag.
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(value)) return false
+    if (parseVersion(value)) return false
+    if (/\.x(\.|$)/i.test(value)) return false
+    return true
 }
 
 async function readPackageJson(path: string): Promise<PackageJson | undefined> {
@@ -127,10 +169,12 @@ async function readPackageJson(path: string): Promise<PackageJson | undefined> {
     }
 }
 
-async function fetchLatestVersion(name: string, signal: AbortSignal) {
+async function fetchLatestVersion(name: string, tag: string, signal: AbortSignal) {
     try {
+        // `/name/<tag>` resolves dist-tags on the registry (`/pkg/stable` returns
+        // the manifest of the version currently tagged `stable`).
         const response = await fetch(
-            `https://registry.npmjs.org/${encodeURIComponent(name)}/latest`,
+            `https://registry.npmjs.org/${encodeURIComponent(name)}/${encodeURIComponent(tag)}`,
             {
                 signal,
             },

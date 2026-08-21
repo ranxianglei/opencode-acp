@@ -233,8 +233,8 @@ ACP 使用自己的配置文件，按以下顺序搜索：
     "$schema": "https://raw.githubusercontent.com/ranxianglei/opencode-acp/master/dcp.schema.json",
     // Enable or disable the plugin
     "enabled": true,
-    // Automatically update npm-installed ACP when a newer npm latest is available.
-    // Version-locked plugin specs are not updated.
+    // 自动更新 npm 安装的 ACP：跟踪安装所用 dist-tag/规范（@stable 跟随 stable，@latest 跟随 latest）。
+    // 版本锁定的规范不会被更新。
     "autoUpdate": true,
     // Enable INFO/DEBUG logging + per-request snapshots to ~/.config/opencode/logs/acp/
     // (WARN/ERROR are always logged to daily/<date>.log)
