@@ -4,7 +4,14 @@ import test from "node:test"
 import { createSessionState, type WithParts } from "../lib/state"
 import type { PluginConfig } from "../lib/config"
 import { Logger } from "../lib/logger"
-import { buildCompressibleRanges, computeProtectedRefs, excludeProtectedRanges, type CompressibleRange } from "../lib/messages/inject/utils"
+import {
+    buildCompressibleRanges,
+    computeProtectedRefs,
+    excludeProtectedRanges,
+    filterRecommendedRanges,
+    EFFECTIVE_MIN_COMPRESSIBLE_TOKENS,
+    type CompressibleRange,
+} from "../lib/messages/inject/utils"
 import { injectCompressNudges } from "../lib/messages/inject/inject"
 
 const SID = "ses-preserve-test"
@@ -329,4 +336,150 @@ test("buildCompressibleRanges: all messages in protected zone → no compressibl
 
     const result = buildCompressibleRanges(messages, state, [], [], protectedRefs)
     assert.equal(result.compressible.length, 0, "no compressible ranges when all messages protected")
+})
+
+// ─────────────────────────────────────────────────────────────────────
+// effectiveTokens accounting (retry-loop fix, issue #37 ses_7fb5cbc8)
+// ─────────────────────────────────────────────────────────────────────
+
+test("effectiveTokens: last user message contributes 0 (pipeline soft-filters it)", () => {
+    const state = createSessionState()
+    // 6 assistants (2000 chars = 500 tok each) + LAST message is a user message
+    const messages: WithParts[] = []
+    let n = 0
+    for (let i = 1; i <= 6; i++) {
+        n++
+        const id = `msg-${n}`
+        state.messageIds.byRawId.set(id, `m${String(n).padStart(5, "0")}`)
+        messages.push(msg(id, "assistant", "x".repeat(2000)))
+    }
+    n++
+    const userId = `msg-${n}`
+    state.messageIds.byRawId.set(userId, `m${String(n).padStart(5, "0")}`)
+    messages.push(msg(userId, "user", "y".repeat(2000)))
+
+    const ranges = buildCompressibleRanges(messages, state, [], [])
+    const total = ranges.compressible.reduce((s, r) => s + r.tokens, 0)
+    const effective = ranges.compressible.reduce((s, r) => s + r.effectiveTokens, 0)
+    assert.equal(total, 7 * 500, "raw tokens count all 7 messages")
+    assert.equal(effective, 6 * 500, "effective tokens exclude the last user message")
+})
+
+test("effectiveTokens: empty assistant messages contribute 0", () => {
+    const state = createSessionState()
+    const messages: WithParts[] = []
+    // 3 real assistants + 2 empty (whitespace-only text, no tool parts)
+    const specs: Array<["user" | "assistant", string]> = [
+        ["assistant", "x".repeat(2000)],
+        ["assistant", ""],
+        ["assistant", "   \n  "],
+        ["assistant", "x".repeat(2000)],
+        ["user", "z".repeat(2000)],
+    ]
+    let n = 0
+    for (const [role, text] of specs) {
+        n++
+        const id = `msg-${n}`
+        state.messageIds.byRawId.set(id, `m${String(n).padStart(5, "0")}`)
+        messages.push(msg(id, role, text))
+    }
+
+    const ranges = buildCompressibleRanges(messages, state, [], [])
+    const total = ranges.compressible.reduce((s, r) => s + r.tokens, 0)
+    const effective = ranges.compressible.reduce((s, r) => s + r.effectiveTokens, 0)
+    assert.ok(total > 1000, "raw tokens include whitespace-message padding and user text")
+    assert.equal(effective, 2 * 500, "effective counts only the 2 meaningful assistants (empties + last user excluded)")
+})
+
+test("regression ses_7fb5cbc8: range of last-user + empties + protected anchors is not recommended", () => {
+    // Reconstructs floors 156-175: compress(m00141, m00150) retried ×10 because
+    // the nudge kept listing the span, but the pipeline filtered everything:
+    // 6 msgs already compressed (pruned from visible list), m00144 = last user
+    // message, m00147/m00150 = protected compress anchors, m00148 = empty.
+    const state = createSessionState()
+    const messages: WithParts[] = []
+    let n = 140
+    const push = (role: "user" | "assistant", text: string, protectedTool = false) => {
+        n++
+        const id = `msg-${n}`
+        state.messageIds.byRawId.set(id, `m${String(n).padStart(5, "0")}`)
+        if (protectedTool) {
+            messages.push({
+                info: msg(id, role, "").info,
+                parts: [{
+                    id: `p-${id}`,
+                    messageID: id,
+                    sessionID: SID,
+                    type: "tool" as const,
+                    tool: "compress",
+                    callID: `call-${id}`,
+                    state: { status: "completed", input: {}, output: "Compressed 7 messages" },
+                } as any],
+            })
+        } else {
+            messages.push(msg(id, role, text))
+        }
+    }
+
+    push("assistant", "x".repeat(2000)) // m00141 (visible stand-in for already-compressed remnants)
+    push("user", "看看还有哪些pr 列一下 ".repeat(400)) // m00144: last user message (the raw-token bait)
+    push("assistant", "") // m00148: empty
+    push("assistant", "", true) // m00147: protected compress anchor
+    push("assistant", "", true) // m00150: protected compress anchor
+    push("assistant", "x".repeat(2000)) // m00151+: loop-generated content (inside protected zone)
+    push("assistant", "x".repeat(2000))
+    push("assistant", "x".repeat(2000))
+
+    const compress = buildCompress({ preserveRecentMessages: 3, preserveRecentTokens: 0 })
+    const protectedRefs = computeProtectedRefs(messages, state, compress)
+    const ranges = buildCompressibleRanges(messages, state, ["compress"], [], protectedRefs)
+    const unprotected = excludeProtectedRanges(ranges.compressible, protectedRefs)
+    const recommended = filterRecommendedRanges(unprotected, ranges.protected, { logger })
+
+    // Raw span tokens look substantial, but effective content (excluding the
+    // last user message + empties) falls below the floor → nothing recommended.
+    const rawTotal = unprotected.reduce((s, r) => s + r.tokens, 0)
+    assert.ok(rawTotal > EFFECTIVE_MIN_COMPRESSIBLE_TOKENS, "raw span tokens exceed the floor (the bait)")
+    assert.equal(
+        recommended.length,
+        0,
+        "phantom-prone range must not be recommended after effective accounting",
+    )
+})
+
+test("regression ses_7fb5cbc8: injectCompressNudges stays silent when all ranges are sub-floor", () => {
+    const state = createSessionState()
+    state.modelContextLimit = 1_000_000
+    state.nudges.lastPerMessageNudgeTokens = 0
+    const config = buildConfig({
+        maxContextLimit: 100_000,
+        minContextLimit: 50_000,
+        preserveRecentMessages: 0,
+        preserveRecentTokens: 0,
+    })
+
+    // 3 small assistants (100 effective tokens each) + one huge last user
+    // message carrying the bulk of the raw tokens (mirrors the incident:
+    // raw context passes the growth gate, but effective compressible content
+    // is sub-floor → nothingToCompress → nudge silent).
+    const messages: WithParts[] = []
+    for (let i = 1; i <= 3; i++) {
+        const id = `msg-${i}`
+        state.messageIds.byRawId.set(id, `m${String(i).padStart(5, "0")}`)
+        messages.push(msg(id, "assistant", "x".repeat(400)))
+    }
+    state.messageIds.byRawId.set("msg-4", "m00004")
+    messages.push(msg("msg-4", "user", "y".repeat(220_000)))
+
+    const before = messages.length
+    injectCompressNudges(state, config, logger, messages, {} as any)
+    const suffix = suffixText(messages)
+
+    assert.equal(messages.length, before, "no synthetic suffix message left behind")
+    assert.ok(!suffix || !suffix.includes("Compressible ranges"), "no range recommendation injected")
+    assert.equal(
+        state.nudges.shouldInjectThisTurn,
+        false,
+        "growth passes the gate but all ranges are sub-floor → nothing worth compressing",
+    )
 })
