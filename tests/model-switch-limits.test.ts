@@ -269,7 +269,7 @@ test("catalog miss + same identity keeps the limit (no needless blindness)", asy
     })
 
     assert.equal(state.modelContextLimit, OLD_LIMIT, "same-identity limit must be kept")
-    assert.ok(text.includes("Context limit reached"), "130% of 200K still fires the emergency")
+    assert.ok(text.includes("critically full"), "130% of 200K still fires the emergency notice")
 })
 
 test("model switch to smaller window: emergency fires when actually over threshold", async () => {
@@ -283,7 +283,7 @@ test("model switch to smaller window: emergency fires when actually over thresho
     })
 
     assert.equal(state.modelContextLimit, OLD_LIMIT)
-    assert.ok(text.includes("Context limit reached"), "emergency must fire at 75% of 200K")
+    assert.ok(text.includes("critically full"), "emergency notice must fire at 75% of 200K")
 })
 
 // ─── Catalog population ──────────────────────────────────────────────────────
