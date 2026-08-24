@@ -34,6 +34,11 @@ const server: Plugin = (async (ctx) => {
         return {}
     }
 
+    if (process.env.BILLION_CONTEXT_PROXY) {
+        console.log("[opencode-acp] disabled: BILLION_CONTEXT_PROXY detected — proxy handles compression")
+        return {}
+    }
+
     const logger = new Logger(config.debug, config.debug ? "debug" : config.logLevel)
     logger.info("ACP plugin initialized", {
         version: typeof ACP_VERSION !== "undefined" ? ACP_VERSION : "dev",
