@@ -31,7 +31,7 @@
 
 | Commit | Description |
 |--------|-------------|
-| `08441a2` | feat: self-disable in manual proxy mode (detect `/bili/` in provider baseURL) |
+| `52f3356` | feat: self-disable in manual proxy mode (detect `/bili/` in provider baseURL) |
 
 ### Key Files
 
@@ -114,7 +114,7 @@ node --import tsx --test tests/bili-proxy.test.ts tests/bili-proxy-integration.t
     by this change were formatted with the installed prettier. CI does not
     run format:check.
 - **Rollback method**:
-  - Revert commit(s): `08441a2`
+  - Revert commit(s): `52f3356`
   - Rollback impact: none — additive module + index.ts wiring; no state
     migration.
 - **Compatibility notes** (data format, config schema): No changes.
