@@ -19,6 +19,8 @@ interface VerifyExpectations {
     lastRequestCompressCalls?: number
     maxNudgeCount?: number
     nudgeSystemTokensStable?: boolean
+    candidateSelected?: boolean
+    candidateBoundaryMatches?: boolean
 }
 
 interface VerifyScenario {
@@ -120,19 +122,24 @@ if (acpDir) {
 }
 
 const parentObs = observations.filter((o) => !o.isChild && !o.isAuxiliary)
-const maxCompressCalls = parentObs.length > 0
-    ? Math.max(...parentObs.map((o) => o.compressCallCount))
-    : 0
-const lastCompressCalls = parentObs.length > 0
-    ? parentObs[parentObs.length - 1].compressCallCount
-    : 0
+const maxCompressCalls =
+    parentObs.length > 0 ? Math.max(...parentObs.map((o) => o.compressCallCount)) : 0
+const lastCompressCalls =
+    parentObs.length > 0 ? parentObs[parentObs.length - 1].compressCallCount : 0
 const nudgeCount = parentObs.filter((o) => o.nudgeDetected).length
+const candidateSelected = parentObs.some((o) => o.candidateSelected === true)
+const candidateObservation = parentObs.find((o) => o.candidateSelected === true)
 
-const usesObsAssertions = expect.maxCompressCallsVisible !== undefined
-    || expect.lastRequestCompressCalls !== undefined
-    || expect.maxNudgeCount !== undefined
+const usesObsAssertions =
+    expect.maxCompressCallsVisible !== undefined ||
+    expect.lastRequestCompressCalls !== undefined ||
+    expect.maxNudgeCount !== undefined
 if (usesObsAssertions && parentObs.length === 0) {
-    assert("observations recorded (non-empty)", false, "no real-turn observations — observation-based assertions are vacuous")
+    assert(
+        "observations recorded (non-empty)",
+        false,
+        "no real-turn observations — observation-based assertions are vacuous",
+    )
 }
 
 console.log(`\nVerifying: ${scenarioPath}`)
@@ -287,6 +294,29 @@ if (expect.maxNudgeCount !== undefined) {
         `nudgeCount <= ${expect.maxNudgeCount}`,
         nudgeCount <= expect.maxNudgeCount,
         `got ${nudgeCount} nudge detections across ${parentObs.length} requests`,
+    )
+}
+
+if (expect.candidateSelected !== undefined) {
+    assert(
+        `candidateSelected === ${expect.candidateSelected}`,
+        candidateSelected === expect.candidateSelected,
+        `got ${candidateSelected}`,
+    )
+}
+
+if (expect.candidateBoundaryMatches) {
+    const selectedStart = candidateObservation?.candidateStartId
+    const selectedEnd = candidateObservation?.candidateEndId
+    const boundaryMatch =
+        candidateObservation !== undefined &&
+        getBlocks(state).some(
+            (block: any) => block?.startId === selectedStart && block?.endId === selectedEnd,
+        )
+    assert(
+        "candidate boundaries persisted on the resulting block",
+        boundaryMatch,
+        `selected ${selectedStart ?? "?"}..${selectedEnd ?? "?"}`,
     )
 }
 

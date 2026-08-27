@@ -2,19 +2,36 @@ import assert from "node:assert/strict"
 import test from "node:test"
 import { TURN_NUDGE } from "../lib/prompts/turn-nudge"
 import { CONTEXT_LIMIT_NUDGE } from "../lib/prompts/context-limit-nudge"
+import { ITERATION_NUDGE } from "../lib/prompts/iteration-nudge"
 import { buildCompressedBlockGuidance } from "../lib/prompts/extensions/nudge"
 import { createSessionState } from "../lib/state"
 
 test("TURN_NUDGE uses conditional compression language with decompress safety net", () => {
     assert.match(TURN_NUDGE, /finished reading/i)
     assert.match(TURN_NUDGE, /decompress later/i)
+    assert.match(TURN_NUDGE, /MICRO candidates/i)
+    assert.match(TURN_NUDGE, /EPISODE candidates/i)
+    assert.match(TURN_NUDGE, /independent suggestions/i)
+    assert.match(TURN_NUDGE, /compress completed candidates.*context you no longer need/i)
     assert.doesNotMatch(TURN_NUDGE, /\bnow\b/i)
 })
 
 test("CONTEXT_LIMIT_NUDGE frames compression as a step with decompress safety net", () => {
     assert.match(CONTEXT_LIMIT_NUDGE, /time to compress/i)
     assert.match(CONTEXT_LIMIT_NUDGE, /decompress/i)
+    assert.match(CONTEXT_LIMIT_NUDGE, /COMPRESSION CANDIDATES/i)
+    assert.match(CONTEXT_LIMIT_NUDGE, /non-overlapping/i)
+    assert.match(CONTEXT_LIMIT_NUDGE, /call the .*compress.*tool in your next reply/i)
+    assert.match(CONTEXT_LIMIT_NUDGE, /Do not merely recommend compression/i)
     assert.doesNotMatch(CONTEXT_LIMIT_NUDGE, /\b(MUST|CRITICAL)\b/)
+})
+
+test("ITERATION_NUDGE explains candidate categories without making them mandatory", () => {
+    assert.match(ITERATION_NUDGE, /MICRO candidates/i)
+    assert.match(ITERATION_NUDGE, /EPISODE candidates/i)
+    assert.match(ITERATION_NUDGE, /independent suggestions/i)
+    assert.match(ITERATION_NUDGE, /preserve anything still needed/i)
+    assert.match(ITERATION_NUDGE, /compress one clearly completed candidate when available/i)
 })
 
 test("buildCompressedBlockGuidance shows compact summary with block count", () => {

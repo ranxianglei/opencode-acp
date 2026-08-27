@@ -111,7 +111,21 @@ test("prompt store exposes bundled range-mode compress prompt", () => {
         assert.match(runtimePrompts.compressRange, /COMPRESSED BLOCK PLACEHOLDERS/)
         assert.match(runtimePrompts.compressRange, /BATCHING/)
         assert.match(runtimePrompts.compressRange, /content` array/)
+        assert.match(runtimePrompts.compressRange, /CANDIDATE GUIDANCE/)
+        assert.match(runtimePrompts.compressRange, /MICRO/)
+        assert.match(runtimePrompts.compressRange, /EPISODE/)
     } finally {
         fixture.cleanup()
     }
+})
+
+test("bundled system prompt explains advisory compression candidates", () => {
+    assert.match(SYSTEM_PROMPT, /COMPRESSION CANDIDATES/)
+    assert.match(SYSTEM_PROMPT, /structurally safe to submit, not a command to compress/i)
+    assert.match(SYSTEM_PROMPT, /MICRO/)
+    assert.match(SYSTEM_PROMPT, /EPISODE/)
+    assert.match(SYSTEM_PROMPT, /independent, non-overlapping/i)
+    assert.match(SYSTEM_PROMPT, /acp_status.*candidates/i)
+    assert.match(SYSTEM_PROMPT, /call `compress` in that reply/i)
+    assert.match(SYSTEM_PROMPT, /repeated nudge/i)
 })

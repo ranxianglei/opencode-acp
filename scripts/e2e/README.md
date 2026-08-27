@@ -45,6 +45,7 @@ database, or ACP state. The test home is wiped and recreated each run.
 ### Fake LLM
 
 `fake-llm-server.ts` is a Bun HTTP server that:
+
 - Responds to OpenAI `/v1/chat/completions` with SSE streaming
 - Reads a JSON scenario file defining turn-by-turn responses
 - Emits either text responses or `compress` tool_use calls
@@ -59,49 +60,51 @@ the turn counter for real conversation turns.
 
 ## Scenarios
 
-| File | Description |
-|------|-------------|
-| `01-basic-compress.json` | 3 text turns → compress all → verify 1 block |
-| `02-quality-reject.json` | Bad summary → quality gate rejects → verify 0 blocks |
-| `03-quality-acknowledge.json` | Reject → retry with `acknowledgeRisk` → verify 1 block |
-| `04-batch-compress.json` | 4 text turns → batch compress 3 ranges → verify 3 blocks |
-| `05-subagent-compress.json` | Subagent session → compress → verify parent + child blocks |
-| `06-nudge-triggered.json` | Text turns grow context → ACP auto-injects nudge → fake LLM detects nudge and compresses → verify block count + nudge baseline |
-| `07-protection-filtered.json` | Production config (preserveRecentMessages:5) → compress all → verify protected messages excluded from compressed set (soft-filter, not hard-reject) |
-| `08-nudge-with-protection.json` | Nudge→compress WITH protection enabled → verify compress succeeds despite protected zone, nudge baseline set, protected messages survived |
-| `09-nudge-refire-after-compress.json` | Multi-turn nudge→compress→growth→re-nudge→re-compress. Verifies minBlockCount ≥ 1 (full re-nudge cycle with baseline reset is in scenario 10 + unit tests), maxBlockCount ≤ 8 |
-| `10-autonomous-nudge-refire.json` | Issue #176: Autonomous session (bash tool calls grow context) → first nudge→compress → continued growth → second nudge→second compress → verify minBlockCount ≥ 2, maxCompressCallsVisible ≤ 2 |
+| File                                              | Description                                                                                                                                                                                                                         |
+| ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `01-basic-compress.json`                          | 3 text turns → compress all → verify 1 block                                                                                                                                                                                        |
+| `02-quality-reject.json`                          | Bad summary → quality gate rejects → verify 0 blocks                                                                                                                                                                                |
+| `03-quality-acknowledge.json`                     | Reject → retry with `acknowledgeRisk` → verify 1 block                                                                                                                                                                              |
+| `04-batch-compress.json`                          | 4 text turns → batch compress 3 ranges → verify 3 blocks                                                                                                                                                                            |
+| `05-subagent-compress.json`                       | Subagent session → compress → verify parent + child blocks                                                                                                                                                                          |
+| `06-nudge-triggered.json`                         | Text turns grow context → ACP auto-injects nudge → fake LLM detects nudge and compresses → verify block count + nudge baseline                                                                                                      |
+| `07-protection-filtered.json`                     | Production config (preserveRecentMessages:5) → compress all → verify protected messages excluded from compressed set (soft-filter, not hard-reject)                                                                                 |
+| `08-nudge-with-protection.json`                   | Nudge→compress WITH protection enabled → verify compress succeeds despite protected zone, nudge baseline set, protected messages survived                                                                                           |
+| `09-nudge-refire-after-compress.json`             | Multi-turn nudge→compress→growth→re-nudge→re-compress. Verifies minBlockCount ≥ 1 (full re-nudge cycle with baseline reset is in scenario 10 + unit tests), maxBlockCount ≤ 8                                                       |
+| `10-autonomous-nudge-refire.json`                 | Issue #176: Autonomous session (bash tool calls grow context) → first nudge→compress → continued growth → second nudge→second compress → verify minBlockCount ≥ 2, maxCompressCallsVisible ≤ 2                                      |
 | `11-tier2-baseline-preserved-after-compress.json` | Bug #235 regression: verify lastTier2NudgeTokens preserved (not reset to undefined) after compress. Tests compress handler baseline preservation, not T2 cadence (T2 never fires — consumption chain leaves only 1 active T1 block) |
-| `12-consumed-call-hiding.json` | Bug #236 regression: T1 compresses auto-consume previous blocks → verify lastRequestCompressCalls=1 (consumed calls hidden from LLM) |
+| `12-consumed-call-hiding.json`                    | Bug #236 regression: T1 compresses auto-consume previous blocks → verify lastRequestCompressCalls=1 (consumed calls hidden from LLM)                                                                                                |
+| `13-adaptive-compression-candidates.json`         | Real nudge→compress flow where the fake model selects an advertised MICRO candidate and verifies candidate selection plus state baseline                                                                                            |
 
 ### Scenario Format
 
 ```json
 {
-  "name": "scenario-name",
-  "description": "What this tests",
-  "turns": [
-    { "respond": "text", "text": "LLM response for turn 1" },
-    { "respond": "text", "text": "LLM response for turn 2" },
-    {
-      "respond": "compress",
-      "topic": "Topic",
-      "summary": "Summary text",
-      "range": "all",
-      "retryOnReject": {
-        "summary": "Better summary",
-        "acknowledgeRisk": true
-      }
-    },
-    { "respond": "text", "text": "Auto ack", "auto": true }
-  ],
-  "verify": {
-    "blockCount": 1
-  }
+    "name": "scenario-name",
+    "description": "What this tests",
+    "turns": [
+        { "respond": "text", "text": "LLM response for turn 1" },
+        { "respond": "text", "text": "LLM response for turn 2" },
+        {
+            "respond": "compress",
+            "topic": "Topic",
+            "summary": "Summary text",
+            "range": "all",
+            "retryOnReject": {
+                "summary": "Better summary",
+                "acknowledgeRisk": true
+            }
+        },
+        { "respond": "text", "text": "Auto ack", "auto": true }
+    ],
+    "verify": {
+        "blockCount": 1
+    }
 }
 ```
 
 **Fields:**
+
 - `respond`: `"text"`, `"compress"`, `"nudge-compress"`, `"task"`, or `"tool"`, `"autonomous-nudge"`
 - `auto`: `true` = triggered by tool result, no user message needed
 - `range`: `"all"` (entire conversation) or `[startIdx, endIdx]` (0-indexed into mNNNNN refs)
@@ -120,6 +123,7 @@ the turn counter for real conversation turns.
 - `verify.maxCompressCallsVisible`: upper bound on compress tool_use calls visible in any single LLM request
 - `verify.lastRequestCompressCalls`: exact compress call count in the final LLM request
 - `verify.maxNudgeCount`: upper bound on total nudge detections across all requests
+- `verify.candidateSelected`: `true` = at least one nudge response selected a parsed MICRO/EPISODE candidate line
 
 ### Known Limitations
 

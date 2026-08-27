@@ -1,8 +1,16 @@
 import type { Logger } from "../logger"
 import type { CompressionBlock, SessionState } from "../state"
+import type { PluginConfig } from "../config"
+import { countMessageCharacters } from "../token-utils"
+import {
+    filterLastUserMessage,
+    filterProtectedRecentMessages,
+    filterProtectedToolMessages,
+} from "./protected-content"
 import { resolveAnchorMessageId, resolveBoundaryIds, resolveSelection } from "./search"
 import type {
     BoundaryReference,
+    CompressRangeEntry,
     CompressRangeToolArgs,
     InjectedSummaryResult,
     ParsedBlockPlaceholder,
@@ -49,6 +57,7 @@ export function resolveRanges(
     searchContext: SearchContext,
     state: SessionState,
     logger?: { warn(message: string, data?: any): void },
+    options?: { includeTokenAccounting?: boolean },
 ): ResolvedRangeCompression[] {
     return args.content.map((entry, index) => {
         const normalizedEntry = {
@@ -68,7 +77,7 @@ export function resolveRanges(
             normalizedEntry.endId,
             logger,
         )
-        const selection = resolveSelection(searchContext, startReference, endReference)
+        const selection = resolveSelection(searchContext, startReference, endReference, options)
 
         return {
             index,
@@ -110,6 +119,84 @@ export function validateNonOverlapping(plans: ResolvedRangeCompression[]): void 
             issues.length === 1 ? issues[0] : issues.map((issue) => `- ${issue}`).join("\n"),
         )
     }
+}
+
+export interface ExecutableRangePlansResult {
+    plans: ResolvedRangeCompression[]
+    totalChars: number
+}
+
+/**
+ * Resolve and apply the exact range execution boundaries used by compression.
+ * The order here is load-bearing: tool-pair expansion happens during resolve,
+ * before the later soft filters are applied.
+ */
+export function prepareExecutableRangePlans(
+    args: CompressRangeToolArgs | CompressRangeEntry,
+    searchContext: SearchContext,
+    state: SessionState,
+    config: PluginConfig,
+    logger?: Logger,
+    options?: { includeTokenAccounting?: boolean },
+): ExecutableRangePlansResult {
+    const normalizedArgs: CompressRangeToolArgs =
+        "content" in args
+            ? args
+            : {
+                  content: [args],
+              }
+    const resolvedPlans = resolveRanges(normalizedArgs, searchContext, state, logger, options)
+    validateNonOverlapping(resolvedPlans)
+
+    const plans = resolvedPlans
+        .map((plan) => ({
+            ...plan,
+            selection: filterProtectedToolMessages(
+                plan.selection,
+                searchContext,
+                config.compress.protectedTools,
+                config.protectedFilePatterns,
+            ),
+        }))
+        .map((plan) => ({
+            ...plan,
+            selection: filterLastUserMessage(plan.selection, searchContext, state, config.compress),
+        }))
+        .map((plan) => ({
+            ...plan,
+            selection: filterProtectedRecentMessages(
+                plan.selection,
+                searchContext,
+                state,
+                config.compress,
+            ),
+        }))
+        .filter((plan) => plan.selection.messageIds.length > 0)
+
+    if (plans.length === 0) {
+        throw new Error(
+            "All selected messages were filtered out (protected tool outputs and/or the last user message). They must remain in visible context.",
+        )
+    }
+
+    const counted = new Set<string>()
+    let totalChars = 0
+    for (const plan of plans) {
+        for (const messageId of plan.selection.messageIds) {
+            if (counted.has(messageId)) continue
+            counted.add(messageId)
+            const rawMessage = searchContext.rawMessagesById.get(messageId)
+            if (rawMessage) totalChars += countMessageCharacters(rawMessage)
+        }
+    }
+
+    if (config.compress.minCompressRange > 0 && totalChars < config.compress.minCompressRange) {
+        throw new Error(
+            `Range too small (${totalChars} chars, min ${config.compress.minCompressRange}). Not worth compressing — overhead exceeds savings.`,
+        )
+    }
+
+    return { plans, totalChars }
 }
 
 export function parseBlockPlaceholders(summary: string): ParsedBlockPlaceholder[] {

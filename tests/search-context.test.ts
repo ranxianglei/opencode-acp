@@ -68,7 +68,7 @@ function makeState(blocks: Map<number, CompressionBlock>): SessionState {
         stats: { pruneTokenCounter: 0, totalPruneTokens: 0 },
         compressionTiming: {} as any,
         toolParameters: new Map(),
-            toolIdList: [],
+        toolIdList: [],
         messageIds: { byRawId: new Map(), byRef: new Map(), nextRef: 1 },
         lastCompaction: 0,
         currentTurn: 0,
@@ -234,9 +234,7 @@ test("result limit: more than 10 matches return only top 10", async () => {
 })
 
 test("empty results: query matching nothing returns the no-matches message", async () => {
-    const blocks = blocksMap(
-        makeBlock({ blockId: 1, topic: "alpha beta", summary: "gamma delta" }),
-    )
+    const blocks = blocksMap(makeBlock({ blockId: 1, topic: "alpha beta", summary: "gamma delta" }))
 
     const output = await runSearch(blocks, "nonexistent")
 
@@ -296,9 +294,7 @@ test("inactive blocks are skipped during search", async () => {
 test("custom limit parameter is honored", async () => {
     const blockList: CompressionBlock[] = []
     for (let i = 1; i <= 6; i++) {
-        blockList.push(
-            makeBlock({ blockId: i, topic: "match match match", summary: "x" }),
-        )
+        blockList.push(makeBlock({ blockId: i, topic: "match match match", summary: "x" }))
     }
     const blocks = blocksMap(...blockList)
 
@@ -314,4 +310,10 @@ test("empty query returns an error message", async () => {
     const blocks = blocksMap(makeBlock({ blockId: 1 }))
     const output = await runSearch(blocks, "   ")
     assert.match(output, /Error: query is required/)
+})
+
+test("search tool description matches its active-block search scope", () => {
+    const searchTool = createSearchContextTool(makeToolContext(blocksMap()))
+    assert.match(searchTool.description, /active compressed block summaries/i)
+    assert.doesNotMatch(searchTool.description, /visible messages/i)
 })

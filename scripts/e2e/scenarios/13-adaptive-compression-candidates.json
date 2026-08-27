@@ -1,0 +1,50 @@
+{
+    "name": "adaptive-compression-candidates",
+    "description": "The fake model waits for a real ACP nudge, selects an advertised MICRO candidate instead of compressing the whole visible history, and verifies the resulting block and baseline.",
+    "acpConfig": {
+        "compress": {
+            "minCompressRange": 500,
+            "nudgeGrowthTokens": 1000,
+            "minNudgeGrowthFloor": 1000,
+            "minNudgeGrowthRatio": 0.1,
+            "preserveRecentMessages": 2,
+            "preserveRecentTokens": 0,
+            "preserveLastUserMessage": true,
+            "maxContextLimit": 30000,
+            "minContextLimit": 10000
+        },
+        "qualityGate": {
+            "enabled": false
+        }
+    },
+    "turns": [
+        {
+            "respond": "nudge-compress",
+            "candidateKind": "micro",
+            "growthText": "Historical investigation output: the authentication service uses a signed session token, a database-backed refresh record, strict cookie attributes, request validation, audit events, and a rate limiter. The implementation keeps token parsing, credential verification, session rotation, and error translation in separate modules. The initial integration notes include file paths, migration ordering, test fixtures, failure cases, observability fields, and rollback steps. This older investigation is intentionally verbose so ACP can identify it as an independent compression target after later turns add more useful work."
+        },
+        {
+            "respond": "nudge-compress",
+            "candidateKind": "micro",
+            "growthText": "Database investigation output: the users and sessions tables use UUID identifiers, unique email indexes, foreign-key cleanup, expiration timestamps, and an audit trail. Queries use parameters, transactions use read committed isolation, and an hourly cleanup job removes expired sessions. The notes include schema decisions, migration dependencies, query names, connection-pool limits, error behavior, test data, and deployment checks. This is another deliberately detailed historical segment that should remain structurally independent from the current turn."
+        },
+        {
+            "respond": "nudge-compress",
+            "candidateKind": "micro",
+            "growthText": "Current API work: login, refresh, logout, and profile endpoints now share validation and authentication middleware. Refresh-token rotation invalidates the previous token, logout clears cookies and marks sessions inactive, and problem-detail responses expose stable error fields. The current work also covers frontend fetch credentials, protected-route redirects, retry mutex behavior, integration tests, browser tests, mock handlers, coverage targets, and release verification. Keep this recent reasoning available while older independent artifacts are candidates for compression."
+        },
+        {
+            "respond": "nudge-compress",
+            "candidateKind": "micro",
+            "growthText": "Final current-turn verification: run unit, integration, and browser checks; inspect migration output; verify cookie flags and refresh rotation; compare audit events; confirm rate-limit behavior; review failure telemetry; and record the exact commands and expected results. This text provides enough additional context growth to trigger candidate guidance while the recent protection window keeps the newest work visible."
+        }
+    ],
+    "verify": {
+        "minBlockCount": 1,
+        "nudgeBaselineSet": true,
+        "maxCompressedCount": 8,
+        "maxNudgeCount": 2,
+        "candidateSelected": true,
+        "candidateBoundaryMatches": true
+    }
+}
