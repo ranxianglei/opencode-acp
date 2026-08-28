@@ -302,9 +302,15 @@ export const injectCompressNudges = (
         currentTokens !== undefined && growthReference !== undefined
             ? currentTokens - growthReference
             : undefined
+    // Issue #342: a configured minContextLimit must act as a lower bound for T1
+    // growth nudges. computeShouldNudge() only uses overMinLimit to pick the
+    // tips variant, so without this gate growth nudges fire below the minimum.
+    // overMaxLimit (=> overMinLimit in normal min<max configs) and the emergency
+    // override bypass the gate; T2/T3 tier-promotion nudges below are unaffected.
     const nudgeAllowed =
         emergencyOverride ||
         (decision.shouldNudge &&
+            (overMaxLimit || overMinLimit) &&
             growthSinceBaseline !== undefined &&
             growthSinceBaseline >= growthFloor)
 
