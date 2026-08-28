@@ -24,14 +24,17 @@
 |--------|-------------|
 | `0f35414` | fix: gate T1 growth nudges on minContextLimit (issue #342) — **superseded** |
 | `f634222` | dual-agent review: `minLimitResolved` guard + README/CONFIGURATION default fixes — **README/CONFIGURATION fixes preserved** |
-| `<pending>` | fix: use `minNudgeContextPercent` (15%) as the growth-nudge floor, not `minContextLimit` (80% default) |
+| `ecfe7f0` | fix: use `minNudgeContextPercent` (15%) as the growth-nudge floor, not `minContextLimit` (80% default) |
+| `<pending>` | docs: align README/CONFIGURATION/utils comment/test header with the floor redesign (re-pointed stale minContextLimit-gate references) |
 
 ### Key Files
 
 - `lib/messages/inject/inject.ts` — `nudgeAllowed` now includes `(overMaxLimit || overMinNudgeFloor)` in the growth path, where `overMinNudgeFloor` is derived from `minNudgeContextPercent`.
 - `lib/messages/inject/utils.ts` — reverted the `minLimitResolved` addition (dead code in the floor approach).
 - `tests/inject.test.ts` — 4 floor tests (use `minNudgeContextPercent`); 2 new tests (unresolvable model limit, T2 independence); pre-existing test #27 raised into the [floor, max) range.
-- `README.md`, `CONFIGURATION.md` — default corrections from the review commit (preserved).
+- `README.md`, `CONFIGURATION.md` — default corrections from the review commit (preserved); descriptions re-pointed to the floor redesign (`minContextLimit` = turn/iteration reminders only, `minNudgeContextPercent` = growth-nudge floor).
+- `lib/messages/inject/utils.ts` — `@deprecated` comment on `minNudgeContextPercent` corrected (field is active; floor computed in `inject.ts`).
+- `tests/inject.test.ts` — section header re-pointed from "minContextLimit gate" to "minNudgeContextPercent floor".
 
 ## 3. Design & Implementation Notes
 
