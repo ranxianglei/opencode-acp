@@ -279,7 +279,7 @@ export function computeShouldNudge(params: {
     overMinLimit: boolean
     overMaxLimit: boolean
     lastNudgeTokens: number | undefined
-    /** @deprecated Kept for backward compat; ignored. Cadence is growth-only now. */
+    /** Passed through to the trigger policy (currently ignored by it). The growth-nudge floor derived from this field is computed separately in inject.ts (minNudgeContextPercent × model context). */
     minNudgeContextPercent: number
     nudgeGrowthTokens: number
 }): NudgeDecision {

@@ -325,9 +325,10 @@ Each level overrides the previous, so project settings take priority over global
         // compression nudges (based on nudgeFrequency), so compression is
         // much more likely. Accepts: number or "X%" of model context window.
         "maxContextLimit": "80%",
-        // Soft lower threshold for reminder nudges: below this, growth/turn/iteration
-        // reminders are off (compression less likely). At/above this, reminders
-        // are on. Accepts: number or "X%" of model context window.
+        // Soft lower threshold for turn/iteration reminder nudges: below this,
+        // those reminders are off (compression less likely). At/above this, they
+        // are on. Growth nudges have their own floor: minNudgeContextPercent.
+        // Accepts: number or "X%" of model context window.
         "minContextLimit": "80%",
         // Optional per-model override for maxContextLimit by providerID/modelID.
         // If present, this wins over the global maxContextLimit.

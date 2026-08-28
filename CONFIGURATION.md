@@ -165,7 +165,7 @@ Core compression behavior.
 - **Type:** `number | \`${number}%\``
 - **Default:** `"80%"`
 - **Status:** ACTIVE
-- **Description:** Lower context usage threshold. ACP stops nudging (growth, turn, and iteration reminders) when usage drops below this level. If the limit cannot be resolved to a concrete value (a `"X%"` limit with an unknown model context window), growth nudges fall back to growth-only behavior.
+- **Description:** Lower context usage threshold for turn/iteration reminder nudges. ACP stops injecting those reminders when usage drops below this level (or when the limit cannot be resolved to a concrete value, e.g. a `"X%"` limit with an unknown model context window). Growth nudges are governed separately by `minNudgeContextPercent`.
 
 #### `compress.modelMaxLimits`
 - **Type:** `Record<string, number | \`${number}%\`>`
@@ -189,7 +189,7 @@ Core compression behavior.
 - **Type:** `number`
 - **Default:** `15`
 - **Status:** ACTIVE
-- **Description:** Minimum context usage percentage before any nudges are shown. Below this, no nudges are injected. Acts as the global growth-nudge floor (`minNudgeContextPercent` × model context window); override it per model with `modelMinNudgeLimits`.
+- **Description:** Floor for growth-triggered nudges, as a percentage of the model context window: a growth nudge requires context usage at or above this percentage (in addition to the growth threshold). Over-max (`maxContextLimit`) and the 98% emergency-override nudges bypass the floor. If the model context window is unknown, the floor is unresolvable and growth nudges fall back to growth-only behavior. Turn/iteration reminder nudges are governed by `minContextLimit`, not this field. Override it per model with `modelMinNudgeLimits`.
 
 #### `compress.modelMinNudgeLimits`
 - **Type:** `Record<string, number | \`${number}%\`>`

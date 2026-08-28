@@ -165,7 +165,7 @@ ACP 从最多三层配置文件中读取（后加载的覆盖先加载的）：
 - **类型：** `number | \`${number}%\``
 - **默认值：** `"45%"`
 - **状态：** ACTIVE
-- **说明：** 上下文使用率下限。使用率降至此值以下时，ACP 停止 nudge。
+- **说明：** turn/iteration 提醒 nudge 的上下文使用率下限。使用率降至此值以下时（或该限制无法解析为具体值时，例如模型上下文窗口未知时的 `"X%"` 限制），ACP 停止注入这些提醒。Growth nudge 由 `minNudgeContextPercent` 单独控制。
 
 #### `compress.modelMaxLimits`
 - **类型：** `Record<string, number | \`${number}%\`>`
@@ -186,16 +186,16 @@ ACP 从最多三层配置文件中读取（后加载的覆盖先加载的）：
 - **说明：** nudge 注入之间的最小轮数间隔。防止每轮都打扰模型。
 
 #### `compress.minNudgeContextPercent`
- - **类型：** `number`
- - **默认值：** `15`
- - **状态：** ACTIVE
- - **说明：** 触发任何 nudge 的最低上下文使用率百分比。低于此值时不注入 nudge。作为全局 growth-nudge 下限（`minNudgeContextPercent` × 模型上下文窗口）；可用 `modelMinNudgeLimits` 按模型覆盖。
+- **类型：** `number`
+- **默认值：** `15`
+- **状态：** ACTIVE
+- **说明：** growth 触发 nudge 的下限，以模型上下文窗口的百分比表示：growth nudge 要求上下文使用率达到或超过该百分比（此外还需满足增长阈值）。超过上限（`maxContextLimit`）和 98% 紧急覆盖 nudge 不受此下限约束。若模型上下文窗口未知，则下限无法解析，growth nudge 回退到仅增长行为。turn/iteration 提醒 nudge 由 `minContextLimit` 控制，而非此字段。可用 `modelMinNudgeLimits` 按模型覆盖。
 
 #### `compress.modelMinNudgeLimits`
- - **类型：** `Record<string, number | \`${number}%\`>`
- - **默认值：** `undefined`
- - **状态：** ACTIVE
- - **说明：** 按模型覆盖 growth-nudge 下限。以 `provider/model` 为键（与 `modelMaxLimits` / `modelMinLimits` 相同）。值为绝对 token 数或该模型上下文窗口的 `"X%"`。优先级：`modelMinNudgeLimits[provider/model]` → `minNudgeContextPercent` × 模型上下文 → 模型上下文未知时回退到仅增长行为。绝对值在模型上下文窗口未知时同样生效；`"X%"` 值在模型上下文未知时回退到全局百分比。示例：`{"openai/gpt-5.6": 150000, "openrouter/z-ai/glm-5.3": "20%"}`
+- **类型：** `Record<string, number | \`${number}%\`>`
+- **默认值：** `undefined`
+- **状态：** ACTIVE
+- **说明：** 按模型覆盖 growth-nudge 下限。以 `provider/model` 为键（与 `modelMaxLimits` / `modelMinLimits` 相同）。值为绝对 token 数或该模型上下文窗口的 `"X%"`。优先级：`modelMinNudgeLimits[provider/model]` → `minNudgeContextPercent` × 模型上下文 → 模型上下文未知时回退到仅增长行为。绝对值在模型上下文窗口未知时同样生效；`"X%"` 值在模型上下文未知时回退到全局百分比。示例：`{"openai/gpt-5.6": 150000, "openrouter/z-ai/glm-5.3": "20%"}`
 
 #### `compress.nudgeGrowthTokens`
 - **类型：** `number`

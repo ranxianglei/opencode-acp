@@ -1893,10 +1893,11 @@ test("Issue #255: stable system prompt cache survives compression in multi-turn 
     assert.ok(comp4.systemTokens < 200_000, "turn 4: system estimate must not inflate to later assistant input")
 })
 
-// ── Issue #342: T1 growth nudges must respect minContextLimit ───────────────
-// computeShouldNudge() only uses overMinLimit to pick the tips variant, so the
-// min-gate is enforced in inject.ts (nudgeAllowed). These tests lock that gate:
-// growth nudges are suppressed below min and fire once context crosses it, while
+// ── Issue #342: T1 growth nudges must respect the minNudgeContextPercent floor ──
+// computeShouldNudge() only uses overMinLimit/overMaxLimit to pick the tips
+// variant, so the growth floor is enforced in inject.ts (nudgeAllowed):
+// minNudgeContextPercent × model context. These tests lock that floor: growth
+// nudges are suppressed below it and fire once context crosses it, while
 // over-max / emergency paths and T2/T3 tier promotion remain independent.
 
 test("issue #342: growth nudge suppressed below the minNudgeContextPercent floor, fires once context crosses it", () => {

@@ -20,6 +20,7 @@
 |--------|-------------|
 | `50a117e` | feat: per-model growth-nudge floor `modelMinNudgeLimits` (issue #344) |
 | `4c9d772` | docs: zh-CN doc parity for `modelMinNudgeLimits` (dual-agent review follow-up) |
+| `<pending>` | docs: restore #343 floor-redesign wording that the stack reverted (EN+ZH docs, test header, utils comment, #343 devlog) |
 
 ### Key Files
 
