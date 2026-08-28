@@ -18,6 +18,10 @@ const PROTECT_RECENT_MESSAGES = 3
 // ~229k conversation + ~17k system + 16k max_tokens > 262144).
 export const OUTPUT_RESERVE_TOKENS = 16384
 
+// Sessions that already received the "window too small" ERROR (logged once
+// per session — the condition is stable for the process's lifetime).
+const overheadErrorLogged = new Set<string>()
+
 function parseGcThreshold(
     threshold: number | `${number}%` | undefined,
     modelContextLimit: number,
@@ -47,21 +51,30 @@ export function truncateLargeToolOutputs(
     if (currentTokens === 0) return
 
     // [FIX #346] The serving wall is NOT the full window: the request also
-    // carries the system prompt + tool schemas (state.systemPromptTokens) and
-    // the model's max output tokens (OUTPUT_RESERVE_TOKENS). Start truncating
-    // at min(configured threshold, window − overhead) so the request still
-    // fits. Users with larger max_tokens can lower gc.majorGcThresholdPercent
-    // — the min() keeps the stricter bound.
+    // carries the model's max output tokens (OUTPUT_RESERVE_TOKENS) and —
+    // when currentTokens comes from the fallback count (no provider usage
+    // data, e.g. after consecutive rejected requests) — the system prompt +
+    // tool schemas, which that count does not include. Subtracting both is
+    // the conservative bound: exact for fallback counts, a safety margin
+    // when provider usage already includes the system prompt. Users with
+    // larger max_tokens can lower gc.majorGcThresholdPercent — the min()
+    // keeps the stricter bound.
     const configuredThreshold = parseGcThreshold(config.gc?.majorGcThresholdPercent, effective.limit)
     const overhead = (state.systemPromptTokens ?? 0) + OUTPUT_RESERVE_TOKENS
     const threshold = Math.min(configuredThreshold, effective.limit - overhead)
     if (threshold <= 0) {
-        logger.error("ACP: model context window too small to fit overhead", {
-            session: state.sessionId,
-            limit: effective.limit,
-            contextLimitSource: effective.source,
-            overhead,
-        })
+        // The condition is stable for the life of the process (limit and the
+        // system-prompt estimate do not flip back), so log once per session.
+        const sessionKey = state.sessionId ?? "unknown"
+        if (!overheadErrorLogged.has(sessionKey)) {
+            overheadErrorLogged.add(sessionKey)
+            logger.error("ACP: model context window too small to fit overhead", {
+                session: state.sessionId,
+                limit: effective.limit,
+                contextLimitSource: effective.source,
+                overhead,
+            })
+        }
         return
     }
     if (currentTokens < threshold) return

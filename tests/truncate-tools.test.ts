@@ -147,6 +147,9 @@ function makeAssistantWithTokens(id: string, inputTokens: number, text = "ok"): 
 }
 
 const LARGE_OUTPUT = "x".repeat(50000)
+// [FIX #346] Smaller fixture for the new tests: 2201 tokens (comfortably
+// above MIN_OUTPUT_TOKENS) but ~5x less tokenization work per message.
+const MEDIUM_OUTPUT = "The quick brown fox jumps over the lazy dog. ".repeat(220)
 
 test("Truncation: does nothing when context is below threshold", () => {
     const state = makeState(200000)
@@ -175,7 +178,8 @@ test("Truncation: truncates largest tool output at threshold", () => {
         messages.push(makeToolMessage(`msg-${i}`, LARGE_OUTPUT))
     }
     messages.push(makeTextMessage("msg-user", "hello"))
-    // [FIX #346] 200_000 + output 100 = 200_100 ≥ threshold 200_000
+    // [FIX #346] 200_000 + output 100 = 200_100 ≥ threshold 183_616
+    // (= min(200_000, 200_000 − 16_384 output reserve))
     messages.push(makeAssistantWithTokens("msg-asst", 200_000))
 
     truncateLargeToolOutputs(state, config, noopLogger, messages)
@@ -195,15 +199,17 @@ test("Truncation: truncates largest tool output at threshold", () => {
 })
 
 test("Truncation: NEVER touches text messages or summaries", () => {
-    const state = makeState(1000)
+    // [FIX #346] Window must exceed OUTPUT_RESERVE_TOKENS (16384) so the
+    // overhead-aware threshold stays positive and truncation actually runs.
+    const state = makeState(200_000)
     const config = makeConfig()
 
     const messages: WithParts[] = [
         makeToolMessage("msg-1", LARGE_OUTPUT),
         makeTextMessage("msg-2", "important summary text that must survive"),
-        makeAssistantWithTokens("msg-3", 1000, "another text message"),
+        makeAssistantWithTokens("msg-3", 200_000, "another text message"),
         makeTextMessage("msg-4", "user message"),
-        makeAssistantWithTokens("msg-5", 1000, "final"),
+        makeAssistantWithTokens("msg-5", 200_000, "final"),
     ]
 
     const originalTexts = messages.slice(1).map((m) => (m.parts[0] as any).text)
@@ -217,14 +223,17 @@ test("Truncation: NEVER touches text messages or summaries", () => {
 })
 
 test("Truncation: protects last 3 messages", () => {
-    const state = makeState(1000)
+    // [FIX #346] Window must exceed OUTPUT_RESERVE_TOKENS (16384) so the
+    // overhead-aware threshold stays positive and truncation actually runs.
+    const state = makeState(200_000)
     const config = makeConfig()
 
     const messages: WithParts[] = []
     for (let i = 0; i < 10; i++) {
         messages.push(makeToolMessage(`msg-${i}`, LARGE_OUTPUT))
     }
-    messages.push(makeAssistantWithTokens("msg-asst", 1000))
+    // [FIX #346] 200_000 + output 100 = 200_100 ≥ threshold 183_616
+    messages.push(makeAssistantWithTokens("msg-asst", 200_000))
 
     truncateLargeToolOutputs(state, config, noopLogger, messages)
 
@@ -242,7 +251,9 @@ test("Truncation: protects last 3 messages", () => {
 })
 
 test("Truncation: skips already-truncated outputs", () => {
-    const state = makeState(1000)
+    // [FIX #346] Window must exceed OUTPUT_RESERVE_TOKENS (16384) so the
+    // overhead-aware threshold stays positive and truncation actually runs.
+    const state = makeState(200_000)
     const config = makeConfig()
 
     const alreadyTruncated =
@@ -253,6 +264,8 @@ test("Truncation: skips already-truncated outputs", () => {
         makeToolMessage("msg-3", LARGE_OUTPUT),
         makeToolMessage("msg-4", "small"),
         makeToolMessage("msg-5", "small"),
+        // [FIX #346] 200_000 + output 100 = 200_100 ≥ threshold 183_616
+        makeAssistantWithTokens("msg-asst", 200_000),
     ]
 
     truncateLargeToolOutputs(state, config, noopLogger, messages)
@@ -262,35 +275,50 @@ test("Truncation: skips already-truncated outputs", () => {
 })
 
 test("Truncation: skips small tool outputs", () => {
-    const state = makeState(1000)
+    // [FIX #346] Window must exceed OUTPUT_RESERVE_TOKENS (16384) so the
+    // overhead-aware threshold stays positive and truncation actually runs.
+    // A large output is included so the MIN_OUTPUT_TOKENS filter is
+    // exercised against real truncation, not a no-op.
+    const state = makeState(200_000)
     const config = makeConfig()
 
     const smallOutput = "small result"
     const messages: WithParts[] = [
-        makeToolMessage("msg-1", smallOutput),
+        makeToolMessage("msg-1", LARGE_OUTPUT),
         makeToolMessage("msg-2", smallOutput),
         makeToolMessage("msg-3", smallOutput),
         makeToolMessage("msg-4", smallOutput),
         makeToolMessage("msg-5", smallOutput),
+        makeToolMessage("msg-6", smallOutput),
+        // [FIX #346] 200_000 + output 100 = 200_100 ≥ threshold 183_616
+        makeAssistantWithTokens("msg-asst", 200_000),
     ]
 
     truncateLargeToolOutputs(state, config, noopLogger, messages)
 
-    for (let i = 0; i < messages.length; i++) {
+    for (let i = 1; i < messages.length - 1; i++) {
         const output = (messages[i]!.parts[0] as any).state.output
         assert.equal(output, smallOutput, `Small output ${i} should not be truncated`)
     }
+    const largeOutput = (messages[0]!.parts[0] as any).state.output
+    assert.ok(
+        largeOutput.includes("[truncated for context space"),
+        "the large output should have been truncated",
+    )
 })
 
 test("Truncation: no crash on empty messages", () => {
-    const state = makeState(1000)
+    const state = makeState(200_000)
     const config = makeConfig()
 
     truncateLargeToolOutputs(state, config, noopLogger, [])
 })
 
 test("Truncation: no crash when no tool outputs exist", () => {
-    const state = makeState(1000)
+    // [FIX #346] Window must exceed OUTPUT_RESERVE_TOKENS (16384): a tiny
+    // window would trip the once-per-session overhead ERROR here and mask
+    // the "window too small" test's assertion later in this file.
+    const state = makeState(200_000)
     const config = makeConfig()
 
     const messages: WithParts[] = [
@@ -317,7 +345,8 @@ test("Truncation: preserves prefix and suffix of truncated output", () => {
         messages.push(makeToolMessage(`msg-${i}`, fullOutput))
     }
     messages.push(makeTextMessage("msg-6", "text"))
-    // [FIX #346] 200_000 + output 100 = 200_100 ≥ threshold 200_000
+    // [FIX #346] 200_000 + output 100 = 200_100 ≥ threshold 183_616
+    // (= min(200_000, 200_000 − 16_384 output reserve))
     messages.push(makeAssistantWithTokens("msg-7", 200_000))
 
     truncateLargeToolOutputs(state, config, noopLogger, messages)
@@ -336,7 +365,9 @@ test("Truncation: preserves prefix and suffix of truncated output", () => {
 })
 
 test("Truncation equivalence: output never longer than input", () => {
-    const state = makeState(1000)
+    // [FIX #346] Window must exceed OUTPUT_RESERVE_TOKENS (16384) so the
+    // overhead-aware threshold stays positive and truncation actually runs.
+    const state = makeState(200_000)
     const config = makeConfig()
 
     const messages: WithParts[] = []
@@ -344,7 +375,8 @@ test("Truncation equivalence: output never longer than input", () => {
         messages.push(makeToolMessage(`msg-${i}`, "x".repeat(50000)))
     }
     messages.push(makeTextMessage("msg-11", "text"))
-    messages.push(makeAssistantWithTokens("msg-12", 1000))
+    // [FIX #346] 200_000 + output 100 = 200_100 ≥ threshold 183_616
+    messages.push(makeAssistantWithTokens("msg-12", 200_000))
 
     const originalLengths = messages.map((m) => {
         const part = m.parts[0] as any
@@ -378,7 +410,7 @@ test("production wall repro (#346): truncates when conversation + overhead excee
 
     const messages: WithParts[] = [makeTextMessage("u0", "start")]
     for (let i = 1; i <= 10; i++) {
-        messages.push(makeToolMessage(`t${i}`, LARGE_OUTPUT))
+        messages.push(makeToolMessage(`t${i}`, MEDIUM_OUTPUT))
     }
     messages.push(makeTextMessage("u1", "latest question"))
     // 229_379 + output 100 = 229_479 (the exact production token count).
@@ -441,7 +473,7 @@ test("fallback limit drives truncation when model limit unknown (#346)", () => {
 
     const messages: WithParts[] = [makeTextMessage("u0", "start")]
     for (let i = 1; i <= 10; i++) {
-        messages.push(makeToolMessage(`t${i}`, LARGE_OUTPUT))
+        messages.push(makeToolMessage(`t${i}`, MEDIUM_OUTPUT))
     }
     messages.push(makeTextMessage("u1", "latest question"))
     // 200_000 + output 100 = 200_100 ≥ threshold min(200_000, 183_616)

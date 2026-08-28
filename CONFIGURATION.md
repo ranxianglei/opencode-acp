@@ -183,7 +183,7 @@ Core compression behavior.
 - **Type:** `number`
 - **Default:** `128000`
 - **Status:** ACTIVE
-- **Description:** Fallback context window (absolute tokens) used when the model's limit is unknown — e.g. custom providers with no declared limit, or headless spawn+resume sessions where the limit was never learned. Drives all percentage thresholds (`maxContextLimit`/`minContextLimit`), the emergency nudge override, batch cleanup GC, and in-flight tool-output truncation. The real model limit always takes precedence when known. Set to `0` to disable the fallback (legacy behavior: no safety net until the limit is learned).
+- **Description:** Fallback context window (absolute tokens) used when the model's limit is unknown — e.g. custom providers with no declared limit, headless spawn+resume sessions where the limit was never learned, or the brief window after a model switch invalidates a stale limit. Drives all percentage thresholds (`maxContextLimit`/`minContextLimit`), the emergency nudge override, batch cleanup GC, and in-flight tool-output truncation. The real model limit always takes precedence when known, as do per-model overrides (`modelMaxLimits`/`modelMinLimits`). Set to `0` to disable the fallback (legacy behavior: no safety net until the limit is learned).
 
 #### `compress.nudgeFrequency`
 - **Type:** `number`

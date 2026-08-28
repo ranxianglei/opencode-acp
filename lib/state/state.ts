@@ -109,7 +109,9 @@ export class SessionStateRegistry {
     // the process's lifetime. During a request the server is guaranteed up
     // (we are inside its pipeline), so on a catalog miss we retry hydration
     // once per process before giving up (the fallback limit then applies).
-    private lazyHydrated = false
+    // The in-flight promise (not a boolean) lets concurrent callers await the
+    // same hydration instead of skipping it.
+    private lazyHydration: Promise<number> | undefined
 
     async hydrateAndResolve(
         client: unknown,
@@ -120,10 +122,8 @@ export class SessionStateRegistry {
         if (existing !== undefined) {
             return existing
         }
-        if (!this.lazyHydrated) {
-            this.lazyHydrated = true
-            await this.catalog.hydrateFromClient(client)
-        }
+        this.lazyHydration ??= this.catalog.hydrateFromClient(client)
+        await this.lazyHydration
         return this.catalog.resolve(providerId, modelId)
     }
 

@@ -17,7 +17,7 @@
 
 import assert from "node:assert/strict"
 import test from "node:test"
-import { mkdtempSync, readFileSync, rmSync } from "node:fs"
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 import type { PluginConfig } from "../lib/config"
@@ -162,6 +162,8 @@ async function runTransform(opts: {
     config?: PluginConfig
 }): Promise<{ text: string; state: SessionState }> {
     const tempDir = mkdtempSync(join(tmpdir(), "acp-model-switch-"))
+    const prevDataHome = process.env.XDG_DATA_HOME
+    const prevConfigHome = process.env.XDG_CONFIG_HOME
     process.env.XDG_DATA_HOME = tempDir
     process.env.XDG_CONFIG_HOME = tempDir
 
@@ -204,6 +206,10 @@ async function runTransform(opts: {
         return { text: collectText(messages), state }
     } finally {
         rmSync(tempDir, { recursive: true, force: true })
+        if (prevDataHome === undefined) delete process.env.XDG_DATA_HOME
+        else process.env.XDG_DATA_HOME = prevDataHome
+        if (prevConfigHome === undefined) delete process.env.XDG_CONFIG_HOME
+        else process.env.XDG_CONFIG_HOME = prevConfigHome
     }
 }
 
@@ -427,6 +433,8 @@ test("catalog miss + provider config available: lazy hydration resolves the limi
 
 test("system.transform persists the limit so spawned processes resume with it (#346)", async () => {
     const tempDir = mkdtempSync(join(tmpdir(), "acp-persist-"))
+    const prevDataHome = process.env.XDG_DATA_HOME
+    const prevConfigHome = process.env.XDG_CONFIG_HOME
     process.env.XDG_DATA_HOME = tempDir
     process.env.XDG_CONFIG_HOME = tempDir
 
@@ -448,16 +456,28 @@ test("system.transform persists the limit so spawned processes resume with it (#
             },
             { system: ["base system prompt"] },
         )
-        // saveSessionState is fire-and-forget — give the write a tick to land.
-        await new Promise((resolve) => setTimeout(resolve, 100))
-
+        // saveSessionState is fire-and-forget — poll for the write to land
+        // (a fixed sleep would race slow CI).
         const file = join(tempDir, "opencode", "storage", "plugin", "acp", `${SID}.json`)
-        const persisted = JSON.parse(readFileSync(file, "utf8"))
+        let persisted: Record<string, unknown> | undefined
+        const deadline = Date.now() + 2000
+        while (!persisted && Date.now() < deadline) {
+            if (existsSync(file)) {
+                persisted = JSON.parse(readFileSync(file, "utf8"))
+            } else {
+                await new Promise((resolve) => setTimeout(resolve, 50))
+            }
+        }
+        assert.ok(persisted, "state file must be written by the system hook")
         assert.equal(persisted.modelContextLimit, NEW_LIMIT)
         assert.equal(persisted.modelProviderID, PROVIDER)
         assert.equal(persisted.modelID, NEW_MODEL)
     } finally {
         rmSync(tempDir, { recursive: true, force: true })
+        if (prevDataHome === undefined) delete process.env.XDG_DATA_HOME
+        else process.env.XDG_DATA_HOME = prevDataHome
+        if (prevConfigHome === undefined) delete process.env.XDG_CONFIG_HOME
+        else process.env.XDG_CONFIG_HOME = prevConfigHome
     }
 })
 

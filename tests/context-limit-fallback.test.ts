@@ -5,6 +5,8 @@ import type { SessionState, WithParts } from "../lib/state/types"
 import type { PluginConfig } from "../lib/config"
 import { resolveEffectiveContextLimit } from "../lib/state/utils"
 import { isContextOverLimits } from "../lib/messages/inject/utils"
+import { injectCompressNudges } from "../lib/messages/inject/inject"
+import { Logger } from "../lib/logger"
 
 // Issue #346: in headless spawn+resume mode the model limit was never known
 // (no persistence, empty catalog), so percentage thresholds resolved to
@@ -73,10 +75,6 @@ function makeConfig(fallback: number | undefined): PluginConfig {
             protectedTools: [],
             protectTags: false,
             protectUserMessages: false,
-        },
-        strategies: {
-            deduplication: { enabled: true, protectedTools: [] },
-            purgeErrors: { enabled: true, turns: 4, protectedTools: [] },
         },
         gc: {
             algorithm: "truncate",
@@ -217,4 +215,69 @@ test("isContextOverLimits: known model limit takes precedence over fallback", ()
     assert.equal(result.overMinLimit, true)
     assert.equal(result.overMaxLimit, true)
     assert.equal(result.modelContextLimit, 200_000)
+})
+
+// ─── §5.7 growth cycle with the fallback (multi-turn, side-effect asserts) ──
+
+test("growth cycle: fallback drives the nudge across turns without a known limit (#346, §5.7)", () => {
+    // Production shape: model limit unknown (spawn+resume), fallback 128K,
+    // preserveRecentMessages 20 (production default). Thresholds: min 50% of
+    // 128K = 64_000, max 80% = 102_400. Turn anchors are only added when
+    // overMinLimit (and NOT overMaxLimit — that branch takes the
+    // context-limit anchors) — pre-fix (no fallback) overMinLimit was never
+    // true, so the turn-2 anchor assertion is the pre-fix discriminator.
+    const state = makeState(undefined)
+    const config = makeConfig(128_000)
+    config.compress.preserveRecentMessages = 20
+    config.compress.minContextLimit = "50%"
+    config.compress.maxContextLimit = "80%"
+    const logger = new Logger(false)
+
+    // Turn 1: 50_100 < 64_000 → below the min limit; baseline established.
+    const turn1: WithParts[] = [
+        makeUserMessage("u1", "question one"),
+        makeAssistantWithTokens("a1", 50_000),
+    ]
+    injectCompressNudges(state, config, logger, turn1, {} as any)
+    assert.equal(state.nudges.lastPerMessageNudgeTokens, 50_100, "baseline = turn-1 currentTokens")
+    assert.equal(state.nudges.shouldInjectThisTurn, false, "no growth yet → no nudge")
+    assert.equal(state.nudges.turnNudgeAnchors.size, 0, "below min limit → no turn anchors")
+
+    // Turn 2: 70_100 ≥ 64_000 (overMin) but ≤ 102_400 (not overMax) → the
+    // turn-anchor branch. The turn ends on a user message (a2 answered, u2b
+    // asks the next question), which is the shape that adds turn anchors.
+    // Growth 20_000 < nudgeGrowthTokens 50_000 (and < growth floor 22_500)
+    // → no nudge yet, but the anchors and baseline state are observable.
+    const turn2: WithParts[] = [
+        makeUserMessage("u2", "question two"),
+        makeAssistantWithTokens("a2", 70_000),
+        makeUserMessage("u2b", "question two follow-up"),
+    ]
+    injectCompressNudges(state, config, logger, turn2, {} as any)
+    assert.equal(
+        state.nudges.turnNudgeAnchors.size,
+        2,
+        "overMinLimit (fallback) must add turn anchors (the last user msg + last assistant)",
+    )
+    assert.equal(state.nudges.contextLimitAnchors.size, 0, "not overMax → no context-limit anchors")
+    assert.equal(state.nudges.shouldInjectThisTurn, false, "growth below threshold → no nudge yet")
+    assert.equal(state.nudges.lastPerMessageNudgeTokens, 50_100, "baseline stable (only compress resets)")
+
+    // Turn 3: 130_100 > 102_400 → overMax (context-limit anchor branch);
+    // growth 80_000 from the 50_100 baseline ≥ 50_000 and ≥ growth floor
+    // 22_500 → nudge fires.
+    const turn3: WithParts[] = [
+        makeUserMessage("u3", "question three"),
+        makeAssistantWithTokens("a3", 130_000),
+        makeUserMessage("u3b", "question three follow-up"),
+    ]
+    injectCompressNudges(state, config, logger, turn3, {} as any)
+    assert.equal(state.nudges.shouldInjectThisTurn, true, "growth nudge fires past the fallback limits")
+    assert.equal(state.nudges.contextLimitAnchors.size, 1, "overMax adds a context-limit anchor")
+    assert.equal(state.nudges.lastNudgeShownTokens, 130_100, "lastNudgeShownTokens = currentTokens")
+    assert.equal(
+        state.nudges.lastPerMessageNudgeTokens,
+        50_100,
+        "baseline survives the growth cycle (PR-207 invariant)",
+    )
 })

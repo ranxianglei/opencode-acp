@@ -121,15 +121,22 @@ export function createSystemPromptHandler(
             const limit = input.model.limit.context
             const providerID = input.model?.providerID
             const modelID = input.model?.id
+            // Identity fields are only written when present: a limit without
+            // identity must not clobber the pair the messages hook relies on
+            // for staleness detection (#312).
             const changed =
                 state.modelContextLimit !== limit ||
-                state.modelProviderID !== providerID ||
-                state.modelID !== modelID
+                (providerID !== undefined && state.modelProviderID !== providerID) ||
+                (modelID !== undefined && state.modelID !== modelID)
             state.modelContextLimit = limit
             // [FIX #312 follow-up] Record WHICH model the limit belongs to so
             // the messages hook can detect staleness on a catalog miss.
-            state.modelProviderID = providerID
-            state.modelID = modelID
+            if (providerID !== undefined) {
+                state.modelProviderID = providerID
+            }
+            if (modelID !== undefined) {
+                state.modelID = modelID
+            }
             if (changed) {
                 saveSessionState(state, logger).catch(() => {})
             }

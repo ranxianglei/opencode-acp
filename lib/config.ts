@@ -19,9 +19,11 @@ export interface CompressConfig {
     modelMinLimits?: Record<string, number | `${number}%`>
     /**
      * Fallback context window (absolute tokens) used when the model's limit is
-     * unknown (e.g. custom providers with no declared limit). Default: 128000.
-     * Set to 0 to disable the fallback (legacy behavior: no safety net until
-     * the limit is learned).
+     * unknown (e.g. custom providers with no declared limit, or the brief
+     * window after a model switch invalidates a stale limit). Default: 128000.
+     * Per-model limits (modelMaxLimits/modelMinLimits) take precedence. Set to
+     * 0 to disable the fallback (legacy behavior: no safety net until the
+     * limit is learned).
      */
     contextLimitFallback?: number
     nudgeFrequency: number
