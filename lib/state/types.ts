@@ -160,4 +160,10 @@ export interface SessionState {
      * - Normal call (no acknowledgeRisk) → quality runs normally
      */
     qualityGateRetryPending: boolean
+    /**
+     * Transient flag (NOT persisted): set to true after the "model reports no
+     * context window" warning has been emitted for this session, so the
+     * warning fires at most once per session per process.
+     */
+    noContextLimitWarned: boolean
 }

@@ -207,6 +207,7 @@ export function createSessionState(): SessionState {
         modelID: undefined,
         systemPromptTokens: undefined,
         qualityGateRetryPending: false,
+        noContextLimitWarned: false,
     }
 }
 
@@ -249,6 +250,7 @@ export function resetSessionState(state: SessionState): void {
     state.modelID = undefined
     state.systemPromptTokens = undefined
     state.qualityGateRetryPending = false
+    state.noContextLimitWarned = false
 }
 
 export async function ensureSessionInitialized(
