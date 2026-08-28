@@ -19,7 +19,7 @@
 | Commit | Description |
 |--------|-------------|
 | `0f35414` | fix: gate T1 growth nudges on minContextLimit (issue #342) |
-| `<pending>` | fix: min-gate refinements from dual-agent review (resolvability guard, unmasked tests, review-finding tests, doc defaults) |
+| `f634222` | fix: min-gate refinements from dual-agent review (resolvability guard, unmasked tests, review-finding tests, doc defaults) |
 
 ### Key Files
 
