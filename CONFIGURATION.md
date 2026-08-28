@@ -307,7 +307,7 @@ Core compression behavior.
 - **Type:** `number`
 - **Default:** `32768`
 - **Status:** ACTIVE
-- **Description:** Tokens reserved for the model's completion by the context-budget guard. The guard estimates the request's input size and, if it exceeds `window - completionReserveTokens`, deterministically truncates (then clears) old compressible tool outputs until it fits — summaries, protected tools, the first user message, and the last 3 messages are never touched. The default `32768` covers opencode's `32000` `max_tokens` fallback for models with no declared `limit.output`. The guard is a no-op unless a context window is known: the model's declared limit, or an absolute (number) `compress.maxContextLimit`.
+- **Description:** Tokens reserved for the model's completion by the context-budget guard. The guard estimates the request's input size and, if it exceeds `window - completionReserveTokens`, deterministically truncates (then clears) old compressible tool outputs until it fits — summaries, protected tools, the first user message, and the last 3 messages are never touched. The default `32768` covers opencode's `32000` `max_tokens` fallback for models with no declared `limit.output`. The guard is a no-op unless the model's context window is known (declared `limit.context` in opencode.json, or a catalog entry). An absolute (number) `compress.maxContextLimit` does **not** enable the guard — it is a soft nudge threshold, not the backend's real limit.
 
 ---
 

@@ -235,7 +235,7 @@ export function createChatMessageTransformHandler(
             ) {
                 state.noContextLimitWarned = true
                 logger.warn(
-                    'Model reports no context window and the catalog has no entry for it; all percentage thresholds (min/max/emergency, GC) and the context-budget guard are disabled. Set the model limit in opencode.json (e.g. "limit": {"context": 262144, "output": 16384}) or set an absolute compress.maxContextLimit in acp.jsonc.',
+                    'Model reports no context window and the catalog has no entry for it; all percentage thresholds (min/max/emergency, GC) and the context-budget guard are disabled. Set the model limit in opencode.json (e.g. "limit": {"context": 262144, "output": 16384}) to enable them (also fixes the 32000 max_tokens fallback); an absolute compress.maxContextLimit in acp.jsonc only enables proactive nudges, not the guard.',
                     {
                         session: state.sessionId,
                         model: `${requestModel.providerID}/${requestModel.modelID}`,

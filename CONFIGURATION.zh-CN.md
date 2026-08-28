@@ -307,7 +307,7 @@ ACP 从最多三层配置文件中读取（后加载的覆盖先加载的）：
 - **类型：** `number`
 - **默认值：** `32768`
 - **状态：** ACTIVE
-- **说明：** 上下文预算守卫为模型补全预留的 token 数。守卫估算请求输入大小，若超过 `window - completionReserveTokens`，则确定性地截断（随后清除）旧的可压缩工具输出直至达标——摘要、受保护工具、首条用户消息和最近 3 条消息永不被改动。默认 `32768` 覆盖 opencode 对未声明 `limit.output` 模型的 `32000` `max_tokens` 回退值。只有当上下文窗口已知时守卫才生效：模型声明的 limit，或绝对值（数字）`compress.maxContextLimit`。
+- **说明：** 上下文预算守卫为模型补全预留的 token 数。守卫估算请求输入大小，若超过 `window - completionReserveTokens`，则确定性地截断（随后清除）旧的可压缩工具输出直至达标——摘要、受保护工具、首条用户消息和最近 3 条消息永不被改动。默认 `32768` 覆盖 opencode 对未声明 `limit.output` 模型的 `32000` `max_tokens` 回退值。只有当模型的上下文窗口已知时守卫才生效（opencode.json 中声明的 `limit.context`，或目录条目）。绝对值（数字）`compress.maxContextLimit` **不会**启用守卫——它是软性的提示阈值，而非后端的真实限制。
 
 ---
 

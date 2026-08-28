@@ -303,7 +303,7 @@
                     "type": "number",
                     "default": 32768,
                     "minimum": 0,
-                    "description": "Tokens reserved for the model's completion when the context-budget guard prunes tool outputs so the request fits the window. Default 32768 covers opencode's 32000 max_tokens fallback for models with no declared limit.output. The guard is a no-op unless a context window is known (model limit or an absolute maxContextLimit)."
+                    "description": "Tokens reserved for the model's completion when the context-budget guard prunes tool outputs so the request fits the window. Default 32768 covers opencode's 32000 max_tokens fallback for models with no declared limit.output. The guard is a no-op unless the model's context window is known (declared limit or catalog entry); an absolute maxContextLimit is a soft nudge threshold and does not enable the guard."
                 }
             },
             "default": {

@@ -232,6 +232,39 @@ test("validateConfigTypes catches wrong type for compress.preserveLastUserMessag
     assert.equal(result[0].expected, "boolean")
 })
 
+test("getInvalidConfigKeys accepts compress.completionReserveTokens", () => {
+    const result = getInvalidConfigKeys({
+        compress: { completionReserveTokens: 32768 },
+    })
+    assert.deepEqual(result, [])
+})
+
+test("validateConfigTypes accepts numeric compress.completionReserveTokens", () => {
+    const result = validateConfigTypes({
+        compress: { completionReserveTokens: 32768 },
+    })
+    assert.deepEqual(result, [])
+})
+
+test("validateConfigTypes catches wrong type for compress.completionReserveTokens", () => {
+    const result = validateConfigTypes({
+        compress: { completionReserveTokens: "32768" },
+    })
+    assert.equal(result.length, 1)
+    assert.equal(result[0].key, "compress.completionReserveTokens")
+    assert.equal(result[0].expected, "number")
+    assert.equal(result[0].actual, "string")
+})
+
+test("validateConfigTypes rejects negative compress.completionReserveTokens", () => {
+    const result = validateConfigTypes({
+        compress: { completionReserveTokens: -1 },
+    })
+    assert.equal(result.length, 1)
+    assert.equal(result[0].key, "compress.completionReserveTokens")
+    assert.equal(result[0].expected, "non-negative number (>= 0)")
+})
+
 test("getInvalidConfigKeys accepts new preserveRecent* keys", () => {
     const result = getInvalidConfigKeys({
         compress: {

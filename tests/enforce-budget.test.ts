@@ -11,6 +11,7 @@ import {
     estimateWireTokens,
     resolveContextWindow,
 } from "../lib/messages/enforce-budget"
+import { countTokens } from "../lib/token-utils"
 
 const noopLogger: Logger = {
     debug: () => {},
@@ -31,8 +32,8 @@ const warnLogger: Logger = {
     child: () => noopLogger,
 } as unknown as Logger
 
-// ~45 chars / ~12 tokens of mixed prose so token counts track chars/4
-// regardless of tokenizer run-length behavior on repeated characters.
+// ~45 chars / ~10 tokens per sentence of mixed prose so token counts track
+// chars/4 regardless of tokenizer run-length behavior on repeated characters.
 const FILLER = "The quick brown fox jumps over the lazy dog. ".repeat(20)
 
 function makeConfig(overrides: {
@@ -185,12 +186,18 @@ test("estimateWireTokens: base usage plus additions after last assistant", () =>
 test("estimateWireTokens: fallback sums content plus system prompt", () => {
     const { state } = makeConfig({ modelContextLimit: 200000 })
     state.systemPromptTokens = 500
+    const content = FILLER.repeat(2)
     const messages: WithParts[] = [
-        makeUserText(nextId("u"), FILLER.repeat(2)),
-        makeAssistantText(nextId("a"), FILLER.repeat(2)),
+        makeUserText(nextId("u"), content),
+        makeAssistantText(nextId("a"), content),
     ]
+    // Single text-part messages count exactly countTokens(text), so the
+    // fallback must equal 2x content + system prompt (tiny tolerance for
+    // join overhead).
+    const expected = 500 + countTokens(content) * 2
     const est = estimateWireTokens(state, messages)
-    assert.ok(est >= 500, `expected >= 500, got ${est}`)
+    assert.ok(est >= expected, `expected >= ${expected}, got ${est}`)
+    assert.ok(est <= expected + 5, `expected <= ${expected + 5}, got ${est}`)
 })
 
 test("enforceContextBudget: no-op when window unknown", () => {
@@ -284,19 +291,25 @@ test("enforceContextBudget: skips protected tools and compress summaries", () =>
 
 test("enforceContextBudget: clears oldest outputs when truncation alone cannot fit", () => {
     const { config, state } = makeConfig({ modelContextLimit: 100000, reserve: 1000 })
+    // 4050 chars: just over the 4000-char truncation threshold, so the
+    // truncated form (2000 + marker + 2000 ≈ 4062 chars) would be LONGER —
+    // phase 1 must skip every candidate (pure char-count fact, no BPE
+    // margin), forcing phase 2 (clearing) to do all the work.
+    const content = FILLER.repeat(4) + FILLER.slice(0, 450)
     const outputs: WithParts[] = []
     for (let i = 0; i < 10; i++) {
-        outputs.push(makeToolMessage(nextId("t"), FILLER.repeat(20)))
+        outputs.push(makeToolMessage(nextId("t"), content))
     }
     const messages: WithParts[] = [
         makeUserText(nextId("u"), "hello"),
         ...outputs,
-        makeAssistantWithTokens(nextId("a"), 130000),
+        makeAssistantWithTokens(nextId("a"), 103000),
         makeUserText(nextId("u"), "next"),
     ]
     const result = enforceContextBudget(state, config, noopLogger, messages)
     assert.ok(result)
     assert.equal(result!.applied, true)
+    assert.equal(result!.truncatedCount, 0, `truncation must skip non-shrinking content: ${JSON.stringify(result)}`)
     assert.ok(result!.clearedCount >= 1, `expected clearing, got ${JSON.stringify(result)}`)
     assert.ok(result!.finalEstimate <= result!.budget, "final estimate must fit budget")
     assert.equal(outputs[0].parts[0].state.output, "[Old tool result content cleared]")
@@ -345,4 +358,96 @@ test("enforceContextBudget: warns when still over budget after all pruning", () 
 
 test("enforceContextBudget: default reserve covers opencode's 32000 max_tokens fallback", () => {
     assert.ok(DEFAULT_COMPLETION_RESERVE_TOKENS >= 32000)
+})
+
+test("enforceContextBudget: no-op when window minus reserve is not positive", () => {
+    const { config, state } = makeConfig({ modelContextLimit: 10000, reserve: 32768 })
+    const messages: WithParts[] = [
+        makeUserText(nextId("u"), "hello"),
+        makeToolMessage(nextId("t"), FILLER.repeat(130)),
+        makeAssistantWithTokens(nextId("a"), 99500),
+        makeUserText(nextId("u"), "next"),
+    ]
+    const result = enforceContextBudget(state, config, noopLogger, messages)
+    assert.equal(result, undefined)
+})
+
+test("enforceContextBudget: no crash with fewer than 3 messages", () => {
+    const { config, state } = makeConfig({ modelContextLimit: 100000, reserve: 1000 })
+    const t1 = makeToolMessage(nextId("t"), FILLER.repeat(130))
+    const messages: WithParts[] = [t1, makeAssistantWithTokens(nextId("a"), 99500)]
+    const result = enforceContextBudget(state, config, noopLogger, messages)
+    assert.ok(result)
+    assert.equal(result!.applied, false)
+    assert.equal(result!.truncatedCount, 0)
+    assert.equal(result!.clearedCount, 0)
+    assert.equal(t1.parts[0].state.output, FILLER.repeat(130))
+})
+
+test("enforceContextBudget: non-numeric reserve falls back to default", () => {
+    const { config, state } = makeConfig({ modelContextLimit: 100000 })
+    ;(config.compress as any).completionReserveTokens = "oops"
+    const outputs: WithParts[] = []
+    for (let i = 0; i < 3; i++) {
+        outputs.push(makeToolMessage(nextId("t"), FILLER.repeat(130)))
+    }
+    const messages: WithParts[] = [
+        makeUserText(nextId("u"), "hello"),
+        ...outputs,
+        makeAssistantWithTokens(nextId("a"), 69000),
+        makeUserText(nextId("u"), "next"),
+    ]
+    const result = enforceContextBudget(state, config, noopLogger, messages)
+    assert.ok(result)
+    assert.equal(result!.reserve, DEFAULT_COMPLETION_RESERVE_TOKENS)
+    assert.equal(result!.budget, 100000 - DEFAULT_COMPLETION_RESERVE_TOKENS)
+    assert.equal(result!.applied, true)
+    // With a NaN budget (old code) every `<= budget` break was false and the
+    // guard never fit; with the fallback reserve it must stop once it fits.
+    assert.ok(
+        result!.finalEstimate <= result!.budget,
+        `expected final <= budget, got ${result!.finalEstimate} vs ${result!.budget}`,
+    )
+})
+
+test("estimateWireTokens: counts the gap when the last assistant has no token data", () => {
+    const { state } = makeConfig({ modelContextLimit: 200000 })
+    const messages: WithParts[] = [
+        makeUserText(nextId("u"), "hello"),
+        makeAssistantWithTokens(nextId("a"), 9000, 100),
+        makeUserText(nextId("u"), FILLER.repeat(2)),
+        makeAssistantText(nextId("a2"), "ok"),
+        makeUserText(nextId("u"), "next"),
+    ]
+    // base 9100 + gap user message (~400) + "ok" + "next". A role-based scan
+    // would anchor at the tokenless "a2" and miss the gap message entirely.
+    const est = estimateWireTokens(state, messages)
+    assert.ok(est >= 9300, `expected >= 9300, got ${est}`)
+    assert.ok(est < 9800, `expected < 9800, got ${est}`)
+})
+
+test("enforceContextBudget: skips truncation that would grow the output, clears instead", () => {
+    const { config, state } = makeConfig({ modelContextLimit: 100000, reserve: 1000 })
+    // 4050 chars: just over the 4000-char threshold, so prefix + marker +
+    // suffix (~4066 chars) would be LONGER than the original.
+    const content = FILLER.repeat(4) + FILLER.slice(0, 450)
+    const small = makeToolMessage(nextId("t"), content)
+    const messages: WithParts[] = [
+        makeUserText(nextId("u"), "hello"),
+        small,
+        makeAssistantWithTokens(nextId("a"), 5000),
+        makeUserText(nextId("u"), "mid"),
+        makeAssistantWithTokens(nextId("a2"), 99500),
+        makeUserText(nextId("u"), "next"),
+    ]
+    const result = enforceContextBudget(state, config, noopLogger, messages)
+    assert.ok(result)
+    assert.equal(result!.applied, true)
+    assert.equal(result!.truncatedCount, 0, `truncation must skip non-shrinking content: ${JSON.stringify(result)}`)
+    assert.equal(result!.clearedCount, 1)
+    assert.ok(
+        result!.finalEstimate <= result!.budget,
+        `expected final <= budget, got ${result!.finalEstimate} vs ${result!.budget}`,
+    )
+    assert.equal(small.parts[0].state.output, "[Old tool result content cleared]")
 })

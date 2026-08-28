@@ -1,4 +1,5 @@
 import { SessionState, WithParts } from "../state"
+import type { AssistantMessage } from "@opencode-ai/sdk/v2"
 import type { PluginConfig } from "../config"
 import { Logger } from "../logger"
 import {
@@ -66,18 +67,30 @@ export function resolveContextWindow(state: SessionState): number | undefined {
 export function estimateWireTokens(state: SessionState, messages: WithParts[]): number {
     const base = getCurrentTokenUsage(state, messages)
     if (base > 0) {
-        let lastAssistant = -1
+        // Align with getCurrentTokenUsage: base is the usage of the LAST
+        // assistant WITH token data (it skips tokenless aborted requests).
+        // Count additions after that same assistant — not after the last
+        // assistant by role. If the role-last assistant has no token data,
+        // the gap between the two (user message + aborted output) would
+        // otherwise be undercounted.
+        let baseAssistant = -1
         for (let i = messages.length - 1; i >= 0; i--) {
-            if (messages[i].info.role === "assistant") {
-                lastAssistant = i
-                break
+            if (messages[i].info.role !== "assistant") continue
+            const tokens = (messages[i].info as AssistantMessage).tokens
+            if ((tokens?.input || 0) <= 0 && (tokens?.output || 0) <= 0) continue
+            baseAssistant = i
+            break
+        }
+        if (baseAssistant >= 0) {
+            let additions = 0
+            for (let i = baseAssistant + 1; i < messages.length; i++) {
+                additions += countAllMessageTokens(messages[i])
             }
+            return base + additions
         }
-        let additions = 0
-        for (let i = lastAssistant + 1; i < messages.length; i++) {
-            additions += countAllMessageTokens(messages[i])
-        }
-        return base + additions
+        // base > 0 without a token-data assistant means getCurrentTokenUsage
+        // itself fell back to content estimation — redo it here with the
+        // system prompt estimate included.
     }
 
     let total = 0
@@ -99,6 +112,10 @@ export function estimateWireTokens(state: SessionState, messages: WithParts[]): 
  *
  * Never touches: the first user message, the last 3 messages, protectedTools,
  * compress-tool outputs (summaries), or already-cleared outputs.
+ *
+ * Note: the estimate is computed before message-ID tags and nudge text are
+ * injected later in the pipeline; those additions (a few hundred tokens) are
+ * absorbed by the completion reserve.
  */
 export function enforceContextBudget(
     state: SessionState,
@@ -109,7 +126,17 @@ export function enforceContextBudget(
     const window = resolveContextWindow(state)
     if (window === undefined) return undefined
 
-    const reserve = config.compress?.completionReserveTokens ?? DEFAULT_COMPLETION_RESERVE_TOKENS
+    // Config validation warns on bad values but does not block loading, so
+    // defend here: a non-numeric reserve would make `budget` NaN and every
+    // `<= budget` break condition false → the guard would truncate ALL
+    // candidates with no early exit.
+    const configuredReserve = config.compress?.completionReserveTokens
+    const reserve =
+        typeof configuredReserve === "number" &&
+        Number.isFinite(configuredReserve) &&
+        configuredReserve >= 0
+            ? configuredReserve
+            : DEFAULT_COMPLETION_RESERVE_TOKENS
     const budget = window - reserve
     if (budget <= 0) return undefined
 
@@ -171,6 +198,10 @@ export function enforceContextBudget(
             prefix +
             `\n\n...${TRUNCATION_MARKER} — original ~${c.tokens} tokens]...\n\n` +
             suffix
+        // Content just over the 4000-char threshold: prefix and suffix
+        // overlap and the marker line makes the "truncated" form LONGER.
+        // Skip it (phase 2 may still clear it) instead of growing it.
+        if (truncated.length >= c.content.length) continue
         c.part.state.output = truncated
         saved += c.tokens - countTokens(truncated)
         truncatedCount++
