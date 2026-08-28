@@ -5,6 +5,7 @@ import type {
     SessionState,
     WithParts,
 } from "./types"
+import type { PluginConfig } from "../config"
 import { isIgnoredUserMessage, messageHasCompress } from "../messages/query"
 import { isMessageWithInfo } from "../messages/shape"
 import { countTokens } from "../token-utils"
@@ -406,4 +407,33 @@ export function resetOnCompaction(state: SessionState): void {
         byRef: new Map<string, string>(),
         nextRef: 1,
     }
+}
+
+/**
+ * The context window ACP's safety net should operate against.
+ *
+ * `source: "model"` — the real model limit (learned from the system hook,
+ * persisted, or resolved from the catalog). `source: "fallback"` — the
+ * configured `compress.contextLimitFallback`, used only when the model limit
+ * is unknown. Returns `undefined` when neither is available (fallback
+ * disabled via `contextLimitFallback: 0` and no model limit) — the legacy
+ * "no safety net" behavior.
+ */
+export interface EffectiveContextLimit {
+    limit: number
+    source: "model" | "fallback"
+}
+
+export function resolveEffectiveContextLimit(
+    state: SessionState,
+    config: PluginConfig,
+): EffectiveContextLimit | undefined {
+    if (typeof state.modelContextLimit === "number" && state.modelContextLimit > 0) {
+        return { limit: state.modelContextLimit, source: "model" }
+    }
+    const fallback = config.compress.contextLimitFallback
+    if (typeof fallback === "number" && fallback > 0) {
+        return { limit: fallback, source: "fallback" }
+    }
+    return undefined
 }

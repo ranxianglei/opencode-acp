@@ -23,7 +23,7 @@ import {
 } from "../utils"
 import { getLastUserMessage, isIgnoredUserMessage, isSyntheticMessage } from "../query"
 import { getCurrentTokenUsage } from "../../token-utils"
-import { getActiveSummaryTokenUsage } from "../../state/utils"
+import { getActiveSummaryTokenUsage, resolveEffectiveContextLimit } from "../../state/utils"
 
 export interface LastUserModelContext {
     providerId: string | undefined
@@ -109,6 +109,13 @@ function resolveContextTokenLimit(
     modelId: string | undefined,
     threshold: "max" | "min",
 ): number | undefined {
+    // [FIX #346] Resolve percentage thresholds against the EFFECTIVE limit
+    // (model limit, or the configured fallback when the model limit is
+    // unknown). Previously a percentage threshold resolved to undefined when
+    // state.modelContextLimit was undefined — which, in headless spawn+resume
+    // mode, was every request — so no nudge anchor could ever be added.
+    const effectiveLimit = resolveEffectiveContextLimit(state, config)
+
     const parseLimitValue = (limit: number | `${number}%` | undefined): number | undefined => {
         if (limit === undefined) {
             return undefined
@@ -118,7 +125,7 @@ function resolveContextTokenLimit(
             return limit
         }
 
-        if (!limit.endsWith("%") || state.modelContextLimit === undefined) {
+        if (!limit.endsWith("%") || effectiveLimit === undefined) {
             return undefined
         }
 
@@ -129,7 +136,7 @@ function resolveContextTokenLimit(
 
         const roundedPercent = Math.round(parsedPercent)
         const clampedPercent = Math.max(0, Math.min(100, roundedPercent))
-        return Math.round((clampedPercent / 100) * state.modelContextLimit)
+        return Math.round((clampedPercent / 100) * effectiveLimit.limit)
     }
 
     const modelLimits =
@@ -194,11 +201,16 @@ export function isContextOverLimits(
         }
     }
 
+    // [FIX #346] Report the EFFECTIVE limit (model or fallback) so downstream
+    // consumers (emergency override, usage displays, block guidance) operate
+    // against the same window the thresholds above were computed from.
+    const effectiveLimit = resolveEffectiveContextLimit(state, config)
+
     return {
         overMaxLimit,
         overMinLimit,
         currentTokens,
-        modelContextLimit: state.modelContextLimit,
+        modelContextLimit: effectiveLimit?.limit,
     }
 }
 

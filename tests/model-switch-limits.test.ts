@@ -17,7 +17,7 @@
 
 import assert from "node:assert/strict"
 import test from "node:test"
-import { mkdtempSync, rmSync } from "node:fs"
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 import type { PluginConfig } from "../lib/config"
@@ -154,11 +154,16 @@ function collectText(messages: WithParts[]): string {
 async function runTransform(opts: {
     currentTokens: number
     modelId: string
-    initialLimit: number
+    initialLimit: number | undefined
     initialModel?: { providerID: string; modelID: string }
     catalog?: Array<[providerId: string, modelId: string, limit: number]>
+    client?: unknown
+    logger?: Logger
+    config?: PluginConfig
 }): Promise<{ text: string; state: SessionState }> {
     const tempDir = mkdtempSync(join(tmpdir(), "acp-model-switch-"))
+    const prevDataHome = process.env.XDG_DATA_HOME
+    const prevConfigHome = process.env.XDG_CONFIG_HOME
     process.env.XDG_DATA_HOME = tempDir
     process.env.XDG_CONFIG_HOME = tempDir
 
@@ -180,10 +185,10 @@ async function runTransform(opts: {
         }
 
         const handler = createChatMessageTransformHandler(
-            createMockClient(),
+            opts.client ?? createMockClient(),
             registry,
-            new Logger(false),
-            buildConfig(),
+            opts.logger ?? new Logger(false),
+            opts.config ?? buildConfig(),
             createMockPrompts(),
             { global: undefined, agents: {} },
         )
@@ -201,6 +206,10 @@ async function runTransform(opts: {
         return { text: collectText(messages), state }
     } finally {
         rmSync(tempDir, { recursive: true, force: true })
+        if (prevDataHome === undefined) delete process.env.XDG_DATA_HOME
+        else process.env.XDG_DATA_HOME = prevDataHome
+        if (prevConfigHome === undefined) delete process.env.XDG_CONFIG_HOME
+        else process.env.XDG_CONFIG_HOME = prevConfigHome
     }
 }
 
@@ -389,5 +398,226 @@ test("hydrateModelLimitsFromClient tolerates missing and throwing clients", asyn
             config: { providers: async () => { throw new Error("offline") } },
         }),
         0,
+    )
+})
+
+// ─── Issue #346: spawn+resume loses the limit (no persistence, empty catalog) ─
+
+test("catalog miss + provider config available: lazy hydration resolves the limit (#346)", async () => {
+    // Production path: headless spawn+resume, init-time seed raced server
+    // readiness and left the catalog empty. During the request the server is
+    // up, so a one-time lazy hydration must recover the limit.
+    const { state } = await runTransform({
+        currentTokens: 100_000,
+        modelId: NEW_MODEL,
+        initialLimit: undefined,
+        client: {
+            session: { get: async () => ({ data: { parentID: null } }) },
+            config: {
+                providers: async () => ({
+                    data: {
+                        providers: [
+                            {
+                                id: PROVIDER,
+                                models: { [NEW_MODEL]: { limit: { context: NEW_LIMIT } } },
+                            },
+                        ],
+                    },
+                }),
+            },
+        },
+    })
+
+    assert.equal(state.modelContextLimit, NEW_LIMIT, "limit must resolve via lazy hydration")
+})
+
+test("system.transform persists the limit so spawned processes resume with it (#346)", async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "acp-persist-"))
+    const prevDataHome = process.env.XDG_DATA_HOME
+    const prevConfigHome = process.env.XDG_CONFIG_HOME
+    process.env.XDG_DATA_HOME = tempDir
+    process.env.XDG_CONFIG_HOME = tempDir
+
+    try {
+        const state = createSessionState()
+        state.sessionId = SID
+        const registry = createTestRegistry(state)
+        const handler = createSystemPromptHandler(
+            registry,
+            new Logger(false),
+            buildConfig(),
+            createMockPrompts(),
+        )
+
+        await handler(
+            {
+                sessionID: SID,
+                model: { id: NEW_MODEL, providerID: PROVIDER, limit: { context: NEW_LIMIT } },
+            },
+            { system: ["base system prompt"] },
+        )
+        // saveSessionState is fire-and-forget — poll for the write to land
+        // (a fixed sleep would race slow CI).
+        const file = join(tempDir, "opencode", "storage", "plugin", "acp", `${SID}.json`)
+        let persisted: Record<string, unknown> | undefined
+        const deadline = Date.now() + 2000
+        while (!persisted && Date.now() < deadline) {
+            if (existsSync(file)) {
+                persisted = JSON.parse(readFileSync(file, "utf8"))
+            } else {
+                await new Promise((resolve) => setTimeout(resolve, 50))
+            }
+        }
+        assert.ok(persisted, "state file must be written by the system hook")
+        assert.equal(persisted.modelContextLimit, NEW_LIMIT)
+        assert.equal(persisted.modelProviderID, PROVIDER)
+        assert.equal(persisted.modelID, NEW_MODEL)
+    } finally {
+        rmSync(tempDir, { recursive: true, force: true })
+        if (prevDataHome === undefined) delete process.env.XDG_DATA_HOME
+        else process.env.XDG_DATA_HOME = prevDataHome
+        if (prevConfigHome === undefined) delete process.env.XDG_CONFIG_HOME
+        else process.env.XDG_CONFIG_HOME = prevConfigHome
+    }
+})
+
+test("internal-agent system prompts must not overwrite the session limit (#346)", async () => {
+    // Title/summary/compaction agents run on their own small model; their
+    // system.transform must not corrupt the session's real limit.
+    const state = createSessionState()
+    state.sessionId = SID
+    state.modelContextLimit = OLD_LIMIT
+    state.modelProviderID = PROVIDER
+    state.modelID = OLD_MODEL
+    const registry = createTestRegistry(state)
+    const handler = createSystemPromptHandler(
+        registry,
+        new Logger(false),
+        buildConfig(),
+        createMockPrompts(),
+    )
+
+    await handler(
+        {
+            sessionID: SID,
+            model: { id: "title-model", providerID: PROVIDER, limit: { context: 8_000 } },
+        },
+        { system: ["You are a title generator for conversations."] },
+    )
+
+    assert.equal(state.modelContextLimit, OLD_LIMIT, "title-agent limit must not overwrite")
+    assert.equal(state.modelID, OLD_MODEL)
+})
+
+test("hydrateAndResolve: cached hit never touches the client", async () => {
+    const registry = new SessionStateRegistry(new Logger(false))
+    registry.recordModelLimit(PROVIDER, NEW_MODEL, NEW_LIMIT)
+    let calls = 0
+    const client = {
+        config: {
+            providers: async () => {
+                calls++
+                return { data: { providers: [] } }
+            },
+        },
+    }
+
+    assert.equal(await registry.hydrateAndResolve(client, PROVIDER, NEW_MODEL), NEW_LIMIT)
+    assert.equal(calls, 0)
+})
+
+test("hydrateAndResolve: hydrates at most once per process, then stops retrying (#346)", async () => {
+    const registry = new SessionStateRegistry(new Logger(false))
+    let calls = 0
+    const client = {
+        config: {
+            providers: async () => {
+                calls++
+                return {
+                    data: {
+                        providers: [
+                            {
+                                id: PROVIDER,
+                                models: { [NEW_MODEL]: { limit: { context: NEW_LIMIT } } },
+                            },
+                        ],
+                    },
+                }
+            },
+        },
+    }
+
+    assert.equal(await registry.hydrateAndResolve(client, PROVIDER, "missing-1"), undefined)
+    assert.equal(await registry.hydrateAndResolve(client, PROVIDER, "missing-2"), undefined)
+    assert.equal(calls, 1, "second miss must not re-hydrate")
+    assert.equal(await registry.hydrateAndResolve(client, PROVIDER, NEW_MODEL), NEW_LIMIT)
+    assert.equal(calls, 1, "cached hit after hydration must not re-hydrate")
+})
+
+test("hydrateAndResolve: tolerates throwing clients", async () => {
+    const registry = new SessionStateRegistry(new Logger(false))
+    const client = {
+        config: { providers: async () => { throw new Error("offline") } },
+    }
+
+    assert.equal(await registry.hydrateAndResolve(client, PROVIDER, NEW_MODEL), undefined)
+})
+
+test("hard guard: ERROR log when post-transform context exceeds the model budget (#346)", async () => {
+    const errors: string[] = []
+    const logger = {
+        debug: () => {},
+        info: () => {},
+        warn: () => {},
+        error: (msg: string) => {
+            errors.push(msg)
+        },
+        saveContext: () => {},
+        child: () => logger,
+    } as unknown as Logger
+
+    // 190k post-transform on a 200k window: budget = 200_000 − ~1k system
+    // prompt − 16_384 output reserve ≈ 182.6k < 190.05k → the request would
+    // exceed max_model_len; the guard must log a loud error.
+    await runTransform({
+        currentTokens: 190_000,
+        modelId: OLD_MODEL,
+        initialLimit: OLD_LIMIT,
+        initialModel: { providerID: PROVIDER, modelID: OLD_MODEL },
+        catalog: [[PROVIDER, OLD_MODEL, OLD_LIMIT]],
+        logger,
+    })
+
+    assert.ok(
+        errors.some((e) => e.includes("ACP hard guard")),
+        `expected an ACP hard guard error, got: ${JSON.stringify(errors)}`,
+    )
+})
+
+test("hard guard: silent when post-transform context fits the budget", async () => {
+    const errors: string[] = []
+    const logger = {
+        debug: () => {},
+        info: () => {},
+        warn: () => {},
+        error: (msg: string) => {
+            errors.push(msg)
+        },
+        saveContext: () => {},
+        child: () => logger,
+    } as unknown as Logger
+
+    await runTransform({
+        currentTokens: 100_000,
+        modelId: OLD_MODEL,
+        initialLimit: OLD_LIMIT,
+        initialModel: { providerID: PROVIDER, modelID: OLD_MODEL },
+        catalog: [[PROVIDER, OLD_MODEL, OLD_LIMIT]],
+        logger,
+    })
+
+    assert.ok(
+        !errors.some((e) => e.includes("ACP hard guard")),
+        `unexpected ACP hard guard error: ${JSON.stringify(errors)}`,
     )
 })

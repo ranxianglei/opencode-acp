@@ -32,6 +32,7 @@ export function createTestRegistry(seedState: SessionState) {
     // Same implementation the real registry uses — composing the factory here
     // instead of hand-rolling a copy keeps the stub from drifting.
     const modelLimits = createModelLimitCatalog()
+    let hydratedOnce = false
     return {
         compressionTiming: sharedTiming,
         get size() {
@@ -67,6 +68,24 @@ export function createTestRegistry(seedState: SessionState) {
             providerId: string | undefined,
             modelId: string | undefined,
         ): number | undefined {
+            return modelLimits.resolve(providerId, modelId)
+        },
+        // [FIX #346] Mirrors SessionStateRegistry.hydrateAndResolve — the
+        // messages transform calls it on a catalog miss. Hydrates at most
+        // once per registry instance, like the real one.
+        async hydrateAndResolve(
+            client: unknown,
+            providerId: string,
+            modelId: string,
+        ): Promise<number | undefined> {
+            const existing = modelLimits.resolve(providerId, modelId)
+            if (existing !== undefined) {
+                return existing
+            }
+            if (!hydratedOnce) {
+                hydratedOnce = true
+                await modelLimits.hydrateFromClient(client)
+            }
             return modelLimits.resolve(providerId, modelId)
         },
     }

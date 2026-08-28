@@ -8,6 +8,7 @@ import { saveSessionState } from "../state/persistence"
 import { assignMessageRefs } from "../message-ids"
 import { syncCompressionBlocks } from "../messages"
 import { getCurrentTokenUsage } from "../token-utils"
+import { resolveEffectiveContextLimit } from "../state/utils"
 import {
     fetchSessionMessages,
     buildSearchContext,
@@ -276,10 +277,10 @@ export function createDecompressTool(factoryCtx: ToolFactoryContext): ReturnType
             const ctx = resolveToolContext(factoryCtx, toolCtx.sessionID)
             const { rawMessages } = await prepareDecompressSession(ctx, toolCtx)
 
-            const contextUsageBefore = ctx.state.modelContextLimit
+            const effectiveLimitBefore = resolveEffectiveContextLimit(ctx.state, ctx.config)
+            const contextUsageBefore = effectiveLimitBefore
                 ? Math.round(
-                      (getCurrentTokenUsage(ctx.state, rawMessages) /
-                          ctx.state.modelContextLimit) *
+                      (getCurrentTokenUsage(ctx.state, rawMessages) / effectiveLimitBefore.limit) *
                           100,
                   )
                 : undefined
@@ -359,10 +360,10 @@ export function createDecompressTool(factoryCtx: ToolFactoryContext): ReturnType
                 ctx.state.stats.totalPruneTokens - restoredTokens,
             )
 
-            const contextUsageAfter = ctx.state.modelContextLimit
+            const effectiveLimitAfter = resolveEffectiveContextLimit(ctx.state, ctx.config)
+            const contextUsageAfter = effectiveLimitAfter
                 ? Math.round(
-                      (getCurrentTokenUsage(ctx.state, rawMessages) /
-                          ctx.state.modelContextLimit) *
+                      (getCurrentTokenUsage(ctx.state, rawMessages) / effectiveLimitAfter.limit) *
                           100,
                   )
                 : undefined
