@@ -2,8 +2,8 @@
 
 - Task ID: `2026-08-28_overflow-guard`
 - Home Repo: `opencode-acp`
-- Status: InProgress
-- Updated: 2026-08-28
+- Status: InReview
+- Updated: 2026-08-29
 
 ## 1. Summary
 
@@ -31,6 +31,28 @@
 |--------|-------------|
 | tip of `2026-08-28_overflow-guard` | feat: request-side overflow guard + uncalibrated-window WARN (#347) |
 
+### Review Round 1 (dual-agent)
+
+- **Blocking (fixed)** — B1: `estimateWireTokens` read only the last assistant's
+  provider-reported usage, which is the context size *after* the last LLM call and so
+  omits tool outputs appended *after* that call. A mid-turn sub-request (opencode runs
+  messages.transform on every LLM call) could therefore be under-estimated by the size
+  of a freshly-completed tool output and still 400. Fix: add the last assistant's
+  trailing completed tool outputs to the estimate (conservative — exact when the last
+  step has text, over-counts only for tool-calls-only steps, the safe direction).
+  Regression test added and verified to fail without the fix.
+- **Non-blocking (fixed)**: the "recent-message protection zone" test was vacuous
+  (the gap stopped the guard before the zone, so it passed even with
+  `computeProtectedRefs` removed) — reworked so the gap forces the guard into the zone
+  and asserts the zone-protected message is skipped while an ERROR is logged. Added a
+  production-shape test (last assistant message carrying a trailing completed tool part)
+  covering current-turn protection. Added an ERROR log for the "over budget but nothing
+  clearable" case (previously a silent no-op). Added a test pinning an explicit
+  `overflowGuardReserve: 0` (nullish, not falsy).
+- **Non-blocking (kept as-is, with rationale)**: the test keeps a local copy of
+  `CLEAR_PLACEHOLDER` rather than importing it — importing would make the assertion
+  tautological; the local copy catches source drift.
+
 ### Key Files
 
 - `lib/messages/prune-to-fit.ts` — **new**. `pruneToFit` (the guard) +
@@ -47,7 +69,7 @@
 - `lib/state/types.ts`, `lib/state/state.ts` — transient fields
   `uncalibratedWindowTransforms` / `uncalibratedWindowWarned` (init + reset).
 - `lib/messages/index.ts` — barrel exports for both new modules.
-- `tests/prune-to-fit.test.ts` — **new**, 25 tests.
+- `tests/prune-to-fit.test.ts` — **new**, 28 tests.
 
 ## 3. Design & Implementation Notes
 
@@ -62,9 +84,10 @@
     the absolute `modelMaxLimits[provider/model]`, else the absolute
     `maxContextLimit`; `undefined` when only a percent is configured (a percent is a
     nudge threshold, not a window — using it would massively over-prune).
-  - Estimate = `getCurrentTokenUsage` (O(1) provider usage) + `WIRE_SAFETY_MARGIN`
-    (8192) to cover the new user message + nudges; precise count only when there's no
-    provider token data.
+   - Estimate = `getCurrentTokenUsage` (O(1) provider usage) + the last assistant's
+     trailing completed tool outputs (appended after the last LLM call, so absent from
+     the provider usage — review finding B1) + `WIRE_SAFETY_MARGIN` (8192) to cover the
+     new user message + nudges; precise count only when there's no provider token data.
   - The guard iterates oldest→newest, skipping the current turn, user messages, the
     recent-message protection zone (`computeProtectedRefs`), protected tools, and
     protected file paths (Bug 39 parity). It clears a tool output by setting
@@ -85,8 +108,8 @@ node --import tsx --test tests/*.test.ts
 
 ### Test Coverage
 
-- New/modified test files: `tests/prune-to-fit.test.ts` (new, 25 tests).
-- Test count: 1054 total, 1054 pass, 0 fail (full suite).
+- New/modified test files: `tests/prune-to-fit.test.ts` (new, 28 tests).
+- Test count: 1057 total, 1057 pass, 0 fail (full suite).
 - Key scenarios verified:
   - `resolveKnownWindow`: model limit wins; per-model absolute fallback; global
     absolute fallback; per-model precedence; percent → undefined; nothing → undefined.
@@ -94,15 +117,19 @@ node --import tsx --test tests/*.test.ts
     multiple for a large gap (never the last); skips protected tools; skips protected
     file paths; idempotent on already-cleared; no-op when disabled; no-op with no
     known window; fires via absolute `maxContextLimit`; no-op when `safeBudget <= 0`;
-    respects the recent-message protection zone; no crash on empty/no-tool input;
-    logs WARN on fit, ERROR when it cannot fit.
+     respects the recent-message protection zone (gap forced into the zone); no crash
+     on empty/no-tool input; logs WARN on fit, ERROR when it cannot fit, and ERROR when
+     over budget but nothing is clearable; counts trailing tool outputs appended after
+     the last LLM call (B1 regression — verified to fail without the fix); does not
+     clear the current turn's trailing tool output; respects an explicit
+     `overflowGuardReserve: 0` (nullish, not falsy).
   - `trackUncalibratedWindow`: warns once at threshold; never warns when calibrated;
     dedup across many transforms; counter resets on calibration then re-climbs;
     multi-turn accumulation.
 
 ### Results
 
-- **PASS/FAIL**: PASS (typecheck clean, build clean, 1054/1054 tests pass).
+- **PASS/FAIL**: PASS (typecheck clean, build clean, 1057/1057 tests pass).
 - **Key logs/data**: n/a (unit-level).
 
 ## 5. Risk Assessment & Rollback

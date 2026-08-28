@@ -196,6 +196,33 @@ function makeAssistantWithTokens(id: string, inputTokens: number, text = "ok"): 
     }
 }
 
+/** Production shape: an assistant message whose LAST part is a completed tool
+ *  result appended after the LLM call (so it is absent from `tokens.input`). */
+function makeAssistantWithTrailingTool(
+    id: string,
+    inputTokens: number,
+    toolOutput: string,
+): WithParts {
+    return {
+        info: {
+            id,
+            role: "assistant",
+            sessionID: "session-1",
+            createdAt: new Date().toISOString(),
+            tokens: { input: inputTokens, output: 100 },
+        } as any,
+        parts: [
+            { type: "text", text: "ok" },
+            {
+                type: "tool",
+                tool: "bash",
+                callID: `call-${id}`,
+                state: { status: "completed", output: toolOutput, input: {}, time: {} },
+            },
+        ] as any,
+    }
+}
+
 function getOutput(msg: WithParts): string {
     return (msg.parts[0] as any).state.output as string
 }
@@ -442,22 +469,36 @@ test("pruneToFit: no-op when safeBudget is non-positive (reserve >= window)", ()
 
 test("pruneToFit: respects the recent-message protection zone (byRawId + preserveRecentMessages)", () => {
     const config = makeConfig({ compress: { preserveRecentMessages: 2, preserveRecentTokens: 0 } })
+    const { logger, calls } = makeCapturingLogger()
     const state = makeState({ modelContextLimit: 200000 })
     const messages: WithParts[] = []
     for (let i = 0; i < 6; i++) messages.push(makeToolMessage(`msg-${i}`, DENSE))
-    messages.push(makeAssistantWithTokens("msg-asst", 218940))
+    // estimate = 327000 + 100 + 8192 = 335292; gap = 168060 → needs ~6 clears,
+    // forcing the guard all the way to the protected zone.
+    messages.push(makeAssistantWithTokens("msg-asst", 327000))
 
-    // Give refs so computeProtectedRefs can protect the last 2 visible messages.
+    // Give refs so computeProtectedRefs protects the last 2 visible messages
+    // (msg-5 + msg-asst). msg-4 sits just outside the zone.
     const byRawId = new Map<string, string>()
     messages.forEach((m, i) => byRawId.set(m.info.id, `m${String(i + 1).padStart(5, "0")}`))
     state.messageIds.byRawId = byRawId
 
-    pruneToFit(state, config, noopLogger, messages)
+    pruneToFit(state, config, logger, messages)
 
-    // The last two tool messages (msg-4, msg-5) are in the protected zone.
-    assert.equal(isCleared(messages[4]!), false, "msg-4 (recent) must be protected")
-    assert.equal(isCleared(messages[5]!), false, "msg-5 (recent) must be protected")
-    assert.equal(isCleared(messages[0]!), true, "oldest msg-0 should be cleared")
+    // Gap requires ~6 clears; the guard clears msg-0..4 (5) then reaches msg-5,
+    // which is in the protected zone and is skipped (not because the guard
+    // stopped — the budget is still exceeded).
+    for (let i = 0; i < 5; i++) {
+        assert.equal(isCleared(messages[i]!), true, `msg-${i} should be cleared`)
+    }
+    assert.equal(
+        isCleared(messages[5]!),
+        false,
+        "msg-5 is in the recent zone and must be protected",
+    )
+    // Nothing more is clearable (msg-5 protected, msg-asst is the current turn) → ERROR.
+    const errors = calls.filter((c) => c.level === "error" && c.message.includes("overflow guard"))
+    assert.equal(errors.length, 1, "should log an ERROR when the zone blocks the last needed clear")
 })
 
 test("pruneToFit: no crash on empty messages / no tool outputs", () => {
@@ -501,6 +542,64 @@ test("pruneToFit: logs an ERROR when it clears everything but still exceeds the 
 
     const errors = calls.filter((c) => c.level === "error" && c.message.includes("overflow guard"))
     assert.equal(errors.length, 1, "should log an overflow-guard ERROR when it cannot fit")
+})
+
+test("pruneToFit: counts trailing tool outputs appended after the last LLM call (B1)", () => {
+    const config = makeConfig()
+    const state = makeState({ modelContextLimit: 200000 })
+    // safeBudget = 200000 - 32768 = 167232. The last assistant's provider tokens
+    // (140000) do NOT include its trailing tool output (DENSE ~28001). Without the
+    // B1 fix, estimate = 140000 + 100 + 8192 = 148292 < 167232 → no fire. With the
+    // fix, estimate = 148292 + 28001 = 176293 > 167232 → fire.
+    const messages: WithParts[] = [
+        makeToolMessage("msg-old", DENSE),
+        makeAssistantWithTrailingTool("msg-asst", 140000, DENSE),
+    ]
+
+    pruneToFit(state, config, noopLogger, messages)
+
+    // The guard fires and clears the OLDER output, not the last assistant's
+    // trailing output (current turn — protected via lastMsgId).
+    assert.equal(isCleared(messages[0]!), true, "older tool output should be cleared")
+    const trailing = (messages[1]!.parts[1] as any).state.output
+    assert.equal(trailing, DENSE, "last assistant's trailing tool output must NOT be cleared")
+})
+
+test("pruneToFit: does not clear the current turn's trailing tool output even when it is the only overflow", () => {
+    const config = makeConfig()
+    const state = makeState({ modelContextLimit: 200000 })
+    // Only the last assistant carries a big trailing tool output; there is no
+    // older clearable output. The guard may fire (estimate over budget) but must
+    // not clear the current turn — it logs an ERROR instead.
+    const { logger, calls } = makeCapturingLogger()
+    const messages: WithParts[] = [makeAssistantWithTrailingTool("msg-asst", 200000, DENSE)]
+
+    pruneToFit(state, config, logger, messages)
+
+    const trailing = (messages[0]!.parts[1] as any).state.output
+    assert.equal(trailing, DENSE, "current turn's trailing tool output must NOT be cleared")
+    const errors = calls.filter((c) => c.level === "error" && c.message.includes("overflow guard"))
+    assert.equal(errors.length, 1, "should log an ERROR (over window, nothing clearable)")
+})
+
+test("pruneToFit: respects an explicit overflowGuardReserve of 0 (nullish, not falsy)", () => {
+    const config = makeConfig({ compress: { overflowGuardReserve: 0 } })
+    const state = makeState({ modelContextLimit: 200000 })
+    // safeBudget = 200000 - 0 = 200000 (reserve 0 respected, not defaulted to 32768).
+    // estimate = 195000 + 100 + 8192 = 203292 > 200000 → fire.
+    const messages: WithParts[] = [
+        makeToolMessage("msg-0", DENSE),
+        makeTextMessage("msg-user", "hello"),
+        makeAssistantWithTokens("msg-asst", 195000),
+    ]
+
+    pruneToFit(state, config, noopLogger, messages)
+
+    assert.equal(
+        isCleared(messages[0]!),
+        true,
+        "reserve 0 must be respected (budget = full window)",
+    )
 })
 
 // ---------------------------------------------------------------------------

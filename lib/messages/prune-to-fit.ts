@@ -77,18 +77,38 @@ export function resolveKnownWindow(
 }
 
 /**
- * Estimate the wire size (in tokens) of the outgoing request.
+ * Estimate the outgoing request's wire size (tokens).
  *
- * Primary: the provider-reported usage of the last assistant turn
- * (`getCurrentTokenUsage`), which equals the current prompt minus the delta of
- * the new user message + nudges. We add {@link WIRE_SAFETY_MARGIN} to cover that
- * delta. Fallback (no usable token data, e.g. first turn): a precise count of all
- * message content plus the system prompt.
+ * Primary: the last assistant turn's provider-reported usage
+ * (`getCurrentTokenUsage`) — the context size AFTER that LLM call — plus:
+ * (1) the trailing completed tool outputs of the last assistant message, which
+ *     are appended AFTER the last LLM call and so absent from that usage
+ *     (opencode runs messages.transform on every LLM call; a mid-turn
+ *     sub-request otherwise misses fresh tool outputs — issue #347 B1). The
+ *     trailing-run count is exact when the last step has text and only
+ *     over-counts for tool-calls-only steps (safe: clears more, never less);
+ * (2) {@link WIRE_SAFETY_MARGIN} for the new user message + nudges.
+ *
+ * Fallback (only when `getCurrentTokenUsage` is 0): precise count of all
+ * message content + system prompt.
  */
 function estimateWireTokens(state: SessionState, messages: WithParts[]): number {
     const base = getCurrentTokenUsage(state, messages)
     if (base > 0) {
-        return base + WIRE_SAFETY_MARGIN
+        // Trailing completed tool outputs were appended after the last LLM call,
+        // so they are absent from `base` — count them (issue #347 B1).
+        let trailing = 0
+        const lastAsst = [...messages].reverse().find((m) => m.info.role === "assistant")
+        if (lastAsst) {
+            const parts = Array.isArray(lastAsst.parts) ? lastAsst.parts : []
+            for (let i = parts.length - 1; i >= 0; i--) {
+                const p = parts[i]
+                if (p?.type !== "tool") break
+                if (p.state.status !== "completed") break
+                trailing += countTokens(extractCompletedToolOutput(p) ?? "")
+            }
+        }
+        return base + trailing + WIRE_SAFETY_MARGIN
     }
 
     let total = 0
@@ -178,8 +198,6 @@ export function pruneToFit(
         }
     }
 
-    if (clearedCount === 0) return
-
     const after = estimate - freed
     const detail = {
         session: state.sessionId,
@@ -190,6 +208,12 @@ export function pruneToFit(
         clearedCount,
         freedTokens: Math.round(freed),
         afterTokens: Math.round(after),
+    }
+    if (clearedCount === 0) {
+        // Over budget but nothing was clearable — the request is still about to
+        // 400. Surface it so the user knows the guard could not help.
+        logger.error("ACP overflow guard: over window but no clearable tool outputs", detail)
+        return
     }
     if (after <= safeBudget) {
         logger.warn("ACP overflow guard: cleared tool outputs to fit context window", detail)
