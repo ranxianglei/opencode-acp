@@ -157,15 +157,15 @@ Core compression behavior.
 
 #### `compress.maxContextLimit`
 - **Type:** `number | \`${number}%\``
-- **Default:** `"55%"`
+- **Default:** `"80%"`
 - **Status:** ACTIVE
-- **Description:** Upper context usage threshold (as % of model context window or absolute tokens). When exceeded, ACP nudges the model to compress. Example: `"55%"` or `100000`.
+- **Description:** Upper context usage threshold (as % of model context window or absolute tokens). When exceeded, ACP nudges the model to compress. Example: `"80%"` or `100000`.
 
 #### `compress.minContextLimit`
 - **Type:** `number | \`${number}%\``
-- **Default:** `"45%"`
+- **Default:** `"80%"`
 - **Status:** ACTIVE
-- **Description:** Lower context usage threshold. ACP stops nudging when usage drops below this level.
+- **Description:** Lower context usage threshold. ACP stops nudging (growth, turn, and iteration reminders) when usage drops below this level. If the limit cannot be resolved to a concrete value (a `"X%"` limit with an unknown model context window), growth nudges fall back to growth-only behavior.
 
 #### `compress.modelMaxLimits`
 - **Type:** `Record<string, number | \`${number}%\`>`

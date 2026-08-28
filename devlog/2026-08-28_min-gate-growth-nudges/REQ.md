@@ -36,7 +36,9 @@
 ## 4. Constraints & Non-Goals
 
 - **Constraints**:
-  - Backward compatibility: default config always sets `minContextLimit` (45%), so default users keep a defined gate. `overMaxLimit` and emergency paths must be unaffected (they imply/override the min gate).
+  - Backward compatibility: default config always sets `minContextLimit` (80%, raised from 45% in v1.14.16 / PR #295), so default users keep a defined gate. Note the consequence: with the default `minContextLimit = maxContextLimit = 80%`, growth nudges now only fire at ≥80% of the model context window (previously they fired as soon as growth crossed `nudgeGrowthTokens`). This is the documented behavior, but it is a visible change for default users.
+  - Unresolvable limits: if `minContextLimit` cannot resolve to a concrete value (a `"X%"` limit with an unknown model context window — models that don't report `limit.context`), the min gate must be skipped and growth nudges keep their pre-#342 growth-only behavior. Treating "unresolvable" as "below min" would silently disable growth nudges for all such models (regression found in review).
+  - `overMaxLimit` and emergency paths must be unaffected (they imply/override the min gate).
   - T2/T3 tier-promotion nudges must remain independent of `minContextLimit`.
   - No new dependencies; no change to the external `context-compress-algorithms` package (fix lives in ACP's `inject.ts`).
   - No change to persisted state format or internal `dcp` tags.
@@ -48,20 +50,23 @@
 ## 5. Acceptance Criteria (must be testable)
 
 - **Correctness**:
-  - [ ] A T1 growth nudge does NOT fire when `currentTokens < minContextLimit` (even if `growth >= nudgeGrowthTokens` and `>= growthFloor`).
-  - [ ] A T1 growth nudge DOES fire when `currentTokens >= minContextLimit` and `growth >= nudgeGrowthTokens` and `>= growthFloor`.
-  - [ ] A T1 maximum nudge still fires when `currentTokens >= maxContextLimit` (regardless of min gate).
-  - [ ] The emergency (≥98%) override still fires regardless of the min gate.
-  - [ ] T2/T3 tier-promotion nudges are unaffected by the min gate.
+  - [x] A T1 growth nudge does NOT fire when `currentTokens < minContextLimit` (even if `growth >= nudgeGrowthTokens` and `>= growthFloor`).
+  - [x] A T1 growth nudge DOES fire when `currentTokens >= minContextLimit` and `growth >= nudgeGrowthTokens` and `>= growthFloor`.
+  - [x] A T1 maximum nudge still fires when `currentTokens >= maxContextLimit` (regardless of min gate).
+  - [x] The emergency (≥98%) override still fires regardless of the min gate.
+  - [x] T2/T3 tier-promotion nudges are unaffected by the min gate.
+  - [x] A T1 growth nudge still fires when `minContextLimit` is unresolvable (percent limit + unknown model context limit) — growth-only fallback.
 - **Performance / Stability**: one boolean OR in the existing decision path — no measurable cost.
 - **Regression**:
-  - [ ] New/modified test cases added to test suite and passing.
-  - [ ] Existing tests that asserted the old (buggy) below-min growth behavior are updated to set `minContextLimit` below the test context so the growth mechanism is still exercised.
+  - [x] New/modified test cases added to test suite and passing.
+  - [x] Existing tests that asserted the old (buggy) below-min growth behavior are updated to set `minContextLimit` below the test context so the growth mechanism is still exercised.
 
 ## 6. Proposed Approach
 
 - **Affected modules & entry files**:
-  - `lib/messages/inject/inject.ts` — add `(overMaxLimit || overMinLimit)` to the `nudgeAllowed` growth path.
-  - `tests/inject.test.ts` — fix the one test that set `minContextLimit` above the test context; add new min-gate tests.
-- **Risks**: tests that intentionally isolated the growth mechanism by setting a high `minContextLimit` will now need a lower `minContextLimit`; verified by running the full suite.
+  - `lib/messages/inject/utils.ts` — `isContextOverLimits` returns `minLimitResolved` (whether `minContextLimit` resolved to a concrete value).
+  - `lib/messages/inject/inject.ts` — `nudgeAllowed` growth path now requires `minGateOpen = !minLimitResolved || overMinLimit || overMaxLimit`.
+  - `tests/inject.test.ts` — 7 new min-gate tests (gate, cycle, production config, over-max bypass, unresolvable-limit fallback, emergency bypass, T2 independence); 4 existing tests had `minContextLimit` lowered so they still isolate the growth mechanism (they previously set it above the test context, which the fix now correctly suppresses).
+  - `README.md`, `CONFIGURATION.md` — corrected stale `minContextLimit`/`maxContextLimit` defaults (45%/55% → 80%/80%, matching lib/config.ts since v1.14.16) and the min-gate semantics.
+- **Risks**: tests that intentionally isolated the growth mechanism by setting a high `minContextLimit` will now need a lower `minContextLimit`; verified by running the full suite. A naive `(overMaxLimit || overMinLimit)` gate regresses models that don't report `limit.context` (percent limits become unresolvable → all growth nudges suppressed); the `minLimitResolved` guard fixes this.
 - **Rollback strategy**: single revert commit; no schema/config/data migrations.

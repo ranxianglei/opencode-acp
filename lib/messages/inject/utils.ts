@@ -197,6 +197,10 @@ export function isContextOverLimits(
     return {
         overMaxLimit,
         overMinLimit,
+        // Issue #342: whether minContextLimit resolved to a concrete value
+        // (percent limits need a known model context limit). Callers must not
+        // treat overMinLimit=false as "below min" when the limit is unresolvable.
+        minLimitResolved: minContextLimit !== undefined,
         currentTokens,
         modelContextLimit: state.modelContextLimit,
     }

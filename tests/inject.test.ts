@@ -315,7 +315,9 @@ test("injectCompressNudges: post-compress baseline then small growth does NOT re
     state.modelContextLimit = 1_000_000
     const config = buildConfig()
     config.compress.maxContextLimit = 800_000
-    config.compress.minContextLimit = 550_000
+    // minContextLimit must sit BELOW the turn-2 context (253K) so the min-gate
+    // (issue #342) is open and this test isolates the small-growth threshold.
+    config.compress.minContextLimit = 200_000
 
     // Turn 1: compress detected → baseline set to 250K (200K input + 50K output)
     state.nudges.lastNudgeShownTokens = 200_000
@@ -445,7 +447,10 @@ test("baseline initialized to currentTokens on first transform", () => {
 
     const config = buildConfig()
     config.compress.maxContextLimit = 500_000
-    config.compress.minContextLimit = 200_000
+    // minContextLimit must sit BELOW the turn contexts (55K/58K) so the
+    // min-gate (issue #342) is open and this test isolates baseline
+    // initialization + small-growth suppression.
+    config.compress.minContextLimit = 50_000
 
     // Turn 1: first message transform. currentTokens = 55K (input 50K + output 5K).
     // Baseline is undefined → gets initialized to currentTokens. No nudge fires.
@@ -1876,8 +1881,10 @@ test("Issue #255: stable system prompt cache survives compression in multi-turn 
 // ── Issue #342: T1 growth nudges must respect minContextLimit ───────────────
 // computeShouldNudge() only uses overMinLimit to pick the tips variant, so the
 // min-gate is enforced in inject.ts (nudgeAllowed). These tests lock that gate:
-// growth nudges are suppressed below min and fire once context crosses it, while
-// over-max / emergency paths and T2/T3 tier promotion remain independent.
+// growth nudges are suppressed below min and fire once context crosses it; the
+// gate is bypassed by over-max and by the emergency override; it is skipped when
+// minContextLimit is unresolvable (percent limit + unknown model limit); and
+// T2/T3 tier promotion stays independent of it.
 
 test("issue #342: growth nudge suppressed below minContextLimit, fires once context crosses min", () => {
     const state = createSessionState()
@@ -2046,5 +2053,120 @@ test("issue #342: over-max nudge bypasses the min gate", () => {
     injectCompressNudges(state, config, logger, messages, {} as any)
     assert.equal(state.nudges.shouldInjectThisTurn, true, "550K > 500K max → nudge fires despite 550K < 600K min (overMaxLimit bypass)")
     assert.equal(state.nudges.lastNudgeShownTokens, 550_000, "nudge baseline set")
+    assert.equal(state.nudges.lastPerMessageNudgeTokens, 100_000, "baseline NOT updated after nudge — only compress resets")
+})
+
+test("issue #342: growth nudge still fires when minContextLimit is unresolvable (percent limit, unknown model limit)", () => {
+    // Regression lock (review finding): with a percent minContextLimit and a
+    // model that does not report limit.context, the min limit resolves to
+    // undefined. The min gate must NOT treat that as "below min" — growth
+    // nudges keep their pre-#342 growth-only behavior.
+    const state = createSessionState()
+    // state.modelContextLimit intentionally left undefined
+    state.nudges.lastPerMessageNudgeTokens = 100_000
+    state.messageIds.byRawId.set("u1", "m00001")
+    state.messageIds.byRawId.set("a1", "m00002")
+
+    const config = buildConfig()
+    config.compress.maxContextLimit = "80%"
+    config.compress.minContextLimit = "80%" // the defaults; unresolvable without a model limit
+
+    // currentTokens = 200K (180K+20K). Growth = 200K-100K = 100K >= 50K threshold
+    // AND >= 22.5K floor. min/max unresolvable → minGateOpen → nudge FIRES.
+    const messages: WithParts[] = [
+        userMsg("u1", "hello"),
+        assistantMsgWithTokens("a1", "done", { input: 180_000, output: 20_000 }, [
+            toolPart("c1", "x".repeat(80_000)),
+        ]),
+    ]
+    injectCompressNudges(state, config, logger, messages, {} as any)
+    assert.equal(state.nudges.shouldInjectThisTurn, true, "unresolvable percent min → growth-only behavior preserved (nudge fires)")
+    assert.equal(state.nudges.lastNudgeShownTokens, 200_000, "nudge baseline set")
+    assert.equal(state.nudges.lastPerMessageNudgeTokens, 100_000, "baseline NOT updated after nudge")
+})
+
+test("issue #342: emergency override bypasses the min gate", () => {
+    // REQ §5: the emergency threshold (default 98% of the model context limit)
+    // must nudge even when context is still below minContextLimit.
+    const state = createSessionState()
+    state.modelContextLimit = 1_000_000 // emergency threshold = round(0.98 × 1M) = 980K
+    state.nudges.lastPerMessageNudgeTokens = 100_000
+    state.messageIds.byRawId.set("u1", "m00001")
+    state.messageIds.byRawId.set("a1", "m00002")
+
+    const config = buildConfig()
+    config.compress.maxContextLimit = 1_200_000
+    config.compress.minContextLimit = 990_000 // above current → overMinLimit false
+
+    // currentTokens = 985K (965K+20K). 985K >= 980K emergency threshold but
+    // 985K < 990K min → the min gate would suppress; emergencyOverride bypasses it.
+    const messages: WithParts[] = [
+        userMsg("u1", "hello"),
+        assistantMsgWithTokens("a1", "done", { input: 965_000, output: 20_000 }, [
+            toolPart("c1", "x".repeat(80_000)),
+        ]),
+    ]
+    injectCompressNudges(state, config, logger, messages, {} as any)
+    assert.equal(state.nudges.shouldInjectThisTurn, true, "985K >= 980K emergency → nudge fires despite 985K < 990K min")
+    assert.equal(state.nudges.lastNudgeShownTokens, 985_000, "nudge baseline set")
+    assert.equal(state.nudges.lastPerMessageNudgeTokens, 100_000, "baseline NOT updated after nudge")
+})
+
+test("issue #342: T2 tier-promotion fires below minContextLimit (independent of the min gate)", () => {
+    // REQ §5: T2/T3 tier-promotion nudges have an independent cadence and never
+    // consult overMinLimit — they must fire even while T1 is min-gate suppressed.
+    const state = createSessionState()
+    state.sessionId = "test-t2-min-gate"
+    state.modelContextLimit = 1_000_000
+    state.nudges.lastPerMessageNudgeTokens = 100_000
+
+    const config = buildConfig()
+    config.compress.maxContextLimit = 990_000
+    config.compress.minContextLimit = 950_000 // well above the 200K current context
+    config.compress.nudgeGrowthTokens = 10_000
+    config.compress.minNudgeGrowthFloor = 5_000
+    config.compress.minNudgeGrowthRatio = 0.01
+
+    // Seed T1 blocks so tier1Tokens (25K) >= nudgeGrowthTokens (10K)
+    for (let i = 0; i < 5; i++) {
+        const blockId = i + 1
+        state.prune.messages.blocksById.set(blockId, {
+            blockId,
+            runId: i + 1,
+            active: true,
+            tier: 1,
+            generation: "young",
+            survivedCount: 1,
+            directMessageIds: [],
+            effectiveMessageIds: [],
+            consumedBlockIds: [],
+            parentBlockIds: [],
+            summary: "T1 summary ".repeat(200),
+            summaryTokens: 5_000,
+            topic: `T1 block ${i}`,
+            createdAt: Date.now(),
+        })
+        state.prune.messages.activeBlockIds.add(blockId)
+    }
+
+    state.messageIds.byRawId.set("u1", "m00001")
+    state.messageIds.byRawId.set("a1", "m00002")
+
+    // currentTokens = 200K (180K+20K). T1: growth = 100K >= 10K threshold, but
+    // 200K < 950K min → min gate suppresses T1. T2: tier1Tokens 25K >= 10K,
+    // cadence met, 5 candidates >= 2 → T2 fires below the min context limit.
+    const messages: WithParts[] = [
+        userMsg("u1", "hello"),
+        assistantMsgWithTokens("a1", "done", { input: 180_000, output: 20_000 }, [
+            toolPart("c1", "x".repeat(80_000)),
+        ]),
+    ]
+    injectCompressNudges(state, config, logger, messages, {} as any)
+    assert.equal(state.nudges.shouldInjectThisTurn, true, "T2 fires below minContextLimit (independent cadence)")
+    // T2's tierChecks only run when T1 did NOT fire (`!shouldInject`), so
+    // lastTier2NudgeTokens being set proves T1 stayed min-gate suppressed
+    // while T2 fired below the min context limit.
+    assert.equal(state.nudges.lastTier2NudgeTokens, 200_000, "T2 baseline set → T1 was suppressed by the min gate (T2 only runs when T1 didn't fire)")
+    assert.equal(state.nudges.lastPerMessageNudgeTokens, 100_000, "T1 baseline untouched")
 })
 

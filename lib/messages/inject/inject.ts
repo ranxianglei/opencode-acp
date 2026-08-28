@@ -86,7 +86,7 @@ export const injectCompressNudges = (
 
     const { providerId, modelId } = getModelInfo(messages)
 
-    const { overMaxLimit, overMinLimit, currentTokens, modelContextLimit } = isContextOverLimits(
+    const { overMaxLimit, overMinLimit, minLimitResolved, currentTokens, modelContextLimit } = isContextOverLimits(
         config,
         state,
         providerId,
@@ -305,12 +305,16 @@ export const injectCompressNudges = (
     // Issue #342: a configured minContextLimit must act as a lower bound for T1
     // growth nudges. computeShouldNudge() only uses overMinLimit to pick the
     // tips variant, so without this gate growth nudges fire below the minimum.
-    // overMaxLimit (=> overMinLimit in normal min<max configs) and the emergency
-    // override bypass the gate; T2/T3 tier-promotion nudges below are unaffected.
+    // The gate only applies when minContextLimit resolves to a concrete value —
+    // with an unresolvable min (percent limit + unknown model context limit)
+    // growth nudges keep their pre-#342 growth-only behavior. overMaxLimit
+    // (=> overMinLimit in normal min<max configs) and the emergency override
+    // bypass the gate; T2/T3 tier-promotion nudges below are unaffected.
+    const minGateOpen = !minLimitResolved || overMinLimit || overMaxLimit
     const nudgeAllowed =
         emergencyOverride ||
         (decision.shouldNudge &&
-            (overMaxLimit || overMinLimit) &&
+            minGateOpen &&
             growthSinceBaseline !== undefined &&
             growthSinceBaseline >= growthFloor)
 

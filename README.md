@@ -324,11 +324,11 @@ Each level overrides the previous, so project settings take priority over global
         // Soft upper threshold: above this, ACP keeps injecting strong
         // compression nudges (based on nudgeFrequency), so compression is
         // much more likely. Accepts: number or "X%" of model context window.
-        "maxContextLimit": "55%",
-        // Soft lower threshold for reminder nudges: below this, turn/iteration
+        "maxContextLimit": "80%",
+        // Soft lower threshold for reminder nudges: below this, growth/turn/iteration
         // reminders are off (compression less likely). At/above this, reminders
         // are on. Accepts: number or "X%" of model context window.
-        "minContextLimit": "45%",
+        "minContextLimit": "80%",
         // Optional per-model override for maxContextLimit by providerID/modelID.
         // If present, this wins over the global maxContextLimit.
         // Accepts: number or "X%".
