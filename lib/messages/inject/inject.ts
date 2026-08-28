@@ -33,6 +33,7 @@ import {
     excludeProtectedRanges,
     filterRecommendedRanges,
     resolveEffectiveFloor,
+    resolveMinNudgeFloorTokens,
     findLastNonIgnoredMessage,
     formatCompressibleRanges,
     getIterationNudgeThreshold,
@@ -309,14 +310,20 @@ export const injectCompressNudges = (
     // as a growth floor would suppress ALL growth nudges below 80% for default
     // users, effectively disabling compression for most of a session.
     // minNudgeContextPercent is the intended "don't nudge below this" floor and
-    // was previously a no-op (passed to the trigger policy but ignored). When the
-    // model context limit is unknown the floor cannot be computed, so the gate
-    // stays open (pre-#342 growth-only behavior). overMaxLimit and the emergency
-    // override bypass the floor; T2/T3 tier-promotion nudges below are unaffected.
-    const minNudgeFloorTokens =
-        modelContextLimit !== undefined
-            ? Math.round(((config.compress?.minNudgeContextPercent ?? 15) / 100) * modelContextLimit)
-            : undefined
+    // was previously a no-op (passed to the trigger policy but ignored).
+    // Issue #344: a per-model floor (modelMinNudgeLimits, keyed provider/model)
+    // takes priority over the global percent so mixed-model installs can set
+    // exact token or percentage floors per model. When the model context limit
+    // is unknown the floor cannot be computed (except for an absolute per-model
+    // floor), so the gate stays open (pre-#342 growth-only behavior).
+    // overMaxLimit and the emergency override bypass the floor; T2/T3
+    // tier-promotion nudges below are unaffected.
+    const minNudgeFloorTokens = resolveMinNudgeFloorTokens(
+        config,
+        modelContextLimit,
+        providerId,
+        modelId,
+    )
     const overMinNudgeFloor =
         minNudgeFloorTokens === undefined ||
         currentTokens === undefined ||

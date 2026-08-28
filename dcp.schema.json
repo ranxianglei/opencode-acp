@@ -188,6 +188,21 @@
                         ]
                     }
                 },
+                "modelMinNudgeLimits": {
+                    "description": "Per-model override for the growth-nudge floor (minNudgeContextPercent) by exact provider/model key. Values are absolute tokens or \"X%\" of that model's context window. If set, this takes priority over the global minNudgeContextPercent for that model.",
+                    "type": "object",
+                    "additionalProperties": {
+                        "oneOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "string",
+                                "pattern": "^\\d+(?:\\.\\d+)?%$"
+                            }
+                        ]
+                    }
+                },
                 "nudgeFrequency": {
                     "type": "number",
                     "default": 5,

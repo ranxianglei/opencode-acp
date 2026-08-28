@@ -189,7 +189,13 @@ Core compression behavior.
 - **Type:** `number`
 - **Default:** `15`
 - **Status:** ACTIVE
-- **Description:** Minimum context usage percentage before any nudges are shown. Below this, no nudges are injected.
+- **Description:** Minimum context usage percentage before any nudges are shown. Below this, no nudges are injected. Acts as the global growth-nudge floor (`minNudgeContextPercent` × model context window); override it per model with `modelMinNudgeLimits`.
+
+#### `compress.modelMinNudgeLimits`
+- **Type:** `Record<string, number | \`${number}%\`>`
+- **Default:** `undefined`
+- **Status:** ACTIVE
+- **Description:** Per-model override for the growth-nudge floor. Keyed by `provider/model` (same keying as `modelMaxLimits` / `modelMinLimits`). Values are absolute tokens or `"X%"` of that model's context window. Precedence: `modelMinNudgeLimits[provider/model]` → `minNudgeContextPercent` × model context → growth-only behavior when the model context is unknown. An absolute value applies even when the model context window is unknown; a `"X%"` value with an unknown model context falls through to the global percent. Example: `{"openai/gpt-5.6": 150000, "openrouter/z-ai/glm-5.3": "20%"}`
 
 #### `compress.nudgeGrowthTokens`
 - **Type:** `number`
@@ -442,6 +448,10 @@ Post-compression quality evaluation. Runs after each compression to verify summa
         "modelMinLimits": {
             "gpt-4o": 60000,
             "claude-3.5-sonnet": "50%"
+        },
+        "modelMinNudgeLimits": {
+            "openai/gpt-5.6": 150000,
+            "openrouter/z-ai/glm-5.3": "20%"
         }
     }
 }

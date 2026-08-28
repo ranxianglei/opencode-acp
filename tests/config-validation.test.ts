@@ -48,6 +48,13 @@ test("getInvalidConfigKeys does not recurse into modelMaxLimits dynamic keys", (
     assert.deepEqual(result, [])
 })
 
+test("getInvalidConfigKeys does not recurse into modelMinNudgeLimits dynamic keys", () => {
+    const result = getInvalidConfigKeys({
+        compress: { modelMinNudgeLimits: { "provider/model-xyz": 50000 } },
+    })
+    assert.deepEqual(result, [])
+})
+
 test("getInvalidConfigKeys does not recurse into messageFilters.filters dynamic keys", () => {
     const result = getInvalidConfigKeys({
         messageFilters: { filters: { "omo-mode-injection": { enabled: true } } },
@@ -242,4 +249,36 @@ test("getInvalidConfigKeys accepts new preserveRecent* keys", () => {
         },
     })
     assert.equal(result.length, 0)
+})
+
+test("validateConfigTypes accepts valid compress.modelMinNudgeLimits entries", () => {
+    const result = validateConfigTypes({
+        compress: {
+            modelMinNudgeLimits: {
+                "openai/gpt-5.6": 150000,
+                "openrouter/z-ai/glm-5.3": "20%",
+            },
+        },
+    })
+    assert.deepEqual(result, [])
+})
+
+test("validateConfigTypes catches invalid entry in compress.modelMinNudgeLimits", () => {
+    const result = validateConfigTypes({
+        compress: {
+            modelMinNudgeLimits: { "openai/gpt-5.6": "lots" },
+        },
+    })
+    assert.equal(result.length, 1)
+    assert.equal(result[0].key, "compress.modelMinNudgeLimits.openai/gpt-5.6")
+    assert.equal(result[0].actual, '"lots"')
+})
+
+test("validateConfigTypes catches non-object compress.modelMinNudgeLimits", () => {
+    const result = validateConfigTypes({
+        compress: { modelMinNudgeLimits: "openai/gpt-5.6" },
+    })
+    assert.equal(result.length, 1)
+    assert.equal(result[0].key, "compress.modelMinNudgeLimits")
+    assert.equal(result[0].actual, "string")
 })

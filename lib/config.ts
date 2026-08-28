@@ -17,6 +17,7 @@ export interface CompressConfig {
     minContextLimit: number | `${number}%`
     modelMaxLimits?: Record<string, number | `${number}%`>
     modelMinLimits?: Record<string, number | `${number}%`>
+    modelMinNudgeLimits?: Record<string, number | `${number}%`>
     nudgeFrequency: number
     minNudgeContextPercent: number
     nudgeGrowthTokens?: number
@@ -370,6 +371,7 @@ export function mergeCompress(
         minContextLimit: override.minContextLimit ?? base.minContextLimit,
         modelMaxLimits: override.modelMaxLimits ?? base.modelMaxLimits,
         modelMinLimits: override.modelMinLimits ?? base.modelMinLimits,
+        modelMinNudgeLimits: override.modelMinNudgeLimits ?? base.modelMinNudgeLimits,
         nudgeFrequency: override.nudgeFrequency ?? base.nudgeFrequency,
         minNudgeContextPercent: override.minNudgeContextPercent ?? base.minNudgeContextPercent,
         nudgeGrowthTokens: override.nudgeGrowthTokens,
@@ -433,6 +435,7 @@ function deepCloneConfig(config: PluginConfig): PluginConfig {
             ...config.compress,
             modelMaxLimits: { ...config.compress.modelMaxLimits },
             modelMinLimits: { ...config.compress.modelMinLimits },
+            modelMinNudgeLimits: { ...config.compress.modelMinNudgeLimits },
             protectedTools: [...config.compress.protectedTools],
         },
         gc: {

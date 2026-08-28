@@ -28,6 +28,7 @@ export const VALID_CONFIG_KEYS = new Set([
     "compress.minContextLimit",
     "compress.modelMaxLimits",
     "compress.modelMinLimits",
+    "compress.modelMinNudgeLimits",
     "compress.nudgeFrequency",
     "compress.minNudgeContextPercent",
     "compress.nudgeGrowthTokens",
@@ -76,6 +77,7 @@ function getConfigKeyPaths(obj: Record<string, any>, prefix = ""): string[] {
         if (
             fullKey === "compress.modelMaxLimits" ||
             fullKey === "compress.modelMinLimits" ||
+            fullKey === "compress.modelMinNudgeLimits" ||
             fullKey === "messageFilters.filters"
         ) {
             continue
@@ -566,7 +568,10 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
             }
 
             const validateModelLimits = (
-                key: "compress.modelMaxLimits" | "compress.modelMinLimits",
+                key:
+                    | "compress.modelMaxLimits"
+                    | "compress.modelMinLimits"
+                    | "compress.modelMinNudgeLimits",
                 limits: unknown,
             ): void => {
                 if (limits === undefined) {
@@ -606,6 +611,7 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
 
             validateModelLimits("compress.modelMaxLimits", compress.modelMaxLimits)
             validateModelLimits("compress.modelMinLimits", compress.modelMinLimits)
+            validateModelLimits("compress.modelMinNudgeLimits", compress.modelMinNudgeLimits)
 
             const validValues = ["ask", "allow", "deny"]
             if (compress.permission !== undefined && !validValues.includes(compress.permission)) {

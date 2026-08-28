@@ -147,6 +147,64 @@ function resolveContextTokenLimit(
     return parseLimitValue(globalLimit)
 }
 
+/**
+ * Resolve the T1 growth-nudge floor in tokens (issue #344).
+ *
+ * Precedence:
+ *   1. `config.compress.modelMinNudgeLimits["${providerId}/${modelId}"]` —
+ *      absolute tokens, or "X%" of the model's context window.
+ *   2. `config.compress.minNudgeContextPercent` (default 15) × model context.
+ *   3. `undefined` when the model context is unknown — the caller keeps the
+ *      pre-#342 growth-only behavior (no suppression).
+ *
+ * A per-model absolute floor applies even when the model context window is
+ * unknown (mirrors modelMaxLimits/modelMinLimits). A per-model percent that
+ * cannot be resolved (unknown model context) falls through to the global
+ * percent — which is also unresolvable, so the floor stays open.
+ */
+export function resolveMinNudgeFloorTokens(
+    config: PluginConfig,
+    modelContextLimit: number | undefined,
+    providerId: string | undefined,
+    modelId: string | undefined,
+): number | undefined {
+    const parseModelLimit = (limit: number | `${number}%`): number | undefined => {
+        if (typeof limit === "number") {
+            return limit
+        }
+
+        if (modelContextLimit === undefined) {
+            return undefined
+        }
+
+        const parsedPercent = parseFloat(limit.slice(0, -1))
+        if (isNaN(parsedPercent)) {
+            return undefined
+        }
+
+        const roundedPercent = Math.round(parsedPercent)
+        const clampedPercent = Math.max(0, Math.min(100, roundedPercent))
+        return Math.round((clampedPercent / 100) * modelContextLimit)
+    }
+
+    const modelLimits = config.compress.modelMinNudgeLimits
+    if (modelLimits && providerId !== undefined && modelId !== undefined) {
+        const modelLimit = modelLimits[`${providerId}/${modelId}`]
+        if (modelLimit !== undefined) {
+            const resolved = parseModelLimit(modelLimit)
+            if (resolved !== undefined) {
+                return resolved
+            }
+            // Per-model percent with unknown model context: fall through to the global percent.
+        }
+    }
+
+    if (modelContextLimit === undefined) {
+        return undefined
+    }
+    return Math.round(((config.compress.minNudgeContextPercent ?? 15) / 100) * modelContextLimit)
+}
+
 export function isContextOverLimits(
     config: PluginConfig,
     state: SessionState,

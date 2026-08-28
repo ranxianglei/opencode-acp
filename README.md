@@ -343,6 +343,14 @@ Each level overrides the previous, so project settings take priority over global
         //     "openai/gpt-5.3-codex": 50000,
         //     "anthropic/claude-sonnet-4.6": "25%"
         // },
+        // Optional per-model override for the growth-nudge floor
+        // (minNudgeContextPercent). Keyed by providerID/modelID; accepts a
+        // token count or "X%" of that model's context window. If present,
+        // this wins over the global minNudgeContextPercent for that model.
+        // "modelMinNudgeLimits": {
+        //     "openai/gpt-5.6": 150000,
+        //     "openrouter/z-ai/glm-5.3": "20%"
+        // },
         // How often the context-limit nudge fires (1 = every fetch, 5 = every 5th)
         "nudgeFrequency": 5,
         // Start adding compression reminders after this many
