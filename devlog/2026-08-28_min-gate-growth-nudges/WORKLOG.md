@@ -1,4 +1,4 @@
-# WORKLOG - Gate T1 growth nudges on minContextLimit
+# WORKLOG - Gate T1 growth nudges on the minNudgeContextPercent floor
 
 - Task ID: `2026-08-28_min-gate-growth-nudges`
 - Home Repo: `opencode-acp`
@@ -7,10 +7,14 @@
 
 ## 1. Summary
 
-- **What was done**: added a `minContextLimit` gate to the T1 growth-nudge decision in `lib/messages/inject/inject.ts`. A growth nudge now requires the context to be at/above `minContextLimit` (or to be over the max limit / in the emergency override). `overMaxLimit` and the emergency path bypass the gate; T2/T3 tier-promotion nudges are untouched. After dual-agent review, the gate was refined: it only applies when `minContextLimit` resolves to a concrete value (`minLimitResolved` from `isContextOverLimits`), so models that don't report `limit.context` (percent limits unresolvable) keep pre-#342 growth-only behavior instead of losing all growth nudges.
-- **Why**: `computeShouldNudge()` (external `context-compress-algorithms/trigger`) only uses `overMinLimit` to pick the tips variant, so growth nudges were firing well below a configured `minContextLimit` (issue #342: ten `trigger=growth` nudges at 67K–152K against a 150K minimum). The README documents `minContextLimit` as the threshold below which reminder nudges are off, so the runtime contradicted the docs.
-- **Behavior / compatibility changes**: YES — growth nudges below `minContextLimit` are now suppressed (the intended, documented behavior). Default config always sets `minContextLimit` (80%, raised from 45% in v1.14.16 / PR #295), so default users keep a defined gate. Consequence for default users: with `minContextLimit = maxContextLimit = 80%`, growth nudges now only fire at ≥80% of the model context window (previously as soon as growth crossed `nudgeGrowthTokens`). No change to persisted state format or internal `dcp` tags.
-- **Risk level**: Low — one boolean OR in an existing decision path; max/emergency paths and T2/T3 are unaffected. The naive gate (without the `minLimitResolved` guard) was a real regression for models that don't report `limit.context` — verified live (pre-fix nudge fired, naive gate suppressed it) and locked by a dedicated test.
+- **What was done**: added a growth-nudge floor to the T1 decision in `lib/messages/inject/inject.ts`. A growth nudge now requires the context to be at/above the **`minNudgeContextPercent` floor** (default 15% of the model context). `overMaxLimit` and the emergency override bypass the floor; when the model context limit is unknown the floor is unresolvable and growth nudges keep their pre-#342 growth-only behavior. T2/T3 tier-promotion nudges are untouched.
+- **Why**: `computeShouldNudge()` (external `context-compress-algorithms/trigger`) only uses `overMinLimit` to pick the tips variant, so growth nudges fired well below any configured floor (issue #342: ten `trigger=growth` nudges at 67K–152K against a 150K minimum). `minNudgeContextPercent` (default 15) is the intended "don't nudge below this" knob and was previously a **no-op** (plumbed into `computeShouldNudge` but ignored by the policy).
+- **Revision history (important)**:
+  1. `0f35414` — first fix gated on `minContextLimit`.
+  2. `f634222` (dual-agent review) — refined to only gate when `minContextLimit` resolves (`minLimitResolved`), and corrected the stale README/CONFIGURATION defaults (45%/55% → 80%/80%, matching `lib/config.ts` since v1.14.16). **Those README/CONFIGURATION fixes are preserved.**
+  3. This commit — @dog flagged in issue #342 that `minContextLimit` defaults to **80%**, so gating growth nudges on it suppresses ALL growth nudges below 80% for default users (effectively disabling compression for most of a session). The floor was corrected to `minNudgeContextPercent` (15% default), low enough that default users still get compression throughout a session. The `minLimitResolved` mechanism was dropped (my approach uses `modelContextLimit` directly).
+- **Behavior / compatibility changes**: YES — growth nudges below the `minNudgeContextPercent` floor are now suppressed. This activates a previously-dormant field. No change to persisted state format or internal `dcp` tags.
+- **Risk level**: Low — one floor check in an existing decision path; max/emergency paths and T2/T3 are unaffected.
 
 ## 2. Change Log
 
@@ -18,33 +22,45 @@
 
 | Commit | Description |
 |--------|-------------|
-| `0f35414` | fix: gate T1 growth nudges on minContextLimit (issue #342) |
-| `f634222` | fix: min-gate refinements from dual-agent review (resolvability guard, unmasked tests, review-finding tests, doc defaults) |
+| `0f35414` | fix: gate T1 growth nudges on minContextLimit (issue #342) — **superseded** |
+| `f634222` | dual-agent review: `minLimitResolved` guard + README/CONFIGURATION default fixes — **README/CONFIGURATION fixes preserved** |
+| `<pending>` | fix: use `minNudgeContextPercent` (15%) as the growth-nudge floor, not `minContextLimit` (80% default) |
 
 ### Key Files
 
-- `lib/messages/inject/inject.ts` — `nudgeAllowed` growth path now requires `minGateOpen = !minLimitResolved || overMinLimit || overMaxLimit`.
-- `lib/messages/inject/utils.ts` — `isContextOverLimits` returns `minLimitResolved` (whether `minContextLimit` resolved to a concrete value).
-- `tests/inject.test.ts` — 7 new min-gate tests; 4 existing tests had `minContextLimit` lowered so they still isolate the growth mechanism (they previously set it above the test context, which the fix now correctly suppresses).
-- `README.md`, `CONFIGURATION.md` — corrected stale `minContextLimit`/`maxContextLimit` defaults (45%/55% → 80%/80%, matching `lib/config.ts` since v1.14.16) and documented the min-gate semantics for growth nudges.
+- `lib/messages/inject/inject.ts` — `nudgeAllowed` now includes `(overMaxLimit || overMinNudgeFloor)` in the growth path, where `overMinNudgeFloor` is derived from `minNudgeContextPercent`.
+- `lib/messages/inject/utils.ts` — reverted the `minLimitResolved` addition (dead code in the floor approach).
+- `tests/inject.test.ts` — 4 floor tests (use `minNudgeContextPercent`); 2 new tests (unresolvable model limit, T2 independence); pre-existing test #27 raised into the [floor, max) range.
+- `README.md`, `CONFIGURATION.md` — default corrections from the review commit (preserved).
 
 ## 3. Design & Implementation Notes
 
 - **Entry point / key function**: `injectCompressNudges()` in `lib/messages/inject/inject.ts`.
 - **The change** (inject.ts, `nudgeAllowed`):
   ```ts
-  const minGateOpen = !minLimitResolved || overMinLimit || overMaxLimit
+  const minNudgeFloorTokens =
+      modelContextLimit !== undefined
+          ? Math.round(((config.compress?.minNudgeContextPercent ?? 15) / 100) * modelContextLimit)
+          : undefined
+  const overMinNudgeFloor =
+      minNudgeFloorTokens === undefined ||
+      currentTokens === undefined ||
+      currentTokens >= minNudgeFloorTokens
   const nudgeAllowed =
       emergencyOverride ||
       (decision.shouldNudge &&
-          minGateOpen &&   // issue #342: min-gate
+          (overMaxLimit || overMinNudgeFloor) &&   // issue #342: growth floor
           growthSinceBaseline !== undefined &&
           growthSinceBaseline >= growthFloor)
   ```
-- **Why `minGateOpen` (not just `overMinLimit`)**: in normal configs `min < max`, so `overMaxLimit` implies `overMinLimit` and the max path is unaffected. Keeping `overMaxLimit ||` makes the gate robust to a misconfigured `min > max` (an over-max context still nudges) and to a config that sets only `maxContextLimit`.
-- **Why `!minLimitResolved ||` (review fix)**: `minContextLimit` only resolves to a concrete value when it is an absolute number or a `"X%"` with a known model context window. Models that don't report `limit.context` (lib/hooks.ts sets `state.modelContextLimit` from `model.limit.context` and leaves it `undefined` on catalog miss) make percent limits unresolvable — with the naive gate, `overMinLimit`/`overMaxLimit` are both `false` and **every** growth nudge for such models is suppressed (verified live pre/post fix). The guard treats "unresolvable" as "no gate", preserving pre-#342 growth-only behavior. `isContextOverLimits` (lib/messages/inject/utils.ts) now returns `minLimitResolved` so callers cannot confuse "below min" with "min unknown".
-- **Why the fix lives in ACP, not the external package**: `context-compress-algorithms` is a shared, version-pinned dependency; the min-gate is ACP-specific policy (ACP owns `minContextLimit` semantics). No dependency bump.
-- **T2/T3 independence**: the tier-promotion nudges (inject.ts, `tierChecks` loop) use their own `nudgeGrowthTokens`/`growthFloor` cadence and never consult `overMinLimit` — preserved.
+- **Why `minNudgeContextPercent`, NOT `minContextLimit`**:
+  - `minContextLimit` / `maxContextLimit` both default to **80%** (`lib/config.ts:199-200`). The README documents `minContextLimit` as the "soft lower threshold for **turn/iteration reminders**" (README.md:328-331) — not a growth-nudge floor. Using it as a growth floor would disable compression below 80% for default users.
+  - `minNudgeContextPercent` (default **15**, `lib/config.ts:202`) is a percent-of-model-context floor, low enough that default users still get growth nudges throughout a session, while remaining configurable (e.g. set to 37.5 for a 150K floor on a 400K model). It was already plumbed into `computeShouldNudge` (inject.ts:297) but ignored by the external policy — so it was the natural, intended field.
+  - `overMaxLimit ||` keeps the strong max-limit alert working even when the floor is set above the context (defensive against misconfiguration).
+- **Unresolvable floor**: when `modelContextLimit` is unknown (a model that doesn't report `limit.context`), the floor can't be computed, so `overMinNudgeFloor` stays `true` (no gate) — preserving pre-#342 growth-only behavior. This is the same intent as the review commit's `minLimitResolved` guard, implemented directly.
+- **Why the fix lives in ACP, not the external package**: `context-compress-algorithms` is a shared, version-pinned dependency; the floor is ACP-specific policy (ACP owns `minNudgeContextPercent` semantics). No dependency bump.
+- **Caveat**: `minNudgeContextPercent` is a global percent (no per-model `modelMinNudgeContextPercent` variant). A user who set a per-model `modelMinLimits` (like the #342 reporter) expresses the floor as a global percent instead; a per-model variant is a follow-up enhancement.
+- **T2/T3 independence**: the tier-promotion nudges (inject.ts, `tierChecks` loop) use their own `nudgeGrowthTokens`/`growthFloor` cadence and never consult the floor — preserved (locked by a dedicated test).
 
 ## 4. Testing & Verification
 
@@ -60,29 +76,23 @@ node --import tsx --test tests/*.test.ts
 ### Results
 
 - `npm run typecheck`: clean.
-- `npm run build`: success; fix confirmed present in `dist/index.js`.
-- `npm run test`: **1036 tests, 0 failures** (was 1029; +7 new).
+- `npm run build`: success; floor logic confirmed present in `dist/index.js` (`minNudgeFloorTokens`/`overMinNudgeFloor`), old `minGateOpen`/`overMaxLimit || overMinLimit` removed.
+- `npm run test`: **1035 tests, 0 failures**.
 
-### New tests (tests/inject.test.ts)
+### New / adjusted tests (tests/inject.test.ts)
 
 | Test | Asserts |
 |------|---------|
-| `issue #342: growth nudge suppressed below minContextLimit, fires once context crosses min` | Multi-turn: 200K < 300K min → suppressed (baseline + lastNudgeShownTokens preserved); 320K ≥ 300K min + growth → fires. |
-| `issue #342: full growth cycle baseline → nudge → compress → new baseline → nudge (min-gate open)` | Full cycle with min-gate open; baseline resets on compress, nudge re-fires after new-baseline growth. |
-| `issue #342: min-gate holds in production config (preserveRecentMessages > 0)` | §5.7.1 production-config requirement: min-gate suppresses below min with `preserveRecentMessages: 2` and compressible content present. |
-| `issue #342: over-max nudge bypasses the min gate` | Defensive: `min > max` misconfig — over-max context still nudges (overMaxLimit bypass); also asserts the T1 baseline is untouched. |
-| `issue #342: growth nudge still fires when minContextLimit is unresolvable (percent limit, unknown model limit)` | Review regression lock: `modelContextLimit` undefined + `"80%"` percent limits → gate must NOT suppress (pre-#342 growth-only behavior preserved). |
-| `issue #342: emergency override bypasses the min gate` | Context ≥98% of model limit but below `minContextLimit` → emergency override still fires, baseline untouched. |
-| `issue #342: T2 tier-promotion fires below minContextLimit (independent of the min gate)` | T2 fires below the min context limit (independent cadence); `lastTier2NudgeTokens` set proves T1 stayed min-gate suppressed (T2 only runs when T1 didn't fire). |
+| `issue #342: growth nudge suppressed below the minNudgeContextPercent floor, fires once context crosses it` | Multi-turn: `minNudgeContextPercent=30` (300K floor) — 200K < 300K → suppressed (baseline + lastNudgeShownTokens preserved); 320K ≥ 300K + growth → fires. |
+| `issue #342: full growth cycle baseline → nudge → compress → new baseline → nudge (floor open)` | Full cycle with the floor open; baseline resets on compress, nudge re-fires after new-baseline growth. |
+| `issue #342: growth floor holds in production config (preserveRecentMessages > 0)` | §5.7.1 production-config requirement: floor suppresses below it with `preserveRecentMessages: 2` and compressible content present. |
+| `issue #342: over-max nudge bypasses the growth floor` | Defensive: floor set above the context — over-max context still nudges (overMaxLimit bypass). |
+| `issue #342: growth nudge still fires when the model context limit is unknown (floor unresolvable)` | Unknown model limit → floor unresolvable → pre-#342 growth-only behavior preserved (nudge fires). (Review-commit regression lock, re-pointed at the floor.) |
+| `issue #342: T2 tier-promotion fires below the growth floor (independent of the floor)` | Floor set at 800K — T1 floor-suppressed, T2 fires on its own cadence (lastTier2NudgeTokens set). (Review-commit test, re-pointed at the floor.) |
 
 ### Existing tests updated
 
-- `injectCompressNudges: post-compress baseline then large growth DOES nudge` — `minContextLimit` 550K → 200K (was above the 305K turn-2 context; the fix now suppresses it).
-- `nudge threshold halves after first nudge without compress (issue #23)` — `minContextLimit` 200K → 100K (was above the 150K/165K/175K turn contexts).
-- `injectCompressNudges: post-compress baseline then small growth does NOT re-nudge` — `minContextLimit` 550K → 200K (was above the 253K turn-2 context; the fix now suppresses it, so the "no re-nudge" assertion was being satisfied for the wrong reason).
-- `injectCompressNudges: baseline initialized to currentTokens on first transform` — `minContextLimit` 200K → 50K (was above the 55K/58K turn contexts).
-
-All four still exercise their original intent (growth mechanism / threshold halving / baseline init) with the min-gate open.
+- `stale contextLimitAnchors ... (issue #27)` — context raised from 100K (10% of 1M) to 150K so it sits in the [15% floor, max-limit) range; the previously-dormant 15% floor now suppresses below 150K, so the original 100K context no longer satisfies the floor.
 
 ### Note on `npm run format:check`
 
@@ -90,9 +100,11 @@ Pre-existing repo-wide Prettier drift: the installed Prettier (3.9.5) reformats 
 
 ## 5. Rollback Plan
 
-- Single revert commit; no schema/config/data migrations.
+- Revert the commits; no schema/config/data migrations.
 
 ## 6. Lessons Learned
 
-- `minContextLimit` was already gating turn/iteration anchors (inject.ts:175,205) but NOT the growth nudge — the growth path was the only reminder channel that ignored the minimum.
-- Several existing growth-mechanism tests set `minContextLimit` *above* the test context to keep it out of the way; once the min-gate became real, those had to be lowered to stay valid.
+- **`minContextLimit` defaults to 80%, not 45%.** The README's `45%` example was stale (the real default is `"80%"` in `lib/config.ts:200` since v1.14.16). Never assume a documented example value is the default — check `config.ts`. The review commit corrected the docs; this commit corrects the code to match the intent.
+- The first revision (gate on `minContextLimit`) was a **silent regression for default users**: it would have suppressed all growth nudges below 80%. The pre-existing test #27 (context 100K on a 1M model) only caught it because 100K < 150K floor — a test with context between 150K and 800K would have masked the regression. Always check the **default** config path, not just the configured path.
+- `minNudgeContextPercent` was a dormant no-op field — the natural home for the growth floor. Activating a dormant field is lower-risk than repurposing a live one (`minContextLimit` also drives turn/iteration anchors).
+- A dual-agent review pushed refinements onto the branch based on the original (minContextLimit) approach; the @dog feedback superseded them. Integrated the review's valuable non-conflicting work (README/CONFIGURATION fixes, the unresolvable-limit + T2-independence tests) while replacing the core gate.

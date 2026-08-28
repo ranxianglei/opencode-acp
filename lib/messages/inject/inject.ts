@@ -86,7 +86,7 @@ export const injectCompressNudges = (
 
     const { providerId, modelId } = getModelInfo(messages)
 
-    const { overMaxLimit, overMinLimit, minLimitResolved, currentTokens, modelContextLimit } = isContextOverLimits(
+    const { overMaxLimit, overMinLimit, currentTokens, modelContextLimit } = isContextOverLimits(
         config,
         state,
         providerId,
@@ -302,19 +302,29 @@ export const injectCompressNudges = (
         currentTokens !== undefined && growthReference !== undefined
             ? currentTokens - growthReference
             : undefined
-    // Issue #342: a configured minContextLimit must act as a lower bound for T1
-    // growth nudges. computeShouldNudge() only uses overMinLimit to pick the
-    // tips variant, so without this gate growth nudges fire below the minimum.
-    // The gate only applies when minContextLimit resolves to a concrete value —
-    // with an unresolvable min (percent limit + unknown model context limit)
-    // growth nudges keep their pre-#342 growth-only behavior. overMaxLimit
-    // (=> overMinLimit in normal min<max configs) and the emergency override
-    // bypass the gate; T2/T3 tier-promotion nudges below are unaffected.
-    const minGateOpen = !minLimitResolved || overMinLimit || overMaxLimit
+    // Issue #342: a growth nudge must not fire below the configured floor.
+    // The floor is minNudgeContextPercent (default 15% of the model context),
+    // NOT minContextLimit (default 80%) — minContextLimit is documented as the
+    // "soft lower threshold for turn/iteration reminders" (README), and using it
+    // as a growth floor would suppress ALL growth nudges below 80% for default
+    // users, effectively disabling compression for most of a session.
+    // minNudgeContextPercent is the intended "don't nudge below this" floor and
+    // was previously a no-op (passed to the trigger policy but ignored). When the
+    // model context limit is unknown the floor cannot be computed, so the gate
+    // stays open (pre-#342 growth-only behavior). overMaxLimit and the emergency
+    // override bypass the floor; T2/T3 tier-promotion nudges below are unaffected.
+    const minNudgeFloorTokens =
+        modelContextLimit !== undefined
+            ? Math.round(((config.compress?.minNudgeContextPercent ?? 15) / 100) * modelContextLimit)
+            : undefined
+    const overMinNudgeFloor =
+        minNudgeFloorTokens === undefined ||
+        currentTokens === undefined ||
+        currentTokens >= minNudgeFloorTokens
     const nudgeAllowed =
         emergencyOverride ||
         (decision.shouldNudge &&
-            minGateOpen &&
+            (overMaxLimit || overMinNudgeFloor) &&
             growthSinceBaseline !== undefined &&
             growthSinceBaseline >= growthFloor)
 
