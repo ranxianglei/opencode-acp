@@ -18,7 +18,8 @@
 
 | Commit | Description |
 |--------|-------------|
-| `<pending>` | feat: per-model growth-nudge floor `modelMinNudgeLimits` (issue #344) |
+| `50a117e` | feat: per-model growth-nudge floor `modelMinNudgeLimits` (issue #344) |
+| `<pending>` | docs: zh-CN doc parity for `modelMinNudgeLimits` (dual-agent review follow-up) |
 
 ### Key Files
 
@@ -29,6 +30,8 @@
 - `dcp.schema.json` — `modelMinNudgeLimits` property (object, additionalProperties `number | "X%"` pattern).
 - `CONFIGURATION.md` — new `#### compress.modelMinNudgeLimits` section (type/default/precedence/example); `minNudgeContextPercent` section cross-references it; per-model context limits example extended.
 - `README.md` — commented `modelMinNudgeLimits` example after the `modelMinLimits` example.
+- `CONFIGURATION.zh-CN.md` — zh-CN parity (added in the review follow-up): new `#### compress.modelMinNudgeLimits` section, `minNudgeContextPercent` cross-reference, per-model limits example extended.
+- `README.zh-CN.md` — commented `modelMinNudgeLimits` example after the `modelMinLimits` example.
 - `tests/inject.test.ts` — `userMsgWithModel()` helper (sets `info.model` so `getModelInfo` resolves provider/model) + 9-test `issue #344:` block.
 - `tests/config-validation.test.ts` — non-recursion test + 3 `validateConfigTypes` tests (valid entries, invalid entry, non-object).
 
@@ -82,5 +85,6 @@
   9. `modelMinLimits` independence: a 900K per-model min limit does not lower turn/iteration reminders (`turnNudgeAnchors` empty at 200K) while the 100K nudge floor still gates the growth path.
   - **Mutation check (AGENTS.md §5.7)**: with the per-model branch temporarily disabled (`if (false && ...)`), tests 1, 2, 4, 6 fail and the fallback/bypass/independence tests (3, 5, 7, 8, 9) still pass — exactly the expected split. Re-applied the fix; all green.
   - Config plumbing tests: `tests/config-validation.test.ts` — non-recursion into dynamic keys; valid entries (`150000`, `"20%"`) accepted; invalid entry (`"lots"`) rejected at `compress.modelMinNudgeLimits.openai/gpt-5.6`; non-object record rejected.
-- **Formatting note**: the repo is not prettier-clean under the installed prettier (3.9.5) or the pinned minimum (3.8.1) — identical churn on untouched HEAD files (e.g. the 120-char import at `lib/config.ts:6` exists on `origin/master`), and CI does not run `format:check`. All lines **added** by this change were verified prettier-clean (hunk-overlap check per file); pre-existing churn was left untouched to keep the diff reviewable.
+- **Formatting note**: the repo is not prettier-clean under the installed prettier (3.9.5) or the pinned minimum (3.8.1) — identical churn on untouched HEAD files (e.g. the 120-char import at `lib/config.ts:6` exists on `origin/master`, and both CONFIGURATION docs carry ~69 pre-existing prettier hunks), and CI does not run `format:check`. All **added** lines in `lib/`, `tests/`, and `dcp.schema.json` were verified prettier-clean (hunk-overlap check per file); pre-existing churn was left untouched to keep the diff reviewable. The JSONC examples in the four docs keep the file's existing no-trailing-comma style for internal consistency (only a comma was added where the edit made a previously-last property non-last, which JSONC validity requires).
+- **Dual-agent review** (AGENTS.md §5.3/§5.6, two independent agents on `ecfe7f0..50a117e`): both returned NO BLOCKERS. Code review verified the full precedence contract (5/5), edge cases (`""` rejected, `"0%"` → floor 0, `"150%"` clamped to 100, undefined provider guarded, mid-session model switch, `deepCloneConfig` on undefined record), and independently reproduced the mutation-check split. Test review verified §5.6 (imports, name fidelity, config completeness, token math) and §5.7 (multi-turn, side-effect assertions, production config, growth cycle) all PASS. One should-fix — missing zh-CN doc parity — was applied in the follow-up commit above. Nits not taken: negative-number validation gap (pre-existing, shared with `modelMaxLimits`/`modelMinLimits`), `userMsgWithModel` duplicating `userMsg` (cosmetic; the existing helper is shared with older tests).
 - **Verification**: `npm run typecheck` ✓, `npm run build` ✓, `npm run test` ✓ (1048 pass / 0 fail, including 9 new inject tests + 4 new config-validation tests), `./scripts/ci/check-pr.sh` ✓ (branch name, devlog, version unchanged).

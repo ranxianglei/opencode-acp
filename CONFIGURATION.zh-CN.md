@@ -186,10 +186,16 @@ ACP 从最多三层配置文件中读取（后加载的覆盖先加载的）：
 - **说明：** nudge 注入之间的最小轮数间隔。防止每轮都打扰模型。
 
 #### `compress.minNudgeContextPercent`
-- **类型：** `number`
-- **默认值：** `15`
-- **状态：** ACTIVE
-- **说明：** 触发任何 nudge 的最低上下文使用率百分比。低于此值时不注入 nudge。
+ - **类型：** `number`
+ - **默认值：** `15`
+ - **状态：** ACTIVE
+ - **说明：** 触发任何 nudge 的最低上下文使用率百分比。低于此值时不注入 nudge。作为全局 growth-nudge 下限（`minNudgeContextPercent` × 模型上下文窗口）；可用 `modelMinNudgeLimits` 按模型覆盖。
+
+#### `compress.modelMinNudgeLimits`
+ - **类型：** `Record<string, number | \`${number}%\`>`
+ - **默认值：** `undefined`
+ - **状态：** ACTIVE
+ - **说明：** 按模型覆盖 growth-nudge 下限。以 `provider/model` 为键（与 `modelMaxLimits` / `modelMinLimits` 相同）。值为绝对 token 数或该模型上下文窗口的 `"X%"`。优先级：`modelMinNudgeLimits[provider/model]` → `minNudgeContextPercent` × 模型上下文 → 模型上下文未知时回退到仅增长行为。绝对值在模型上下文窗口未知时同样生效；`"X%"` 值在模型上下文未知时回退到全局百分比。示例：`{"openai/gpt-5.6": 150000, "openrouter/z-ai/glm-5.3": "20%"}`
 
 #### `compress.nudgeGrowthTokens`
 - **类型：** `number`
@@ -442,6 +448,10 @@ ACP 从最多三层配置文件中读取（后加载的覆盖先加载的）：
         "modelMinLimits": {
             "gpt-4o": 60000,
             "claude-3.5-sonnet": "50%"
+        },
+        "modelMinNudgeLimits": {
+            "openai/gpt-5.6": 150000,
+            "openrouter/z-ai/glm-5.3": "20%"
         }
     }
 }
