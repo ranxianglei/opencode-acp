@@ -173,4 +173,11 @@ export interface SessionState {
      * uncalibrated-window WARN has fired for this session, so it only logs once.
      */
     uncalibratedWindowWarned: boolean
+    /**
+     * [FIX #347] Transient flag (NOT persisted): the overflow guard is over
+     * budget with nothing clearable. The ERROR for that condition persists
+     * across transforms, so it is logged once per "stuck episode" and the flag
+     * resets when the estimate drops back under budget (review N3).
+     */
+    overflowGuardStuckLogged: boolean
 }

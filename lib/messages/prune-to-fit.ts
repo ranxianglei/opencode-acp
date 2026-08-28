@@ -84,23 +84,46 @@ export function resolveKnownWindow(
  * (1) the trailing completed tool outputs of the last assistant message, which
  *     are appended AFTER the last LLM call and so absent from that usage
  *     (opencode runs messages.transform on every LLM call; a mid-turn
- *     sub-request otherwise misses fresh tool outputs — issue #347 B1). The
- *     trailing-run count is exact when the last step has text and only
- *     over-counts for tool-calls-only steps (safe: clears more, never less);
- * (2) {@link WIRE_SAFETY_MARGIN} for the new user message + nudges.
+ *     sub-request otherwise misses fresh tool outputs — issue #347 B1). This
+ *     count is exact for both text and tool-calls-only steps: a step's own
+ *     usage cannot include its own tool results;
+ * (2) any messages after the last assistant (typically the current user message
+ *     on a new turn), also absent from that usage (review N2);
+ * (3) {@link WIRE_SAFETY_MARGIN} for nudges / ID tags appended after the guard.
  *
- * Fallback (only when `getCurrentTokenUsage` is 0): precise count of all
- * message content + system prompt.
+ * Falls back to {@link preciseWireTokens} (count every message's content) when
+ * there is no provider usage data, OR when the usage is known-stale: the last
+ * assistant step ran a `compress`, so `base` still includes the range that
+ * `prune()` is about to replace with a summary (review N1).
  */
 function estimateWireTokens(state: SessionState, messages: WithParts[]): number {
     const base = getCurrentTokenUsage(state, messages)
     if (base > 0) {
+        // Backward scan for the last assistant message — O(1) in the common case
+        // where it is the most recent message (no array copy; review T1).
+        let lastAsstIdx = -1
+        for (let i = messages.length - 1; i >= 0; i--) {
+            if (messages[i].info.role === "assistant") {
+                lastAsstIdx = i
+                break
+            }
+        }
+
+        // A completed `compress` in the last assistant step means `base` still
+        // includes the range prune() has (or will) replace with a summary — the
+        // base is stale by (compressed − summary) tokens. Count the already-
+        // pruned messages precisely instead of over-clearing (review N1).
+        if (lastAsstIdx >= 0 && hasCompletedCompressPart(messages[lastAsstIdx]!)) {
+            return preciseWireTokens(state, messages)
+        }
+
         // Trailing completed tool outputs were appended after the last LLM call,
         // so they are absent from `base` — count them (issue #347 B1).
         let trailing = 0
-        const lastAsst = [...messages].reverse().find((m) => m.info.role === "assistant")
-        if (lastAsst) {
-            const parts = Array.isArray(lastAsst.parts) ? lastAsst.parts : []
+        if (lastAsstIdx >= 0) {
+            const parts = Array.isArray(messages[lastAsstIdx]!.parts)
+                ? messages[lastAsstIdx]!.parts
+                : []
             for (let i = parts.length - 1; i >= 0; i--) {
                 const p = parts[i]
                 if (p?.type !== "tool") break
@@ -108,14 +131,39 @@ function estimateWireTokens(state: SessionState, messages: WithParts[]): number 
                 trailing += countTokens(extractCompletedToolOutput(p) ?? "")
             }
         }
-        return base + trailing + WIRE_SAFETY_MARGIN
+
+        // Messages after the last assistant (usually the current user message on
+        // a new turn) are also absent from `base` — count them (review N2).
+        let afterLastAsst = 0
+        for (let i = lastAsstIdx + 1; i < messages.length; i++) {
+            afterLastAsst += countAllMessageTokens(messages[i]!)
+        }
+
+        return base + trailing + afterLastAsst + WIRE_SAFETY_MARGIN
     }
 
-    let total = 0
+    return preciseWireTokens(state, messages)
+}
+
+/** Precise wire-size estimate: count the content of every message ourselves,
+ *  plus the system prompt. Used when there is no provider usage data, or when
+ *  the provider usage is known-stale (a compression just ran). */
+function preciseWireTokens(state: SessionState, messages: WithParts[]): number {
+    let total = state.systemPromptTokens ?? 0
     for (const msg of messages) {
         total += countAllMessageTokens(msg)
     }
-    return total + (state.systemPromptTokens ?? 0) + WIRE_SAFETY_MARGIN
+    return total + WIRE_SAFETY_MARGIN
+}
+
+function hasCompletedCompressPart(message: WithParts): boolean {
+    const parts = Array.isArray(message.parts) ? message.parts : []
+    for (const p of parts) {
+        if (p?.type === "tool" && p.tool === "compress" && p.state.status === "completed") {
+            return true
+        }
+    }
+    return false
 }
 
 /**
@@ -143,7 +191,12 @@ export function pruneToFit(
     if (safeBudget <= 0) return
 
     const estimate = estimateWireTokens(state, messages)
-    if (estimate <= safeBudget) return
+    if (estimate <= safeBudget) {
+        // Back under budget — clear the stuck flag so a future stuck episode
+        // logs its ERROR again (review N3).
+        state.overflowGuardStuckLogged = false
+        return
+    }
 
     const protectedRefs = computeProtectedRefs(messages, state, config.compress)
     const lastNonIgnored = findLastNonIgnoredMessage(messages)
@@ -211,8 +264,12 @@ export function pruneToFit(
     }
     if (clearedCount === 0) {
         // Over budget but nothing was clearable — the request is still about to
-        // 400. Surface it so the user knows the guard could not help.
-        logger.error("ACP overflow guard: over window but no clearable tool outputs", detail)
+        // 400. This condition persists across transforms, so log it once per
+        // stuck episode (the flag resets when the estimate drops under budget).
+        if (!state.overflowGuardStuckLogged) {
+            state.overflowGuardStuckLogged = true
+            logger.error("ACP overflow guard: over window but no clearable tool outputs", detail)
+        }
         return
     }
     if (after <= safeBudget) {

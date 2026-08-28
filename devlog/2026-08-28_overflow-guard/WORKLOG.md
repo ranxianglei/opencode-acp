@@ -53,6 +53,32 @@
   `CLEAR_PLACEHOLDER` rather than importing it — importing would make the assertion
   tautological; the local copy catches source drift.
 
+### Review Round 2 (dual-agent — APPROVE, no blocking)
+
+- **Non-blocking (fixed)** — N1: after a `compress`, the last assistant's provider
+  usage (`base`) still includes the range `prune()` is about to replace with a summary,
+  so the estimate was inflated by (compressed − summary) tokens and the first
+  post-compress transform could over-clear. Fix: when the last assistant step carries a
+  completed `compress` part, use the precise count of the already-pruned messages.
+  Regression test added + mutation-verified (fails without the fix).
+- **Non-blocking (fixed)** — N2: when the last message is a new user turn, messages
+  after the last assistant (the current user message) were absent from `base` and only
+  the fixed `WIRE_SAFETY_MARGIN` covered them — a large paste into a near-full context
+  could still 400. Fix: add the token count of messages after the last assistant to the
+  estimate. Regression test added + mutation-verified (fails without the fix).
+- **Non-blocking (fixed)** — N3: the "over budget but nothing clearable" ERROR fired on
+  every transform while stuck (log spam). Fix: dedup via a transient
+  `overflowGuardStuckLogged` state field (set when it logs, reset when the estimate
+  drops back under budget). Test covers dedup + reset-on-recovery + re-log.
+- **NITs (fixed)** — T1: `[...messages].reverse().find()` copied the array every
+  transform → backward scan (O(1) common case). T2: corrected a misleading docstring
+  (the trailing-run count is exact for tool-calls-only steps, not an over-count). T3:
+  added a production-shape test clearing a tool output on an old *assistant* message.
+  T4: mock messages now use the real `time: { created }` shape (not top-level
+  `createdAt`) so a future `lastCompaction > 0` test won't throw. T5: added a test for
+  the non-completed-trailing-part break path. T6: tightened a loose `>= 2` assertion to
+  the exact count `3`.
+
 ### Key Files
 
 - `lib/messages/prune-to-fit.ts` — **new**. `pruneToFit` (the guard) +
@@ -67,9 +93,10 @@
 - `lib/config-validation.ts` — `VALID_CONFIG_KEYS` + type validation for the two knobs.
 - `dcp.schema.json` — schema entries + defaults for the two knobs.
 - `lib/state/types.ts`, `lib/state/state.ts` — transient fields
-  `uncalibratedWindowTransforms` / `uncalibratedWindowWarned` (init + reset).
+  `uncalibratedWindowTransforms` / `uncalibratedWindowWarned` /
+  `overflowGuardStuckLogged` (init + reset).
 - `lib/messages/index.ts` — barrel exports for both new modules.
-- `tests/prune-to-fit.test.ts` — **new**, 28 tests.
+- `tests/prune-to-fit.test.ts` — **new**, 33 tests.
 
 ## 3. Design & Implementation Notes
 
@@ -84,10 +111,12 @@
     the absolute `modelMaxLimits[provider/model]`, else the absolute
     `maxContextLimit`; `undefined` when only a percent is configured (a percent is a
     nudge threshold, not a window — using it would massively over-prune).
-   - Estimate = `getCurrentTokenUsage` (O(1) provider usage) + the last assistant's
-     trailing completed tool outputs (appended after the last LLM call, so absent from
-     the provider usage — review finding B1) + `WIRE_SAFETY_MARGIN` (8192) to cover the
-     new user message + nudges; precise count only when there's no provider token data.
+    - Estimate = `getCurrentTokenUsage` (O(1) provider usage) + the last assistant's
+      trailing completed tool outputs (appended after the last LLM call, so absent from
+      the provider usage — B1) + any messages after the last assistant (the current user
+      turn — N2) + `WIRE_SAFETY_MARGIN` (8192) for nudges/ID tags. Falls back to a
+      precise content count when there is no provider usage, or when the last assistant
+      step ran a `compress` (the provider usage is then stale — N1).
   - The guard iterates oldest→newest, skipping the current turn, user messages, the
     recent-message protection zone (`computeProtectedRefs`), protected tools, and
     protected file paths (Bug 39 parity). It clears a tool output by setting
@@ -108,8 +137,8 @@ node --import tsx --test tests/*.test.ts
 
 ### Test Coverage
 
-- New/modified test files: `tests/prune-to-fit.test.ts` (new, 28 tests).
-- Test count: 1057 total, 1057 pass, 0 fail (full suite).
+- New/modified test files: `tests/prune-to-fit.test.ts` (new, 33 tests).
+- Test count: 1062 total, 1062 pass, 0 fail (full suite).
 - Key scenarios verified:
   - `resolveKnownWindow`: model limit wins; per-model absolute fallback; global
     absolute fallback; per-model precedence; percent → undefined; nothing → undefined.
@@ -121,15 +150,20 @@ node --import tsx --test tests/*.test.ts
      on empty/no-tool input; logs WARN on fit, ERROR when it cannot fit, and ERROR when
      over budget but nothing is clearable; counts trailing tool outputs appended after
      the last LLM call (B1 regression — verified to fail without the fix); does not
-     clear the current turn's trailing tool output; respects an explicit
-     `overflowGuardReserve: 0` (nullish, not falsy).
+      clear the current turn's trailing tool output; respects an explicit
+      `overflowGuardReserve: 0` (nullish, not falsy); uses the precise estimate after a
+      `compress` so a stale base does not over-clear (N1, mutation-verified); counts the
+      current user message after the last assistant (N2, mutation-verified); logs the
+      "nothing clearable" ERROR once per stuck episode and re-logs after recovery (N3);
+      clears tool outputs on old assistant messages (production shape, T3); a
+      non-completed trailing part breaks the trailing-run count (T5).
   - `trackUncalibratedWindow`: warns once at threshold; never warns when calibrated;
     dedup across many transforms; counter resets on calibration then re-climbs;
     multi-turn accumulation.
 
 ### Results
 
-- **PASS/FAIL**: PASS (typecheck clean, build clean, 1057/1057 tests pass).
+- **PASS/FAIL**: PASS (typecheck clean, build clean, 1062/1062 tests pass).
 - **Key logs/data**: n/a (unit-level).
 
 ## 5. Risk Assessment & Rollback

@@ -209,6 +209,7 @@ export function createSessionState(): SessionState {
         qualityGateRetryPending: false,
         uncalibratedWindowTransforms: 0,
         uncalibratedWindowWarned: false,
+        overflowGuardStuckLogged: false,
     }
 }
 
@@ -253,6 +254,7 @@ export function resetSessionState(state: SessionState): void {
     state.qualityGateRetryPending = false
     state.uncalibratedWindowTransforms = 0
     state.uncalibratedWindowWarned = false
+    state.overflowGuardStuckLogged = false
 }
 
 export async function ensureSessionInitialized(

@@ -143,6 +143,7 @@ function makeState(overrides: Partial<SessionState> = {}): SessionState {
         qualityGateRetryPending: false,
         uncalibratedWindowTransforms: 0,
         uncalibratedWindowWarned: false,
+        overflowGuardStuckLogged: false,
         ...overrides,
     } as unknown as SessionState
 }
@@ -158,7 +159,7 @@ function makeToolMessage(
             id,
             role: "tool",
             sessionID: "session-1",
-            createdAt: new Date().toISOString(),
+            time: { created: Date.now() },
         } as any,
         parts: [
             {
@@ -177,7 +178,7 @@ function makeTextMessage(id: string, text: string, role: "user" | "assistant" = 
             id,
             role,
             sessionID: "session-1",
-            createdAt: new Date().toISOString(),
+            time: { created: Date.now() },
         } as any,
         parts: [{ type: "text", text }] as any,
     }
@@ -189,7 +190,7 @@ function makeAssistantWithTokens(id: string, inputTokens: number, text = "ok"): 
             id,
             role: "assistant",
             sessionID: "session-1",
-            createdAt: new Date().toISOString(),
+            time: { created: Date.now() },
             tokens: { input: inputTokens, output: 100 },
         } as any,
         parts: [{ type: "text", text }] as any,
@@ -208,7 +209,7 @@ function makeAssistantWithTrailingTool(
             id,
             role: "assistant",
             sessionID: "session-1",
-            createdAt: new Date().toISOString(),
+            time: { created: Date.now() },
             tokens: { input: inputTokens, output: 100 },
         } as any,
         parts: [
@@ -340,7 +341,11 @@ test("pruneToFit: clears multiple oldest outputs for a large gap, never the last
     pruneToFit(state, config, noopLogger, messages)
 
     const clearedCount = messages.slice(0, 6).filter(isCleared).length
-    assert.ok(clearedCount >= 2, `expected at least 2 cleared, got ${clearedCount}`)
+    assert.equal(
+        clearedCount,
+        3,
+        `expected exactly 3 cleared (gap 60000 / 27985 per clear), got ${clearedCount}`,
+    )
     assert.equal(isCleared(messages[0]!), true, "oldest should be cleared")
     assert.equal(
         isCleared(messages[5]!),
@@ -370,7 +375,12 @@ test("pruneToFit: skips protected file paths even when over budget", () => {
     // A read tool whose file path matches the protected pattern.
     const messages: WithParts[] = [
         {
-            info: { id: "msg-0", role: "tool", sessionID: "s", createdAt: "" } as any,
+            info: {
+                id: "msg-0",
+                role: "tool",
+                sessionID: "s",
+                time: { created: Date.now() },
+            } as any,
             parts: [
                 {
                     type: "tool",
@@ -599,6 +609,167 @@ test("pruneToFit: respects an explicit overflowGuardReserve of 0 (nullish, not f
         isCleared(messages[0]!),
         true,
         "reserve 0 must be respected (budget = full window)",
+    )
+})
+
+// ---------------------------------------------------------------------------
+// pruneToFit — estimator edge cases (review round 2)
+// ---------------------------------------------------------------------------
+
+test("pruneToFit: uses the precise estimate after a compress so a stale base does not over-clear (review N1)", () => {
+    const config = makeConfig()
+    const state = makeState({ modelContextLimit: 200000 })
+    // safeBudget = 167232. The last assistant's provider tokens (180000) are
+    // STALE: they still include the range a just-completed `compress` replaces
+    // with a summary. The real (post-prune) content is far smaller.
+    const messages: WithParts[] = [
+        makeToolMessage("msg-old", DENSE),
+        {
+            info: {
+                id: "msg-asst",
+                role: "assistant",
+                sessionID: "session-1",
+                time: { created: Date.now() },
+                tokens: { input: 180000, output: 100 },
+            } as any,
+            parts: [
+                { type: "text", text: "ok" },
+                {
+                    type: "tool",
+                    tool: "compress",
+                    callID: "call-c",
+                    state: { status: "completed", output: "summary", input: {}, time: {} },
+                },
+            ] as any,
+        },
+    ]
+
+    pruneToFit(state, config, noopLogger, messages)
+
+    // Precise estimate (real content ~28k + margin) is under budget → no clear.
+    // Without the N1 fix the stale base (180000) would push the estimate over
+    // budget and clear msg-old.
+    assert.equal(
+        isCleared(messages[0]!),
+        false,
+        "stale post-compress base must not trigger over-clearing",
+    )
+})
+
+test("pruneToFit: counts the current user message after the last assistant (review N2)", () => {
+    const config = makeConfig()
+    const state = makeState({ modelContextLimit: 200000 })
+    // safeBudget = 167232. The last message is a NEW user turn carrying a large
+    // paste (DENSE ~28k). base (assistant 150000) does not include it. Without
+    // N2 the estimate is 150100 + 8192 = 158292 < 167232 (no fire); with N2 it
+    // adds the user message → 186293 > 167232 (fire).
+    const messages: WithParts[] = [
+        makeToolMessage("msg-old", DENSE),
+        makeAssistantWithTokens("msg-asst", 150000),
+        makeTextMessage("msg-user", DENSE, "user"),
+    ]
+
+    pruneToFit(state, config, noopLogger, messages)
+
+    assert.equal(
+        isCleared(messages[0]!),
+        true,
+        "a large current user message must push the estimate over budget",
+    )
+})
+
+test("pruneToFit: logs the 'nothing clearable' ERROR once per stuck episode, re-logging after recovery (review N3)", () => {
+    const { logger, calls } = makeCapturingLogger()
+    const config = makeConfig()
+    const state = makeState({ modelContextLimit: 200000 })
+    // Only the current turn carries a big trailing tool output; nothing older is
+    // clearable → over budget with nothing to clear on every transform.
+    const stuck: WithParts[] = [makeAssistantWithTrailingTool("msg-asst", 200000, DENSE)]
+    pruneToFit(state, config, logger, stuck) // transform 1 → ERROR
+    pruneToFit(state, config, logger, stuck) // transform 2 → deduped
+
+    // Recover: a small context is under budget → the stuck flag resets.
+    const recovered: WithParts[] = [makeAssistantWithTokens("msg-asst2", 100000)]
+    pruneToFit(state, config, logger, recovered)
+
+    // Stuck again → the flag was reset, so the ERROR logs a second time.
+    pruneToFit(state, config, logger, stuck)
+    pruneToFit(state, config, logger, stuck) // deduped
+
+    const errors = calls.filter((c) => c.level === "error" && c.message.includes("overflow guard"))
+    assert.equal(errors.length, 2, "stuck ERROR logs once per episode and re-logs after recovery")
+})
+
+test("pruneToFit: clears tool outputs carried on old ASSISTANT messages (production shape, review T3)", () => {
+    const config = makeConfig()
+    const state = makeState({ modelContextLimit: 200000 })
+    // Production shape: tool results live on assistant messages. An OLD assistant
+    // message carries a big completed tool output; the guard should clear it.
+    const oldAsst: WithParts = {
+        info: {
+            id: "msg-old",
+            role: "assistant",
+            sessionID: "session-1",
+            time: { created: Date.now() },
+        } as any,
+        parts: [
+            { type: "text", text: "old step" },
+            {
+                type: "tool",
+                tool: "bash",
+                callID: "call-old",
+                state: { status: "completed", output: DENSE, input: {}, time: {} },
+            },
+        ] as any,
+    }
+    // safeBudget = 167232; estimate = 170100 + 8192 = 178292 > 167232 → fire.
+    const messages: WithParts[] = [oldAsst, makeAssistantWithTokens("msg-asst", 170000)]
+
+    pruneToFit(state, config, noopLogger, messages)
+
+    const oldOutput = (oldAsst.parts[1] as any).state.output
+    assert.equal(oldOutput, CLEAR_PLACEHOLDER, "old assistant's tool output should be cleared")
+})
+
+test("pruneToFit: a non-completed trailing part breaks the trailing-run count (review T5)", () => {
+    const config = makeConfig()
+    const state = makeState({ modelContextLimit: 200000 })
+    // safeBudget = 167232. The last assistant's trailing run breaks at its final
+    // RUNNING tool part, so the completed DENSE tool before it is NOT counted.
+    // base = 150100, trailing = 0 → estimate = 158292 < 167232 → no fire.
+    // (If the running part were skipped, trailing would add ~28k → 186293 → fire.)
+    const lastAsst: WithParts = {
+        info: {
+            id: "msg-asst",
+            role: "assistant",
+            sessionID: "session-1",
+            time: { created: Date.now() },
+            tokens: { input: 150000, output: 100 },
+        } as any,
+        parts: [
+            { type: "text", text: "ok" },
+            {
+                type: "tool",
+                tool: "bash",
+                callID: "call-d",
+                state: { status: "completed", output: DENSE, input: {}, time: {} },
+            },
+            {
+                type: "tool",
+                tool: "bash",
+                callID: "call-r",
+                state: { status: "running", input: {}, time: {} },
+            },
+        ] as any,
+    }
+    const messages: WithParts[] = [makeToolMessage("msg-old", DENSE), lastAsst]
+
+    pruneToFit(state, config, noopLogger, messages)
+
+    assert.equal(
+        isCleared(messages[0]!),
+        false,
+        "a running trailing part breaks the run → estimate stays under budget → no clear",
     )
 })
 
