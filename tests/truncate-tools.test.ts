@@ -165,7 +165,9 @@ test("Truncation: does nothing when context is below threshold", () => {
 })
 
 test("Truncation: truncates largest tool output at threshold", () => {
-    const state = makeState(1000)
+    // [FIX #346] Window must exceed OUTPUT_RESERVE_TOKENS (16384) for the
+    // overhead-aware threshold to be positive.
+    const state = makeState(200000)
     const config = makeConfig({ majorGcThresholdPercent: "100%" })
 
     const messages: WithParts[] = []
@@ -173,7 +175,8 @@ test("Truncation: truncates largest tool output at threshold", () => {
         messages.push(makeToolMessage(`msg-${i}`, LARGE_OUTPUT))
     }
     messages.push(makeTextMessage("msg-user", "hello"))
-    messages.push(makeAssistantWithTokens("msg-asst", 1000))
+    // [FIX #346] 200_000 + output 100 = 200_100 ≥ threshold 200_000
+    messages.push(makeAssistantWithTokens("msg-asst", 200_000))
 
     truncateLargeToolOutputs(state, config, noopLogger, messages)
 
@@ -299,7 +302,9 @@ test("Truncation: no crash when no tool outputs exist", () => {
 })
 
 test("Truncation: preserves prefix and suffix of truncated output", () => {
-    const state = makeState(1000)
+    // [FIX #346] Window must exceed OUTPUT_RESERVE_TOKENS (16384) so the
+    // overhead-aware threshold stays positive.
+    const state = makeState(200000)
     const config = makeConfig()
 
     const prefix = "START_MARKER_" + "p".repeat(2000)
@@ -312,7 +317,8 @@ test("Truncation: preserves prefix and suffix of truncated output", () => {
         messages.push(makeToolMessage(`msg-${i}`, fullOutput))
     }
     messages.push(makeTextMessage("msg-6", "text"))
-    messages.push(makeAssistantWithTokens("msg-7", 1000))
+    // [FIX #346] 200_000 + output 100 = 200_100 ≥ threshold 200_000
+    messages.push(makeAssistantWithTokens("msg-7", 200_000))
 
     truncateLargeToolOutputs(state, config, noopLogger, messages)
 
@@ -355,4 +361,100 @@ test("Truncation equivalence: output never longer than input", () => {
             `Message ${i}: new length ${newLength} must not exceed original ${originalLengths[i]}`,
         )
     }
+})
+
+// ─── Issue #346: the serving wall is window − system prompt − max_tokens ─────
+
+test("production wall repro (#346): truncates when conversation + overhead exceeds the window", () => {
+    // Production numbers from the issue: 229_479 conversation tokens on a
+    // 262_144 window with ~17k system prompt + 16_384 max_tokens. The old
+    // 100%-of-window threshold started truncating only at 262_144 — AFTER the
+    // request had already exceeded max_model_len (immediate rejection, silent
+    // empty run, retry loop). The overhead-aware threshold is
+    // min(262_144, 262_144 − 17_000 − 16_384) = 228_760 ≤ 229_479 → must fire.
+    const state = makeState(262_144)
+    state.systemPromptTokens = 17_000
+    const config = makeConfig({ majorGcThresholdPercent: "100%" })
+
+    const messages: WithParts[] = [makeTextMessage("u0", "start")]
+    for (let i = 1; i <= 10; i++) {
+        messages.push(makeToolMessage(`t${i}`, LARGE_OUTPUT))
+    }
+    messages.push(makeTextMessage("u1", "latest question"))
+    // 229_379 + output 100 = 229_479 (the exact production token count).
+    messages.push(makeAssistantWithTokens("a1", 229_379))
+
+    truncateLargeToolOutputs(state, config, noopLogger, messages)
+
+    let truncatedCount = 0
+    for (const m of messages) {
+        const output = (m.parts[0] as any).state?.output
+        if (typeof output === "string" && output.includes("[truncated for context space")) {
+            truncatedCount++
+        }
+    }
+    assert.ok(truncatedCount > 0, "must truncate at the overhead-aware threshold")
+})
+
+test("window too small for overhead: bails with ERROR instead of truncating", () => {
+    const state = makeState(10_000)
+    const config = makeConfig({ majorGcThresholdPercent: "100%" })
+    const errors: string[] = []
+    const logger = {
+        debug: () => {},
+        info: () => {},
+        warn: () => {},
+        error: (msg: string) => {
+            errors.push(msg)
+        },
+        saveContext: () => {},
+        child: () => logger,
+    } as unknown as Logger
+
+    const messages: WithParts[] = [
+        makeToolMessage("t1", LARGE_OUTPUT),
+        makeTextMessage("u1", "latest question"),
+        makeAssistantWithTokens("a1", 1_000),
+    ]
+
+    truncateLargeToolOutputs(state, config, logger, messages)
+
+    const output = (messages[0]!.parts[0] as any).state.output
+    assert.ok(
+        !output.includes("[truncated for context space"),
+        "must not truncate when the window cannot fit the overhead",
+    )
+    assert.ok(
+        errors.some((e) => e.includes("too small to fit overhead")),
+        `expected an overhead error, got: ${JSON.stringify(errors)}`,
+    )
+})
+
+test("fallback limit drives truncation when model limit unknown (#346)", () => {
+    // The production sessions never learned the model limit (spawn+resume,
+    // empty catalog). With compress.contextLimitFallback the safety net must
+    // still work against the fallback window.
+    const state = makeState()
+    state.modelContextLimit = undefined
+    const config = makeConfig({ majorGcThresholdPercent: "100%" })
+    config.compress.contextLimitFallback = 200_000
+
+    const messages: WithParts[] = [makeTextMessage("u0", "start")]
+    for (let i = 1; i <= 10; i++) {
+        messages.push(makeToolMessage(`t${i}`, LARGE_OUTPUT))
+    }
+    messages.push(makeTextMessage("u1", "latest question"))
+    // 200_000 + output 100 = 200_100 ≥ threshold min(200_000, 183_616)
+    messages.push(makeAssistantWithTokens("a1", 200_000))
+
+    truncateLargeToolOutputs(state, config, noopLogger, messages)
+
+    let truncatedCount = 0
+    for (const m of messages) {
+        const output = (m.parts[0] as any).state?.output
+        if (typeof output === "string" && output.includes("[truncated for context space")) {
+            truncatedCount++
+        }
+    }
+    assert.ok(truncatedCount > 0, "fallback limit must drive in-flight truncation")
 })

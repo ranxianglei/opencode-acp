@@ -28,6 +28,7 @@ export const VALID_CONFIG_KEYS = new Set([
     "compress.minContextLimit",
     "compress.modelMaxLimits",
     "compress.modelMinLimits",
+    "compress.contextLimitFallback",
     "compress.nudgeFrequency",
     "compress.minNudgeContextPercent",
     "compress.nudgeGrowthTokens",
@@ -606,6 +607,28 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
 
             validateModelLimits("compress.modelMaxLimits", compress.modelMaxLimits)
             validateModelLimits("compress.modelMinLimits", compress.modelMinLimits)
+
+            if (
+                compress.contextLimitFallback !== undefined &&
+                typeof compress.contextLimitFallback !== "number"
+            ) {
+                errors.push({
+                    key: "compress.contextLimitFallback",
+                    expected: "number",
+                    actual: typeof compress.contextLimitFallback,
+                })
+            }
+
+            if (
+                typeof compress.contextLimitFallback === "number" &&
+                compress.contextLimitFallback < 0
+            ) {
+                errors.push({
+                    key: "compress.contextLimitFallback",
+                    expected: "non-negative number (0 disables the fallback)",
+                    actual: `${compress.contextLimitFallback}`,
+                })
+            }
 
             const validValues = ["ask", "allow", "deny"]
             if (compress.permission !== undefined && !validValues.includes(compress.permission)) {

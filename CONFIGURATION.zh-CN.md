@@ -179,6 +179,12 @@ ACP 从最多三层配置文件中读取（后加载的覆盖先加载的）：
 - **状态：** ACTIVE
 - **说明：** 按模型覆盖 `minContextLimit`。
 
+#### `compress.contextLimitFallback`
+- **类型：** `number`
+- **默认值：** `128000`
+- **状态：** ACTIVE
+- **说明：** 当模型上下文窗口未知时使用的回退窗口（绝对 token 数）——例如未声明 limit 的自定义 provider，或从未学到 limit 的 headless spawn+resume 会话。驱动所有百分比阈值（`maxContextLimit`/`minContextLimit`）、紧急 nudge 覆盖、批量清理 GC 与 in-flight 工具输出截断。已知真实模型 limit 时始终优先。设为 `0` 可禁用回退（旧行为：学到 limit 前无安全网）。
+
 #### `compress.nudgeFrequency`
 - **类型：** `number`
 - **默认值：** `5`

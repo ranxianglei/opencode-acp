@@ -2,6 +2,7 @@ import type { CompressionBlock, SessionState, WithParts } from "../state"
 import type { PluginConfig } from "../config"
 import type { Logger } from "../logger"
 import { countTokens, getCurrentTokenUsage } from "../token-utils"
+import { resolveEffectiveContextLimit } from "../state/utils"
 import {
     COMPRESSED_BLOCK_HEADER,
     allocateBlockId,
@@ -198,7 +199,10 @@ export function runBatchCleanup(
         savedTokens: 0,
     }
 
-    if (!state.modelContextLimit || state.modelContextLimit <= 0) {
+    // [FIX #346] Use the effective limit (model or fallback) so batch cleanup
+    // is not silently disabled when the model limit is unknown.
+    const effective = resolveEffectiveContextLimit(state, config)
+    if (!effective) {
         return noop
     }
 
@@ -207,7 +211,7 @@ export function runBatchCleanup(
     // Only a hardcoded 100% force fallback remains. The mark_block mechanism and
     // the multi-tier (low/high/force) batch-cleanup were retired; full GC removal
     // is tracked separately. Threshold is intentionally NOT read from config.
-    if (currentTokens < state.modelContextLimit) {
+    if (currentTokens < effective.limit) {
         return noop
     }
 
@@ -227,7 +231,8 @@ export function runBatchCleanup(
         mergedCount: result.mergedCount,
         savedTokens: result.savedTokens,
         currentTokens,
-        contextLimit: state.modelContextLimit,
+        contextLimit: effective.limit,
+        contextLimitSource: effective.source,
     })
 
     return {

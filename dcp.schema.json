@@ -188,6 +188,12 @@
                         ]
                     }
                 },
+                "contextLimitFallback": {
+                    "description": "Fallback context window (absolute tokens) used when the model's limit is unknown (e.g. custom providers with no declared limit). Drives nudge thresholds, emergency override, GC, and in-flight truncation. Set to 0 to disable the fallback (legacy behavior: no safety net until the limit is learned).",
+                    "type": "number",
+                    "default": 128000,
+                    "minimum": 0
+                },
                 "nudgeFrequency": {
                     "type": "number",
                     "default": 5,

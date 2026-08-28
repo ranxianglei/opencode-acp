@@ -2,12 +2,21 @@ import { SessionState, WithParts } from "../state"
 import type { PluginConfig } from "../config"
 import { Logger } from "../logger"
 import { getCurrentTokenUsage, countTokens, extractCompletedToolOutput } from "../token-utils"
+import { resolveEffectiveContextLimit } from "../state/utils"
 
 const TRUNCATION_MARKER = "[truncated for context space"
 const MIN_OUTPUT_TOKENS = 1000
 const KEEP_PREFIX_CHARS = 2000
 const KEEP_SUFFIX_CHARS = 2000
 const PROTECT_RECENT_MESSAGES = 3
+
+// [FIX #346] Reserve for the model's max output tokens (max_tokens) that the
+// serving backend appends to every request. The system prompt + tool schemas
+// are already covered by the state.systemPromptTokens estimate. Without this
+// reserve, a threshold at 100% of the window starts truncating only AFTER the
+// request has already exceeded max_model_len (the production wall in #346:
+// ~229k conversation + ~17k system + 16k max_tokens > 262144).
+export const OUTPUT_RESERVE_TOKENS = 16384
 
 function parseGcThreshold(
     threshold: number | `${number}%` | undefined,
@@ -31,12 +40,30 @@ export function truncateLargeToolOutputs(
     logger: Logger,
     messages: WithParts[],
 ): void {
-    if (!state.modelContextLimit) return
+    const effective = resolveEffectiveContextLimit(state, config)
+    if (!effective) return
 
     const currentTokens = getCurrentTokenUsage(state, messages)
     if (currentTokens === 0) return
 
-    const threshold = parseGcThreshold(config.gc?.majorGcThresholdPercent, state.modelContextLimit)
+    // [FIX #346] The serving wall is NOT the full window: the request also
+    // carries the system prompt + tool schemas (state.systemPromptTokens) and
+    // the model's max output tokens (OUTPUT_RESERVE_TOKENS). Start truncating
+    // at min(configured threshold, window − overhead) so the request still
+    // fits. Users with larger max_tokens can lower gc.majorGcThresholdPercent
+    // — the min() keeps the stricter bound.
+    const configuredThreshold = parseGcThreshold(config.gc?.majorGcThresholdPercent, effective.limit)
+    const overhead = (state.systemPromptTokens ?? 0) + OUTPUT_RESERVE_TOKENS
+    const threshold = Math.min(configuredThreshold, effective.limit - overhead)
+    if (threshold <= 0) {
+        logger.error("ACP: model context window too small to fit overhead", {
+            session: state.sessionId,
+            limit: effective.limit,
+            contextLimitSource: effective.source,
+            overhead,
+        })
+        return
+    }
     if (currentTokens < threshold) return
 
     const protectedIndex = messages.length - PROTECT_RECENT_MESSAGES
@@ -97,6 +124,8 @@ export function truncateLargeToolOutputs(
             estimatedSavedTokens: Math.round(savedTokens),
             currentTokens,
             threshold,
+            contextLimit: effective.limit,
+            contextLimitSource: effective.source,
         })
     }
 }

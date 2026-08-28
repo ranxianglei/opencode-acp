@@ -69,5 +69,19 @@ export function createTestRegistry(seedState: SessionState) {
         ): number | undefined {
             return modelLimits.resolve(providerId, modelId)
         },
+        // [FIX #346] Mirrors SessionStateRegistry.hydrateAndResolve — the
+        // messages transform calls it on a catalog miss.
+        async hydrateAndResolve(
+            client: unknown,
+            providerId: string,
+            modelId: string,
+        ): Promise<number | undefined> {
+            const existing = modelLimits.resolve(providerId, modelId)
+            if (existing !== undefined) {
+                return existing
+            }
+            await modelLimits.hydrateFromClient(client)
+            return modelLimits.resolve(providerId, modelId)
+        },
     }
 }

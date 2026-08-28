@@ -103,6 +103,30 @@ export class SessionStateRegistry {
         return this.catalog.hydrateFromClient(client)
     }
 
+    // [FIX #346] The init-time seed (above) is fire-and-forget and races
+    // server readiness: in headless spawn+resume mode the provider-config
+    // call can fail before the server is up, leaving the catalog empty for
+    // the process's lifetime. During a request the server is guaranteed up
+    // (we are inside its pipeline), so on a catalog miss we retry hydration
+    // once per process before giving up (the fallback limit then applies).
+    private lazyHydrated = false
+
+    async hydrateAndResolve(
+        client: unknown,
+        providerId: string,
+        modelId: string,
+    ): Promise<number | undefined> {
+        const existing = this.catalog.resolve(providerId, modelId)
+        if (existing !== undefined) {
+            return existing
+        }
+        if (!this.lazyHydrated) {
+            this.lazyHydrated = true
+            await this.catalog.hydrateFromClient(client)
+        }
+        return this.catalog.resolve(providerId, modelId)
+    }
+
     get(sessionId: string): SessionState | undefined {
         return this.states.get(sessionId)
     }
