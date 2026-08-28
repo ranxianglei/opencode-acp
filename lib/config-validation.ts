@@ -48,6 +48,8 @@ export const VALID_CONFIG_KEYS = new Set([
     "compress.preserveRecentMessages",
     "compress.preserveRecentTokens",
     "compress.preserveLastUserMessage",
+    "compress.overflowGuard",
+    "compress.overflowGuardReserve",
     "gc",
     "gc.algorithm",
     "gc.promotionThreshold",
@@ -534,6 +536,39 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
                     key: "compress.preserveLastUserMessage",
                     expected: "boolean",
                     actual: typeof compress.preserveLastUserMessage,
+                })
+            }
+
+            if (
+                compress.overflowGuard !== undefined &&
+                typeof compress.overflowGuard !== "boolean"
+            ) {
+                errors.push({
+                    key: "compress.overflowGuard",
+                    expected: "boolean",
+                    actual: typeof compress.overflowGuard,
+                })
+            }
+
+            if (
+                compress.overflowGuardReserve !== undefined &&
+                typeof compress.overflowGuardReserve !== "number"
+            ) {
+                errors.push({
+                    key: "compress.overflowGuardReserve",
+                    expected: "number",
+                    actual: typeof compress.overflowGuardReserve,
+                })
+            }
+
+            if (
+                typeof compress.overflowGuardReserve === "number" &&
+                compress.overflowGuardReserve < 0
+            ) {
+                errors.push({
+                    key: "compress.overflowGuardReserve",
+                    expected: "non-negative number (>= 0)",
+                    actual: `${compress.overflowGuardReserve}`,
                 })
             }
 

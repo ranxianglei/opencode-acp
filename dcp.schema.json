@@ -298,6 +298,17 @@
                     "type": "boolean",
                     "default": true,
                     "description": "Always protect the most recent user message from compression."
+                },
+                "overflowGuard": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Enable the request-side overflow guard (prune-to-fit). When the estimated wire size exceeds knownWindow - overflowGuardReserve, deterministically clear the oldest compressible (non-protected) tool outputs until the estimate fits. See #347."
+                },
+                "overflowGuardReserve": {
+                    "type": "number",
+                    "default": 32768,
+                    "minimum": 0,
+                    "description": "Tokens reserved for the model's completion by the overflow guard. The guard keeps safeBudget = knownWindow - overflowGuardReserve. Should be at least the model's typical max output tokens (opencode falls back to 32000 when limit.output = 0)."
                 }
             },
             "default": {
@@ -322,7 +333,9 @@
                 "lastSegmentSoftBlock": true,
                 "preserveRecentMessages": 20,
                 "preserveRecentTokens": 20000,
-                "preserveLastUserMessage": true
+                "preserveLastUserMessage": true,
+                "overflowGuard": true,
+                "overflowGuardReserve": 32768
             }
         },
         "gc": {
