@@ -19,7 +19,7 @@
 | Commit | Description |
 |--------|-------------|
 | `50a117e` | feat: per-model growth-nudge floor `modelMinNudgeLimits` (issue #344) |
-| `<pending>` | docs: zh-CN doc parity for `modelMinNudgeLimits` (dual-agent review follow-up) |
+| `4c9d772` | docs: zh-CN doc parity for `modelMinNudgeLimits` (dual-agent review follow-up) |
 
 ### Key Files
 
