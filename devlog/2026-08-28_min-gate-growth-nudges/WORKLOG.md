@@ -25,7 +25,7 @@
 | `0f35414` | fix: gate T1 growth nudges on minContextLimit (issue #342) — **superseded** |
 | `f634222` | dual-agent review: `minLimitResolved` guard + README/CONFIGURATION default fixes — **README/CONFIGURATION fixes preserved** |
 | `ecfe7f0` | fix: use `minNudgeContextPercent` (15%) as the growth-nudge floor, not `minContextLimit` (80% default) |
-| `<pending>` | docs: align README/CONFIGURATION/utils comment/test header with the floor redesign (re-pointed stale minContextLimit-gate references) |
+| `b71e10b` | docs: align README/CONFIGURATION/utils comment/test header with the floor redesign (re-pointed stale minContextLimit-gate references) |
 
 ### Key Files
 
