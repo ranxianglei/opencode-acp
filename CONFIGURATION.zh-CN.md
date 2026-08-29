@@ -187,7 +187,7 @@ ACP 从最多三层配置文件中读取（后加载的覆盖先加载的）：
 
 #### `compress.minNudgeContextPercent`
 - **类型：** `number`
-- **默认值：** `15`
+- **默认值：** `5`
 - **状态：** ACTIVE
 - **说明：** growth 触发 nudge 的下限，以模型上下文窗口的百分比表示：growth nudge 要求上下文使用率达到或超过该百分比（此外还需满足增长阈值）。超过上限（`maxContextLimit`）和 98% 紧急覆盖 nudge 不受此下限约束。若模型上下文窗口未知，则下限无法解析，growth nudge 回退到仅增长行为。turn/iteration 提醒 nudge 由 `minContextLimit` 控制，而非此字段。可用 `modelMinNudgeLimits` 按模型覆盖。
 

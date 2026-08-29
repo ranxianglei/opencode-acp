@@ -244,9 +244,9 @@
                 },
                 "minNudgeContextPercent": {
                     "type": "number",
-                    "default": 15,
+                    "default": 5,
                     "minimum": 0,
-                    "description": "Minimum context usage percent to show per-message nudges"
+                    "description": "Minimum context usage percent for growth-triggered nudges; growth nudges below this floor are suppressed (0 disables the floor)"
                 },
                 "maxSummaryLengthHard": {
                     "type": "number",
@@ -327,7 +327,7 @@
                 "protectedTools": ["skill", "compress"],
                 "protectTags": false,
                 "protectUserMessages": false,
-                "minNudgeContextPercent": 15,
+                "minNudgeContextPercent": 5,
                 "maxSummaryLengthHard": 20000,
                 "maxVisibleSegments": 50,
                 "minCompressRange": 5000,

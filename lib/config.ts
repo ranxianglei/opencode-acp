@@ -200,7 +200,7 @@ const defaultConfig: PluginConfig = {
         maxContextLimit: "80%",
         minContextLimit: "80%",
         nudgeFrequency: 5,
-        minNudgeContextPercent: 15,
+        minNudgeContextPercent: 5,
         iterationNudgeThreshold: 15,
         nudgeForce: "soft",
         protectedTools: [...COMPRESS_DEFAULT_PROTECTED_TOOLS],

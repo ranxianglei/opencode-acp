@@ -153,7 +153,7 @@ function resolveContextTokenLimit(
  * Precedence:
  *   1. `config.compress.modelMinNudgeLimits["${providerId}/${modelId}"]` —
  *      absolute tokens, or "X%" of the model's context window.
- *   2. `config.compress.minNudgeContextPercent` (default 15) × model context.
+ *   2. `config.compress.minNudgeContextPercent` (default 5) × model context.
  *   3. `undefined` when the model context is unknown — the caller keeps the
  *      pre-#342 growth-only behavior (no suppression).
  *
@@ -202,7 +202,13 @@ export function resolveMinNudgeFloorTokens(
     if (modelContextLimit === undefined) {
         return undefined
     }
-    return Math.round(((config.compress.minNudgeContextPercent ?? 15) / 100) * modelContextLimit)
+    // The global-percent fallback is deliberately LOW (5%): with the default
+    // nudgeGrowthTokens (50K), a 5% floor only binds when 5% x window >
+    // baseline+50K (i.e. windows >= ~2M for typical baselines) — inert for
+    // typical working cycles. A 15% fallback would bind on >=400K windows and
+    // shift every compress cycle's working range upward (~2x average context
+    // on 1M-window models), a bug-level silent change for large-window users.
+    return Math.round(((config.compress.minNudgeContextPercent ?? 5) / 100) * modelContextLimit)
 }
 
 export function isContextOverLimits(
