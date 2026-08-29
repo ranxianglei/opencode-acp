@@ -157,15 +157,15 @@ Core compression behavior.
 
 #### `compress.maxContextLimit`
 - **Type:** `number | \`${number}%\``
-- **Default:** `"55%"`
+- **Default:** `"80%"`
 - **Status:** ACTIVE
-- **Description:** Upper context usage threshold (as % of model context window or absolute tokens). When exceeded, ACP nudges the model to compress. Example: `"55%"` or `100000`.
+- **Description:** Upper context usage threshold (as % of model context window or absolute tokens). When exceeded, ACP nudges the model to compress. Example: `"80%"` or `100000`.
 
 #### `compress.minContextLimit`
 - **Type:** `number | \`${number}%\``
-- **Default:** `"45%"`
+- **Default:** `"80%"`
 - **Status:** ACTIVE
-- **Description:** Lower context usage threshold. ACP stops nudging when usage drops below this level.
+- **Description:** Lower context usage threshold for turn/iteration reminder nudges. ACP stops injecting those reminders when usage drops below this level (or when the limit cannot be resolved to a concrete value, e.g. a `"X%"` limit with an unknown model context window). Growth nudges are governed separately by `minNudgeContextPercent`.
 
 #### `compress.modelMaxLimits`
 - **Type:** `Record<string, number | \`${number}%\`>`
@@ -187,9 +187,9 @@ Core compression behavior.
 
 #### `compress.minNudgeContextPercent`
 - **Type:** `number`
-- **Default:** `15`
+- **Default:** `5`
 - **Status:** ACTIVE
-- **Description:** Minimum context usage percentage before any nudges are shown. Below this, no nudges are injected.
+- **Description:** Floor for growth-triggered nudges, as a percentage of the model context window: a growth nudge requires context usage at or above this percentage (in addition to the growth threshold). Over-max (`maxContextLimit`) and the 98% emergency-override nudges bypass the floor. If the model context window is unknown, the floor is unresolvable and growth nudges fall back to growth-only behavior. Turn/iteration reminder nudges are governed by `minContextLimit`, not this field. The default is deliberately low: with the default `nudgeGrowthTokens` (50K), a 5% floor stays inert for typical working cycles and only binds on very large (≥2M-class) windows — a higher default (e.g. 15%) would bind on ≥400K windows and shift every compress cycle's working range upward on large-window models. Set `0` to disable the floor entirely, or raise it (e.g. 15–30%) to keep growth nudges waiting until a larger share of the window is in use.
 
 #### `compress.nudgeGrowthTokens`
 - **Type:** `number`
