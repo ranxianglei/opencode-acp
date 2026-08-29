@@ -344,6 +344,21 @@ Each level overrides the previous, so project settings take priority over global
         //     "openai/gpt-5.3-codex": 50000,
         //     "anthropic/claude-sonnet-4.6": "25%"
         // },
+        // Nested per-provider/per-model overrides for ANY compress field
+        // (23 fields: thresholds, nudge behavior, protection, ...).
+        // Resolution is per field: model > provider > global. Unknown
+        // provider/model IDs fall back to the global value.
+        // "providers": {
+        //     "anthropic": {
+        //         "nudgeGrowthTokens": 50000,
+        //         "models": {
+        //             "claude-sonnet-4.6": {
+        //                 "maxContextLimit": "70%",
+        //                 "minNudgeContextPercent": 10
+        //             }
+        //         }
+        //     }
+        // },
         // How often the context-limit nudge fires (1 = every fetch, 5 = every 5th)
         "nudgeFrequency": 5,
         // Start adding compression reminders after this many
@@ -402,6 +417,33 @@ Each level overrides the previous, so project settings take priority over global
 ```
 
 </details>
+
+### Per-Provider / Per-Model Overrides
+
+Any `compress` field can be overridden per provider and per model via the nested `compress.providers` map:
+
+```jsonc
+{
+    "compress": {
+        "maxContextLimit": "80%",
+        "providers": {
+            "anthropic": {
+                "nudgeGrowthTokens": 20000,
+                "models": {
+                    "claude-sonnet-4.6": { "maxContextLimit": "70%", "nudgeForce": "strong" }
+                }
+            },
+            "openai": { "nudgeGrowthTokens": 40000 }
+        }
+    }
+}
+```
+
+Resolution is **per field**: model > provider > global. Unknown provider/model IDs fall back to the global value. A nested `maxContextLimit` also wins over the legacy flat `modelMaxLimits` map. Overrides deep-merge across the three config layers (global → config dir → project) per provider/model key.
+
+Not overridable here: `permission`, the deprecated `minContextLimit` family, and the flat `model*Limits` maps themselves.
+
+See the [`compress.providers`](./CONFIGURATION.md#compressproviders) reference in CONFIGURATION.md for the full 23-field list and recipes.
 
 ### Prompt Overrides
 

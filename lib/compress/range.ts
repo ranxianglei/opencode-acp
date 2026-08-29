@@ -38,6 +38,7 @@ import {
 } from "./state"
 import type { CompressRangeToolArgs } from "./types"
 import { resolveKeepMarkers } from "./keep-markers"
+import { getModelInfo, applyCompressOverrides } from "../messages/inject/utils"
 import {
     buildQualityRejectionError,
     evaluatePreCommitQuality,
@@ -102,13 +103,13 @@ export function createCompressRangeTool(factoryCtx: ToolFactoryContext): ReturnT
         description: runtimePrompts.compressRange + RANGE_FORMAT_EXTENSION,
         args: buildSchema(factoryCtx.config.compress.maxSummaryLengthHard),
         async execute(args, toolCtx) {
-            const ctx = resolveToolContext(factoryCtx, toolCtx.sessionID)
+            const ctx0 = resolveToolContext(factoryCtx, toolCtx.sessionID)
             const input = args as CompressRangeToolArgs
             validateArgs(input)
 
             const maxLen =
                 (args as { summaryMaxChars?: number }).summaryMaxChars ??
-                ctx.config.compress.maxSummaryLengthHard
+                ctx0.config.compress.maxSummaryLengthHard
             for (const entry of input.content) {
                 if (entry.summary.length > maxLen) {
                     throw new Error(
@@ -123,10 +124,20 @@ export function createCompressRangeTool(factoryCtx: ToolFactoryContext): ReturnT
                     : undefined
 
             const { rawMessages, searchContext } = await prepareSession(
-                ctx,
+                ctx0,
                 toolCtx,
                 `Compress Range: ${input.topic ?? "(batch)"}`,
             )
+
+            // Three-level cascade (issue #344): once the session messages are
+            // loaded, swap in the effective compress config for the active
+            // provider/model so every ctx.config.compress.X read below picks up
+            // per-model > per-provider > global resolution.
+            const { providerId, modelId } = getModelInfo(rawMessages)
+            const ctx: typeof ctx0 = {
+                ...ctx0,
+                config: applyCompressOverrides(ctx0.config, providerId, modelId),
+            }
             const resolvedPlans = resolveRanges(input, searchContext, ctx.state, ctx.logger)
             validateNonOverlapping(resolvedPlans)
 

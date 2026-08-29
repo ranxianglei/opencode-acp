@@ -235,29 +235,267 @@
                 },
                 "providers": {
                     "type": "object",
-                    "description": "Nested per-provider / per-model overrides. Field-wise cascade: providers[p].models[m] > providers[p] > the global compress fields. Unset fields never clear shallower values; 0 is an explicit value (disable). Unknown provider/model ids fall back to the global value. Percentages resolve against the active model's context window.",
+                    "description": "Nested per-provider / per-model overrides for every tunable compress field (issue #344). Field-wise cascade: providers[p].models[m] > providers[p] > the global compress value. Unset fields never clear shallower values; 0 is an explicit value (e.g. disable a floor). Unknown provider/model ids fall back to the global value. Not overridable here: permission (session-level), minContextLimit/modelMinLimits (deprecated), modelMaxLimits (flat map), and this providers map itself. maxContextLimit set here takes precedence over modelMaxLimits.",
                     "additionalProperties": {
                         "type": "object",
                         "additionalProperties": false,
                         "properties": {
+                            "maxContextLimit": {
+                                "oneOf": [
+                                    {
+                                        "type": "number"
+                                    },
+                                    {
+                                        "type": "string",
+                                        "pattern": "^\\d+(?:\\.\\d+)?%$"
+                                    }
+                                ],
+                                "description": "Override for the soft upper threshold. Precedence when set here: nested override > modelMaxLimits flat map > global value."
+                            },
+                            "emergencyThresholdPercent": {
+                                "type": [
+                                    "number",
+                                    "string"
+                                ],
+                                "description": "Override for the emergency threshold (absolute tokens or percentage string)."
+                            },
                             "minNudgeContextPercent": {
                                 "type": "number",
                                 "minimum": 0,
                                 "maximum": 100,
-                                "description": "Provider-level growth-nudge floor percent (applies to all of this provider's models unless overridden per model)"
+                                "description": "Growth-nudge floor percent, resolved against the active model's context window (0 disables the floor)."
+                            },
+                            "nudgeFrequency": {
+                                "type": "number",
+                                "minimum": 1,
+                                "description": "Override for the context-limit nudge frequency."
+                            },
+                            "iterationNudgeThreshold": {
+                                "type": "number",
+                                "minimum": 1,
+                                "description": "Override for the iteration nudge threshold."
+                            },
+                            "toolOutputNudgeThreshold": {
+                                "type": "number",
+                                "minimum": 0,
+                                "description": "Override for the tool-output nudge threshold (absolute tokens)."
+                            },
+                            "nudgeGrowthTokens": {
+                                "type": "number",
+                                "minimum": 0,
+                                "description": "Override for the per-message nudge growth threshold (absolute tokens)."
+                            },
+                            "minNudgeGrowthRatio": {
+                                "type": "number",
+                                "minimum": 0,
+                                "maximum": 1,
+                                "description": "Override for the growth ratio (× nudgeGrowthTokens)."
+                            },
+                            "minNudgeGrowthFloor": {
+                                "type": "number",
+                                "minimum": 0,
+                                "description": "Override for the absolute growth floor (tokens)."
+                            },
+                            "nudgeForce": {
+                                "type": "string",
+                                "enum": [
+                                    "strong",
+                                    "soft"
+                                ],
+                                "description": "Override for the nudge force mode."
+                            },
+                            "protectedTools": {
+                                "type": "array",
+                                "items": {
+                                    "type": "string"
+                                },
+                                "description": "Override for protected tool patterns (replaces the inherited list)."
+                            },
+                            "showCompression": {
+                                "type": "boolean",
+                                "description": "Override for showing compression summaries in notifications."
+                            },
+                            "summaryBuffer": {
+                                "type": "boolean",
+                                "description": "Override for counting active summary tokens toward the effective maxContextLimit."
+                            },
+                            "protectTags": {
+                                "type": "boolean",
+                                "description": "Override for <protect> tag preservation."
+                            },
+                            "protectUserMessages": {
+                                "type": "boolean",
+                                "description": "Override for user-message protection."
+                            },
+                            "maxSummaryLengthHard": {
+                                "type": "number",
+                                "minimum": 1,
+                                "description": "Override for the hard summary length limit (chars)."
+                            },
+                            "minCompressRange": {
+                                "type": "number",
+                                "minimum": 0,
+                                "description": "Override for the minimum compressible range (chars)."
+                            },
+                            "maxVisibleSegments": {
+                                "type": "number",
+                                "minimum": 1,
+                                "description": "Override for the max disjoint visible segments shown."
+                            },
+                            "keepEmbedMaxChars": {
+                                "type": "number",
+                                "minimum": 0,
+                                "description": "Override for the max embedded-content chars kept in summaries."
+                            },
+                            "lastSegmentSoftBlock": {
+                                "type": "boolean",
+                                "description": "Override for the recent-message protection master switch."
+                            },
+                            "preserveRecentMessages": {
+                                "type": "number",
+                                "minimum": 0,
+                                "description": "Override for the protected recent-message count."
+                            },
+                            "preserveRecentTokens": {
+                                "type": "number",
+                                "minimum": 0,
+                                "description": "Override for the protected recent-token window."
+                            },
+                            "preserveLastUserMessage": {
+                                "type": "boolean",
+                                "description": "Override for protecting the most recent user message."
                             },
                             "models": {
                                 "type": "object",
-                                "description": "Per-model overrides by model id",
+                                "description": "Per-model overrides by model id (highest precedence)",
                                 "additionalProperties": {
                                     "type": "object",
                                     "additionalProperties": false,
                                     "properties": {
+                                        "maxContextLimit": {
+                                            "oneOf": [
+                                                {
+                                                    "type": "number"
+                                                },
+                                                {
+                                                    "type": "string",
+                                                    "pattern": "^\\d+(?:\\.\\d+)?%$"
+                                                }
+                                            ],
+                                            "description": "Override for the soft upper threshold. Precedence when set here: nested override > modelMaxLimits flat map > global value."
+                                        },
+                                        "emergencyThresholdPercent": {
+                                            "type": [
+                                                "number",
+                                                "string"
+                                            ],
+                                            "description": "Override for the emergency threshold (absolute tokens or percentage string)."
+                                        },
                                         "minNudgeContextPercent": {
                                             "type": "number",
                                             "minimum": 0,
                                             "maximum": 100,
-                                            "description": "Model-level growth-nudge floor percent (highest precedence)"
+                                            "description": "Growth-nudge floor percent, resolved against the active model's context window (0 disables the floor)."
+                                        },
+                                        "nudgeFrequency": {
+                                            "type": "number",
+                                            "minimum": 1,
+                                            "description": "Override for the context-limit nudge frequency."
+                                        },
+                                        "iterationNudgeThreshold": {
+                                            "type": "number",
+                                            "minimum": 1,
+                                            "description": "Override for the iteration nudge threshold."
+                                        },
+                                        "toolOutputNudgeThreshold": {
+                                            "type": "number",
+                                            "minimum": 0,
+                                            "description": "Override for the tool-output nudge threshold (absolute tokens)."
+                                        },
+                                        "nudgeGrowthTokens": {
+                                            "type": "number",
+                                            "minimum": 0,
+                                            "description": "Override for the per-message nudge growth threshold (absolute tokens)."
+                                        },
+                                        "minNudgeGrowthRatio": {
+                                            "type": "number",
+                                            "minimum": 0,
+                                            "maximum": 1,
+                                            "description": "Override for the growth ratio (× nudgeGrowthTokens)."
+                                        },
+                                        "minNudgeGrowthFloor": {
+                                            "type": "number",
+                                            "minimum": 0,
+                                            "description": "Override for the absolute growth floor (tokens)."
+                                        },
+                                        "nudgeForce": {
+                                            "type": "string",
+                                            "enum": [
+                                                "strong",
+                                                "soft"
+                                            ],
+                                            "description": "Override for the nudge force mode."
+                                        },
+                                        "protectedTools": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "string"
+                                            },
+                                            "description": "Override for protected tool patterns (replaces the inherited list)."
+                                        },
+                                        "showCompression": {
+                                            "type": "boolean",
+                                            "description": "Override for showing compression summaries in notifications."
+                                        },
+                                        "summaryBuffer": {
+                                            "type": "boolean",
+                                            "description": "Override for counting active summary tokens toward the effective maxContextLimit."
+                                        },
+                                        "protectTags": {
+                                            "type": "boolean",
+                                            "description": "Override for <protect> tag preservation."
+                                        },
+                                        "protectUserMessages": {
+                                            "type": "boolean",
+                                            "description": "Override for user-message protection."
+                                        },
+                                        "maxSummaryLengthHard": {
+                                            "type": "number",
+                                            "minimum": 1,
+                                            "description": "Override for the hard summary length limit (chars)."
+                                        },
+                                        "minCompressRange": {
+                                            "type": "number",
+                                            "minimum": 0,
+                                            "description": "Override for the minimum compressible range (chars)."
+                                        },
+                                        "maxVisibleSegments": {
+                                            "type": "number",
+                                            "minimum": 1,
+                                            "description": "Override for the max disjoint visible segments shown."
+                                        },
+                                        "keepEmbedMaxChars": {
+                                            "type": "number",
+                                            "minimum": 0,
+                                            "description": "Override for the max embedded-content chars kept in summaries."
+                                        },
+                                        "lastSegmentSoftBlock": {
+                                            "type": "boolean",
+                                            "description": "Override for the recent-message protection master switch."
+                                        },
+                                        "preserveRecentMessages": {
+                                            "type": "number",
+                                            "minimum": 0,
+                                            "description": "Override for the protected recent-message count."
+                                        },
+                                        "preserveRecentTokens": {
+                                            "type": "number",
+                                            "minimum": 0,
+                                            "description": "Override for the protected recent-token window."
+                                        },
+                                        "preserveLastUserMessage": {
+                                            "type": "boolean",
+                                            "description": "Override for protecting the most recent user message."
                                         }
                                     }
                                 }
