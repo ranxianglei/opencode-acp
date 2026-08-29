@@ -292,6 +292,9 @@ ACP 使用自己的配置文件，按以下顺序搜索：
         //     "anthropic/claude-sonnet-4.6": "80%"
         // },
         // Optional per-model override for minContextLimit.
+        // 已废弃 —— 将随 minContextLimit 一并移除；
+        // 请改用 compress.providers（增长型提醒用
+        // minNudgeContextPercent）。移除前仍然生效。
         // If present, this wins over the global minContextLimit.
         // "modelMinLimits": {
         //     "openai/gpt-5.3-codex": 50000,
@@ -393,7 +396,7 @@ ACP 使用自己的配置文件，按以下顺序搜索：
 
 解析为**逐字段**优先级：model > provider > 全局。未知的 provider/model ID 回退到全局值。嵌套的 `maxContextLimit` 同时优先于旧版扁平 `modelMaxLimits` 映射。多层配置（全局 → 配置目录 → 项目）按 provider/model 键深合并。
 
-不可覆盖：`permission`、已废弃的 `minContextLimit` 系列，以及扁平 `model*Limits` 映射自身。
+不可覆盖：`permission`、已废弃的 `minContextLimit` / `modelMinLimits` 系列、以及扁平 `modelMaxLimits` / `modelMinLimits` 映射自身。注意：`modelMaxLimits` **未废弃** —— 仍完全支持，只是优先级低于嵌套的 `maxContextLimit`。
 
 完整 23 项字段清单与配方见 CONFIGURATION.zh-CN.md 的 [`compress.providers`](./CONFIGURATION.zh-CN.md#compressproviders) 参考节。
 

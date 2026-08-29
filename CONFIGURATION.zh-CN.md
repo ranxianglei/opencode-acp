@@ -197,7 +197,7 @@ ACP 从最多三层配置文件中读取（后加载的覆盖先加载的）：
 - **状态：** ACTIVE
 - **说明：** 对**所有可调 compress 字段**的嵌套按 provider / 按模型覆盖，逐字段按 **模型 > provider > 全局** 级联解析（与姊妹项目 billion-context-pi 一致，issue #344）。深层仅在该字段被显式设置时才覆盖——未设置的字段不会清空浅层取值；`0` / `false` 是显式值，而非“未设置”。未知的 provider/model id 回退到全局值。百分比与 `"X%"` 限额按当前激活模型的上下文窗口换算。在三个配置文件层（全局 → 配置目录 → 项目）之间，该映射按 provider/model 键深度合并——项目层可以只细化某个 provider 而不清掉低层配置的其他 provider。
 - **可覆盖字段：** `maxContextLimit`、`emergencyThresholdPercent`、`minNudgeContextPercent`、`nudgeFrequency`、`iterationNudgeThreshold`、`toolOutputNudgeThreshold`、`nudgeGrowthTokens`、`minNudgeGrowthRatio`、`minNudgeGrowthFloor`、`nudgeForce`、`protectedTools`、`showCompression`、`summaryBuffer`、`protectTags`、`protectUserMessages`、`maxSummaryLengthHard`、`minCompressRange`、`maxVisibleSegments`、`keepEmbedMaxChars`、`lastSegmentSoftBlock`、`preserveRecentMessages`、`preserveRecentTokens`、`preserveLastUserMessage`。
-- **不可覆盖：** `permission`（会话级，在得知模型信息前已固定）、已废弃的 `minContextLimit` / `modelMinLimits` 系列、旧版扁平 `modelMaxLimits` 映射、以及 `providers` 本身。`maxContextLimit` 在嵌套层设置时的优先级为 **嵌套覆盖 > `modelMaxLimits` 扁平映射 > 全局**。在此设置的 `protectedTools` 影响压缩工具与 nudge 侧逻辑；系统提示词中的受保护工具列表（在提示词构建时生成，早于模型信息可用）始终反映全局值。
+- **不可覆盖：** `permission`（会话级，在得知模型信息前已固定）、已废弃的 `minContextLimit` / `modelMinLimits` 系列、扁平 `modelMaxLimits` / `modelMinLimits` 映射自身、以及 `providers` 本身。`modelMaxLimits` 本身**未废弃** —— 仍完全支持（仅优先级被超越）。`maxContextLimit` 在嵌套层设置时的优先级为 **嵌套覆盖 > `modelMaxLimits` 扁平映射 > 全局**。在此设置的 `protectedTools` 影响压缩工具与 nudge 侧逻辑；系统提示词中的受保护工具列表（在提示词构建时生成，早于模型信息可用）始终反映全局值。
 
 ```jsonc
 {

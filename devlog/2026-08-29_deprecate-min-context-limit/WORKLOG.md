@@ -29,3 +29,11 @@ Behavior: **none changed** — `resolveContextTokenLimit(…, "min")`, `overMinL
 | Hash | Subject |
 |---|---|
 | `43a15e7` | docs(deprecate): mark minContextLimit + modelMinLimits deprecated (soft, no behavior change) |
+
+## 5. Post-v1.14.26 rebase + wording clarification (2026-08-29, follow-up)
+
+- Merged `github/master` (v1.14.26: all-field cascade #351 + release #353) into this branch — clean, no conflicts. Verified both @deprecated markers (config.ts) and the all-field types (`CompressModelOverrides` / `CompressProviderOverrides`) coexist; `npx tsc --noEmit` ✓.
+- Motivation (maintainer): "`modelMaxLimits` 这个没有废弃吧 只有min废弃了" — the flat `modelMaxLimits` is NOT deprecated, only the min family is. Two doc wordings could misread otherwise.
+- README.md / README.zh-CN.md: "Not overridable" line — replaced the `model*Limits` wildcard with explicit `modelMaxLimits` / `modelMinLimits` and added "**not** deprecated — stays fully supported; a nested `maxContextLimit` simply outranks it". Commented `modelMinLimits` jsonc example now carries a DEPRECATED note (removal + `compress.providers` / `minNudgeContextPercent` migration pointer).
+- CONFIGURATION.md / CONFIGURATION.zh-CN.md: `compress.providers` not-overridable bullet — dropped "(legacy)"/"旧版" label on `modelMaxLimits`, added explicit "not deprecated — remains fully supported (only outranked)".
+- PR body note: #352 now also contains the master merge + clarification; still docs-only, no behavior change.
