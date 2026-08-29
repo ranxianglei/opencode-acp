@@ -35,7 +35,7 @@ ACP reads config from up to three layers (later layers override earlier):
 
 ## Parameter Reference
 
-Status legend: **ACTIVE** = currently used | **DEPRECATED** = accepted but no effect | **EXPERIMENTAL** = may change
+Status legend: **ACTIVE** = currently used | **DEPRECATED** = kept for backward compatibility, scheduled for removal (may still take effect until then) | **EXPERIMENTAL** = may change
 
 ---
 
@@ -164,8 +164,8 @@ Core compression behavior.
 #### `compress.minContextLimit`
 - **Type:** `number | \`${number}%\``
 - **Default:** `"80%"`
-- **Status:** ACTIVE
-- **Description:** Lower context usage threshold for turn/iteration reminder nudges. ACP stops injecting those reminders when usage drops below this level (or when the limit cannot be resolved to a concrete value, e.g. a `"X%"` limit with an unknown model context window). Growth nudges are governed separately by `minNudgeContextPercent`.
+- **Status:** DEPRECATED
+- **Description:** **Deprecated — scheduled for removal.** Lower context usage threshold for turn/iteration reminder nudges. ACP stops injecting those reminders when usage drops below this level (or when the limit cannot be resolved to a concrete value, e.g. a `"X%"` limit with an unknown model context window). Growth nudges are governed separately by `minNudgeContextPercent`. Still honored until removed; when it is removed, the lower-bound gating for turn/iteration reminder nudges is retired along with it (new sessions should rely on the growth-nudge system).
 
 #### `compress.modelMaxLimits`
 - **Type:** `Record<string, number | \`${number}%\`>`
@@ -176,8 +176,8 @@ Core compression behavior.
 #### `compress.modelMinLimits`
 - **Type:** `Record<string, number | \`${number}%\`>`
 - **Default:** `undefined`
-- **Status:** ACTIVE
-- **Description:** Per-model override for `minContextLimit`.
+- **Status:** DEPRECATED
+- **Description:** **Deprecated — scheduled for removal alongside `minContextLimit`.** Per-model override for `minContextLimit`. Still honored until removed.
 
 #### `compress.nudgeFrequency`
 - **Type:** `number`

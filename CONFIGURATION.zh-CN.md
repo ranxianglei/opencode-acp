@@ -35,7 +35,7 @@ ACP 从最多三层配置文件中读取（后加载的覆盖先加载的）：
 
 ## 参数参考
 
-状态说明：**ACTIVE** = 当前生效 | **DEPRECATED** = 接受但无效果 | **EXPERIMENTAL** = 可能变更
+状态说明：**ACTIVE** = 当前生效 | **DEPRECATED** = 保留向后兼容，计划移除（在此之前可能仍生效） | **EXPERIMENTAL** = 可能变更
 
 ---
 
@@ -163,9 +163,9 @@ ACP 从最多三层配置文件中读取（后加载的覆盖先加载的）：
 
 #### `compress.minContextLimit`
 - **类型：** `number | \`${number}%\``
-- **默认值：** `"45%"`
-- **状态：** ACTIVE
-- **说明：** 上下文使用率下限。使用率降至此值以下时，ACP 停止 nudge。
+- **默认值：** `"80%"`
+- **状态：** DEPRECATED
+- **说明：** **已废弃——计划移除。** 轮次/迭代提醒 nudge 的上下文使用率下限。使用率降至此值以下时，ACP 停止注入这些提醒（当限制无法换算为具体数值时同样停止，例如模型上下文窗口未知时的 `"X%"`）。增长 nudge 由 `minNudgeContextPercent` 单独控制。在此之前仍然生效；移除时，轮次/迭代提醒 nudge 的下限门控将随之取消（新配置应依赖增长 nudge 体系）。
 
 #### `compress.modelMaxLimits`
 - **类型：** `Record<string, number | \`${number}%\`>`
@@ -176,8 +176,8 @@ ACP 从最多三层配置文件中读取（后加载的覆盖先加载的）：
 #### `compress.modelMinLimits`
 - **类型：** `Record<string, number | \`${number}%\`>`
 - **默认值：** `undefined`
-- **状态：** ACTIVE
-- **说明：** 按模型覆盖 `minContextLimit`。
+- **状态：** DEPRECATED
+- **说明：** **已废弃——将与 `minContextLimit` 一同移除。** 按模型覆盖 `minContextLimit`。在此之前仍然生效。
 
 #### `compress.nudgeFrequency`
 - **类型：** `number`

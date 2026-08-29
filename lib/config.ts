@@ -32,8 +32,19 @@ export interface CompressConfig {
     showCompression: boolean
     summaryBuffer: boolean
     maxContextLimit: number | `${number}%`
+    /**
+     * @deprecated Soft lower bound for turn/iteration reminder nudges. Scheduled
+     * for removal in a future version — growth nudges (`minNudgeContextPercent` +
+     * `nudgeGrowthTokens`) are the maintained nudge mechanism. Still honored
+     * until removed; removing it will retire the lower-bound gating for
+     * turn/iteration reminder nudges.
+     */
     minContextLimit: number | `${number}%`
     modelMaxLimits?: Record<string, number | `${number}%`>
+    /**
+     * @deprecated Per-model override for the deprecated `minContextLimit`.
+     * Still honored until removed alongside `minContextLimit`.
+     */
     modelMinLimits?: Record<string, number | `${number}%`>
     /** Nested per-provider / per-model overrides (billion-context-pi style). Resolved field-by-field: model > provider > global. */
     providers?: Record<string, CompressProviderOverrides>
