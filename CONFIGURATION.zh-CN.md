@@ -189,7 +189,7 @@ ACP 从最多三层配置文件中读取（后加载的覆盖先加载的）：
 - **类型：** `number`
 - **默认值：** `5`
 - **状态：** ACTIVE
-- **说明：** growth 触发 nudge 的下限，以模型上下文窗口的百分比表示：growth nudge 要求上下文使用率达到或超过该百分比（此外还需满足增长阈值）。超过上限（`maxContextLimit`）和 98% 紧急覆盖 nudge 不受此下限约束。若模型上下文窗口未知，则下限无法解析，growth nudge 回退到仅增长行为。turn/iteration 提醒 nudge 由 `minContextLimit` 控制，而非此字段。可用 `modelMinNudgeLimits` 按模型覆盖。
+- **说明：** growth 触发 nudge 的下限，以模型上下文窗口的百分比表示：growth nudge 要求上下文使用率达到或超过该百分比（此外还需满足增长阈值）。超过上限（`maxContextLimit`）和 98% 紧急覆盖 nudge 不受此下限约束。若模型上下文窗口未知，则下限无法解析，growth nudge 回退到仅增长行为。turn/iteration 提醒 nudge 由 `minContextLimit` 控制，而非此字段。默认值刻意设低：在默认 `nudgeGrowthTokens`（50K）下，5% 下限在典型工作循环中不生效，仅在超大（≥2M 级）窗口上才会约束——更高的默认值（如 15%）会在 ≥400K 窗口上生效，并使大窗口模型每个压缩循环的工作区间上移。设为 `0` 可完全禁用下限；调高（如 15–30%）可让 growth nudge 等待更大的窗口占用比例。可用 `modelMinNudgeLimits` 按模型覆盖。
 
 #### `compress.modelMinNudgeLimits`
 - **类型：** `Record<string, number | \`${number}%\`>`

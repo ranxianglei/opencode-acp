@@ -5,6 +5,8 @@
 - Status: Done
 - Updated: 2026-08-28
 
+> **2026-08-29 amendment**: the global default floor was lowered **15% → 5%** on the #343 base branch and merged into this stack (commit `1566c23`). See §8.
+
 ## 1. Summary
 
 - **What was done**: added `compress.modelMinNudgeLimits: Record<string, number | `${number}%`>` — an optional per-model override for the T1 growth-nudge floor introduced by PR #343 (issue #342). Keyed by `provider/model` (same keying as `modelMaxLimits` / `modelMinLimits`); values are absolute tokens or `"X%"` of that model's context window. Floor resolution extracted into `resolveMinNudgeFloorTokens()` in `lib/messages/inject/utils.ts` with the precedence: (1) per-model entry, (2) global `minNudgeContextPercent` × model context, (3) `undefined` (growth-only) when the model context is unknown. Full config plumbing (type, validation, merge, deep-clone, JSON schema) follows the `modelMinLimits` pattern exactly.
