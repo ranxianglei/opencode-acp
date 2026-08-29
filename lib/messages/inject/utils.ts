@@ -1,5 +1,5 @@
 import type { SessionState, WithParts } from "../../state"
-import type { PluginConfig } from "../../config"
+import type { PluginConfig, CompressConfig, CompressModelOverrides } from "../../config"
 import { messageContainsProtectedTool } from "../../compress/protected-content"
 import { isToolNameProtected, getFilePathsFromParameters, isFilePathProtected } from "../../protected-patterns"
 import {
@@ -102,7 +102,7 @@ export function getModelInfo(messages: WithParts[]): LastUserModelContext {
     }
 }
 
-function resolveContextTokenLimit(
+export function resolveContextTokenLimit(
     config: PluginConfig,
     state: SessionState,
     providerId: string | undefined,
@@ -130,6 +130,17 @@ function resolveContextTokenLimit(
         const roundedPercent = Math.round(parsedPercent)
         const clampedPercent = Math.max(0, Math.min(100, roundedPercent))
         return Math.round((clampedPercent / 100) * state.modelContextLimit)
+    }
+
+    // Per-provider / per-model nested override (compress.providers, issue #344):
+    // highest precedence for the max threshold — beats the legacy flat
+    // modelMaxLimits map, which in turn beats the global value. (The min
+    // threshold has no nested override: minContextLimit is deprecated.)
+    if (threshold === "max") {
+        const nestedLimit = resolveCompressOverrides(config, providerId, modelId).maxContextLimit
+        if (nestedLimit !== undefined) {
+            return parseLimitValue(nestedLimit)
+        }
     }
 
     const modelLimits =
@@ -252,24 +263,45 @@ export const DEFAULT_MIN_NUDGE_CONTEXT_PERCENT = 5
  * - Returns undefined only when the field is unset everywhere (callers apply
  *   DEFAULT_MIN_NUDGE_CONTEXT_PERCENT).
  */
+/**
+ * Resolve the full per-model / per-provider override set for the active
+ * provider/model, merged field-by-field: model-level fields win over
+ * provider-level fields. Unset fields are simply absent from the result —
+ * they never clear the global value. `0` / `false`-style explicit values are
+ * honored as set (only `undefined` means "unset"). Unknown provider/model
+ * ids resolve to an empty override set (global values apply).
+ *
+ * The `models` sub-map of a provider entry is structural and never leaks
+ * into the merged result.
+ */
+export function resolveCompressOverrides(
+    config: PluginConfig,
+    providerId?: string,
+    modelId?: string,
+): CompressModelOverrides {
+    if (providerId === undefined) {
+        return {}
+    }
+    const providerEntry = config.compress?.providers?.[providerId]
+    if (!providerEntry) {
+        return {}
+    }
+    const { models: _models, ...providerFields } = providerEntry
+    const modelEntry = modelId !== undefined ? providerEntry.models?.[modelId] : undefined
+    if (modelEntry) {
+        return { ...providerFields, ...modelEntry }
+    }
+    return providerFields
+}
+
 export function resolveMinNudgeContextPercent(
     config: PluginConfig,
     providerId?: string,
     modelId?: string
 ): number | undefined {
-    const modelOverrides =
-        providerId !== undefined && modelId !== undefined
-            ? config.compress?.providers?.[providerId]?.models?.[modelId]
-            : undefined
-    if (modelOverrides?.minNudgeContextPercent !== undefined) {
-        return modelOverrides.minNudgeContextPercent
-    }
-    const providerOverrides =
-        providerId !== undefined
-            ? config.compress?.providers?.[providerId]
-            : undefined
-    if (providerOverrides?.minNudgeContextPercent !== undefined) {
-        return providerOverrides.minNudgeContextPercent
+    const overrides = resolveCompressOverrides(config, providerId, modelId)
+    if (overrides.minNudgeContextPercent !== undefined) {
+        return overrides.minNudgeContextPercent
     }
     return config.compress?.minNudgeContextPercent
 }
@@ -295,6 +327,42 @@ export function resolveMinNudgeFloorTokens(
         DEFAULT_MIN_NUDGE_CONTEXT_PERCENT
     const clamped = Math.min(100, Math.max(0, percent))
     return Math.round((clamped / 100) * modelContextLimit)
+}
+
+/**
+ * Fields that applyCompressOverrides must NOT blanket-apply onto the effective
+ * config because their resolution needs custom precedence rules:
+ * - `maxContextLimit`: nested > legacy flat `modelMaxLimits` > global — enforced
+ *   inside resolveContextTokenLimit, so blanket-applying it here would let the
+ *   flat map override the nested value (wrong precedence).
+ */
+const OVERRIDE_BLANKET_APPLY_EXCLUDE = new Set< keyof CompressModelOverrides >(["maxContextLimit"])
+
+/**
+ * Build the effective PluginConfig for the active provider/model: a shallow
+ * clone whose `compress` section has every nested override (model > provider)
+ * applied field-by-field on top of the global values. Callers pass the result
+ * down instead of the raw config, so every `config.compress.X` read in the
+ * pipeline picks up the cascade automatically. No override set → returns the
+ * input unchanged (identity, zero allocation).
+ */
+export function applyCompressOverrides(
+    config: PluginConfig,
+    providerId?: string,
+    modelId?: string,
+): PluginConfig {
+    const overrides = resolveCompressOverrides(config, providerId, modelId)
+    const applied = Object.keys(overrides).filter(
+        (key) => !OVERRIDE_BLANKET_APPLY_EXCLUDE.has(key as keyof CompressModelOverrides),
+    )
+    if (applied.length === 0 || !config.compress) {
+        return config
+    }
+    const effectiveCompress: Record<string, unknown> = { ...config.compress }
+    for (const key of applied) {
+        effectiveCompress[key] = overrides[key as keyof CompressModelOverrides]
+    }
+    return { ...config, compress: effectiveCompress as unknown as CompressConfig }
 }
 
 export function addAnchor(

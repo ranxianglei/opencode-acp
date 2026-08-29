@@ -2378,3 +2378,103 @@ test("issue #344: model-level 0 disables the floor for that model while siblings
     assert.equal(state.nudges.shouldInjectThisTurn, true, "model-level 0 disables the floor → 55K growth fires at 115K")
     assert.equal(state.nudges.lastNudgeShownTokens, 115_000, "nudge shown at current tokens")
 })
+
+test("issue #344 all-field cascade: model-level maxContextLimit lowers the over-max band (multi-turn)", () => {
+    const state = createSessionState()
+    state.modelContextLimit = 1_000_000
+    // Baseline 220K: growth = 250K − 220K = 30K — above the 22.5K anti-thrash
+    // growthFloor but below the 50K default threshold, so the ONLY way turn 1
+    // can nudge is the over-max path via the model-level band (overMaxLimit
+    // makes decision.shouldNudge true; the growth path alone could not).
+    state.nudges.lastPerMessageNudgeTokens = 220_000
+    state.messageIds.byRawId.set("u1", "m00001")
+    state.messageIds.byRawId.set("a1", "m00002")
+    state.messageIds.byRawId.set("u2", "m00003")
+    state.messageIds.byRawId.set("a2", "m00004")
+
+    const config = buildConfig()
+    config.compress.maxContextLimit = 800_000 // global band start
+    config.compress.providers = {
+        anthropic: {
+            models: {
+                // Model-level override narrows the band for THIS model only:
+                // 20% of 1M = 200K.
+                "claude-sonnet-4-6": { maxContextLimit: "20%" },
+            },
+        },
+    }
+
+    // Turn 1: currentTokens = 250K — below the global 800K band, but above the
+    // model-level 200K band → over-max nudge fires (overMaxLimit also bypasses
+    // the growth floor and growth threshold).
+    const turn1: WithParts[] = [
+        userMsgWithModel("u1", "hello", "anthropic", "claude-sonnet-4-6"),
+        assistantMsgWithTokens("a1", "done", { input: 230_000, output: 20_000 }, [
+            toolPart("c1", "x".repeat(80_000)),
+        ]),
+    ]
+    injectCompressNudges(state, config, logger, turn1, {} as any)
+    assert.equal(state.nudges.shouldInjectThisTurn, true, "250K >= 200K model-level max → over-max nudge fires")
+    assert.equal(state.nudges.lastNudgeShownTokens, 250_000, "nudge baseline set to currentTokens")
+    assert.equal(state.nudges.lastPerMessageNudgeTokens, 220_000, "per-message baseline untouched by over-max nudge")
+    state.nudges.shouldInjectThisTurn = false
+
+    // Turn 2: same context size, different provider/model — the override must
+    // NOT apply → 250K < 800K global → no over-max nudge.
+    const turn2: WithParts[] = [
+        userMsgWithModel("u1", "hello", "openai", "gpt-5"),
+        assistantMsgWithTokens("a1", "done", { input: 230_000, output: 20_000 }, [
+            toolPart("c1", "x".repeat(80_000)),
+        ]),
+    ]
+    injectCompressNudges(state, config, logger, turn2, {} as any)
+    assert.equal(state.nudges.shouldInjectThisTurn, false, "unknown provider keeps the global 800K band → 250K not over max")
+    assert.equal(state.nudges.lastNudgeShownTokens, 250_000, "baseline from turn 1 preserved (no new nudge)")
+    assert.equal(state.nudges.lastPerMessageNudgeTokens, 220_000, "per-message baseline untouched")
+})
+
+test("issue #344 all-field cascade: provider-level nudgeGrowthTokens tightens the growth threshold (multi-turn)", () => {
+    const state = createSessionState()
+    state.modelContextLimit = 1_000_000
+    state.nudges.lastPerMessageNudgeTokens = 100_000
+    state.messageIds.byRawId.set("u1", "m00001")
+    state.messageIds.byRawId.set("a1", "m00002")
+    state.messageIds.byRawId.set("u2", "m00003")
+    state.messageIds.byRawId.set("a2", "m00004")
+
+    const config = buildConfig()
+    config.compress.maxContextLimit = 800_000
+    config.compress.minNudgeContextPercent = 5 // global floor = 50K of 1M
+    // No global nudgeGrowthTokens → fixed default 50K. The provider-level
+    // override tightens it to 5K for every anthropic model.
+    config.compress.providers = {
+        anthropic: { nudgeGrowthTokens: 5_000 },
+    }
+
+    // Turn 1: currentTokens = 108K (98K+10K), growth = 8K. Global rule: 8K < 50K
+    // default threshold → no nudge. Override: 8K >= 5K and >= growthFloor
+    // max(5000, 0.45×5K=2250) → fires. 108K >= 50K floor ✓
+    const turn1: WithParts[] = [
+        userMsgWithModel("u1", "hello", "anthropic", "claude-sonnet-4-6"),
+        assistantMsgWithTokens("a1", "done", { input: 98_000, output: 10_000 }, [
+            toolPart("c1", "x".repeat(8_000)),
+        ]),
+    ]
+    injectCompressNudges(state, config, logger, turn1, {} as any)
+    assert.equal(state.nudges.shouldInjectThisTurn, true, "8K growth >= 5K provider-level threshold → fires despite 50K default")
+    assert.equal(state.nudges.lastNudgeShownTokens, 108_000, "nudge baseline set to currentTokens")
+    assert.equal(state.nudges.lastPerMessageNudgeTokens, 100_000, "per-message baseline NOT advanced by the nudge")
+
+    // Turn 2: same growth from a non-anthropic model → default 50K threshold →
+    // suppressed (the override is provider-scoped).
+    state.nudges.lastNudgeShownTokens = undefined
+    const turn2: WithParts[] = [
+        userMsgWithModel("u1", "hello", "openai", "gpt-5"),
+        assistantMsgWithTokens("a1", "done", { input: 98_000, output: 10_000 }, [
+            toolPart("c1", "x".repeat(8_000)),
+        ]),
+    ]
+    injectCompressNudges(state, config, logger, turn2, {} as any)
+    assert.equal(state.nudges.shouldInjectThisTurn, false, "8K growth < 50K default threshold for other providers → suppressed")
+    assert.equal(state.nudges.lastNudgeShownTokens, undefined, "no new nudge for the unknown provider")
+})

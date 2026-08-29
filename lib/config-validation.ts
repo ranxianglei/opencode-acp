@@ -627,10 +627,95 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
                 }
             }
 
-            // compress.providers.<provider>.models.<model> — dynamic keys at two
-            // levels, so key-path walking skips it (see getConfigKeyPaths) and this
-            // structural validation rejects unknown fields instead (typo safety).
-            const validateModelOverrides = (prefix: string, overrides: unknown): void => {
+            // Per-provider / per-model override validation (compress.providers,
+            // issue #344). The override surface mirrors CompressModelOverrides in
+            // lib/config.ts: every `compress` field except the structural /
+            // session-level ones (permission, the deprecated minContextLimit
+            // family, the flat model*Limits maps, providers itself).
+            type OverrideFieldType =
+                | "boolean"
+                | "nonNegativeNumber"
+                | "positiveNumber"
+                | "percent"
+                | "limit"
+                | "nudgeForce"
+                | "stringArray"
+
+            const OVERRIDE_FIELD_TYPES: Record<string, OverrideFieldType> = {
+                showCompression: "boolean",
+                summaryBuffer: "boolean",
+                protectTags: "boolean",
+                protectUserMessages: "boolean",
+                lastSegmentSoftBlock: "boolean",
+                preserveLastUserMessage: "boolean",
+                maxContextLimit: "limit",
+                emergencyThresholdPercent: "limit",
+                minNudgeContextPercent: "percent",
+                nudgeFrequency: "positiveNumber",
+                iterationNudgeThreshold: "positiveNumber",
+                toolOutputNudgeThreshold: "nonNegativeNumber",
+                nudgeGrowthTokens: "nonNegativeNumber",
+                minNudgeGrowthRatio: "nonNegativeNumber",
+                minNudgeGrowthFloor: "nonNegativeNumber",
+                nudgeForce: "nudgeForce",
+                protectedTools: "stringArray",
+                maxSummaryLengthHard: "positiveNumber",
+                minCompressRange: "nonNegativeNumber",
+                maxVisibleSegments: "positiveNumber",
+                keepEmbedMaxChars: "nonNegativeNumber",
+                preserveRecentMessages: "nonNegativeNumber",
+                preserveRecentTokens: "nonNegativeNumber",
+            }
+
+            const validateOverrideField = (key: string, type: OverrideFieldType, value: unknown): void => {
+                if (value === undefined) {
+                    return
+                }
+                switch (type) {
+                    case "boolean":
+                        if (typeof value !== "boolean") {
+                            errors.push({ key, expected: "boolean", actual: typeof value })
+                        }
+                        break
+                    case "nonNegativeNumber":
+                    case "positiveNumber": {
+                        const min = type === "positiveNumber" ? 1 : 0
+                        if (
+                            typeof value !== "number" ||
+                            !Number.isFinite(value) ||
+                            value < min
+                        ) {
+                            errors.push({
+                                key,
+                                expected: type === "positiveNumber" ? "number (>= 1)" : "number (>= 0)",
+                                actual: JSON.stringify(value),
+                            })
+                        }
+                        break
+                    }
+                    case "percent":
+                        validatePercentField(key, value)
+                        break
+                    case "limit":
+                        validateLimitValue(key, value as number | `${number}%`)
+                        break
+                    case "nudgeForce":
+                        if (value !== "strong" && value !== "soft") {
+                            errors.push({ key, expected: "'strong' | 'soft'", actual: JSON.stringify(value) })
+                        }
+                        break
+                    case "stringArray":
+                        if (
+                            !Array.isArray(value) ||
+                            !value.every((entry) => typeof entry === "string")
+                        ) {
+                            errors.push({ key, expected: "string[]", actual: JSON.stringify(value) })
+                        }
+                        break
+                }
+            }
+
+            const validateOverrideObject = (prefix: string, overrides: unknown): void => {
                 if (overrides === undefined) {
                     return
                 }
@@ -640,16 +725,23 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
                 }
                 const model = overrides as Record<string, unknown>
                 for (const field of Object.keys(model)) {
-                    if (field !== "minNudgeContextPercent") {
+                    const type = OVERRIDE_FIELD_TYPES[field]
+                    if (type === undefined) {
                         errors.push({
                             key: `${prefix}.${field}`,
-                            expected: "known override field (minNudgeContextPercent)",
+                            expected: "known override field (see CompressModelOverrides)",
                             actual: "unknown field",
                         })
+                        continue
                     }
+                    validateOverrideField(`${prefix}.${field}`, type, model[field])
                 }
-                validatePercentField(`${prefix}.minNudgeContextPercent`, model.minNudgeContextPercent)
             }
+
+            // compress.providers.<provider>.models.<model> — dynamic keys at two
+            // levels, so key-path walking skips it (see getConfigKeyPaths) and this
+            // structural validation rejects unknown fields instead (typo safety).
+            const validateModelOverrides = validateOverrideObject
 
             const validateProviderOverrides = (providers: unknown): void => {
                 if (providers === undefined) {
@@ -671,15 +763,20 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
                     }
                     const provider = providerValue as Record<string, unknown>
                     for (const field of Object.keys(provider)) {
-                        if (field !== "minNudgeContextPercent" && field !== "models") {
+                        if (field === "models") {
+                            continue
+                        }
+                        const type = OVERRIDE_FIELD_TYPES[field]
+                        if (type === undefined) {
                             errors.push({
                                 key: `${prefix}.${field}`,
-                                expected: "known override field (minNudgeContextPercent, models)",
+                                expected: "known override field (see CompressModelOverrides)",
                                 actual: "unknown field",
                             })
+                            continue
                         }
+                        validateOverrideField(`${prefix}.${field}`, type, provider[field])
                     }
-                    validatePercentField(`${prefix}.minNudgeContextPercent`, provider.minNudgeContextPercent)
                     const models = provider.models
                     if (models === undefined) {
                         continue

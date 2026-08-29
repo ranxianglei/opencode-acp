@@ -10,18 +10,27 @@ import type { LogLevel } from "./logger"
 type Permission = "ask" | "allow" | "deny"
 
 /**
- * Per-model overrides inside `compress.providers.<provider>.models.<model>`.
- * Extensible: new overridable fields are added here (and to the provider level
- * below) without changing the config shape.
+ * The subset of `CompressConfig` fields that can be overridden per provider /
+ * per model via `compress.providers` (resolved field-by-field:
+ * model > provider > global).
+ *
+ * Excluded:
+ * - `permission` — resolved at tool registration time, before any model info exists
+ * - `minContextLimit` / `modelMinLimits` — deprecated (see CONFIGURATION.md)
+ * - `modelMaxLimits`, `modelMinLimits`, `providers` — structural (maps themselves)
  */
-export interface CompressModelOverrides {
-    /** Growth-nudge floor as a percent of the active model's context window. 0 disables the floor. */
-    minNudgeContextPercent?: number
-}
+export type CompressOverridableConfig = Omit<
+    CompressConfig,
+    "permission" | "minContextLimit" | "modelMaxLimits" | "modelMinLimits" | "providers"
+>
+
+/** Per-model / per-provider override object (all overridable fields optional). */
+export type CompressModelOverrides = Partial<CompressOverridableConfig>
 
 /**
  * Per-provider overrides inside `compress.providers.<provider>`. Provider-level
- * fields apply to all of that provider's models unless overridden per model.
+ * fields apply to every model of that provider unless narrowed by a
+ * `models.<modelId>` entry (which wins field-by-field).
  */
 export interface CompressProviderOverrides extends CompressModelOverrides {
     models?: Record<string, CompressModelOverrides>

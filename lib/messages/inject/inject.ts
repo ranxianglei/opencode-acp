@@ -43,6 +43,7 @@ import {
     DEFAULT_MIN_NUDGE_CONTEXT_PERCENT,
     resolveMinNudgeContextPercent,
     resolveMinNudgeFloorTokens,
+    applyCompressOverrides,
 } from "./utils"
 import { buildCompressedBlockGuidance } from "../../prompts/extensions/nudge"
 import { COMPRESS_PHILOSOPHY, HOW_TO_COMPRESS_RULES, TIER2_DISTILL_RULES, TIER3_CONDENSE_RULES } from "context-compress-algorithms/prompts"
@@ -88,6 +89,14 @@ export const injectCompressNudges = (
     const lastAssistantMessage = messages.findLast((message) => message.info.role === "assistant")
 
     const { providerId, modelId } = getModelInfo(messages)
+
+    // Three-level cascade (issue #344): swap in the effective compress config
+    // for this provider/model so every config.compress.X read below (growth
+    // thresholds, nudge frequency, protected tools, summary buffer, …) picks
+    // up per-model > per-provider > global resolution. maxContextLimit is
+    // resolved separately inside resolveContextTokenLimit (nested > flat map
+    // > global).
+    config = applyCompressOverrides(config, providerId, modelId)
 
     const { overMaxLimit, overMinLimit, currentTokens, modelContextLimit } = isContextOverLimits(
         config,

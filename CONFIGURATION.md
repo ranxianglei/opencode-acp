@@ -192,27 +192,36 @@ Core compression behavior.
 - **Description:** Floor for growth-triggered nudges, as a percentage of the model context window: a growth nudge requires context usage at or above this percentage (in addition to the growth threshold). Over-max (`maxContextLimit`) and the 98% emergency-override nudges bypass the floor. If the model context window is unknown, the floor is unresolvable and growth nudges fall back to growth-only behavior. Turn/iteration reminder nudges are governed by `minContextLimit`, not this field. The default is deliberately low: with the default `nudgeGrowthTokens` (50K), a 5% floor stays inert for typical working cycles and only binds on very large (≥2M-class) windows — a higher default (e.g. 15%) would bind on ≥400K windows and shift every compress cycle's working range upward on large-window models. Set `0` to disable the floor entirely, or raise it (e.g. 15–30%) to keep growth nudges waiting until a larger share of the window is in use. Can be narrowed per provider / per model via [`compress.providers`](#compressproviders) (issue #344).
 
 #### `compress.providers`
-- **Type:** `Record<string, ProviderOverrides>` where `ProviderOverrides = { minNudgeContextPercent?: number; models?: Record<string, { minNudgeContextPercent?: number }> }`
+- **Type:** `Record<string, ProviderOverrides>` where `ProviderOverrides = Partial<CompressOverridableConfig> & { models?: Record<string, Partial<CompressOverridableConfig>> }` (all fields optional at both levels)
 - **Default:** `undefined`
 - **Status:** ACTIVE
-- **Description:** Nested per-provider / per-model overrides, resolved field-by-field with the cascade **model > provider > global** (mirrors the sibling project billion-context-pi). Deeper levels only override when the field is explicitly set — unset fields never clear shallower values. `0` is an explicit "disable" value, not "unset". Unknown provider/model ids fall back to the global value. Percentages resolve against the active model's context window. Currently overridable: `minNudgeContextPercent` (the growth-nudge floor, issue #344); the structure is designed to grow more overridable fields (e.g. `maxContextLimit`, `nudgeGrowthTokens`) in follow-ups. Across the three config file layers (global → config dir → project) the maps deep-merge per provider/model key — a project layer can narrow one provider without wiping others configured in lower layers.
+- **Description:** Nested per-provider / per-model overrides for **every tunable compress field**, resolved field-by-field with the cascade **model > provider > global** (mirrors the sibling project billion-context-pi, issue #344). Deeper levels only override when the field is explicitly set — unset fields never clear shallower values. `0` / `false` are explicit values, not "unset". Unknown provider/model ids fall back to the global value. Percentages and `"X%"` limits resolve against the active model's context window. Across the three config file layers (global → config dir → project) the maps deep-merge per provider/model key — a project layer can narrow one provider without wiping others configured in lower layers.
+- **Overridable fields:** `maxContextLimit`, `emergencyThresholdPercent`, `minNudgeContextPercent`, `nudgeFrequency`, `iterationNudgeThreshold`, `toolOutputNudgeThreshold`, `nudgeGrowthTokens`, `minNudgeGrowthRatio`, `minNudgeGrowthFloor`, `nudgeForce`, `protectedTools`, `showCompression`, `summaryBuffer`, `protectTags`, `protectUserMessages`, `maxSummaryLengthHard`, `minCompressRange`, `maxVisibleSegments`, `keepEmbedMaxChars`, `lastSegmentSoftBlock`, `preserveRecentMessages`, `preserveRecentTokens`, `preserveLastUserMessage`.
+- **Not overridable:** `permission` (session-level, fixed before model info is known), the deprecated `minContextLimit` / `modelMinLimits` family, the flat `modelMaxLimits` map (legacy), and `providers` itself. For `maxContextLimit` the precedence when set nested is **nested override > `modelMaxLimits` flat map > global**. `protectedTools` set here affects the compress tool and nudge-side logic; the system-prompt protected-tools listing (shown at prompt build time, before model info is available) always reflects the global value.
 
 ```jsonc
 {
     "compress": {
+        "maxContextLimit": "55%",
         "minNudgeContextPercent": 5,
+        "nudgeGrowthTokens": 50000,
         "providers": {
             "anthropic": {
                 "minNudgeContextPercent": 8,
+                "nudgeForce": "strong",
                 "models": {
-                    "claude-sonnet-4-6": { "minNudgeContextPercent": 30 }
+                    "claude-sonnet-4-6": {
+                        "minNudgeContextPercent": 30,
+                        "maxContextLimit": "70%",
+                        "nudgeGrowthTokens": 20000
+                    }
                 }
             }
         }
     }
 }
 ```
-In this example the floor is 30% for `anthropic/claude-sonnet-4-6`, 8% for every other Anthropic model, and 5% for everything else. Provider keys are provider ids and model keys are model ids (as reported by the active session, e.g. `anthropic`, `claude-sonnet-4-6`).
+In this example, for `anthropic/claude-sonnet-4-6`: the floor is 30%, the over-max band starts at 70% of the window instead of the global 55% (a larger working range before over-max nudges kick in), the growth threshold is 20K, and nudges use the `strong` tone (inherited from the provider level). Every other Anthropic model gets the 8% floor and `strong` tone but keeps the global band and 50K growth threshold; everything else uses the pure global values. Provider keys are provider ids and model keys are model ids (as reported by the active session, e.g. `anthropic`, `claude-sonnet-4-6`).
 
 #### `compress.nudgeGrowthTokens`
 - **Type:** `number`
@@ -488,6 +497,26 @@ Post-compression quality evaluation. Runs after each compression to verify summa
 }
 ```
 Floors resolve as model > provider > global (field-by-field). `0` disables the floor for that model — useful for small-window models where the growth threshold alone is the right signal.
+
+### Per-model tuning of any compress field (nested providers.models)
+The same cascade works for every tunable field, not just the floor — e.g. give one heavy model a tighter growth threshold and a lower over-max band while its siblings keep the global profile:
+```jsonc
+{
+    "compress": {
+        "providers": {
+            "anthropic": {
+                "models": {
+                    "claude-sonnet-4-6": {
+                        "nudgeGrowthTokens": 20000,
+                        "maxContextLimit": "40%"
+                    }
+                }
+            }
+        }
+    }
+}
+```
+See the [`compress.providers`](#compressproviders) reference for the full overridable field list.
 
 ### Protect sensitive files
 ```jsonc
