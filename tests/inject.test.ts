@@ -347,7 +347,7 @@ test("injectCompressNudges: post-compress baseline then large growth DOES nudge"
     state.modelContextLimit = 1_000_000
     const config = buildConfig()
     config.compress.maxContextLimit = 800_000
-    // Growth floor is minNudgeContextPercent (15% default = 150K on a 1M model),
+    // Growth floor is minNudgeContextPercent (15%, pinned by the buildConfig factory = 150K on a 1M model),
     // below the turn-2 context (305K), so the floor is open and this test
     // isolates the growth mechanism. minContextLimit no longer gates growth nudges.
     config.compress.minContextLimit = 550_000
@@ -382,7 +382,7 @@ test("nudge threshold halves after first nudge without compress (issue #23)", ()
     state.nudges.lastPerMessageNudgeTokens = 100_000
     const config = buildConfig()
     config.compress.maxContextLimit = 800_000
-    // Growth floor is minNudgeContextPercent (15% default = 150K on a 1M model),
+    // Growth floor is minNudgeContextPercent (15%, pinned by the buildConfig factory = 150K on a 1M model),
     // at/below the turn contexts (150K/165K/175K), so the floor is open and this
     // test isolates the threshold-halving mechanism.
     config.compress.minContextLimit = 200_000
@@ -2131,5 +2131,35 @@ test("issue #342: T2 tier-promotion fires below the growth floor (independent of
     injectCompressNudges(state, config, logger, messages, {} as any)
     assert.equal(state.nudges.shouldInjectThisTurn, true, "T2 fires below the growth floor (independent cadence)")
     assert.equal(state.nudges.lastTier2NudgeTokens, 200_000, "T2 fired (lastTier2NudgeTokens set) while T1 stayed floor-suppressed")
+})
+
+test("issue #342 follow-up: unset minNudgeContextPercent falls back to the low 5% default floor", () => {
+    const state = createSessionState()
+    state.modelContextLimit = 1_000_000
+    state.nudges.lastPerMessageNudgeTokens = 50_000
+    state.messageIds.byRawId.set("u1", "m00001")
+    state.messageIds.byRawId.set("a1", "m00002")
+
+    const config = buildConfig()
+    config.compress.maxContextLimit = 800_000
+    // Simulate a config that never set the field: the code must fall back to
+    // the (deliberately low) 5% default, NOT the pre-fix 15%.
+    delete (config.compress as { minNudgeContextPercent?: number }).minNudgeContextPercent
+
+    // currentTokens = 100K (80K+20K). Growth = 100K-50K = 50K >= 50K threshold
+    // AND >= 22.5K growthFloor. Fallback floor = 5% of 1M = 50K → 100K >= 50K
+    // → the nudge FIRES. (A 15% fallback would put the floor at 150K and
+    // SUPPRESS this — the default must stay low so typical working cycles on
+    // large-window models are not shifted; 15% binds on ≥400K windows.)
+    const messages: WithParts[] = [
+        userMsg("u1", "hello"),
+        assistantMsgWithTokens("a1", "done", { input: 80_000, output: 20_000 }, [
+            toolPart("c1", "x".repeat(80_000)),
+        ]),
+    ]
+    injectCompressNudges(state, config, logger, messages, {} as any)
+    assert.equal(state.nudges.shouldInjectThisTurn, true, "100K >= 50K (5% default floor) with 50K growth → nudge fires")
+    assert.equal(state.nudges.lastNudgeShownTokens, 100_000, "nudge shown at current tokens")
+    assert.equal(state.nudges.lastPerMessageNudgeTokens, 50_000, "baseline only advances on compress, not on nudge")
 })
 

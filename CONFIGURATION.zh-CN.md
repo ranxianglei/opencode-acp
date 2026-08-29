@@ -187,7 +187,7 @@ ACP 从最多三层配置文件中读取（后加载的覆盖先加载的）：
 
 #### `compress.minNudgeContextPercent`
 - **类型：** `number`
-- **默认值：** `15`
+- **默认值：** `5`
 - **状态：** ACTIVE
 - **说明：** 触发任何 nudge 的最低上下文使用率百分比。低于此值时不注入 nudge。
 
