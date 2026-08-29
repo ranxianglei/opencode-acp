@@ -35,7 +35,7 @@ ACP reads config from up to three layers (later layers override earlier):
 
 ## Parameter Reference
 
-Status legend: **ACTIVE** = currently used | **DEPRECATED** = accepted but no effect | **EXPERIMENTAL** = may change
+Status legend: **ACTIVE** = currently used | **DEPRECATED** = kept for backward compatibility, scheduled for removal (may still take effect until then) | **EXPERIMENTAL** = may change
 
 ---
 
@@ -164,8 +164,8 @@ Core compression behavior.
 #### `compress.minContextLimit`
 - **Type:** `number | \`${number}%\``
 - **Default:** `"80%"`
-- **Status:** ACTIVE
-- **Description:** Lower context usage threshold for turn/iteration reminder nudges. ACP stops injecting those reminders when usage drops below this level (or when the limit cannot be resolved to a concrete value, e.g. a `"X%"` limit with an unknown model context window). Growth nudges are governed separately by `minNudgeContextPercent`.
+- **Status:** DEPRECATED
+- **Description:** **Deprecated — scheduled for removal.** Lower context usage threshold for turn/iteration reminder nudges. ACP stops injecting those reminders when usage drops below this level (or when the limit cannot be resolved to a concrete value, e.g. a `"X%"` limit with an unknown model context window). Growth nudges are governed separately by `minNudgeContextPercent`. Still honored until removed; when it is removed, the lower-bound gating for turn/iteration reminder nudges is retired along with it (new sessions should rely on the growth-nudge system).
 
 #### `compress.modelMaxLimits`
 - **Type:** `Record<string, number | \`${number}%\`>`
@@ -176,8 +176,8 @@ Core compression behavior.
 #### `compress.modelMinLimits`
 - **Type:** `Record<string, number | \`${number}%\`>`
 - **Default:** `undefined`
-- **Status:** ACTIVE
-- **Description:** Per-model override for `minContextLimit`.
+- **Status:** DEPRECATED
+- **Description:** **Deprecated — scheduled for removal alongside `minContextLimit`.** Per-model override for `minContextLimit`. Still honored until removed.
 
 #### `compress.nudgeFrequency`
 - **Type:** `number`
@@ -197,7 +197,7 @@ Core compression behavior.
 - **Status:** ACTIVE
 - **Description:** Nested per-provider / per-model overrides for **every tunable compress field**, resolved field-by-field with the cascade **model > provider > global** (mirrors the sibling project billion-context-pi, issue #344). Deeper levels only override when the field is explicitly set — unset fields never clear shallower values. `0` / `false` are explicit values, not "unset". Unknown provider/model ids fall back to the global value. Percentages and `"X%"` limits resolve against the active model's context window. Across the three config file layers (global → config dir → project) the maps deep-merge per provider/model key — a project layer can narrow one provider without wiping others configured in lower layers.
 - **Overridable fields:** `maxContextLimit`, `emergencyThresholdPercent`, `minNudgeContextPercent`, `nudgeFrequency`, `iterationNudgeThreshold`, `toolOutputNudgeThreshold`, `nudgeGrowthTokens`, `minNudgeGrowthRatio`, `minNudgeGrowthFloor`, `nudgeForce`, `protectedTools`, `showCompression`, `summaryBuffer`, `protectTags`, `protectUserMessages`, `maxSummaryLengthHard`, `minCompressRange`, `maxVisibleSegments`, `keepEmbedMaxChars`, `lastSegmentSoftBlock`, `preserveRecentMessages`, `preserveRecentTokens`, `preserveLastUserMessage`.
-- **Not overridable:** `permission` (session-level, fixed before model info is known), the deprecated `minContextLimit` / `modelMinLimits` family, the flat `modelMaxLimits` map (legacy), and `providers` itself. For `maxContextLimit` the precedence when set nested is **nested override > `modelMaxLimits` flat map > global**. `protectedTools` set here affects the compress tool and nudge-side logic; the system-prompt protected-tools listing (shown at prompt build time, before model info is available) always reflects the global value.
+- **Not overridable:** `permission` (session-level, fixed before model info is known), the deprecated `minContextLimit` / `modelMinLimits` family, the flat `modelMaxLimits` / `modelMinLimits` maps themselves, and `providers` itself. `modelMaxLimits` itself is **not** deprecated — it remains fully supported (only outranked). For `maxContextLimit` the precedence when set nested is **nested override > `modelMaxLimits` flat map > global**. `protectedTools` set here affects the compress tool and nudge-side logic; the system-prompt protected-tools listing (shown at prompt build time, before model info is available) always reflects the global value.
 
 ```jsonc
 {

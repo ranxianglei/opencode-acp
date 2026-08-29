@@ -146,7 +146,7 @@
                     ]
                 },
                 "minContextLimit": {
-                    "description": "Soft lower threshold for reminder nudges. Below this, turn/iteration reminders are off (compression is less likely). At or above this, reminders are on. Accepts number or \"X%\" of the model context window.",
+                    "description": "[DEPRECATED — scheduled for removal; growth nudges (minNudgeContextPercent) are the maintained floor] Soft lower threshold for reminder nudges. Below this, turn/iteration reminders are off (compression is less likely). At or above this, reminders are on. Still honored until removed. Accepts number or \"X%\" of the model context window.",
                     "default": 50000,
                     "oneOf": [
                         {
@@ -174,7 +174,7 @@
                     }
                 },
                 "modelMinLimits": {
-                    "description": "Per-model override for minContextLimit by exact provider/model key. If set, this takes priority over the global minContextLimit.",
+                    "description": "[DEPRECATED — overrides the deprecated minContextLimit; will be removed alongside it] Per-model override for minContextLimit by exact provider/model key. If set, this takes priority over the global minContextLimit.",
                     "type": "object",
                     "additionalProperties": {
                         "oneOf": [
