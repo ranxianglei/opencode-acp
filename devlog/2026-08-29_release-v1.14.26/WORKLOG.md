@@ -13,12 +13,12 @@ Release for PR #343 (issue #342 fix: growth nudges respect the `minNudgeContextP
 
 | Commit | Description |
 |--------|-------------|
-| (pending) | release: v1.14.26 — growth nudges respect the minNudgeContextPercent floor |
+| `5554101` | release: v1.14.26 — growth nudges respect the minNudgeContextPercent floor |
 
 ## 3. Verification
 
 - master @ `574c1c4`: typecheck clean; 1036 tests pass, 0 fail.
-- `check-pr.sh`: (pending)
+- `check-pr.sh`: all checks passed (branch name, devlog, changelog).
 
 ## 4. Rollback Plan
 
