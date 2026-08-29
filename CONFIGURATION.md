@@ -189,7 +189,30 @@ Core compression behavior.
 - **Type:** `number`
 - **Default:** `5`
 - **Status:** ACTIVE
-- **Description:** Floor for growth-triggered nudges, as a percentage of the model context window: a growth nudge requires context usage at or above this percentage (in addition to the growth threshold). Over-max (`maxContextLimit`) and the 98% emergency-override nudges bypass the floor. If the model context window is unknown, the floor is unresolvable and growth nudges fall back to growth-only behavior. Turn/iteration reminder nudges are governed by `minContextLimit`, not this field. The default is deliberately low: with the default `nudgeGrowthTokens` (50K), a 5% floor stays inert for typical working cycles and only binds on very large (≥2M-class) windows — a higher default (e.g. 15%) would bind on ≥400K windows and shift every compress cycle's working range upward on large-window models. Set `0` to disable the floor entirely, or raise it (e.g. 15–30%) to keep growth nudges waiting until a larger share of the window is in use.
+- **Description:** Floor for growth-triggered nudges, as a percentage of the model context window: a growth nudge requires context usage at or above this percentage (in addition to the growth threshold). Over-max (`maxContextLimit`) and the 98% emergency-override nudges bypass the floor. If the model context window is unknown, the floor is unresolvable and growth nudges fall back to growth-only behavior. Turn/iteration reminder nudges are governed by `minContextLimit`, not this field. The default is deliberately low: with the default `nudgeGrowthTokens` (50K), a 5% floor stays inert for typical working cycles and only binds on very large (≥2M-class) windows — a higher default (e.g. 15%) would bind on ≥400K windows and shift every compress cycle's working range upward on large-window models. Set `0` to disable the floor entirely, or raise it (e.g. 15–30%) to keep growth nudges waiting until a larger share of the window is in use. Can be narrowed per provider / per model via [`compress.providers`](#compressproviders) (issue #344).
+
+#### `compress.providers`
+- **Type:** `Record<string, ProviderOverrides>` where `ProviderOverrides = { minNudgeContextPercent?: number; models?: Record<string, { minNudgeContextPercent?: number }> }`
+- **Default:** `undefined`
+- **Status:** ACTIVE
+- **Description:** Nested per-provider / per-model overrides, resolved field-by-field with the cascade **model > provider > global** (mirrors the sibling project billion-context-pi). Deeper levels only override when the field is explicitly set — unset fields never clear shallower values. `0` is an explicit "disable" value, not "unset". Unknown provider/model ids fall back to the global value. Percentages resolve against the active model's context window. Currently overridable: `minNudgeContextPercent` (the growth-nudge floor, issue #344); the structure is designed to grow more overridable fields (e.g. `maxContextLimit`, `nudgeGrowthTokens`) in follow-ups. Across the three config file layers (global → config dir → project) the maps deep-merge per provider/model key — a project layer can narrow one provider without wiping others configured in lower layers.
+
+```jsonc
+{
+    "compress": {
+        "minNudgeContextPercent": 5,
+        "providers": {
+            "anthropic": {
+                "minNudgeContextPercent": 8,
+                "models": {
+                    "claude-sonnet-4-6": { "minNudgeContextPercent": 30 }
+                }
+            }
+        }
+    }
+}
+```
+In this example the floor is 30% for `anthropic/claude-sonnet-4-6`, 8% for every other Anthropic model, and 5% for everything else. Provider keys are provider ids and model keys are model ids (as reported by the active session, e.g. `anthropic`, `claude-sonnet-4-6`).
 
 #### `compress.nudgeGrowthTokens`
 - **Type:** `number`
@@ -446,6 +469,25 @@ Post-compression quality evaluation. Runs after each compression to verify summa
     }
 }
 ```
+
+### Per-model growth-nudge floor (nested providers.models)
+```jsonc
+{
+    "compress": {
+        "minNudgeContextPercent": 5,
+        "providers": {
+            "anthropic": {
+                "minNudgeContextPercent": 8,
+                "models": {
+                    "claude-sonnet-4-6": { "minNudgeContextPercent": 30 },
+                    "claude-haiku-4-5": { "minNudgeContextPercent": 0 }
+                }
+            }
+        }
+    }
+}
+```
+Floors resolve as model > provider > global (field-by-field). `0` disables the floor for that model — useful for small-window models where the growth threshold alone is the right signal.
 
 ### Protect sensitive files
 ```jsonc

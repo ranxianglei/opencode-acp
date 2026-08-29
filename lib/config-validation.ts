@@ -28,6 +28,7 @@ export const VALID_CONFIG_KEYS = new Set([
     "compress.minContextLimit",
     "compress.modelMaxLimits",
     "compress.modelMinLimits",
+    "compress.providers",
     "compress.nudgeFrequency",
     "compress.minNudgeContextPercent",
     "compress.nudgeGrowthTokens",
@@ -76,6 +77,7 @@ function getConfigKeyPaths(obj: Record<string, any>, prefix = ""): string[] {
         if (
             fullKey === "compress.modelMaxLimits" ||
             fullKey === "compress.modelMinLimits" ||
+            fullKey === "compress.providers" ||
             fullKey === "messageFilters.filters"
         ) {
             continue
@@ -606,6 +608,97 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
 
             validateModelLimits("compress.modelMaxLimits", compress.modelMaxLimits)
             validateModelLimits("compress.modelMinLimits", compress.modelMinLimits)
+
+            const validatePercentField = (key: string, value: unknown): void => {
+                if (value === undefined) {
+                    return
+                }
+                if (
+                    typeof value !== "number" ||
+                    !Number.isFinite(value) ||
+                    value < 0 ||
+                    value > 100
+                ) {
+                    errors.push({
+                        key,
+                        expected: "number (0-100)",
+                        actual: JSON.stringify(value),
+                    })
+                }
+            }
+
+            // compress.providers.<provider>.models.<model> — dynamic keys at two
+            // levels, so key-path walking skips it (see getConfigKeyPaths) and this
+            // structural validation rejects unknown fields instead (typo safety).
+            const validateModelOverrides = (prefix: string, overrides: unknown): void => {
+                if (overrides === undefined) {
+                    return
+                }
+                if (typeof overrides !== "object" || overrides === null || Array.isArray(overrides)) {
+                    errors.push({ key: prefix, expected: "CompressModelOverrides", actual: typeof overrides })
+                    return
+                }
+                const model = overrides as Record<string, unknown>
+                for (const field of Object.keys(model)) {
+                    if (field !== "minNudgeContextPercent") {
+                        errors.push({
+                            key: `${prefix}.${field}`,
+                            expected: "known override field (minNudgeContextPercent)",
+                            actual: "unknown field",
+                        })
+                    }
+                }
+                validatePercentField(`${prefix}.minNudgeContextPercent`, model.minNudgeContextPercent)
+            }
+
+            const validateProviderOverrides = (providers: unknown): void => {
+                if (providers === undefined) {
+                    return
+                }
+                if (typeof providers !== "object" || providers === null || Array.isArray(providers)) {
+                    errors.push({
+                        key: "compress.providers",
+                        expected: "Record<string, ProviderOverrides>",
+                        actual: typeof providers,
+                    })
+                    return
+                }
+                for (const [providerId, providerValue] of Object.entries(providers)) {
+                    const prefix = `compress.providers.${providerId}`
+                    if (typeof providerValue !== "object" || providerValue === null || Array.isArray(providerValue)) {
+                        errors.push({ key: prefix, expected: "ProviderOverrides", actual: typeof providerValue })
+                        continue
+                    }
+                    const provider = providerValue as Record<string, unknown>
+                    for (const field of Object.keys(provider)) {
+                        if (field !== "minNudgeContextPercent" && field !== "models") {
+                            errors.push({
+                                key: `${prefix}.${field}`,
+                                expected: "known override field (minNudgeContextPercent, models)",
+                                actual: "unknown field",
+                            })
+                        }
+                    }
+                    validatePercentField(`${prefix}.minNudgeContextPercent`, provider.minNudgeContextPercent)
+                    const models = provider.models
+                    if (models === undefined) {
+                        continue
+                    }
+                    if (typeof models !== "object" || models === null || Array.isArray(models)) {
+                        errors.push({
+                            key: `${prefix}.models`,
+                            expected: "Record<string, ModelOverrides>",
+                            actual: typeof models,
+                        })
+                        continue
+                    }
+                    for (const [modelId, modelValue] of Object.entries(models)) {
+                        validateModelOverrides(`${prefix}.models.${modelId}`, modelValue)
+                    }
+                }
+            }
+
+            validateProviderOverrides(compress.providers)
 
             const validValues = ["ask", "allow", "deny"]
             if (compress.permission !== undefined && !validValues.includes(compress.permission)) {

@@ -234,6 +234,69 @@ export function computeShouldNudge(params: {
 
 export const DEFAULT_NUDGE_GROWTH_TOKENS = 50_000
 
+/** Default growth-nudge floor percent when unset everywhere (#343: deliberately low — see inject.ts rationale). */
+export const DEFAULT_MIN_NUDGE_CONTEXT_PERCENT = 5
+
+/**
+ * Resolve the effective growth-nudge floor percent for the active model,
+ * cascading field-by-field (billion-context-pi style):
+ *
+ *   compress.providers[providerId].models[modelId].minNudgeContextPercent
+ *     → compress.providers[providerId].minNudgeContextPercent
+ *     → compress.minNudgeContextPercent
+ *
+ * - Deeper levels only override when the field is explicitly set; unset
+ *   fields never clear shallower values.
+ * - 0 is an explicit "disable the floor" value, not "unset".
+ * - Unknown provider/model ids fall back up the cascade.
+ * - Returns undefined only when the field is unset everywhere (callers apply
+ *   DEFAULT_MIN_NUDGE_CONTEXT_PERCENT).
+ */
+export function resolveMinNudgeContextPercent(
+    config: PluginConfig,
+    providerId?: string,
+    modelId?: string
+): number | undefined {
+    const modelOverrides =
+        providerId !== undefined && modelId !== undefined
+            ? config.compress?.providers?.[providerId]?.models?.[modelId]
+            : undefined
+    if (modelOverrides?.minNudgeContextPercent !== undefined) {
+        return modelOverrides.minNudgeContextPercent
+    }
+    const providerOverrides =
+        providerId !== undefined
+            ? config.compress?.providers?.[providerId]
+            : undefined
+    if (providerOverrides?.minNudgeContextPercent !== undefined) {
+        return providerOverrides.minNudgeContextPercent
+    }
+    return config.compress?.minNudgeContextPercent
+}
+
+/**
+ * Convert the resolved floor percent to absolute tokens against the active
+ * model's context window. The percent is clamped to 0–100 (mirroring
+ * resolveContextTokenLimit) and rounded. Returns undefined when the model
+ * context limit is unknown — whichever level set the percent, the floor then
+ * stays open (growth-only behavior, #343).
+ */
+export function resolveMinNudgeFloorTokens(
+    config: PluginConfig,
+    modelContextLimit: number | undefined,
+    providerId?: string,
+    modelId?: string
+): number | undefined {
+    if (modelContextLimit === undefined) {
+        return undefined
+    }
+    const percent =
+        resolveMinNudgeContextPercent(config, providerId, modelId) ??
+        DEFAULT_MIN_NUDGE_CONTEXT_PERCENT
+    const clamped = Math.min(100, Math.max(0, percent))
+    return Math.round((clamped / 100) * modelContextLimit)
+}
+
 export function addAnchor(
     anchorMessageIds: Set<string>,
     anchorMessageId: string,

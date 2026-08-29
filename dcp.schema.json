@@ -233,6 +233,38 @@
                     "minimum": 0,
                     "description": "Minimum context usage percent for growth-triggered nudges; growth nudges below this floor are suppressed (0 disables the floor)"
                 },
+                "providers": {
+                    "type": "object",
+                    "description": "Nested per-provider / per-model overrides. Field-wise cascade: providers[p].models[m] > providers[p] > the global compress fields. Unset fields never clear shallower values; 0 is an explicit value (disable). Unknown provider/model ids fall back to the global value. Percentages resolve against the active model's context window.",
+                    "additionalProperties": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                            "minNudgeContextPercent": {
+                                "type": "number",
+                                "minimum": 0,
+                                "maximum": 100,
+                                "description": "Provider-level growth-nudge floor percent (applies to all of this provider's models unless overridden per model)"
+                            },
+                            "models": {
+                                "type": "object",
+                                "description": "Per-model overrides by model id",
+                                "additionalProperties": {
+                                    "type": "object",
+                                    "additionalProperties": false,
+                                    "properties": {
+                                        "minNudgeContextPercent": {
+                                            "type": "number",
+                                            "minimum": 0,
+                                            "maximum": 100,
+                                            "description": "Model-level growth-nudge floor percent (highest precedence)"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
                 "maxSummaryLengthHard": {
                     "type": "number",
                     "default": 20000,

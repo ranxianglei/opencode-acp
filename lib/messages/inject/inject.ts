@@ -40,6 +40,9 @@ import {
     getModelInfo,
     isContextOverLimits,
     DEFAULT_NUDGE_GROWTH_TOKENS,
+    DEFAULT_MIN_NUDGE_CONTEXT_PERCENT,
+    resolveMinNudgeContextPercent,
+    resolveMinNudgeFloorTokens,
 } from "./utils"
 import { buildCompressedBlockGuidance } from "../../prompts/extensions/nudge"
 import { COMPRESS_PHILOSOPHY, HOW_TO_COMPRESS_RULES, TIER2_DISTILL_RULES, TIER3_CONDENSE_RULES } from "context-compress-algorithms/prompts"
@@ -294,7 +297,7 @@ export const injectCompressNudges = (
         overMinLimit,
         overMaxLimit,
         lastNudgeTokens: growthReference,
-        minNudgeContextPercent: config.compress?.minNudgeContextPercent ?? 5,
+        minNudgeContextPercent: resolveMinNudgeContextPercent(config, providerId, modelId) ?? DEFAULT_MIN_NUDGE_CONTEXT_PERCENT,
         nudgeGrowthTokens: effectiveThreshold,
     })
 
@@ -319,11 +322,15 @@ export const injectCompressNudges = (
     // for typical baselines). A 15% default would bind on >=400K windows and
     // shift every compress cycle's working range upward (~2x average context
     // on 1M-window models) — a silent, bug-level behavior change for
-    // large-window users. Users who want a higher floor set it explicitly.
-    const minNudgeFloorTokens =
-        modelContextLimit !== undefined
-            ? Math.round(((config.compress?.minNudgeContextPercent ?? 5) / 100) * modelContextLimit)
-            : undefined
+    // large-window users. Users who want a higher floor set it explicitly,
+    // globally or per provider/model via compress.providers (issue #344:
+    // model > provider > global cascade, resolved by resolveMinNudgeFloorTokens).
+    const minNudgeFloorTokens = resolveMinNudgeFloorTokens(
+        config,
+        modelContextLimit,
+        providerId,
+        modelId
+    )
     const overMinNudgeFloor =
         minNudgeFloorTokens === undefined ||
         currentTokens === undefined ||
