@@ -2,7 +2,7 @@
 
 - Task ID: `2026-08-29_release-v1.14.26`
 - Home Repo: `opencode-acp`
-- Status: In Progress
+- Status: PR Open (awaiting human merge)
 - Updated: 2026-08-29
 
 ## 1. Summary
