@@ -50,9 +50,17 @@ Replaces PR #345's flat `compress.modelMinNudgeLimits` map (`"provider/model"` s
 
 During the first mutation run, `git checkout` was used to revert a mutation — but the implementation was uncommitted, so the checkout wiped the new code in `lib/messages/inject/utils.ts` and `lib/config.ts`. Re-applied both files and re-verified (typecheck ✓, 1053/1053 ✓). Lesson recorded: mutation testing must back up files (`cp` → mutate → restore from copy), never `git checkout`, while work is uncommitted.
 
-## 6. Commits
+## 6. Review fixes (2026-08-29, post-PR review)
+
+1. **§5.7.1 gap — no new test used a production config.** All 17 original tests ran on `buildConfig()` defaults (`preserveRecentMessages: 0`), which disables the protected-zone / `nothingToCompress` path — the exact scenario behind the #207 baseline-reset bug. Added `issue #344: per-model floor holds in production config across the full growth cycle (preserveRecentMessages > 0)` to `tests/inject.test.ts`: 5 turns sharing one `SessionState` with `preserveRecentMessages: 2`, covering floor suppression → fire → compress → new baseline → fire again, plus a fully-protected turn that locks the #207 regression (baseline NOT reset by `nothingToCompress`; `lastNudgeShownTokens` kept). Mutation-verified: reintroducing the #207 bug (baseline reset on `nothingToCompress`) fails this test (and the 5 pre-existing #207 regression tests).
+2. **Unrelated `.gitignore` change reverted.** The `node_modules/` → `node_modules` edit was bundled into `e14193c` with a "symlink fix" rationale that is not substantiated anywhere in the repo (no tracked symlink, no issue reference). Reverted to keep the PR scoped to #344.
+
+Test count after fixes: 1054/1054 (1036 baseline + 18 new).
+
+## 7. Commits
 
 | Hash | Subject |
 |---|---|
-| `e14193c` | feat: per-provider/per-model growth-nudge floor via nested compress.providers (issue #344) + .gitignore symlink fix |
+| `e14193c` | feat: per-provider/per-model growth-nudge floor via nested compress.providers (issue #344) |
 | (pending) | docs: CONFIGURATION + WORKLOG for the nested providers floor |
+| (pending) | review: §5.7.1 production-config growth-cycle test + revert unrelated .gitignore change |
