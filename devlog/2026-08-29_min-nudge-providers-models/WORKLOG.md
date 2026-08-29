@@ -54,5 +54,5 @@ During the first mutation run, `git checkout` was used to revert a mutation — 
 
 | Hash | Subject |
 |---|---|
-| (pending) | feat: per-provider/per-model growth-nudge floor via nested compress.providers (issue #344) |
+| `e14193c` | feat: per-provider/per-model growth-nudge floor via nested compress.providers (issue #344) + .gitignore symlink fix |
 | (pending) | docs: CONFIGURATION + WORKLOG for the nested providers floor |
