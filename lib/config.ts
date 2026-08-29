@@ -9,6 +9,33 @@ import type { LogLevel } from "./logger"
 
 type Permission = "ask" | "allow" | "deny"
 
+/**
+ * The subset of `CompressConfig` fields that can be overridden per provider /
+ * per model via `compress.providers` (resolved field-by-field:
+ * model > provider > global).
+ *
+ * Excluded:
+ * - `permission` — resolved at tool registration time, before any model info exists
+ * - `minContextLimit` / `modelMinLimits` — deprecated (see CONFIGURATION.md)
+ * - `modelMaxLimits`, `modelMinLimits`, `providers` — structural (maps themselves)
+ */
+export type CompressOverridableConfig = Omit<
+    CompressConfig,
+    "permission" | "minContextLimit" | "modelMaxLimits" | "modelMinLimits" | "providers"
+>
+
+/** Per-model / per-provider override object (all overridable fields optional). */
+export type CompressModelOverrides = Partial<CompressOverridableConfig>
+
+/**
+ * Per-provider overrides inside `compress.providers.<provider>`. Provider-level
+ * fields apply to every model of that provider unless narrowed by a
+ * `models.<modelId>` entry (which wins field-by-field).
+ */
+export interface CompressProviderOverrides extends CompressModelOverrides {
+    models?: Record<string, CompressModelOverrides>
+}
+
 export interface CompressConfig {
     permission: Permission
     showCompression: boolean
@@ -17,6 +44,8 @@ export interface CompressConfig {
     minContextLimit: number | `${number}%`
     modelMaxLimits?: Record<string, number | `${number}%`>
     modelMinLimits?: Record<string, number | `${number}%`>
+    /** Nested per-provider / per-model overrides (billion-context-pi style). Resolved field-by-field: model > provider > global. */
+    providers?: Record<string, CompressProviderOverrides>
     nudgeFrequency: number
     minNudgeContextPercent: number
     nudgeGrowthTokens?: number
@@ -354,6 +383,61 @@ function loadConfigFile(configPath: string): ConfigLoadResult {
     }
 }
 
+/** Strip undefined-valued keys so a partial override never clears inherited fields. */
+function stripUndefined<T extends object>(value: T): T {
+    const result: Record<string, unknown> = {}
+    for (const [key, entry] of Object.entries(value)) {
+        if (entry !== undefined) {
+            result[key] = entry
+        }
+    }
+    return result as T
+}
+
+/**
+ * Merge model-level override maps across config layers, per model id,
+ * field-by-field: an explicitly-set field in the override layer wins; unset
+ * fields inherit from the base layer.
+ */
+function mergeModelOverrides(
+    base: Record<string, CompressModelOverrides> | undefined,
+    override: Record<string, CompressModelOverrides> | undefined
+): Record<string, CompressModelOverrides> | undefined {
+    if (base === undefined) return override
+    if (override === undefined) return base
+    const merged: Record<string, CompressModelOverrides> = { ...base }
+    for (const [modelId, model] of Object.entries(override)) {
+        merged[modelId] = { ...base[modelId], ...stripUndefined(model) }
+    }
+    return merged
+}
+
+/**
+ * Merge provider override maps across config layers, per provider id, then per
+ * model id, field-by-field. Unlike the flat modelMaxLimits/modelMinLimits maps
+ * (replace-inherited), the nested providers structure deep-merges: a project
+ * layer can narrow one provider without wiping the other providers configured
+ * in lower layers.
+ */
+function mergeProviderOverrides(
+    base: Record<string, CompressProviderOverrides> | undefined,
+    override: Record<string, CompressProviderOverrides> | undefined
+): Record<string, CompressProviderOverrides> | undefined {
+    if (base === undefined) return override
+    if (override === undefined) return base
+    const merged: Record<string, CompressProviderOverrides> = { ...base }
+    for (const [providerId, provider] of Object.entries(override)) {
+        const baseProvider = base[providerId]
+        const mergedModels = mergeModelOverrides(baseProvider?.models, provider.models)
+        merged[providerId] = {
+            ...baseProvider,
+            ...stripUndefined(provider),
+            ...(mergedModels !== undefined ? { models: mergedModels } : {}),
+        }
+    }
+    return merged
+}
+
 export function mergeCompress(
     base: PluginConfig["compress"],
     override?: CompressOverride,
@@ -370,6 +454,7 @@ export function mergeCompress(
         minContextLimit: override.minContextLimit ?? base.minContextLimit,
         modelMaxLimits: override.modelMaxLimits ?? base.modelMaxLimits,
         modelMinLimits: override.modelMinLimits ?? base.modelMinLimits,
+        providers: mergeProviderOverrides(base.providers, override.providers),
         nudgeFrequency: override.nudgeFrequency ?? base.nudgeFrequency,
         minNudgeContextPercent: override.minNudgeContextPercent ?? base.minNudgeContextPercent,
         nudgeGrowthTokens: override.nudgeGrowthTokens,
@@ -420,7 +505,7 @@ function mergeExperimental(
     }
 }
 
-function deepCloneConfig(config: PluginConfig): PluginConfig {
+export function deepCloneConfig(config: PluginConfig): PluginConfig {
     return {
         ...config,
         commands: {
@@ -433,6 +518,26 @@ function deepCloneConfig(config: PluginConfig): PluginConfig {
             ...config.compress,
             modelMaxLimits: { ...config.compress.modelMaxLimits },
             modelMinLimits: { ...config.compress.modelMinLimits },
+            providers: config.compress.providers
+                ? Object.fromEntries(
+                      Object.entries(config.compress.providers).map(([providerId, provider]) => [
+                          providerId,
+                          {
+                              ...provider,
+                              ...(provider.models
+                                  ? {
+                                        models: Object.fromEntries(
+                                            Object.entries(provider.models).map(([modelId, model]) => [
+                                                modelId,
+                                                { ...model },
+                                            ])
+                                        ),
+                                    }
+                                  : {}),
+                          },
+                      ])
+                  )
+                : undefined,
             protectedTools: [...config.compress.protectedTools],
         },
         gc: {
