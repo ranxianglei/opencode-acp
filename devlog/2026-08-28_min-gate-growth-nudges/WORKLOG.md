@@ -5,6 +5,8 @@
 - Status: Done
 - Updated: 2026-08-28
 
+> **2026-08-29 amendment**: the default floor was lowered **15% → 5%** (commit `f3a3fc8`, maintainer decision). See §7.
+
 ## 1. Summary
 
 - **What was done**: added a growth-nudge floor to the T1 decision in `lib/messages/inject/inject.ts`. A growth nudge now requires the context to be at/above the **`minNudgeContextPercent` floor** (default 15% of the model context). `overMaxLimit` and the emergency override bypass the floor; when the model context limit is unknown the floor is unresolvable and growth nudges keep their pre-#342 growth-only behavior. T2/T3 tier-promotion nudges are untouched.
@@ -111,3 +113,11 @@ Pre-existing repo-wide Prettier drift: the installed Prettier (3.9.5) reformats 
 - The first revision (gate on `minContextLimit`) was a **silent regression for default users**: it would have suppressed all growth nudges below 80%. The pre-existing test #27 (context 100K on a 1M model) only caught it because 100K < 150K floor — a test with context between 150K and 800K would have masked the regression. Always check the **default** config path, not just the configured path.
 - `minNudgeContextPercent` was a dormant no-op field — the natural home for the growth floor. Activating a dormant field is lower-risk than repurposing a live one (`minContextLimit` also drives turn/iteration anchors).
 - A dual-agent review pushed refinements onto the branch based on the original (minContextLimit) approach; the @dog feedback superseded them. Integrated the review's valuable non-conflicting work (README/CONFIGURATION fixes, the unresolvable-limit + T2-independence tests) while replacing the core gate.
+
+## 7. Amendment: default floor lowered 15% → 5% (maintainer decision)
+
+- **Commit**: `f3a3fc8` — `fix: lower default minNudgeContextPercent floor 15% -> 5%`
+- **Why**: the 15% default was a silent, bug-level behavior change for the dominant user profile — **large-window models (e.g. 1M context)** with small baselines. Floor mechanics: the floor binds when `P% × W > baseline + 50K` (growth threshold). At 15% that binds on windows ≥ ~400–667K; on a 1M window every compress cycle is suppressed until 150K context usage. The typical working cycle (baseline 10–50K → grow +50K → nudge → max ~110K → compress → land 20–50K → repeat) never reaches 150K, so the nudge — and therefore compression — is starved and the working range shifts to [~40K, 150–200K], ~2× steady-state input tokens. Since compress resets `lastPerMessageNudgeTokens` to the post-compress size, the floor re-binds **every** cycle, not just the first.
+- **Why 5%**: with the fixed 50K growth threshold, a 5% floor only binds when `5% × W > baseline + 50K`, i.e. windows ≥ ~1.2–2M for typical baselines — inert for essentially all real working cycles while still catching pathological tiny-window thrash via `minimum: 0` users opting out. Escape hatches: set it higher explicitly (15–30%) to wait for larger usage; `0` disables the floor entirely.
+- **Files**: `lib/config.ts` (default 15→5), `lib/messages/inject/inject.ts` (policy passthrough + floor fallback `?? 5`, rationale comment), `dcp.schema.json` (default + stale description fixed), `CONFIGURATION.md`/`CONFIGURATION.zh-CN.md` (defaults + rationale), `tests/inject.test.ts` (2 comments re-pinned to the buildConfig factory value; new default-lock test).
+- **Test**: `issue #342 follow-up: unset minNudgeContextPercent falls back to the low 5% default floor` — deletes the field from the config (fallback path), 1M window, baseline 50K, current 100K → asserts the nudge fires (100K ≥ 50K floor + 50K growth). Mutation-sensitive: reverting the fallback to `?? 15` puts the floor at 150K → suppressed → test fails (verified locally: 54/55 with mutation, 55/55 after restore; full suite 1036/1036, typecheck + build clean).
