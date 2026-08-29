@@ -117,3 +117,9 @@ Design note on M4: the first version of the over-max band test used `lastPerMess
 - Reviewer pushed `6576fcf` to the PR branch: a §5.7.1 production-config growth-cycle test (baseline → growth → nudge → compress → new baseline → growth → nudge + PR #207 `nothingToCompress` regression lock, `preserveRecentMessages: 2`) and a revert of the unrelated `.gitignore` tweak from `e14193c`.
 - Merged (no force-push, reviewer commit preserved). Conflicts in `tests/inject.test.ts` (both sides appended tests at the same point, shared preamble) and this file; resolved by keeping BOTH sides — the 2 all-field cascade tests AND the reviewer's growth-cycle test. Suite re-run below.
 - Test totals after merge: `tests/inject.test.ts` now carries 3 additional tests on top of the pre-merge 65 (2 mine + 1 reviewer's).
+
+## E7. README updates (maintainer request: "readme 中英文两个都需要更新")
+
+- README.md + README.zh-CN.md:
+  - Default-config jsonc: added commented `compress.providers` nested example (after `modelMinLimits`), noting per-field model > provider > global resolution and global fallback for unknown IDs.
+  - New section "Per-Provider / Per-Model Overrides" (EN) / "按 Provider / 按模型覆盖" (zh) between the config details block and Prompt Overrides: multi-field jsonc example, per-field precedence, nested `maxContextLimit` > flat `modelMaxLimits`, 3-layer deep-merge, non-overridable exceptions, pointer to CONFIGURATION.md#compressproviders (23-field list).
