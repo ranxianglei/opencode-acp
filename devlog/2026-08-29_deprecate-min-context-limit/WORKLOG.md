@@ -28,4 +28,4 @@ Behavior: **none changed** — `resolveContextTokenLimit(…, "min")`, `overMinL
 
 | Hash | Subject |
 |---|---|
-| (pending) | docs(deprecate): mark minContextLimit + modelMinLimits deprecated (soft, no behavior change) |
+| `43a15e7` | docs(deprecate): mark minContextLimit + modelMinLimits deprecated (soft, no behavior change) |
