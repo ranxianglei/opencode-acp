@@ -9,6 +9,7 @@ import {
     injectCompressNudges,
     injectMessageIds,
     prune,
+    pruneToFit,
     stripHallucinations,
     stripHallucinationsFromString,
     stripStaleMetadata,
@@ -41,6 +42,7 @@ import { createSessionState, saveSessionState, syncToolCache, updatePerTurnState
 import { cacheSystemPromptTokens } from "./ui/utils"
 import { runBatchCleanup } from "./gc/merge"
 import { getCurrentTokenUsage } from "./token-utils"
+import { trackUncalibratedWindow } from "./messages/uncalibrated-window"
 
 const INTERNAL_AGENT_SIGNATURES = [
     "You are a title generator",
@@ -224,6 +226,13 @@ export function createChatMessageTransformHandler(
                 })
             }
             await updatePerTurnState(state, logger, messages)
+
+            // [FIX #347] Surface the uncalibrated-window blindness instead of
+            // letting every percentage threshold silently no-op. When the model
+            // reports no context window (limit.context=0) modelContextLimit stays
+            // undefined, so min/max/emergency thresholds all resolve to undefined
+            // and only the absolute growth nudge fires. Warn once per session.
+            trackUncalibratedWindow(state, logger)
         }
 
         syncCompressPermissionState(state, config, hostPermissions, output.messages)
@@ -255,6 +264,13 @@ export function createChatMessageTransformHandler(
         const prePruneTokens = getCurrentTokenUsage(state, output.messages)
         prune(state, logger, config, output.messages)
         truncateLargeToolOutputs(state, config, logger, output.messages)
+        // [FIX #347] Request-side hard guard: if the estimated wire size exceeds
+        // the known window minus the completion reserve, deterministically clear
+        // the oldest compressible tool outputs until it fits. Runs after the
+        // (weaker, modelContextLimit-gated) truncation above and works even when
+        // the model reports no window, as long as an absolute maxContextLimit is
+        // configured. Last line of defense against a provider 400.
+        pruneToFit(state, config, logger, output.messages)
         hideConsumedCompressCalls(state, output.messages)
         assignMessageRefs(state, output.messages)
         const compressionPriorities = buildPriorityMap(config, state, output.messages)

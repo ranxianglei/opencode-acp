@@ -160,4 +160,24 @@ export interface SessionState {
      * - Normal call (no acknowledgeRisk) → quality runs normally
      */
     qualityGateRetryPending: boolean
+    /**
+     * [FIX #347] Transient counter (NOT persisted): number of consecutive
+     * message-transforms in which `modelContextLimit` remained undefined.
+     * Reset to 0 as soon as a limit is resolved. When it reaches the warn
+     * threshold the session emits a one-time WARN that percentage thresholds are
+     * disabled because the model reports no context window.
+     */
+    uncalibratedWindowTransforms: number
+    /**
+     * [FIX #347] Transient flag (NOT persisted): set to true once the
+     * uncalibrated-window WARN has fired for this session, so it only logs once.
+     */
+    uncalibratedWindowWarned: boolean
+    /**
+     * [FIX #347] Transient flag (NOT persisted): the overflow guard is over
+     * budget with nothing clearable. The ERROR for that condition persists
+     * across transforms, so it is logged once per "stuck episode" and the flag
+     * resets when the estimate drops back under budget (review N3).
+     */
+    overflowGuardStuckLogged: boolean
 }

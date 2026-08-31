@@ -80,6 +80,21 @@ export interface CompressConfig {
     preserveRecentTokens?: number
     /** Always protect the most recent user message (default: true). */
     preserveLastUserMessage?: boolean
+    /**
+     * Enable the request-side overflow guard ("prune-to-fit"). When the estimated
+     * wire size of the outgoing request exceeds `knownWindow - overflowGuardReserve`,
+     * deterministically clear the oldest compressible (non-protected) tool outputs
+     * until the estimate fits — independent of model cooperation. See #347.
+     * Default: true.
+     */
+    overflowGuard?: boolean
+    /**
+     * Tokens reserved for the model's completion by the overflow guard. The guard
+     * keeps `safeBudget = knownWindow - overflowGuardReserve`. Should be at least the
+     * model's typical max output tokens (opencode falls back to 32000 when the model
+     * reports `limit.output = 0`). Default: 32768.
+     */
+    overflowGuardReserve?: number
 }
 
 export interface Commands {
@@ -257,6 +272,8 @@ const defaultConfig: PluginConfig = {
         preserveRecentMessages: 5,
         preserveRecentTokens: 5000,
         preserveLastUserMessage: true,
+        overflowGuard: true,
+        overflowGuardReserve: 32768,
     },
     gc: {
         algorithm: "truncate",
@@ -488,6 +505,8 @@ export function mergeCompress(
     preserveRecentMessages: override.preserveRecentMessages ?? base.preserveRecentMessages,
     preserveRecentTokens: override.preserveRecentTokens ?? base.preserveRecentTokens,
     preserveLastUserMessage: override.preserveLastUserMessage ?? base.preserveLastUserMessage,
+    overflowGuard: override.overflowGuard ?? base.overflowGuard,
+    overflowGuardReserve: override.overflowGuardReserve ?? base.overflowGuardReserve,
     }
 }
 
