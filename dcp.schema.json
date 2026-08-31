@@ -568,6 +568,12 @@
                     "type": "boolean",
                     "default": true,
                     "description": "Always protect the most recent user message from compression."
+                },
+                "completionReserveTokens": {
+                    "type": "number",
+                    "default": 32768,
+                    "minimum": 0,
+                    "description": "Tokens reserved for the model's completion when the context-budget guard prunes tool outputs so the request fits the window. Default 32768 covers opencode's 32000 max_tokens fallback for models with no declared limit.output. The guard is a no-op unless the model's context window is known (declared limit or catalog entry); an absolute maxContextLimit is a soft nudge threshold and does not enable the guard."
                 }
             },
             "default": {
@@ -592,7 +598,8 @@
                 "lastSegmentSoftBlock": true,
                 "preserveRecentMessages": 20,
                 "preserveRecentTokens": 20000,
-                "preserveLastUserMessage": true
+                "preserveLastUserMessage": true,
+                "completionReserveTokens": 32768
             }
         },
         "gc": {

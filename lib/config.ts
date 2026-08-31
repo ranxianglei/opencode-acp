@@ -80,6 +80,12 @@ export interface CompressConfig {
     preserveRecentTokens?: number
     /** Always protect the most recent user message (default: true). */
     preserveLastUserMessage?: boolean
+    /**
+     * Tokens reserved for the model's completion when enforcing the context
+     * budget guard (default: 32768 — covers opencode's 32000 max_tokens
+     * fallback for models with no declared limit.output).
+     */
+    completionReserveTokens?: number
 }
 
 export interface Commands {
@@ -488,6 +494,7 @@ export function mergeCompress(
     preserveRecentMessages: override.preserveRecentMessages ?? base.preserveRecentMessages,
     preserveRecentTokens: override.preserveRecentTokens ?? base.preserveRecentTokens,
     preserveLastUserMessage: override.preserveLastUserMessage ?? base.preserveLastUserMessage,
+    completionReserveTokens: override.completionReserveTokens ?? base.completionReserveTokens,
     }
 }
 
