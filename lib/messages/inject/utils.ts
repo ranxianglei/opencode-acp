@@ -14,7 +14,7 @@ import {
     type MessagePriority,
     listPriorityRefsBeforeIndex,
 } from "../priority"
-import { estimateSystemPromptTokens } from "../../token-utils"
+import { countMessageCharacters, estimateSystemPromptTokens, getCurrentTokenUsage } from "../../token-utils"
 import {
     appendToTextPart,
     appendToLastTextPart,
@@ -22,7 +22,6 @@ import {
     hasContent,
 } from "../utils"
 import { getLastUserMessage, isIgnoredUserMessage, isSyntheticMessage } from "../query"
-import { getCurrentTokenUsage } from "../../token-utils"
 import { getActiveSummaryTokenUsage } from "../../state/utils"
 
 export interface LastUserModelContext {
@@ -782,13 +781,11 @@ export function buildCompressibleRanges(
             (protectedTools.length > 0 || protectedFilePatterns.length > 0) &&
             messageContainsProtectedTool(msg, protectedTools, protectedFilePatterns)
         ) {
-            let tokens = 0
+            // Issue #359: must match the pipeline min-size check counter; JSON.stringify(part) overstates tool parts
+            const tokens = Math.round(countMessageCharacters(msg) / 4)
             const tools = new Set<string>()
             for (const part of msg.parts || []) {
-                if (part.type === "text" && typeof (part as any).text === "string") {
-                    tokens += Math.round(((part as any).text as string).length / 4)
-                } else if (part.type !== "text" && part.type !== "reasoning") {
-                    tokens += Math.round(JSON.stringify(part).length / 4)
+                if (part.type !== "text" && part.type !== "reasoning") {
                     const toolName = (part as any)?.tool
                     const callID = (part as any)?.callID
                     if (toolName && callID) {
@@ -810,15 +807,14 @@ export function buildCompressibleRanges(
             continue
         }
 
-        let tokens = 0
+        // Issue #359: must match the pipeline min-size check counter; JSON.stringify(part) overstates tool parts
+        const tokens = Math.round(countMessageCharacters(msg) / 4)
         let isTool = false
         let hasMeaningfulPart = false
         for (const part of msg.parts || []) {
             if (part.type === "text" && typeof (part as any).text === "string") {
-                tokens += Math.round(((part as any).text as string).length / 4)
                 if ((part as any).text.trim().length > 0) hasMeaningfulPart = true
             } else if (part.type !== "text" && part.type !== "reasoning") {
-                tokens += Math.round(JSON.stringify(part).length / 4)
                 isTool = true
                 hasMeaningfulPart = true
             }
