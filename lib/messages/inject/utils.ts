@@ -14,7 +14,11 @@ import {
     type MessagePriority,
     listPriorityRefsBeforeIndex,
 } from "../priority"
-import { countMessageCharacters, estimateSystemPromptTokens, getCurrentTokenUsage } from "../../token-utils"
+import {
+    countMessageCharacters,
+    estimateSystemPromptTokens,
+    getCurrentTokenUsage,
+} from "../../token-utils"
 import {
     appendToTextPart,
     appendToLastTextPart,

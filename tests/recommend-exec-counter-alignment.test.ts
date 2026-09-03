@@ -3,7 +3,7 @@ import test from "node:test"
 import { createSessionState } from "../lib/state"
 import type { WithParts } from "../lib/state"
 import { assignMessageRefs } from "../lib/message-ids"
-import { countMessageCharacters } from "../lib/token-utils"
+import { COMPACTED_TOOL_OUTPUT_PLACEHOLDER, countMessageCharacters } from "../lib/token-utils"
 import {
     buildCompressibleRanges,
     filterRecommendedRanges,
@@ -233,6 +233,49 @@ test("#359 deeply nested JSON object output: rec == exec counter", () => {
 })
 
 // ---------------------------------------------------------------------------
+// Fixture shape 5: compacted tool output (placeholder path)
+// ---------------------------------------------------------------------------
+
+test("#359 compacted tool output: exec counts placeholder, rec matches", () => {
+    const bigOutput = "x".repeat(5000)
+    const toolMsg = makeMsg("m2", "assistant", "", [
+        {
+            type: "tool",
+            callID: "t1",
+            tool: "read",
+            state: {
+                status: "completed",
+                input: { filePath: "/tmp/big.log" },
+                output: bigOutput,
+                time: { compacted: true },
+            },
+        },
+    ])
+    const userMsg = makeMsg("m1", "user", "read the log")
+    const state = buildSession([userMsg, toolMsg])
+
+    const { compressible } = buildCompressibleRanges([userMsg, toolMsg], state)
+    const execChars = countMessageCharacters(toolMsg)
+    const expected =
+        JSON.stringify({ filePath: "/tmp/big.log" }).length +
+        COMPACTED_TOOL_OUTPUT_PLACEHOLDER.length
+    assert.equal(
+        execChars,
+        expected,
+        "exec counter = stringified input + compacted placeholder (not full output)",
+    )
+    assert.equal(
+        compressible[0].effectiveTokens,
+        Math.round(execChars / 4),
+        "rec-side uses same counter",
+    )
+    assert.ok(
+        legacyMessageTokens(toolMsg) > compressible[0].effectiveTokens,
+        "pre-fix estimator counted the full pre-compaction output",
+    )
+})
+
+// ---------------------------------------------------------------------------
 // Incident shape: tool-heavy range below the exec min-size threshold but
 // above the floor under the pre-fix inflated estimator.
 // Mirrors the #355 report (v1.14.26, min 3000): webfetch failure + gh JSON
@@ -241,6 +284,12 @@ test("#359 deeply nested JSON object output: rec == exec counter", () => {
 
 const INCIDENT_MIN_COMPRESS_RANGE = 3000
 
+// Triple constraint on this fixture (asserted dynamically inside the test):
+// execChars < 3000 AND legacyEffective >= floor(750) AND post-fix
+// effectiveTokens < 750. Current margins: exec 2866 (-134), legacy 780 (+30),
+// post-fix 716 (-34). Legacy inflation is ~constant (~256 chars) for this
+// shape, so keep future text edits within exec ∈ [~2744, 3000); the dynamic
+// asserts fail loudly if an edit breaks any side.
 function buildIncidentMessages(): WithParts[] {
     const stack =
         "Error: fetch failed\n" +
@@ -285,8 +334,9 @@ test("#359 incident shape: sub-floor tool-heavy range is NOT recommended (was re
     assert.equal(compressible.length, 1, "single range covering the whole span")
     const range = compressible[0]
 
-    // Execution-side truth: the pipeline sums countMessageCharacters over the
-    // plan's surviving messages (last user message soft-filtered out).
+    // Min-size-check counter over last-user-filtered survivors (the other soft
+    // filters — protected tools / recent zone — are out of scope for this
+    // shared-counter pin).
     const execChars = messages.slice(1).reduce((sum, m) => sum + countMessageCharacters(m), 0)
     assert.ok(
         execChars < INCIDENT_MIN_COMPRESS_RANGE,
