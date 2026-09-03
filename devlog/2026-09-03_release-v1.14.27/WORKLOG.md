@@ -2,7 +2,7 @@
 
 - Task ID: `2026-09-03_release-v1.14.27`
 - Home Repo: `opencode-acp`
-- Status: In Progress
+- Status: PR Open (awaiting human merge)
 - Updated: 2026-09-03
 
 ## 1. Summary
@@ -15,6 +15,8 @@ Release for PR #338 (issue #337 fix: self-disable also triggers in manual proxy 
 |--------|-------------|
 | `2e93281` | release: v1.14.27 — self-disable also triggers in manual proxy mode (/bili/ baseURL detection) |
 | (this commit) | docs: record release commit hash and check-pr result in WORKLOG |
+
+PR: https://github.com/ranxianglei/opencode-acp/pull/361 (open, awaiting human merge).
 
 ## 3. Verification
 
