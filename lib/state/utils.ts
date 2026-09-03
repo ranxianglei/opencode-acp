@@ -108,6 +108,7 @@ export function createPruneMessagesState(): PruneMessagesState {
         nextBlockId: 1,
         nextRunId: 1,
         markedForCleanup: new Set<number>(),
+        membershipsVerified: false,
     }
 }
 

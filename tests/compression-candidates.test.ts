@@ -415,6 +415,46 @@ test("nudge and default status render the same candidate list", () => {
     assert.deepEqual(extractCandidates(suffixText ?? ""), extractCandidates(status))
 })
 
+test("no-nudge turns skip candidate planning", () => {
+    const messages = [
+        textMessage("u1", "user", "start"),
+        textMessage("a1", "assistant", "x".repeat(300)),
+    ]
+    setTokens(messages[1]!, 1000, 0)
+    const state = setup(messages)
+    state.modelContextLimit = 100_000
+    state.nudges.lastPerMessageNudgeTokens = 1000
+    const cfg = config({
+        minContextLimit: 100,
+        maxContextLimit: 90_000,
+        nudgeGrowthTokens: 1000,
+        minNudgeGrowthFloor: 100,
+        minNudgeGrowthRatio: 0.1,
+    })
+    let candidateMessagesAccesses = 0
+    const candidateMessages = new Proxy([] as WithParts[], {
+        get(target, property, receiver) {
+            candidateMessagesAccesses++
+            return Reflect.get(target, property, receiver)
+        },
+    })
+
+    injectCompressNudges(
+        state,
+        cfg,
+        new Logger(false),
+        messages,
+        {} as any,
+        undefined,
+        undefined,
+        undefined,
+        candidateMessages,
+    )
+
+    assert.equal(state.nudges.shouldInjectThisTurn, false)
+    assert.equal(candidateMessagesAccesses, 0)
+})
+
 test("candidate nudges preserve baseline and re-fire after compression across turns", () => {
     const state = createSessionState()
     state.sessionId = SID

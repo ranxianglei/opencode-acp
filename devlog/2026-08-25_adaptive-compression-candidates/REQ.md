@@ -20,6 +20,10 @@
   adjacent smaller historical units.
 - **Impact**: Better compression selection without changing persisted state,
   the `compress` tool contract, or compression execution semantics.
+- **Post-compression performance follow-up**: Once a block exists, OpenCode
+  still provides the raw transcript to every transform. Avoid reprocessing
+  hidden raw content where the downstream operation already ignores it, and do
+  not plan candidates on turns that cannot emit a nudge.
 
 ## 2. Reproduction (if applicable)
 
@@ -55,21 +59,23 @@
 ## 4. Acceptance Criteria (must be testable)
 
 - **Correctness**:
-    - [ ] Large plain messages and complete tool transactions produce micro-range
+    - [x] Large plain messages and complete tool transactions produce micro-range
           candidates when they meet `minCompressRange`.
-    - [ ] Adjacent smaller eligible units produce one episode candidate when their
+    - [x] Adjacent smaller eligible units produce one episode candidate when their
           aggregate retained characters meet `minCompressRange`.
-    - [ ] Candidates are pair-safe, non-overlapping, deterministic, bounded to 12,
+    - [x] Candidates are pair-safe, non-overlapping, deterministic, bounded to 12,
           and survive executor-equivalent filters.
-    - [ ] Nudge and default `acp_status` candidate output share one planner and
+    - [x] Nudge and default `acp_status` candidate output share one planner and
           ordering.
 - **Performance / Stability**:
-    - [ ] Planner failures omit candidate guidance without blocking a request.
-    - [ ] Existing compression state and arbitrary range execution remain intact.
-    - [ ] Status remains read-only and candidate planning does not persist state.
+    - [x] Planner failures omit candidate guidance without blocking a request.
+    - [x] Existing compression state and arbitrary range execution remain intact.
+    - [x] Status remains read-only and candidate planning does not persist state.
 - **Regression**:
-    - [ ] New/modified test cases added to test suite and passing.
-    - [ ] Existing unit, property, build, and E2E suites pass.
+    - [x] New/modified test cases added to test suite and passing.
+    - [x] Existing unit, property, build, and E2E suites pass.
+    - [x] No-nudge turns do not invoke candidate planning.
+    - [x] Unchanged active block membership does not rebuild every tracked message.
 
 ## 5. Proposed Approach (optional)
 

@@ -504,10 +504,11 @@ export function planCompressionCandidates(
         // remaining candidates are independently safe.
     }
 
+    const preparedPlansByIndex = new Map(batchResult?.plans.map((plan) => [plan.index, plan]))
     for (let draftIndex = 0; draftIndex < drafts.length; draftIndex++) {
         const draft = drafts[draftIndex]!
         const unit = candidateDraftRange(draft)
-        const preparedPlan = batchResult?.plans.find((plan) => plan.index === draftIndex)
+        const preparedPlan = preparedPlansByIndex.get(draftIndex)
         const prepared = batchResult
             ? {
                   plans: preparedPlan ? [preparedPlan] : [],

@@ -365,13 +365,17 @@ export const injectCompressNudges = (
         omitted: [],
         truncatedCount: 0,
     }
-    try {
-        candidatePlan = planCompressionCandidates(candidateMessages ?? messages, state, config)
-    } catch (error) {
-        logger.warn("Compression candidate planning failed closed", {
-            session: state.sessionId,
-            error: error instanceof Error ? error.message : String(error),
-        })
+    // Planning validates every candidate against range execution. Defer that
+    // full-history work until this turn can actually emit a compression nudge.
+    if (nudgeAllowed) {
+        try {
+            candidatePlan = planCompressionCandidates(candidateMessages ?? messages, state, config)
+        } catch (error) {
+            logger.warn("Compression candidate planning failed closed", {
+                session: state.sessionId,
+                error: error instanceof Error ? error.message : String(error),
+            })
+        }
     }
     const candidateText =
         formatCompressionCandidates(candidatePlan) ||
@@ -384,7 +388,7 @@ export const injectCompressNudges = (
     const allInProtectedZone = protectedRefs.size > 0 && unprotectedCompressible.length === 0
     const allBelowMin = contextRanges.compressible.length > 0 && recommendedRanges.length === 0
     const noExecutableCandidates =
-        candidateMessages !== undefined && candidatePlan.candidates.length === 0
+        nudgeAllowed && candidateMessages !== undefined && candidatePlan.candidates.length === 0
     const nothingToCompress =
         candidateMessages !== undefined
             ? noExecutableCandidates

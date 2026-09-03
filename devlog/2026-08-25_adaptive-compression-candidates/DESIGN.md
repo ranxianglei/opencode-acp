@@ -94,6 +94,11 @@ proven range executor.
   state JSON, block lineage, retrieval, decompression, and tiers remain unchanged.
 - **Performance**: Planning is bounded by the current visible message count and
   tool parts. Candidate output is capped at 12. No LLM or network call is added.
+- **Post-compression fast path**: Candidate planning runs only when the nudge
+  gate is open. Block synchronization repairs persisted per-message membership
+  once, then rebuilds it only when the active block set changes. Tool-cache and
+  tool-ID ordering remains before prune because cache turn numbering depends on
+  `step-start` parts that pruning removes.
 - **Security**: Protected tools/files and current-context protections remain
   executor authority; planner validation fails closed if selection differs.
 - **Dependencies** (new packages required): None.

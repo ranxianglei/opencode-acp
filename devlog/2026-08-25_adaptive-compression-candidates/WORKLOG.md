@@ -38,7 +38,10 @@
   not discarded with a protected tail.
 - `lib/messages/inject/inject.ts`, `lib/hooks.ts`, `lib/compress/status.ts` —
   nudge/status integration, candidate snapshot flow, and planner-authoritative
-  production nudge gating.
+  production nudge gating; post-compression candidate-planning fast path.
+- `lib/messages/sync.ts`, `lib/hooks.ts` — avoids rebuilding unchanged message
+  memberships after a persisted-state repair sync; candidate planning is gated
+  before full planner work.
 - `lib/prompts/system.ts`, `lib/prompts/*-nudge.ts`,
   `lib/prompts/compress-range.ts` — bundled candidate semantics and advisory
   safety/action guidance.
@@ -75,8 +78,8 @@ npm run build
 
 - New/modified test files: `compression-candidates.test.ts`,
   `compression-candidates-property.test.ts`, `acp-status.test.ts`,
-  `e2e-blocks-nudges.test.ts`.
-- Test count: Full suite 1045 tests, 1045 passed.
+  `e2e-blocks-nudges.test.ts`, `sync.test.ts`, and `state-utils-pure.test.ts`.
+- Test count: Full suite 1049 tests, 1049 passed.
 - Key scenarios verified: pair-safe micro-ranges, episode aggregation,
   protection parity, deterministic cap, nudge/status parity, and E2E candidate
   selection.
@@ -89,6 +92,9 @@ npm run build
   nudge escalation, baseline preservation, and post-compression reset.
 - **Review follow-ups**: PASS for protected-tail episode splitting and valid
   planner candidates surviving legacy grouped-range filtering.
+- **Performance follow-up**: no-nudge turns skip candidate planning; unchanged
+  active block membership retains existing per-message arrays after a repair
+  sync; tool-cache ordering is retained because it records step-start turns.
 - **Key logs/data**: `npm run format:check` reports pre-existing formatting
   failures in unrelated files; all changed-file formatting checks pass.
 

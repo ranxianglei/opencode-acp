@@ -4,6 +4,7 @@ import test from "node:test"
 import { Logger } from "../lib/logger"
 import { syncCompressionBlocks } from "../lib/messages/sync"
 import { createSessionState, type WithParts, type CompressionBlock } from "../lib/state"
+import { loadPruneMessagesState } from "../lib/state/utils"
 
 const SID = "ses-sync-test"
 const logger = new Logger(false)
@@ -86,11 +87,7 @@ test("syncCompressionBlocks keeps block active when anchor is gone even if track
     const messages = [userMsg("m2")]
     syncCompressionBlocks(state, logger, messages)
     const block = state.prune.messages.blocksById.get(1)!
-    assert.equal(
-        block.active,
-        true,
-        "block should stay active — existence IS proof",
-    )
+    assert.equal(block.active, true, "block should stay active — existence IS proof")
     assert.ok(state.prune.messages.activeBlockIds.has(1))
 })
 
@@ -143,6 +140,63 @@ test("syncCompressionBlocks updates byMessageId activeBlockIds after sync", () =
         1,
         "m2 activeBlockIds should still have block 1 (block survives anchor removal)",
     )
+})
+
+test("syncCompressionBlocks preserves message memberships when active blocks are unchanged", () => {
+    const state = createSessionState()
+    state.prune.messages.blocksById.set(1, makeBlock({ blockId: 1, anchorMessageId: "m1" }))
+    state.prune.messages.activeBlockIds.add(1)
+    state.prune.messages.byMessageId.set("m2", {
+        tokenCount: 200,
+        allBlockIds: [1],
+        activeBlockIds: [1],
+    })
+    syncCompressionBlocks(state, logger, [userMsg("m1"), userMsg("m2")])
+    const entry = state.prune.messages.byMessageId.get("m2")!
+    const activeBlockIds = entry.activeBlockIds
+
+    syncCompressionBlocks(state, logger, [userMsg("m1"), userMsg("m2")])
+
+    assert.strictEqual(
+        entry.activeBlockIds,
+        activeBlockIds,
+        "unchanged active membership must not be rebuilt on every transform",
+    )
+})
+
+test("syncCompressionBlocks repairs persisted memberships before using the fast path", () => {
+    const state = createSessionState()
+    state.prune.messages.blocksById.set(1, makeBlock({ blockId: 1, anchorMessageId: "m1" }))
+    state.prune.messages.activeBlockIds.add(1)
+    state.prune.messages.byMessageId.set("m2", {
+        tokenCount: 200,
+        allBlockIds: [1],
+        activeBlockIds: [],
+    })
+
+    syncCompressionBlocks(state, logger, [userMsg("m1"), userMsg("m2")])
+
+    assert.deepEqual(state.prune.messages.byMessageId.get("m2")!.activeBlockIds, [1])
+    assert.equal(state.prune.messages.membershipsVerified, true)
+})
+
+test("syncCompressionBlocks clears stale persisted memberships when no blocks load", () => {
+    const state = createSessionState()
+    state.prune.messages = loadPruneMessagesState({
+        byMessageId: {
+            m2: { tokenCount: 200, allBlockIds: [1], activeBlockIds: [1] },
+        },
+        blocksById: {},
+        activeBlockIds: [],
+        activeByAnchorMessageId: {},
+        nextBlockId: 2,
+        nextRunId: 2,
+    } as any)
+
+    syncCompressionBlocks(state, logger, [userMsg("m2")])
+
+    assert.deepEqual(state.prune.messages.byMessageId.get("m2")!.activeBlockIds, [])
+    assert.equal(state.prune.messages.membershipsVerified, true)
 })
 
 test("syncCompressionBlocks processes blocks in creation order", () => {
