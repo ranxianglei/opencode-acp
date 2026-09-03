@@ -18,34 +18,36 @@ grouping logic, soft-filter mirroring, zone sizing, or any display-only counter
 
 ## Tests
 
-New file `tests/recommend-exec-counter-alignment.test.ts` (7 tests):
+New file `tests/recommend-exec-counter-alignment.test.ts` (8 tests):
 
 1. pure-text message: rec-side tokens === exec-side `countMessageCharacters ÷ 4` (exact)
 2. pure-text: new counter identical to pre-fix estimator (guards against over-correction)
 3. completed tool (object input + multiline string output): rec == exec, legacy estimator provably overstated
 4. error-state tool (multi-line stack trace): rec == exec, legacy overstated
 5. deeply nested JSON object output (8 levels × 5 items): rec == exec, legacy overstated
-6. incident shape (#355 v1.14.26, min 3000): 4-message tool-heavy span with exec total
+6. compacted tool output (`state.time.compacted`): exec counts the 33-char placeholder, not
+   the full pre-compaction output; rec matches; pre-fix estimator provably counted the full output
+7. incident shape (#355 v1.14.26, min 3000): 4-message tool-heavy span with exec total
    2866 chars < 3000 but pre-fix inflated estimate 780 ≥ floor 750 → post-fix DROPPED by
    `filterRecommendedRanges`; counterfactual synthetic range with the legacy estimate is KEPT
    (pins both sides of the regression)
-7. protected branch: protected-range `tokens` also use the shared counter
+8. protected branch: protected-range `tokens` also use the shared counter
 
 ### Verification (§5.7.3 — tests must fail against buggy code)
 
 Surgical revert (`git stash push lib/messages/inject/utils.ts` → run → `git stash pop`):
 
-- **Pre-fix code: 5/7 FAIL** (all tool-shape tests + incident + protected branch); the 2
-  pure-text tests PASS by design (old counter agreed for text) — proves the suite targets
-  exactly this bug with no false positives.
-- **Post-fix: 7/7 PASS.**
+- **Pre-fix code: 6/8 FAIL** (all tool-shape tests incl. compacted-placeholder + incident +
+  protected branch); the 2 pure-text tests PASS by design (old counter agreed for text) —
+  proves the suite targets exactly this bug with no false positives.
+- **Post-fix: 8/8 PASS.**
 
 Full gate results (post-fix):
 
 | Gate | Result |
 |------|--------|
 | `npm run typecheck` | ✅ clean |
-| `npm run test` (full suite) | ✅ **1069/1069** (was 1062; +7 new) |
+| `npm run test` (full suite) | ✅ **1070/1070** (was 1062; +8 new) |
 | `npx prettier --check` on changed files | ✅ test file + REQ/WORKLOG clean |
 
 Formatting note: `lib/messages/inject/utils.ts` carries 70 lines of PRE-EXISTING prettier
