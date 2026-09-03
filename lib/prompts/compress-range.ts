@@ -28,7 +28,7 @@ Rules:
 
 - Pick \`startId\` and \`endId\` directly from injected IDs in context.
 - IDs must exist in the current visible context. If you cannot see an ID in the messages above, it is stale and will fail.
-- \`startId\` must appear before \`endId\`.
+- Prefer \`startId\` before \`endId\` in conversation order. ACP can normalize reversed boundaries, but do not rely on that behavior.
 - Do not invent IDs. Use only IDs that are present in context.
 - NEVER use IDs from compressed block summaries, previous nudges, or your own memory — only IDs currently visible as XML metadata tags in the conversation.
 
@@ -44,6 +44,9 @@ compress({ content: [
   { topic: "Deployment", startId: "m00090", endId: "m00110", summary: "..." },
 ]})
 \`\`\`
+
+CANDIDATE GUIDANCE
+ACP may display a \`COMPRESSION CANDIDATES\` list in a nudge or \`acp_status\` report. A \`MICRO\` entry targets one large message or complete tool transaction; an \`EPISODE\` entry targets a contiguous historical segment. Displayed candidates are independent and non-overlapping, so they may be batched, but they are advisory: compress only entries whose content is no longer needed. When a nudge lists a clearly stale candidate, use its exact IDs and call \`compress\` before continuing. Keep current intent and active work visible, and use \`acp_status\` when the candidate list is stale.
 
 KEEP AND REF MARKERS
 When writing a summary, you may embed markers that reference specific messages in the compressed range. The system resolves them automatically:

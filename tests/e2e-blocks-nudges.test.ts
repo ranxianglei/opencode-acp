@@ -31,6 +31,7 @@ function buildConfig(overrides: Partial<PluginConfig> = {}): PluginConfig {
         enabled: true,
         autoUpdate: true,
         debug: false,
+        logLevel: "silent",
         pruneNotification: "off",
         pruneNotificationType: "chat",
         commands: { enabled: true, protectedTools: [] },
@@ -61,6 +62,8 @@ function buildConfig(overrides: Partial<PluginConfig> = {}): PluginConfig {
             majorGcThresholdPercent: "100%",
             batchCleanup: { lowThreshold: "60%", highThreshold: "75%", forceThreshold: "90%" },
         },
+        qualityGate: { enabled: false, algorithm: "rouge-recall-v1", algorithms: {} },
+        messageFilters: { enabled: false, filters: {} },
     }
     return { ...base, ...overrides }
 }
@@ -191,17 +194,25 @@ function setupPipeline(
 // ─── Test: Nudge injection when context is near limits ──────────────────────
 
 test("nudge injection: nudge breakdown injected when modelContextLimit is set", async () => {
-    const { state, handler } = setupPipeline(SID_A, {}, {
-        modelContextLimit: 200000,
-    })
+    const { state, handler } = setupPipeline(
+        SID_A,
+        {},
+        {
+            modelContextLimit: 200000,
+        },
+    )
     state.nudges.lastPerMessageNudgeTokens = 0
 
     const output = {
         messages: [
             makeUserMessage("u1", "Hello"),
-            makeAssistantMessage("a1", "Hi", [
-                makeToolPart("c1", "bash", "completed", "x".repeat(120_000)),
-            ], SID_A, { input: 100000, output: 50000 }),
+            makeAssistantMessage(
+                "a1",
+                "Hi",
+                [makeToolPart("c1", "bash", "completed", "x".repeat(120_000))],
+                SID_A,
+                { input: 100000, output: 50000 },
+            ),
             makeUserMessage("u2", "Tell me more"),
         ],
     }
@@ -219,14 +230,18 @@ test("nudge injection: nudge breakdown injected when modelContextLimit is set", 
 // ─── Test: No nudge when permission is denied ───────────────────────────────
 
 test("nudge injection: no context usage tag when permission is denied", async () => {
-    const { state, handler } = setupPipeline(SID_A, {
-        compress: {
-            ...buildConfig().compress,
-            permission: "deny",
+    const { state, handler } = setupPipeline(
+        SID_A,
+        {
+            compress: {
+                ...buildConfig().compress,
+                permission: "deny",
+            },
         },
-    }, {
-        modelContextLimit: 200000,
-    })
+        {
+            modelContextLimit: 200000,
+        },
+    )
 
     const output = {
         messages: [
@@ -248,11 +263,15 @@ test("nudge injection: no context usage tag when permission is denied", async ()
 // ─── Test: Age-based deactivation removed (memory-loss fix) ────────────────
 
 test("block aging: old blocks are NOT deactivated even with modelContextLimit set (age-based GC disabled)", async () => {
-    const { state, handler } = setupPipeline(SID_A, {
-        gc: { ...buildConfig().gc, maxBlockAge: 2 },
-    }, {
-        modelContextLimit: 200000,
-    })
+    const { state, handler } = setupPipeline(
+        SID_A,
+        {
+            gc: { ...buildConfig().gc, maxBlockAge: 2 },
+        },
+        {
+            modelContextLimit: 200000,
+        },
+    )
 
     const blockId = 1
     const originalSummary = "Compressed summary text that should be preserved"
@@ -287,7 +306,9 @@ test("block aging: old blocks are NOT deactivated even with modelContextLimit se
     state.prune.messages.activeBlockIds.add(blockId)
     state.prune.messages.activeByAnchorMessageId.set("u2", blockId)
     state.prune.messages.byMessageId.set("u1", {
-        tokenCount: 200, allBlockIds: [blockId], activeBlockIds: [blockId],
+        tokenCount: 200,
+        allBlockIds: [blockId],
+        activeBlockIds: [blockId],
     })
 
     const output = {
@@ -302,16 +323,28 @@ test("block aging: old blocks are NOT deactivated even with modelContextLimit se
     await handler({}, output)
 
     const block = state.prune.messages.blocksById.get(blockId)
-    assert.equal(block?.active, true, "block must remain active — age-based deactivation was removed")
-    assert.equal(block?.summary, originalSummary, "summary must be unchanged — no truncation below 100% context")
+    assert.equal(
+        block?.active,
+        true,
+        "block must remain active — age-based deactivation was removed",
+    )
+    assert.equal(
+        block?.summary,
+        originalSummary,
+        "summary must be unchanged — no truncation below 100% context",
+    )
 })
 
 // ─── Test: Oversized-block override removed (memory-loss fix) ──────────────
 
 test("oversized block: summary > 6000 chars is NOT truncated below 100% context", async () => {
-    const { state, handler } = setupPipeline(SID_A, {}, {
-        modelContextLimit: 200000,
-    })
+    const { state, handler } = setupPipeline(
+        SID_A,
+        {},
+        {
+            modelContextLimit: 200000,
+        },
+    )
 
     const blockId = 1
     const largeSummary = "# Large Summary\n" + "x".repeat(9000)
@@ -346,7 +379,9 @@ test("oversized block: summary > 6000 chars is NOT truncated below 100% context"
     state.prune.messages.activeBlockIds.add(blockId)
     state.prune.messages.activeByAnchorMessageId.set("u2", blockId)
     state.prune.messages.byMessageId.set("u1", {
-        tokenCount: 200, allBlockIds: [blockId], activeBlockIds: [blockId],
+        tokenCount: 200,
+        allBlockIds: [blockId],
+        activeBlockIds: [blockId],
     })
 
     const output = {
@@ -414,8 +449,13 @@ test("message ID injection: IDs are appended to tool parts", async () => {
     const { state, handler } = setupPipeline()
 
     const toolPart = makeToolPart(
-        "call-1", "read", "completed", "file contents",
-        { path: "/test.txt" }, SID_A, "a1",
+        "call-1",
+        "read",
+        "completed",
+        "file contents",
+        { path: "/test.txt" },
+        SID_A,
+        "a1",
     )
     const output = {
         messages: [
@@ -433,31 +473,33 @@ test("message ID injection: IDs are appended to tool parts", async () => {
     assert.ok(tool)
 
     const toolOutput = (tool as any).state.output as string
-    assert.ok(
-        toolOutput.includes("dcp-message-id"),
-        "tool output should contain message ID tag",
-    )
-    assert.ok(
-        toolOutput.includes("m00002"),
-        "tool output should contain the m00002 ref",
-    )
+    assert.ok(toolOutput.includes("dcp-message-id"), "tool output should contain message ID tag")
+    assert.ok(toolOutput.includes("m00002"), "tool output should contain the m00002 ref")
 })
 
 // ─── Test: Visible ID range injection ───────────────────────────────────────
 
 test("compressible ranges injected into suffix message when shouldNudge fires", async () => {
-    const { state, handler } = setupPipeline(SID_A, {}, {
-        modelContextLimit: 200000,
-    })
+    const { state, handler } = setupPipeline(
+        SID_A,
+        {},
+        {
+            modelContextLimit: 200000,
+        },
+    )
     // Simulate post-baseline state so growth-gating can fire (not first turn).
     state.nudges.lastPerMessageNudgeTokens = 0
 
     const output = {
         messages: [
             makeUserMessage("u1", "First"),
-            makeAssistantMessage("a1", "Response 1", [
-                makeToolPart("c1", "bash", "completed", "x".repeat(50_000)),
-            ], SID_A, { input: 100000, output: 50000 }),
+            makeAssistantMessage(
+                "a1",
+                "Response 1",
+                [makeToolPart("c1", "bash", "completed", "x".repeat(50_000))],
+                SID_A,
+                { input: 100000, output: 50000 },
+            ),
             makeUserMessage("u2", "Second"),
             makeAssistantMessage("a2", "Response 2", [], SID_A, { input: 100000, output: 50000 }),
             makeUserMessage("u3", "Third"),
@@ -471,13 +513,10 @@ test("compressible ranges injected into suffix message when shouldNudge fires", 
     const textParts = suffixMessage!.parts.filter((p: any) => p.type === "text")
     const combinedText = textParts.map((p: any) => p.text).join("")
     assert.ok(
-        combinedText.includes("Compressible ranges"),
-        "should inject compressible ranges section",
+        combinedText.includes("COMPRESSION CANDIDATES"),
+        "should inject compression candidates section",
     )
-    assert.ok(
-        /msgs?/.test(combinedText),
-        "compressible ranges should mention message counts",
-    )
+    assert.ok(/msgs?/.test(combinedText), "compressible ranges should mention message counts")
     assert.ok(
         !combinedText.includes("[Visible:"),
         "should NOT inject visible segments tag (removed)",
@@ -522,7 +561,9 @@ test("block consumption: newer block deactivates consumed blocks", async () => {
     state.prune.messages.activeBlockIds.add(oldBlockId)
     state.prune.messages.activeByAnchorMessageId.set("u1", oldBlockId)
     state.prune.messages.byMessageId.set("u1", {
-        tokenCount: 200, allBlockIds: [oldBlockId], activeBlockIds: [oldBlockId],
+        tokenCount: 200,
+        allBlockIds: [oldBlockId],
+        activeBlockIds: [oldBlockId],
     })
 
     // New block that consumes the old one
@@ -558,7 +599,9 @@ test("block consumption: newer block deactivates consumed blocks", async () => {
     state.prune.messages.activeBlockIds.add(newBlockId)
     state.prune.messages.activeByAnchorMessageId.set("u3", newBlockId)
     state.prune.messages.byMessageId.set("u2", {
-        tokenCount: 300, allBlockIds: [newBlockId], activeBlockIds: [newBlockId],
+        tokenCount: 300,
+        allBlockIds: [newBlockId],
+        activeBlockIds: [newBlockId],
     })
 
     const output = {
@@ -629,7 +672,9 @@ test("mixed messages: only valid messages survive, IDs assigned to survivors", a
     await handler({}, output)
 
     assert.equal(output.messages.length, 3, "3 valid messages (empty suffix dropped, issue #12)")
-    const ids = output.messages.filter((m: WithParts) => !isSyntheticMessage(m)).map((m: WithParts) => m.info.id)
+    const ids = output.messages
+        .filter((m: WithParts) => !isSyntheticMessage(m))
+        .map((m: WithParts) => m.info.id)
     assert.deepEqual(ids, ["u1", "a1", "u2"])
 
     assert.equal(state.messageIds.byRawId.get("u1"), "m00001")

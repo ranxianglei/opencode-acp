@@ -11,18 +11,22 @@ import {
     computeProtectedRefs,
     formatCompressibleRanges,
 } from "../messages/inject/utils"
+import {
+    formatCompressionCandidates,
+    planCompressionCandidates,
+} from "../messages/inject/candidates"
 import { fetchSessionMessages } from "./search"
 import { hideConsumedCompressCalls } from "./hide-consumed"
 import { estimateSystemPromptTokens } from "../token-utils"
 
-const ACP_STATUS_TOOL_DESCRIPTION = `Show context status — overview includes compressible ranges by default.
+const ACP_STATUS_TOOL_DESCRIPTION = `Show context status — overview includes compression candidates by default.
 
-No args: Overview with totals, compressed blocks, and compressible ranges.
-scope:"uncompressed": Compressible ranges only (default view:"ranges"). Add view:"messages" for per-message listing with tool/sort filters.
+No args: Overview with totals, compressed blocks, and compression candidates.
+scope:"uncompressed": Compression candidates only (default view:"candidates"). Use view:"ranges" for raw grouped ranges or view:"messages" for per-message listing.
 scope:"compressed": Drill into compressed blocks — list each with full details (age, generation, consumed lineage).
 
 Use this tool to:
-- See what's consuming context + compressible ranges in one call (no args)
+- See what's consuming context + compression candidates in one call (no args)
 - Focus on ranges only (scope:"uncompressed")
 - Find all messages of a specific tool type (scope:"uncompressed", view:"messages", tool:"bash")
 - Check block details before decompressing (scope:"compressed")`
@@ -73,9 +77,12 @@ function tierBreakdown(blocks: CompressionBlock[]): string | null {
         const t = b.tier ?? 1
         tierTokens[t] = (tierTokens[t] || 0) + (b.summaryTokens || 0)
     }
-    const tiers = Object.keys(tierTokens)
-        .map(Number)
-    if (tiers.length <= 1 && (!tierTokens[2] || tierTokens[2] === 0) && (!tierTokens[3] || tierTokens[3] === 0)) {
+    const tiers = Object.keys(tierTokens).map(Number)
+    if (
+        tiers.length <= 1 &&
+        (!tierTokens[2] || tierTokens[2] === 0) &&
+        (!tierTokens[3] || tierTokens[3] === 0)
+    ) {
         return null
     }
     const parts: string[] = []
@@ -275,21 +282,10 @@ function renderOverview(
             const entry = pruneMap.get(msgId)
             return !entry || entry.activeBlockIds.length === 0
         })
-        const protectedRefs = ctx.config?.compress
-            ? computeProtectedRefs(visibleRaw, ctx.state, ctx.config.compress)
-            : new Set<string>()
-        const contextRanges = buildCompressibleRanges(
-            visibleRaw,
-            ctx.state,
-            ctx.config?.compress?.protectedTools ?? [],
-            ctx.config?.protectedFilePatterns ?? [],
-            protectedRefs,
-        )
-        if (contextRanges.compressible.length > 0 || contextRanges.protected.length > 0) {
+        const candidates = renderCompressionCandidates(rawMessages, ctx)
+        if (candidates.length > 0) {
             lines.push("")
-            lines.push(
-                formatCompressibleRanges(contextRanges.compressible, contextRanges.protected),
-            )
+            lines.push(...candidates)
         }
     }
 
@@ -297,7 +293,7 @@ function renderOverview(
 
     const hintTool = topToolName || "bash"
     lines.push(
-        `Tip: acp_status({scope:"uncompressed", view:"messages", tool:"${hintTool}"}) for per-message listing`,
+        `Tip: acp_status({scope:"uncompressed", view:"ranges"}) for raw ranges, or acp_status({scope:"uncompressed", view:"messages", tool:"${hintTool}"}) for per-message listing`,
     )
 
     return lines
@@ -342,6 +338,46 @@ function renderUncompressedRanges(rawMessages: WithParts[], ctx: StatusRenderCon
     lines.push(`Filter by tool: acp_status({scope:"uncompressed", view:"messages", tool:"bash"})`)
 
     return lines
+}
+
+function renderCompressionCandidates(rawMessages: WithParts[], ctx: StatusRenderContext): string[] {
+    const lines: string[] = ["COMPRESSION CANDIDATES"]
+    if (!ctx.config?.compress) {
+        return renderUncompressedRanges(rawMessages, ctx)
+    }
+
+    try {
+        const plan = planCompressionCandidates(rawMessages, ctx.state, ctx.config)
+        const visibleMessages = rawMessages.filter((message) => {
+            const entry = ctx.state.prune.messages.byMessageId.get(message.info.id)
+            return !entry || entry.activeBlockIds.length === 0
+        })
+        const protectedRefs = computeProtectedRefs(visibleMessages, ctx.state, ctx.config.compress)
+        const contextRanges = buildCompressibleRanges(
+            visibleMessages,
+            ctx.state,
+            ctx.config.compress.protectedTools ?? [],
+            ctx.config.protectedFilePatterns ?? [],
+            protectedRefs,
+        )
+        const protectedText = formatCompressibleRanges([], contextRanges.protected)
+        if (plan.candidates.length === 0) {
+            lines.push("  (no eligible candidates)")
+            if (protectedText.includes("PROTECTED")) lines.push("", protectedText)
+            return lines
+        }
+        lines.length = 0
+        lines.push(formatCompressionCandidates(plan))
+        if (protectedText.includes("PROTECTED")) lines.push("", protectedText)
+        if (plan.omitted.length > 0) {
+            lines.push(
+                `  ${plan.omitted.length} structurally unsafe or undersized candidate${plan.omitted.length === 1 ? "" : "s"} omitted`,
+            )
+        }
+        return lines
+    } catch {
+        return ["COMPRESSION CANDIDATES", "  (candidate planning unavailable)"]
+    }
 }
 
 function renderUncompressedDrilldown(
@@ -420,8 +456,7 @@ function renderCompressedDrilldown(
         sorted.sort(
             (a, b) =>
                 getEffectiveCompressedTokens(b, blocksById) -
-                    getEffectiveCompressedTokens(a, blocksById) ||
-                b.createdAt - a.createdAt,
+                    getEffectiveCompressedTokens(a, blocksById) || b.createdAt - a.createdAt,
         )
     }
 
@@ -506,7 +541,7 @@ function buildVisibleWithSummaries(rawMessages: WithParts[], ctx: ToolContext): 
 
 export interface StatusReportOptions {
     scope?: "compressed" | "uncompressed"
-    view?: "ranges" | "messages"
+    view?: "candidates" | "ranges" | "messages"
     tool?: string
     sort?: "size" | "time" | "tool" | "age"
     limit?: number
@@ -518,15 +553,13 @@ export function buildStatusReport(
     options?: StatusReportOptions,
 ): string {
     const scope = options?.scope
-    const view = options?.view ?? "ranges"
+    const view = options?.view ?? "candidates"
     const toolFilter = options?.tool
     const sort = options?.sort ?? "size"
     const limit = options?.limit ?? 30
 
     const msgState = renderCtx.state.prune.messages
-    const allBlocks = Array.from(msgState.blocksById.values()).sort(
-        (a, b) => a.blockId - b.blockId,
-    )
+    const allBlocks = Array.from(msgState.blocksById.values()).sort((a, b) => a.blockId - b.blockId)
     const activeBlocks = allBlocks.filter((b) => b.active)
 
     const lines: string[] = []
@@ -544,8 +577,10 @@ export function buildStatusReport(
     if (scope === "uncompressed") {
         if (view === "messages") {
             lines.push(...renderUncompressedDrilldown(visibleMsgs, toolFilter, sort, limit))
-        } else {
+        } else if (view === "ranges") {
             lines.push(...renderUncompressedRanges(rawMessages, renderCtx))
+        } else {
+            lines.push(...renderCompressionCandidates(rawMessages, renderCtx))
         }
     } else {
         lines.push(
@@ -578,7 +613,7 @@ export function createAcpStatusTool(factoryCtx: ToolFactoryContext): ReturnType<
                 .string()
                 .optional()
                 .describe(
-                    'Display format for scope:"uncompressed": "ranges" (default, grouped by turn — matches nudge format) or "messages" (per-message listing with sort/filter)',
+                    'Display format for scope:"uncompressed": "candidates" (default, matches nudge output), "ranges" (raw grouped ranges), or "messages" (per-message listing with sort/filter)',
                 ),
             tool: tool.schema
                 .string()
@@ -598,7 +633,10 @@ export function createAcpStatusTool(factoryCtx: ToolFactoryContext): ReturnType<
                 args.scope === "compressed" || args.scope === "uncompressed"
                     ? args.scope
                     : undefined
-            const view = args.view === "messages" ? "messages" : "ranges"
+            const view =
+                args.view === "messages" || args.view === "ranges" || args.view === "candidates"
+                    ? args.view
+                    : "candidates"
             const toolFilter = typeof args.tool === "string" ? args.tool : undefined
             const sort =
                 args.sort === "time" || args.sort === "tool" || args.sort === "age"
@@ -608,11 +646,11 @@ export function createAcpStatusTool(factoryCtx: ToolFactoryContext): ReturnType<
                 Number.isFinite(args.limit) && args.limit! > 0 ? Math.min(args.limit!, 200) : 30
 
             if (scope === "compressed") {
-                return buildStatusReport(
-                    { state: ctx.state, config: ctx.config },
-                    [],
-                    { scope: "compressed", sort, limit },
-                )
+                return buildStatusReport({ state: ctx.state, config: ctx.config }, [], {
+                    scope: "compressed",
+                    sort,
+                    limit,
+                })
             }
 
             let rawMessages: WithParts[] = []
@@ -625,11 +663,13 @@ export function createAcpStatusTool(factoryCtx: ToolFactoryContext): ReturnType<
 
             hideConsumedCompressCalls(ctx.state, rawMessages)
 
-            return buildStatusReport(
-                { state: ctx.state, config: ctx.config },
-                rawMessages,
-                { scope, view, tool: toolFilter, sort, limit },
-            )
+            return buildStatusReport({ state: ctx.state, config: ctx.config }, rawMessages, {
+                scope,
+                view,
+                tool: toolFilter,
+                sort,
+                limit,
+            })
         },
     })
 }

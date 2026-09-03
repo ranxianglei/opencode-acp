@@ -45,6 +45,10 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 # opencode plugin cache (uses $HOME, works for any user)
 DEPLOY_TARGET="$HOME/.cache/opencode/packages/opencode-acp@latest/node_modules/opencode-acp"
 
+# Stable resolution path. If the user's opencode.json selects
+# "opencode-acp@stable", keep that cache in sync too.
+STABLE_TARGET="$HOME/.cache/opencode/packages/opencode-acp@stable/node_modules/opencode-acp"
+
 # Legacy resolution path. Older opencode versions resolve "opencode-acp@latest" to
 # ~/.cache/opencode/node_modules/opencode-acp/ instead of the packages/@latest path.
 # If this directory exists, keep it in sync so deploys take effect regardless of
@@ -196,6 +200,28 @@ if [[ -d "$LEGACY_TARGET/dist" ]]; then
     info "Legacy path also synced: v$LEGACY_VER"
 else
     info "No legacy install at $LEGACY_TARGET — skipping sync"
+fi
+
+# Sync the stable resolution path when it exists. This is intentionally
+# conditional so users who select @latest are not given a new cache entry.
+if [[ -d "$STABLE_TARGET/dist" ]]; then
+    cp -r "$PROJECT_ROOT/dist/"* "$STABLE_TARGET/dist/"
+    cp "$PROJECT_ROOT/package.json" "$STABLE_TARGET/package.json"
+    if [[ "$DEPLOY_VER" != "$LOCAL_VER" ]]; then
+        node -e "
+            const fs = require('fs');
+            const p = '$STABLE_TARGET/package.json';
+            const pkg = JSON.parse(fs.readFileSync(p, 'utf8'));
+            pkg.version = '$DEPLOY_VER';
+            fs.writeFileSync(p, JSON.stringify(pkg, null, 4) + '\n');
+        "
+    fi
+    STABLE_VER=$(node -p "require('$STABLE_TARGET/package.json').version" 2>/dev/null || echo "?")
+    [[ "$STABLE_VER" == "$DEPLOY_VER" ]] \
+        || warn "Stable path synced but version mismatch (expected $DEPLOY_VER, got $STABLE_VER)"
+    info "Stable path also synced: v$STABLE_VER"
+else
+    info "No stable install at $STABLE_TARGET — skipping sync"
 fi
 
 # ── Done ──────────────────────────────────────────────────────────────────

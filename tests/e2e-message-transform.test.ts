@@ -264,6 +264,62 @@ test("message IDs remain stable across sequential pipeline calls", async () => {
     assert.equal(state.messageIds.nextRef, 5)
 })
 
+test("candidate planning uses pre-truncation tool output", async () => {
+    const { state, config, handler } = setupPipeline()
+    state.modelContextLimit = 10_000
+    state.modelProviderID = "test-provider"
+    state.modelID = "test-model"
+    state.nudges.lastPerMessageNudgeTokens = 0
+    config.compress.minContextLimit = 100
+    config.compress.minNudgeContextPercent = 0
+    config.compress.nudgeGrowthTokens = 1
+    config.compress.minNudgeGrowthFloor = 0
+    config.compress.minNudgeGrowthRatio = 0
+    config.compress.minCompressRange = 5_000
+    config.compress.lastSegmentSoftBlock = false
+    config.compress.preserveRecentMessages = 0
+    config.compress.preserveRecentTokens = 0
+    config.compress.preserveLastUserMessage = false
+    config.gc.majorGcThresholdPercent = "1%"
+
+    const largeOutput = Array.from({ length: 2_000 }, (_, index) => `result-${index}`).join(" ")
+    const oldTool = makeToolPart("old-output", "bash", "completed", largeOutput)
+    const recentTool = makeToolPart("recent-output", "bash", "completed", largeOutput)
+    const latestAssistant = makeAssistantMessage("a3", "continue")
+    ;(latestAssistant.info as any).tokens = {
+        input: 10_000,
+        output: 1,
+        reasoning: 0,
+        cache: { read: 0, write: 0 },
+    }
+    const output = {
+        messages: [
+            makeUserMessage("u1", "start"),
+            makeAssistantMessage("a1", "old output", [oldTool]),
+            makeUserMessage("u2", "continue"),
+            makeAssistantMessage("a2", "recent output", [recentTool]),
+            latestAssistant,
+            makeUserMessage("u3", "next"),
+        ],
+    }
+
+    await handler({}, output)
+
+    const text = output.messages
+        .flatMap((message) => message.parts)
+        .filter((part) => part.type === "text")
+        .map((part) => (part as any).text)
+        .join("\n")
+    const oldToolOutput = (output.messages[1]!.parts.find((part) => part.type === "tool") as any)
+        .state.output as string
+    const recentToolOutput = (output.messages[3]!.parts.find((part) => part.type === "tool") as any)
+        .state.output as string
+    assert.match(text, /COMPRESSION CANDIDATES/)
+    assert.match(text, /MICRO\s+m00002–m00002/)
+    assert.match(oldToolOutput, /\[truncated for context space/)
+    assert.doesNotMatch(recentToolOutput, /\[truncated for context space/)
+})
+
 // ─── Test: Invalid messages are filtered out ────────────────────────────────
 
 test("filterMessagesInPlace: removes messages without valid info", async () => {

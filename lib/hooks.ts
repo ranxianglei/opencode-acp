@@ -23,12 +23,9 @@ import {
     resolveCompressionDuration,
 } from "./compress/timing"
 import { filterMessages, filterMessagesInPlace } from "./messages/shape"
-import { getLastUserMessage } from "./messages/query"
+import { getLastUserMessage, isSyntheticMessage } from "./messages/query"
 import { truncateLargeToolOutputs } from "./messages/truncate-tools"
-import {
-    handleContextCommand,
-    handleStatsCommand,
-} from "./commands"
+import { handleContextCommand, handleStatsCommand } from "./commands"
 import { handleExportCommand } from "./commands/export"
 import { sendIgnoredMessage } from "./ui/notification"
 import { type HostPermissionSnapshot } from "./host-permissions"
@@ -37,7 +34,13 @@ import { hideConsumedCompressCalls } from "./compress/hide-consumed"
 import { hideFailedCompressCalls } from "./compress/hide-failed"
 import { applyMessageFilters } from "./messages/filter/apply"
 import { ensureBuiltinFiltersRegistered } from "./messages/filter/builtin"
-import { createSessionState, saveSessionState, syncToolCache, updatePerTurnState, type SessionStateRegistry } from "./state"
+import {
+    createSessionState,
+    saveSessionState,
+    syncToolCache,
+    updatePerTurnState,
+    type SessionStateRegistry,
+} from "./state"
 import { cacheSystemPromptTokens } from "./ui/utils"
 import { runBatchCleanup } from "./gc/merge"
 import { getCurrentTokenUsage } from "./token-utils"
@@ -242,8 +245,12 @@ export function createChatMessageTransformHandler(
         cacheSystemPromptTokens(state, output.messages)
         assignMessageRefs(state, output.messages)
         const activeBlockCountBefore = state.prune.messages.activeBlockIds.size // [FIX Bug 4]
-        syncCompressionBlocks(state, logger, output.messages)
-        if (state.prune.messages.activeBlockIds.size !== activeBlockCountBefore) { // [FIX Bug 4]
+        const compressionStateChanged = syncCompressionBlocks(state, logger, output.messages)
+        if (
+            compressionStateChanged ||
+            state.prune.messages.activeBlockIds.size !== activeBlockCountBefore
+        ) {
+            // [FIX Bug 4]
             saveSessionState(state, logger).catch(() => {}) // [FIX Bug 4] persist deactivations
         }
         syncToolCache(state, config, logger, output.messages)
@@ -253,8 +260,11 @@ export function createChatMessageTransformHandler(
             saveSessionState(state, logger).catch(() => {})
         }
         const prePruneTokens = getCurrentTokenUsage(state, output.messages)
+        // Keep the full post-filter projection for candidate planning. The
+        // nudge receives a pruned view, while range validation still needs the
+        // original ordering to prove tool-pair and protection parity.
+        const candidateMessages = output.messages.slice()
         prune(state, logger, config, output.messages)
-        truncateLargeToolOutputs(state, config, logger, output.messages)
         hideConsumedCompressCalls(state, output.messages)
         assignMessageRefs(state, output.messages)
         const compressionPriorities = buildPriorityMap(config, state, output.messages)
@@ -286,6 +296,15 @@ export function createChatMessageTransformHandler(
                   }
                 : undefined,
             prePruneTokens,
+            candidateMessages,
+        )
+        // Candidate planning consumes the pre-truncation snapshot so its
+        // executor-parity check matches the fresh messages fetched by compress.
+        truncateLargeToolOutputs(
+            state,
+            config,
+            logger,
+            output.messages.filter((message) => !isSyntheticMessage(message)),
         )
         injectMessageIds(state, config, output.messages, compressionPriorities)
         hideFailedCompressCalls(output.messages)
@@ -349,12 +368,7 @@ export function createCommandExecuteHandler(
             })
             const messages = filterMessages(messagesResponse.data || messagesResponse)
 
-            const state = await registry.getOrCreate(
-                client,
-                input.sessionID,
-                messages,
-                config,
-            )
+            const state = await registry.getOrCreate(client, input.sessionID, messages, config)
 
             syncCompressPermissionState(state, config, hostPermissions, messages)
 
@@ -381,13 +395,7 @@ export function createCommandExecuteHandler(
             }
 
             if (sub === "help") {
-                await sendIgnoredMessage(
-                    client,
-                    input.sessionID,
-                    buildHelpText(),
-                    {},
-                    logger,
-                )
+                await sendIgnoredMessage(client, input.sessionID, buildHelpText(), {}, logger)
                 throw new Error("__DCP_CONTEXT_HANDLED__")
             }
 
@@ -489,9 +497,7 @@ export function createEventHandler(registry: SessionStateRegistry, logger: Logge
         }
 
         if (typeof part.callID === "string" && typeof part.messageID === "string") {
-            timing.startsByCallId.delete(
-                buildCompressionTimingKey(part.messageID, part.callID),
-            )
+            timing.startsByCallId.delete(buildCompressionTimingKey(part.messageID, part.callID))
         }
     }
 }
