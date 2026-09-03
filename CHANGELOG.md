@@ -1,5 +1,21 @@
 # Changelog
 
+### v1.14.27 — Self-disable also triggers in manual proxy mode (/bili/ baseURL detection)
+
+**Problem**: The v1.14.25 self-disable only covered the `bili opencode` launcher (env var `BILLION_CONTEXT_PROXY`). Users pointing a provider `baseURL` at the billion-context proxy directly (manual mode) still got duplicate context-management stacks — ACP's tools and `/acp` command alongside the proxy's wire-level compression (issue #337).
+
+**Fix** (#338):
+- The plugin's config hook now scans every configured provider for the documented `/bili/` path prefix in `options.baseURL` and, when found, self-disables: all five ACP tools (`compress`, `decompress`, `search_context`, `acp_status`, `acp_context_recap`) are permission-denied (removed from the LLM tool list), the `/acp` command and `primary_tools` registration are skipped, and every transform/event hook becomes a no-op. One log line explains why.
+- Detection is per-provider and case-sensitive; lookalikes (`/bilix/`, `bilibili.com`, bare `/bili`) do not match. The disable flag un-latches on config reload when no provider routes through the proxy again.
+- Zero behavior change when no provider routes through the proxy — standalone installs are unaffected. 15 new tests (unit + integration through the real plugin factory); full suite 1044/1044.
+
+**Docs** (#352):
+- Soft-deprecated `minContextLimit` and `modelMinLimits` (JSDoc + JSON schema + README/CONFIGURATION, EN/zh). Both remain fully honored until removed; growth nudges (`minNudgeContextPercent` + `nudgeGrowthTokens`) are the maintained nudge mechanism. `modelMaxLimits` is **not** deprecated.
+
+**Bookkeeping** (#358): promoted the npm `stable` dist-tag to 1.14.26.
+
+**Install**: `opencode plugin opencode-acp@latest --global`
+
 ### v1.14.26 — Per-provider/per-model compress overrides; growth nudges respect the minNudgeContextPercent floor
 
 **Problem**: T1 growth nudges fired well below any configured lower context limit — the `minNudgeContextPercent` floor was plumbed into the trigger policy but ignored, so growth nudges fired at any context size (issue #342: ten `trigger=growth` nudges at 67K–152K against a 150K minimum on a 400K model).
