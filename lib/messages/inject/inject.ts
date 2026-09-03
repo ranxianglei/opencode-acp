@@ -40,6 +40,10 @@ import {
     getModelInfo,
     isContextOverLimits,
     DEFAULT_NUDGE_GROWTH_TOKENS,
+    DEFAULT_MIN_NUDGE_CONTEXT_PERCENT,
+    resolveMinNudgeContextPercent,
+    resolveMinNudgeFloorTokens,
+    applyCompressOverrides,
 } from "./utils"
 import { buildCompressedBlockGuidance } from "../../prompts/extensions/nudge"
 import {
@@ -91,6 +95,14 @@ export const injectCompressNudges = (
     const lastAssistantMessage = messages.findLast((message) => message.info.role === "assistant")
 
     const { providerId, modelId } = getModelInfo(messages)
+
+    // Three-level cascade (issue #344): swap in the effective compress config
+    // for this provider/model so every config.compress.X read below (growth
+    // thresholds, nudge frequency, protected tools, summary buffer, …) picks
+    // up per-model > per-provider > global resolution. maxContextLimit is
+    // resolved separately inside resolveContextTokenLimit (nested > flat map
+    // > global).
+    config = applyCompressOverrides(config, providerId, modelId)
 
     const { overMaxLimit, overMinLimit, currentTokens, modelContextLimit } = isContextOverLimits(
         config,
@@ -306,7 +318,7 @@ export const injectCompressNudges = (
         overMinLimit,
         overMaxLimit,
         lastNudgeTokens: growthReference,
-        minNudgeContextPercent: config.compress?.minNudgeContextPercent ?? 15,
+        minNudgeContextPercent: resolveMinNudgeContextPercent(config, providerId, modelId) ?? DEFAULT_MIN_NUDGE_CONTEXT_PERCENT,
         nudgeGrowthTokens: effectiveThreshold,
     })
 
@@ -314,9 +326,40 @@ export const injectCompressNudges = (
         currentTokens !== undefined && growthReference !== undefined
             ? currentTokens - growthReference
             : undefined
+    // Issue #342: a growth nudge must not fire below the configured floor.
+    // The floor is minNudgeContextPercent (default 5% of the model context),
+    // NOT minContextLimit (default 80%) — minContextLimit is documented as the
+    // "soft lower threshold for turn/iteration reminders" (README), and using it
+    // as a growth floor would suppress ALL growth nudges below 80% for default
+    // users, effectively disabling compression for most of a session.
+    // minNudgeContextPercent is the intended "don't nudge below this" floor and
+    // was previously a no-op (passed to the trigger policy but ignored). When the
+    // model context limit is unknown the floor cannot be computed, so the gate
+    // stays open (pre-#342 growth-only behavior). overMaxLimit and the emergency
+    // override bypass the floor; T2/T3 tier-promotion nudges below are unaffected.
+    // The default is deliberately LOW (5%): with the default nudgeGrowthTokens
+    // (50K), a growth nudge's current tokens are always >= baseline+50K, and a
+    // 5% floor only binds when 5% x window > baseline+50K (i.e. windows >= ~2M
+    // for typical baselines). A 15% default would bind on >=400K windows and
+    // shift every compress cycle's working range upward (~2x average context
+    // on 1M-window models) — a silent, bug-level behavior change for
+    // large-window users. Users who want a higher floor set it explicitly,
+    // globally or per provider/model via compress.providers (issue #344:
+    // model > provider > global cascade, resolved by resolveMinNudgeFloorTokens).
+    const minNudgeFloorTokens = resolveMinNudgeFloorTokens(
+        config,
+        modelContextLimit,
+        providerId,
+        modelId
+    )
+    const overMinNudgeFloor =
+        minNudgeFloorTokens === undefined ||
+        currentTokens === undefined ||
+        currentTokens >= minNudgeFloorTokens
     const nudgeAllowed =
         emergencyOverride ||
         (decision.shouldNudge &&
+            (overMaxLimit || overMinNudgeFloor) &&
             growthSinceBaseline !== undefined &&
             growthSinceBaseline >= growthFloor)
 

@@ -9,7 +9,7 @@ import type { PluginConfig } from "../lib/config"
 import { Logger } from "../lib/logger"
 import { injectMessageIds, injectCompressNudges } from "../lib/messages/inject/inject"
 import { cacheSystemPromptTokens } from "../lib/ui/utils"
-import { estimateContextComposition } from "../lib/messages/inject/utils"
+import { estimateContextComposition, resolveMinNudgeContextPercent, resolveMinNudgeFloorTokens } from "../lib/messages/inject/utils"
 import { countTokens } from "../lib/token-utils"
 import { createSyntheticUserMessage } from "../lib/messages/utils"
 import { createSessionState, ensureSessionInitialized, type WithParts } from "../lib/state"
@@ -347,6 +347,9 @@ test("injectCompressNudges: post-compress baseline then large growth DOES nudge"
     state.modelContextLimit = 1_000_000
     const config = buildConfig()
     config.compress.maxContextLimit = 800_000
+    // Growth floor is minNudgeContextPercent (15%, pinned by the buildConfig factory = 150K on a 1M model),
+    // below the turn-2 context (305K), so the floor is open and this test
+    // isolates the growth mechanism. minContextLimit no longer gates growth nudges.
     config.compress.minContextLimit = 550_000
 
     // Turn 1: compress → baseline set to 250K
@@ -379,6 +382,9 @@ test("nudge threshold halves after first nudge without compress (issue #23)", ()
     state.nudges.lastPerMessageNudgeTokens = 100_000
     const config = buildConfig()
     config.compress.maxContextLimit = 800_000
+    // Growth floor is minNudgeContextPercent (15%, pinned by the buildConfig factory = 150K on a 1M model),
+    // at/below the turn contexts (150K/165K/175K), so the floor is open and this
+    // test isolates the threshold-halving mechanism.
     config.compress.minContextLimit = 200_000
 
     const messages1: WithParts[] = [
@@ -1412,14 +1418,14 @@ test("stale contextLimitAnchors: contextLimitNudge NOT injected when context bel
 
     const messages: WithParts[] = [
         userMsg("u1", "hello"),
-        assistantMsgWithTokens("a1", "done", { input: 90_000, output: 10_000 }, [
+        assistantMsgWithTokens("a1", "done", { input: 140_000, output: 10_000 }, [
             toolPart("c1", "x".repeat(620_000)),
         ]),
         userMsg("u2", "next"),
     ]
     injectCompressNudges(state, config, logger, messages, makePrompts())
 
-    assert.equal(state.nudges.shouldInjectThisTurn, true, "nudge fires (50K growth >= 22500 floor)")
+    assert.equal(state.nudges.shouldInjectThisTurn, true, "nudge fires (100K growth >= 22500 growthFloor, 150K >= 15% floor)")
     assert.equal(state.nudges.contextLimitAnchors.size, 0, "stale contextLimitAnchors cleared")
 
     const injected = suffixText(messages)
@@ -1868,3 +1874,729 @@ test("Issue #255: stable system prompt cache survives compression in multi-turn 
     assert.ok(comp4.systemTokens < 200_000, "turn 4: system estimate must not inflate to later assistant input")
 })
 
+// ── Issue #342: T1 growth nudges must respect the minNudgeContextPercent floor ──
+// computeShouldNudge() only uses overMinLimit/overMaxLimit to pick the tips
+// variant, so the growth floor is enforced in inject.ts (nudgeAllowed):
+// minNudgeContextPercent × model context. These tests lock that floor: growth
+// nudges are suppressed below it and fire once context crosses it, while
+// over-max / emergency paths and T2/T3 tier promotion remain independent.
+
+test("issue #342: growth nudge suppressed below the minNudgeContextPercent floor, fires once context crosses it", () => {
+    const state = createSessionState()
+    state.modelContextLimit = 1_000_000
+    state.nudges.lastPerMessageNudgeTokens = 100_000
+    state.messageIds.byRawId.set("u1", "m00001")
+    state.messageIds.byRawId.set("a1", "m00002")
+    state.messageIds.byRawId.set("u2", "m00003")
+    state.messageIds.byRawId.set("a2", "m00004")
+
+    const config = buildConfig()
+    config.compress.maxContextLimit = 800_000
+    config.compress.minNudgeContextPercent = 30 // floor at 30% of 1M = 300K
+
+    // Turn 1: currentTokens = 200K (180K+20K). Growth = 200K-100K = 100K >= 50K threshold
+    // AND >= 22.5K growthFloor, but 200K < 300K floor → the floor SUPPRESSES the growth nudge.
+    const turn1: WithParts[] = [
+        userMsg("u1", "hello"),
+        assistantMsgWithTokens("a1", "done", { input: 180_000, output: 20_000 }, [
+            toolPart("c1", "x".repeat(80_000)),
+        ]),
+    ]
+    injectCompressNudges(state, config, logger, turn1, {} as any)
+    assert.equal(state.nudges.shouldInjectThisTurn, false, "200K < 300K floor → growth nudge suppressed despite 100K growth")
+    assert.equal(state.nudges.lastNudgeShownTokens, undefined, "no nudge shown below floor")
+    assert.equal(state.nudges.lastPerMessageNudgeTokens, 100_000, "baseline preserved below floor (not advanced)")
+
+    // Turn 2: currentTokens = 320K (300K+20K). Growth = 320K-100K = 220K >= 50K.
+    // 320K >= 300K floor → floor OPEN → nudge FIRES.
+    const turn2: WithParts[] = [
+        userMsg("u1", "hello"),
+        assistantMsgWithTokens("a1", "done", { input: 180_000, output: 20_000 }, [
+            toolPart("c1", "x".repeat(80_000)),
+        ]),
+        userMsg("u2", "next"),
+        assistantMsgWithTokens("a2", "more", { input: 300_000, output: 20_000 }, [
+            toolPart("c2", "x".repeat(80_000)),
+        ]),
+    ]
+    injectCompressNudges(state, config, logger, turn2, {} as any)
+    assert.equal(state.nudges.shouldInjectThisTurn, true, "320K >= 300K floor + 220K growth → nudge fires")
+    assert.equal(state.nudges.lastNudgeShownTokens, 320_000, "lastNudgeShownTokens set to currentTokens")
+    assert.equal(state.nudges.lastPerMessageNudgeTokens, 100_000, "baseline NOT updated after nudge — only compress resets")
+})
+
+test("issue #342: full growth cycle baseline → nudge → compress → new baseline → nudge (min-gate open)", () => {
+    const state = createSessionState()
+    state.modelContextLimit = 1_000_000
+    state.messageIds.byRawId.set("u1", "m00001")
+    state.messageIds.byRawId.set("a1", "m00002")
+    state.messageIds.byRawId.set("u2", "m00003")
+    state.messageIds.byRawId.set("a2", "m00004")
+    state.messageIds.byRawId.set("u3", "m00005")
+    state.messageIds.byRawId.set("a3", "m00006")
+
+    const config = buildConfig()
+    config.compress.maxContextLimit = 800_000
+    config.compress.minNudgeContextPercent = 30 // floor at 30% of 1M = 300K
+
+    // Turn 1: first transform → baseline established at 150K. No nudge.
+    const turn1: WithParts[] = [
+        userMsg("u1", "hello"),
+        assistantMsgWithTokens("a1", "work", { input: 130_000, output: 20_000 }, [
+            toolPart("c1", "x".repeat(80_000)),
+        ]),
+    ]
+    injectCompressNudges(state, config, logger, turn1, {} as any)
+    assert.equal(state.nudges.lastPerMessageNudgeTokens, 150_000, "turn 1: baseline established at 150K")
+    assert.equal(state.nudges.shouldInjectThisTurn, false, "turn 1: baseline establishment only")
+
+    // Turn 2: currentTokens = 350K (>= 300K floor), growth = 350K-150K = 200K >= 50K → nudge fires.
+    const turn2: WithParts[] = [
+        userMsg("u1", "hello"),
+        assistantMsgWithTokens("a1", "work", { input: 130_000, output: 20_000 }, [
+            toolPart("c1", "x".repeat(80_000)),
+        ]),
+        userMsg("u2", "next"),
+        assistantMsgWithTokens("a2", "more", { input: 330_000, output: 20_000 }, [
+            toolPart("c2", "x".repeat(80_000)),
+        ]),
+    ]
+    injectCompressNudges(state, config, logger, turn2, {} as any)
+    assert.equal(state.nudges.shouldInjectThisTurn, true, "turn 2: 350K >= 300K floor + 200K growth → nudge fires")
+    assert.equal(state.nudges.lastNudgeShownTokens, 350_000, "turn 2: nudge baseline set to currentTokens")
+
+    // Turn 3: model compresses → baseline reset to post-compress 200K.
+    const turn3: WithParts[] = [
+        userMsg("u1", "hello"),
+        assistantMsgWithTokens("a1", "work", { input: 130_000, output: 20_000 }, [
+            toolPart("c1", "x".repeat(80_000)),
+        ]),
+        userMsg("u2", "next"),
+        assistantMsgWithTokens("a2", "compressing", { input: 180_000, output: 20_000 }, [
+            compressToolPart("c2", "compressed"),
+        ]),
+    ]
+    injectCompressNudges(state, config, logger, turn3, {} as any)
+    assert.equal(state.nudges.lastPerMessageNudgeTokens, 200_000, "turn 3: compress resets baseline to post-compress 200K")
+    assert.equal(state.nudges.shouldInjectThisTurn, false, "turn 3: compress turn, no nudge")
+
+    // Turn 4: currentTokens = 400K (>= 300K floor), growth = 400K-200K = 200K >= 50K → nudge fires again.
+    const turn4: WithParts[] = [
+        userMsg("u3", "more"),
+        assistantMsgWithTokens("a3", "result", { input: 380_000, output: 20_000 }, [
+            toolPart("c3", "x".repeat(80_000)),
+        ]),
+    ]
+    injectCompressNudges(state, config, logger, turn4, {} as any)
+    assert.equal(state.nudges.shouldInjectThisTurn, true, "turn 4: 400K >= 300K floor + 200K growth from new baseline → nudge fires again")
+    assert.equal(state.nudges.lastPerMessageNudgeTokens, 200_000, "turn 4: baseline NOT updated after nudge")
+})
+
+test("issue #342: growth floor holds in production config (preserveRecentMessages > 0)", () => {
+    const state = createSessionState()
+    state.modelContextLimit = 1_000_000
+    state.nudges.lastPerMessageNudgeTokens = 100_000
+    state.messageIds.byRawId.set("u1", "m00001")
+    state.messageIds.byRawId.set("a1", "m00002")
+    state.messageIds.byRawId.set("u2", "m00003")
+    state.messageIds.byRawId.set("a2", "m00004")
+
+    const config = buildConfig()
+    config.compress.preserveRecentMessages = 2 // production-like: last 2 messages protected
+    config.compress.maxContextLimit = 800_000
+    config.compress.minNudgeContextPercent = 30 // floor at 30% of 1M = 300K
+
+    // 4 messages; last 2 (u2, a2) in preserve-recent zone, a1's tool output compressible.
+    // currentTokens = 200K (a2: 180K+20K) < 300K floor → the floor suppresses (compressible
+    // content exists, so this is the floor, not nothingToCompress).
+    const messages: WithParts[] = [
+        userMsg("u1", "hello"),
+        assistantMsgWithTokens("a1", "done", { input: 180_000, output: 20_000 }, [
+            toolPart("c1", "x".repeat(80_000)),
+        ]),
+        userMsg("u2", "next"),
+        assistantMsgWithTokens("a2", "more", { input: 180_000, output: 20_000 }),
+    ]
+    injectCompressNudges(state, config, logger, messages, {} as any)
+    assert.equal(state.nudges.shouldInjectThisTurn, false, "200K < 300K floor → floor suppresses in production config")
+    assert.equal(state.nudges.lastNudgeShownTokens, undefined, "no nudge shown below floor")
+    assert.equal(state.nudges.lastPerMessageNudgeTokens, 100_000, "baseline preserved")
+})
+
+test("issue #342: over-max nudge bypasses the growth floor", () => {
+    // Defensive: even when the growth floor (minNudgeContextPercent) is set above
+    // the current context, an over-max context must still nudge — overMaxLimit
+    // bypasses the floor.
+    const state = createSessionState()
+    state.modelContextLimit = 1_000_000
+    state.nudges.lastPerMessageNudgeTokens = 100_000
+    state.messageIds.byRawId.set("u1", "m00001")
+    state.messageIds.byRawId.set("a1", "m00002")
+
+    const config = buildConfig()
+    config.compress.maxContextLimit = 500_000
+    config.compress.minNudgeContextPercent = 80 // floor at 80% of 1M = 800K (above context)
+
+    // currentTokens = 550K (500K+50K). overMaxLimit (550K > 500K) but below the
+    // 800K floor. Growth = 450K >= 50K. The floor would suppress, but overMaxLimit
+    // bypasses it.
+    const messages: WithParts[] = [
+        userMsg("u1", "hello"),
+        assistantMsgWithTokens("a1", "done", { input: 500_000, output: 50_000 }, [
+            toolPart("c1", "x".repeat(80_000)),
+        ]),
+    ]
+    injectCompressNudges(state, config, logger, messages, {} as any)
+    assert.equal(state.nudges.shouldInjectThisTurn, true, "550K > 500K max → nudge fires despite 550K < 800K floor (overMaxLimit bypass)")
+    assert.equal(state.nudges.lastNudgeShownTokens, 550_000, "nudge baseline set")
+})
+
+test("issue #342: growth nudge still fires when the model context limit is unknown (floor unresolvable)", () => {
+    // Regression lock: when the model does not report a context limit, the
+    // minNudgeContextPercent floor cannot be computed. The floor must NOT be
+    // treated as "below floor" — growth nudges keep their pre-#342 growth-only
+    // behavior instead of being suppressed for the whole session.
+    const state = createSessionState()
+    // state.modelContextLimit intentionally left undefined
+    state.nudges.lastPerMessageNudgeTokens = 100_000
+    state.messageIds.byRawId.set("u1", "m00001")
+    state.messageIds.byRawId.set("a1", "m00002")
+
+    const config = buildConfig()
+    config.compress.maxContextLimit = "80%" // percent → unresolvable without a model limit
+
+    // currentTokens = 200K (180K+20K). Growth = 200K-100K = 100K >= 50K threshold
+    // AND >= 22.5K growthFloor. Model limit unknown → floor unresolvable → nudge FIRES.
+    const messages: WithParts[] = [
+        userMsg("u1", "hello"),
+        assistantMsgWithTokens("a1", "done", { input: 180_000, output: 20_000 }, [
+            toolPart("c1", "x".repeat(80_000)),
+        ]),
+    ]
+    injectCompressNudges(state, config, logger, messages, {} as any)
+    assert.equal(state.nudges.shouldInjectThisTurn, true, "unknown model limit → floor unresolvable → growth-only behavior preserved (nudge fires)")
+    assert.equal(state.nudges.lastNudgeShownTokens, 200_000, "nudge baseline set")
+    assert.equal(state.nudges.lastPerMessageNudgeTokens, 100_000, "baseline NOT updated after nudge")
+})
+
+test("issue #342: T2 tier-promotion fires below the growth floor (independent of the floor)", () => {
+    // T2/T3 tier-promotion nudges have an independent cadence and never consult
+    // the growth floor — they must fire even while T1 is floor-suppressed.
+    const state = createSessionState()
+    state.sessionId = "test-t2-floor"
+    state.modelContextLimit = 1_000_000
+    state.nudges.lastPerMessageNudgeTokens = 100_000
+
+    const config = buildConfig()
+    config.compress.maxContextLimit = 990_000
+    config.compress.minNudgeContextPercent = 80 // floor at 80% of 1M = 800K (above the 200K context)
+    config.compress.nudgeGrowthTokens = 10_000
+    config.compress.minNudgeGrowthFloor = 5_000
+    config.compress.minNudgeGrowthRatio = 0.01
+
+    // Seed T1 blocks so tier1Tokens (25K) >= nudgeGrowthTokens (10K)
+    for (let i = 0; i < 5; i++) {
+        const blockId = i + 1
+        state.prune.messages.blocksById.set(blockId, {
+            blockId,
+            runId: i + 1,
+            active: true,
+            tier: 1,
+            generation: "young",
+            survivedCount: 1,
+            directMessageIds: [],
+            effectiveMessageIds: [],
+            consumedBlockIds: [],
+            parentBlockIds: [],
+            summary: "T1 summary ".repeat(200),
+            summaryTokens: 5_000,
+            topic: `T1 block ${i}`,
+            createdAt: Date.now(),
+        })
+        state.prune.messages.activeBlockIds.add(blockId)
+    }
+
+    state.messageIds.byRawId.set("u1", "m00001")
+    state.messageIds.byRawId.set("a1", "m00002")
+
+    // currentTokens = 200K (180K+20K). T1: growth = 100K >= 10K threshold, but
+    // 200K < 800K floor → the floor suppresses T1. T2: tier1Tokens 25K >= 10K,
+    // cadence met, 5 candidates >= 2 → T2 fires below the growth floor.
+    const messages: WithParts[] = [
+        userMsg("u1", "hello"),
+        assistantMsgWithTokens("a1", "done", { input: 180_000, output: 20_000 }, [
+            toolPart("c1", "x".repeat(80_000)),
+        ]),
+    ]
+    injectCompressNudges(state, config, logger, messages, {} as any)
+    assert.equal(state.nudges.shouldInjectThisTurn, true, "T2 fires below the growth floor (independent cadence)")
+    assert.equal(state.nudges.lastTier2NudgeTokens, 200_000, "T2 fired (lastTier2NudgeTokens set) while T1 stayed floor-suppressed")
+})
+
+test("issue #342 follow-up: unset minNudgeContextPercent falls back to the low 5% default floor", () => {
+    const state = createSessionState()
+    state.modelContextLimit = 1_000_000
+    state.nudges.lastPerMessageNudgeTokens = 50_000
+    state.messageIds.byRawId.set("u1", "m00001")
+    state.messageIds.byRawId.set("a1", "m00002")
+
+    const config = buildConfig()
+    config.compress.maxContextLimit = 800_000
+    // Simulate a config that never set the field: the code must fall back to
+    // the (deliberately low) 5% default, NOT the pre-fix 15%.
+    delete (config.compress as { minNudgeContextPercent?: number }).minNudgeContextPercent
+
+    // currentTokens = 100K (80K+20K). Growth = 100K-50K = 50K >= 50K threshold
+    // AND >= 22.5K growthFloor. Fallback floor = 5% of 1M = 50K → 100K >= 50K
+    // → the nudge FIRES. (A 15% fallback would put the floor at 150K and
+    // SUPPRESS this — the default must stay low so typical working cycles on
+    // large-window models are not shifted; 15% binds on ≥400K windows.)
+    const messages: WithParts[] = [
+        userMsg("u1", "hello"),
+        assistantMsgWithTokens("a1", "done", { input: 80_000, output: 20_000 }, [
+            toolPart("c1", "x".repeat(80_000)),
+        ]),
+    ]
+    injectCompressNudges(state, config, logger, messages, {} as any)
+    assert.equal(state.nudges.shouldInjectThisTurn, true, "100K >= 50K (5% default floor) with 50K growth → nudge fires")
+    assert.equal(state.nudges.lastNudgeShownTokens, 100_000, "nudge shown at current tokens")
+    assert.equal(state.nudges.lastPerMessageNudgeTokens, 50_000, "baseline only advances on compress, not on nudge")
+})
+
+
+// ── Issue #344: per-provider / per-model growth-nudge floor (nested providers.models) ──
+// compress.providers.{provider}.{field} and .models.{model}.{field} cascade
+// field-by-field: model > provider > global (billion-context-pi style).
+// These tests lock the resolution order, the 0-disables escape hatch, the
+// fallback for unknown provider/model ids, and the multi-turn gate behavior.
+
+function userMsgWithModel(id: string, text: string, providerId: string, modelId: string): WithParts {
+    return {
+        info: {
+            id,
+            role: "user",
+            sessionID: SID,
+            agent: "a",
+            time: { created: 1 },
+            model: { providerID: providerId, modelID: modelId },
+        } as WithParts["info"],
+        parts: [textPart(id, text)],
+    }
+}
+
+test("issue #344 resolver: minNudgeContextPercent cascades model > provider > global", () => {
+    const config = buildConfig()
+    config.compress.minNudgeContextPercent = 5
+    config.compress.providers = {
+        anthropic: {
+            minNudgeContextPercent: 8,
+            models: {
+                "claude-sonnet-4-6": { minNudgeContextPercent: 10 },
+            },
+        },
+        openai: {
+            models: { "gpt-5": { minNudgeContextPercent: 20 } },
+        },
+    }
+    // Model level wins over provider and global.
+    assert.equal(resolveMinNudgeContextPercent(config, "anthropic", "claude-sonnet-4-6"), 10)
+    // Provider level applies to its other models (no model entry).
+    assert.equal(resolveMinNudgeContextPercent(config, "anthropic", "claude-haiku-4-5"), 8)
+    // Model entry without provider-level field still resolves (model > global).
+    assert.equal(resolveMinNudgeContextPercent(config, "openai", "gpt-5"), 20)
+    // Unknown model in a provider without provider-level field falls back to global.
+    assert.equal(resolveMinNudgeContextPercent(config, "openai", "gpt-4o"), 5)
+    // Unknown provider falls back to global.
+    assert.equal(resolveMinNudgeContextPercent(config, "zhipu", "glm-5"), 5)
+    // No model info at all falls back to global.
+    assert.equal(resolveMinNudgeContextPercent(config), 5)
+})
+
+test("issue #344 resolver: 0 at a deeper level is an explicit disable, not unset", () => {
+    const config = buildConfig()
+    config.compress.minNudgeContextPercent = 15
+    config.compress.providers = {
+        anthropic: { models: { "claude-sonnet-4-6": { minNudgeContextPercent: 0 } } },
+    }
+    assert.equal(resolveMinNudgeContextPercent(config, "anthropic", "claude-sonnet-4-6"), 0)
+    // Floor tokens clamp to 0 → every currentTokens >= 0 → gate always open.
+    assert.equal(resolveMinNudgeFloorTokens(config, 1_000_000, "anthropic", "claude-sonnet-4-6"), 0)
+    // Sibling model without the override keeps the global 15%.
+    assert.equal(resolveMinNudgeContextPercent(config, "anthropic", "claude-haiku-4-5"), 15)
+})
+
+test("issue #344 resolver: unset everywhere returns undefined; floor fn applies the 5% default", () => {
+    const config = buildConfig()
+    delete (config.compress as { minNudgeContextPercent?: number }).minNudgeContextPercent
+    config.compress.providers = { anthropic: { models: { "claude-sonnet-4-6": {} } } }
+    assert.equal(resolveMinNudgeContextPercent(config, "anthropic", "claude-sonnet-4-6"), undefined)
+    // resolveMinNudgeFloorTokens applies the deliberately-low default (5%).
+    assert.equal(resolveMinNudgeFloorTokens(config, 1_000_000, "anthropic", "claude-sonnet-4-6"), 50_000)
+})
+
+test("issue #344 resolver: percent clamps to 0-100 and rounds against the window", () => {
+    const config = buildConfig()
+    config.compress.providers = {
+        anthropic: { models: { "claude-sonnet-4-6": { minNudgeContextPercent: 150 } } },
+    }
+    assert.equal(resolveMinNudgeFloorTokens(config, 1_000_000, "anthropic", "claude-sonnet-4-6"), 1_000_000)
+    // Unknown window → floor unresolvable → undefined (gate stays open).
+    assert.equal(resolveMinNudgeFloorTokens(config, undefined, "anthropic", "claude-sonnet-4-6"), undefined)
+})
+
+test("issue #344: model-level floor suppresses the growth nudge, then fires once crossed (multi-turn)", () => {
+    const state = createSessionState()
+    state.modelContextLimit = 1_000_000
+    state.nudges.lastPerMessageNudgeTokens = 100_000
+    state.messageIds.byRawId.set("u1", "m00001")
+    state.messageIds.byRawId.set("a1", "m00002")
+    state.messageIds.byRawId.set("u2", "m00003")
+    state.messageIds.byRawId.set("a2", "m00004")
+
+    const config = buildConfig()
+    config.compress.maxContextLimit = 800_000
+    config.compress.minNudgeContextPercent = 5 // global floor would be 50K
+    config.compress.providers = {
+        anthropic: {
+            models: {
+                // Model-level override raises the floor for THIS model only:
+                // 30% of 1M = 300K.
+                "claude-sonnet-4-6": { minNudgeContextPercent: 30 },
+            },
+        },
+    }
+
+    // Turn 1: currentTokens = 200K (180K+20K). Growth = 100K >= 50K threshold
+    // and >= 22.5K growthFloor, but 200K < 300K model-level floor → suppressed.
+    const turn1: WithParts[] = [
+        userMsgWithModel("u1", "hello", "anthropic", "claude-sonnet-4-6"),
+        assistantMsgWithTokens("a1", "done", { input: 180_000, output: 20_000 }, [
+            toolPart("c1", "x".repeat(80_000)),
+        ]),
+    ]
+    injectCompressNudges(state, config, logger, turn1, {} as any)
+    assert.equal(state.nudges.shouldInjectThisTurn, false, "200K < 300K model-level floor → suppressed despite 100K growth")
+    assert.equal(state.nudges.lastNudgeShownTokens, undefined, "no nudge shown below the model-level floor")
+    assert.equal(state.nudges.lastPerMessageNudgeTokens, 100_000, "baseline preserved below floor")
+
+    // Turn 2: currentTokens = 320K. Growth = 220K >= 50K. 320K >= 300K → fires.
+    const turn2: WithParts[] = [
+        userMsgWithModel("u1", "hello", "anthropic", "claude-sonnet-4-6"),
+        assistantMsgWithTokens("a1", "done", { input: 180_000, output: 20_000 }, [
+            toolPart("c1", "x".repeat(80_000)),
+        ]),
+        userMsgWithModel("u2", "next", "anthropic", "claude-sonnet-4-6"),
+        assistantMsgWithTokens("a2", "more", { input: 300_000, output: 20_000 }, [
+            toolPart("c2", "x".repeat(80_000)),
+        ]),
+    ]
+    injectCompressNudges(state, config, logger, turn2, {} as any)
+    assert.equal(state.nudges.shouldInjectThisTurn, true, "320K >= 300K model-level floor + 220K growth → fires")
+    assert.equal(state.nudges.lastNudgeShownTokens, 320_000, "lastNudgeShownTokens set to currentTokens")
+    assert.equal(state.nudges.lastPerMessageNudgeTokens, 100_000, "baseline NOT advanced by the nudge")
+})
+
+test("issue #344: provider-level floor applies to every model of that provider", () => {
+    const state = createSessionState()
+    state.modelContextLimit = 1_000_000
+    state.nudges.lastPerMessageNudgeTokens = 100_000
+    state.messageIds.byRawId.set("u1", "m00001")
+    state.messageIds.byRawId.set("a1", "m00002")
+
+    const config = buildConfig()
+    config.compress.maxContextLimit = 800_000
+    config.compress.minNudgeContextPercent = 5
+    config.compress.providers = {
+        anthropic: { minNudgeContextPercent: 25 }, // no models entry
+    }
+
+    // Active model has no model-level entry → provider floor 25% of 1M = 250K.
+    // currentTokens = 200K with 100K growth → below 250K → suppressed.
+    const messages: WithParts[] = [
+        userMsgWithModel("u1", "hello", "anthropic", "claude-haiku-4-5"),
+        assistantMsgWithTokens("a1", "done", { input: 180_000, output: 20_000 }, [
+            toolPart("c1", "x".repeat(80_000)),
+        ]),
+    ]
+    injectCompressNudges(state, config, logger, messages, {} as any)
+    assert.equal(state.nudges.shouldInjectThisTurn, false, "200K < 250K provider-level floor → suppressed")
+    assert.equal(state.nudges.lastPerMessageNudgeTokens, 100_000, "baseline preserved")
+})
+
+test("issue #344: unknown provider falls back to the global floor", () => {
+    const state = createSessionState()
+    state.modelContextLimit = 1_000_000
+    state.nudges.lastPerMessageNudgeTokens = 100_000
+    state.messageIds.byRawId.set("u1", "m00001")
+    state.messageIds.byRawId.set("a1", "m00002")
+
+    const config = buildConfig()
+    config.compress.maxContextLimit = 800_000
+    config.compress.minNudgeContextPercent = 5 // global floor 50K
+    config.compress.providers = {
+        anthropic: { minNudgeContextPercent: 25 }, // not the active provider
+    }
+
+    // Active provider zhipu is unknown → global 5% floor (50K). 200K >= 50K
+    // with 100K growth → the nudge FIRES (no per-provider suppression).
+    const messages: WithParts[] = [
+        userMsgWithModel("u1", "hello", "zhipu", "glm-5"),
+        assistantMsgWithTokens("a1", "done", { input: 180_000, output: 20_000 }, [
+            toolPart("c1", "x".repeat(80_000)),
+        ]),
+    ]
+    injectCompressNudges(state, config, logger, messages, {} as any)
+    assert.equal(state.nudges.shouldInjectThisTurn, true, "unknown provider → global 5% floor → fires")
+    assert.equal(state.nudges.lastNudgeShownTokens, 200_000, "nudge shown at current tokens")
+})
+
+test("issue #344: model-level 0 disables the floor for that model while siblings keep the global", () => {
+    const state = createSessionState()
+    state.modelContextLimit = 1_000_000
+    state.nudges.lastPerMessageNudgeTokens = 100_000
+    state.messageIds.byRawId.set("u1", "m00001")
+    state.messageIds.byRawId.set("a1", "m00002")
+
+    const config = buildConfig()
+    config.compress.maxContextLimit = 800_000
+    config.compress.minNudgeContextPercent = 15 // global floor = 150K
+    config.compress.providers = {
+        anthropic: { models: { "claude-sonnet-4-6": { minNudgeContextPercent: 0 } } },
+    }
+
+    // currentTokens = 115K (95K+20K), growth = 115K-60K = 55K >= 50K threshold,
+    // but 115K < 150K global floor — the model-level 0 kills the floor for
+    // THIS model → the nudge fires where the global config would suppress it.
+    state.nudges.lastPerMessageNudgeTokens = 60_000
+    const messages: WithParts[] = [
+        userMsgWithModel("u1", "hello", "anthropic", "claude-sonnet-4-6"),
+        assistantMsgWithTokens("a1", "done", { input: 95_000, output: 20_000 }, [
+            toolPart("c1", "x".repeat(80_000)),
+        ]),
+    ]
+    injectCompressNudges(state, config, logger, messages, {} as any)
+    assert.equal(state.nudges.shouldInjectThisTurn, true, "model-level 0 disables the floor → 55K growth fires at 115K")
+    assert.equal(state.nudges.lastNudgeShownTokens, 115_000, "nudge shown at current tokens")
+})
+
+test("issue #344 all-field cascade: model-level maxContextLimit lowers the over-max band (multi-turn)", () => {
+    const state = createSessionState()
+    state.modelContextLimit = 1_000_000
+    // Baseline 220K: growth = 250K − 220K = 30K — above the 22.5K anti-thrash
+    // growthFloor but below the 50K default threshold, so the ONLY way turn 1
+    // can nudge is the over-max path via the model-level band (overMaxLimit
+    // makes decision.shouldNudge true; the growth path alone could not).
+    state.nudges.lastPerMessageNudgeTokens = 220_000
+    state.messageIds.byRawId.set("u1", "m00001")
+    state.messageIds.byRawId.set("a1", "m00002")
+    state.messageIds.byRawId.set("u2", "m00003")
+    state.messageIds.byRawId.set("a2", "m00004")
+
+    const config = buildConfig()
+    config.compress.maxContextLimit = 800_000 // global band start
+    config.compress.providers = {
+        anthropic: {
+            models: {
+                // Model-level override narrows the band for THIS model only:
+                // 20% of 1M = 200K.
+                "claude-sonnet-4-6": { maxContextLimit: "20%" },
+            },
+        },
+    }
+
+    // Turn 1: currentTokens = 250K — below the global 800K band, but above the
+    // model-level 200K band → over-max nudge fires (overMaxLimit also bypasses
+    // the growth floor and growth threshold).
+    const turn1: WithParts[] = [
+        userMsgWithModel("u1", "hello", "anthropic", "claude-sonnet-4-6"),
+        assistantMsgWithTokens("a1", "done", { input: 230_000, output: 20_000 }, [
+            toolPart("c1", "x".repeat(80_000)),
+        ]),
+    ]
+    injectCompressNudges(state, config, logger, turn1, {} as any)
+    assert.equal(state.nudges.shouldInjectThisTurn, true, "250K >= 200K model-level max → over-max nudge fires")
+    assert.equal(state.nudges.lastNudgeShownTokens, 250_000, "nudge baseline set to currentTokens")
+    assert.equal(state.nudges.lastPerMessageNudgeTokens, 220_000, "per-message baseline untouched by over-max nudge")
+    state.nudges.shouldInjectThisTurn = false
+
+    // Turn 2: same context size, different provider/model — the override must
+    // NOT apply → 250K < 800K global → no over-max nudge.
+    const turn2: WithParts[] = [
+        userMsgWithModel("u1", "hello", "openai", "gpt-5"),
+        assistantMsgWithTokens("a1", "done", { input: 230_000, output: 20_000 }, [
+            toolPart("c1", "x".repeat(80_000)),
+        ]),
+    ]
+    injectCompressNudges(state, config, logger, turn2, {} as any)
+    assert.equal(state.nudges.shouldInjectThisTurn, false, "unknown provider keeps the global 800K band → 250K not over max")
+    assert.equal(state.nudges.lastNudgeShownTokens, 250_000, "baseline from turn 1 preserved (no new nudge)")
+    assert.equal(state.nudges.lastPerMessageNudgeTokens, 220_000, "per-message baseline untouched")
+})
+
+test("issue #344 all-field cascade: provider-level nudgeGrowthTokens tightens the growth threshold (multi-turn)", () => {
+    const state = createSessionState()
+    state.modelContextLimit = 1_000_000
+    state.nudges.lastPerMessageNudgeTokens = 100_000
+    state.messageIds.byRawId.set("u1", "m00001")
+    state.messageIds.byRawId.set("a1", "m00002")
+    state.messageIds.byRawId.set("u2", "m00003")
+    state.messageIds.byRawId.set("a2", "m00004")
+
+    const config = buildConfig()
+    config.compress.maxContextLimit = 800_000
+    config.compress.minNudgeContextPercent = 5 // global floor = 50K of 1M
+    // No global nudgeGrowthTokens → fixed default 50K. The provider-level
+    // override tightens it to 5K for every anthropic model.
+    config.compress.providers = {
+        anthropic: { nudgeGrowthTokens: 5_000 },
+    }
+
+    // Turn 1: currentTokens = 108K (98K+10K), growth = 8K. Global rule: 8K < 50K
+    // default threshold → no nudge. Override: 8K >= 5K and >= growthFloor
+    // max(5000, 0.45×5K=2250) → fires. 108K >= 50K floor ✓
+    const turn1: WithParts[] = [
+        userMsgWithModel("u1", "hello", "anthropic", "claude-sonnet-4-6"),
+        assistantMsgWithTokens("a1", "done", { input: 98_000, output: 10_000 }, [
+            toolPart("c1", "x".repeat(8_000)),
+        ]),
+    ]
+    injectCompressNudges(state, config, logger, turn1, {} as any)
+    assert.equal(state.nudges.shouldInjectThisTurn, true, "8K growth >= 5K provider-level threshold → fires despite 50K default")
+    assert.equal(state.nudges.lastNudgeShownTokens, 108_000, "nudge baseline set to currentTokens")
+    assert.equal(state.nudges.lastPerMessageNudgeTokens, 100_000, "per-message baseline NOT advanced by the nudge")
+
+    // Turn 2: same growth from a non-anthropic model → default 50K threshold →
+    // suppressed (the override is provider-scoped).
+    state.nudges.lastNudgeShownTokens = undefined
+    const turn2: WithParts[] = [
+        userMsgWithModel("u1", "hello", "openai", "gpt-5"),
+        assistantMsgWithTokens("a1", "done", { input: 98_000, output: 10_000 }, [
+            toolPart("c1", "x".repeat(8_000)),
+        ]),
+    ]
+    injectCompressNudges(state, config, logger, turn2, {} as any)
+    assert.equal(state.nudges.shouldInjectThisTurn, false, "8K growth < 50K default threshold for other providers → suppressed")
+    assert.equal(state.nudges.lastNudgeShownTokens, undefined, "no new nudge for the unknown provider")
+})
+
+test("issue #344: per-model floor holds in production config across the full growth cycle (preserveRecentMessages > 0)", () => {
+    // §5.7.1: production config (preserveRecentMessages > 0) + full growth cycle
+    // (baseline → growth → nudge → compress → new baseline → growth → nudge) +
+    // the nothingToCompress baseline-reset regression lock (PR #207) under a
+    // model-level floor. preserveRecentMessages: 2 keeps a compressible head in
+    // the 4+ message turns while making the 2-message turn fully protected.
+    const state = createSessionState()
+    state.modelContextLimit = 1_000_000
+    state.nudges.lastPerMessageNudgeTokens = 100_000
+    state.messageIds.byRawId.set("u1", "m00001")
+    state.messageIds.byRawId.set("a1", "m00002")
+    state.messageIds.byRawId.set("u2", "m00003")
+    state.messageIds.byRawId.set("a2", "m00004")
+    state.messageIds.byRawId.set("u3", "m00005")
+    state.messageIds.byRawId.set("a3", "m00006")
+    state.messageIds.byRawId.set("u4", "m00007")
+    state.messageIds.byRawId.set("a4", "m00008")
+
+    const config = buildConfig()
+    config.compress.preserveRecentMessages = 2 // production-like: last 2 messages protected
+    config.compress.maxContextLimit = 800_000
+    config.compress.minNudgeContextPercent = 5 // global floor would be 50K
+    config.compress.providers = {
+        anthropic: {
+            models: {
+                // Model-level override raises the floor for THIS model only:
+                // 30% of 1M = 300K.
+                "claude-sonnet-4-6": { minNudgeContextPercent: 30 },
+            },
+        },
+    }
+
+    // Turn 1: currentTokens = 200K (180K+20K). Growth = 100K >= 50K threshold,
+    // but 200K < 300K model-level floor → suppressed. a1's tool output is
+    // compressible (only u2/a2 are in the preserve-recent zone) → this is floor
+    // suppression, not nothingToCompress.
+    const turn1: WithParts[] = [
+        userMsgWithModel("u1", "hello", "anthropic", "claude-sonnet-4-6"),
+        assistantMsgWithTokens("a1", "done", { input: 180_000, output: 20_000 }, [
+            toolPart("c1", "x".repeat(80_000)),
+        ]),
+        userMsgWithModel("u2", "next", "anthropic", "claude-sonnet-4-6"),
+        assistantMsgWithTokens("a2", "more", { input: 180_000, output: 20_000 }),
+    ]
+    injectCompressNudges(state, config, logger, turn1, {} as any)
+    assert.equal(state.nudges.shouldInjectThisTurn, false, "turn 1: 200K < 300K model-level floor → suppressed in production config")
+    assert.equal(state.nudges.lastNudgeShownTokens, undefined, "turn 1: no nudge shown below floor")
+    assert.equal(state.nudges.lastPerMessageNudgeTokens, 100_000, "turn 1: baseline preserved below floor")
+
+    // Turn 2: currentTokens = 320K (300K+20K). Growth = 220K >= 50K. 320K >= 300K
+    // floor → open → nudge fires (a1's tool output still compressible).
+    const turn2: WithParts[] = [
+        userMsgWithModel("u1", "hello", "anthropic", "claude-sonnet-4-6"),
+        assistantMsgWithTokens("a1", "done", { input: 180_000, output: 20_000 }, [
+            toolPart("c1", "x".repeat(80_000)),
+        ]),
+        userMsgWithModel("u2", "next", "anthropic", "claude-sonnet-4-6"),
+        assistantMsgWithTokens("a2", "more", { input: 180_000, output: 20_000 }),
+        userMsgWithModel("u3", "again", "anthropic", "claude-sonnet-4-6"),
+        assistantMsgWithTokens("a3", "result", { input: 300_000, output: 20_000 }, [
+            toolPart("c3", "x".repeat(80_000)),
+        ]),
+    ]
+    injectCompressNudges(state, config, logger, turn2, {} as any)
+    assert.equal(state.nudges.shouldInjectThisTurn, true, "turn 2: 320K >= 300K model-level floor + 220K growth → fires")
+    assert.equal(state.nudges.lastNudgeShownTokens, 320_000, "turn 2: nudge shown at current tokens")
+    assert.equal(state.nudges.lastPerMessageNudgeTokens, 100_000, "turn 2: baseline NOT advanced by the nudge")
+
+    // Turn 3: model compresses → baseline reset to post-compress 200K, no nudge.
+    const turn3: WithParts[] = [
+        userMsgWithModel("u1", "hello", "anthropic", "claude-sonnet-4-6"),
+        assistantMsgWithTokens("a1", "done", { input: 180_000, output: 20_000 }, [
+            toolPart("c1", "x".repeat(80_000)),
+        ]),
+        userMsgWithModel("u2", "next", "anthropic", "claude-sonnet-4-6"),
+        assistantMsgWithTokens("a2", "compressed", { input: 180_000, output: 20_000 }, [
+            compressToolPart("c2", "compressed"),
+        ]),
+    ]
+    injectCompressNudges(state, config, logger, turn3, {} as any)
+    assert.equal(state.nudges.lastPerMessageNudgeTokens, 200_000, "turn 3: compress resets baseline to post-compress 200K")
+    assert.equal(state.nudges.shouldInjectThisTurn, false, "turn 3: compress turn, no nudge")
+
+    // Turn 4: currentTokens = 400K (380K+20K). Growth = 400K-200K = 200K >= 50K.
+    // 400K >= 300K floor → the nudge fires again from the NEW baseline.
+    const turn4: WithParts[] = [
+        userMsgWithModel("u1", "hello", "anthropic", "claude-sonnet-4-6"),
+        assistantMsgWithTokens("a1", "done", { input: 180_000, output: 20_000 }, [
+            toolPart("c1", "x".repeat(80_000)),
+        ]),
+        userMsgWithModel("u2", "next", "anthropic", "claude-sonnet-4-6"),
+        assistantMsgWithTokens("a2", "compressed", { input: 180_000, output: 20_000 }, [
+            compressToolPart("c2", "compressed"),
+        ]),
+        userMsgWithModel("u3", "again", "anthropic", "claude-sonnet-4-6"),
+        assistantMsgWithTokens("a3", "result", { input: 380_000, output: 20_000 }, [
+            toolPart("c3", "x".repeat(80_000)),
+        ]),
+    ]
+    injectCompressNudges(state, config, logger, turn4, {} as any)
+    assert.equal(state.nudges.shouldInjectThisTurn, true, "turn 4: 400K >= 300K floor + 200K growth from new baseline → fires again")
+    assert.equal(state.nudges.lastNudgeShownTokens, 400_000, "turn 4: nudge shown at current tokens")
+    assert.equal(state.nudges.lastPerMessageNudgeTokens, 200_000, "turn 4: baseline NOT advanced by the nudge")
+
+    // Turn 5 (PR #207 regression lock): only 2 messages → both in the
+    // preserve-recent zone → nothingToCompress. currentTokens = 320K is ABOVE
+    // the 300K floor with 120K growth, so the only reason this turn is silent
+    // is nothingToCompress — and that path must NOT reset the baseline (the
+    // #207 bug silently reset lastPerMessageNudgeTokens here, starving later
+    // nudges in short/subagent sessions).
+    const turn5: WithParts[] = [
+        userMsgWithModel("u4", "short", "anthropic", "claude-sonnet-4-6"),
+        assistantMsgWithTokens("a4", "done", { input: 300_000, output: 20_000 }, [
+            toolPart("c4", "x".repeat(80_000)),
+        ]),
+    ]
+    injectCompressNudges(state, config, logger, turn5, {} as any)
+    assert.equal(state.nudges.shouldInjectThisTurn, false, "turn 5: nothingToCompress (all messages protected) → silent")
+    assert.equal(state.nudges.lastNudgeShownTokens, 400_000, "turn 5: lastNudgeShownTokens KEPT (resetting it reintroduces the nudge loop)")
+    assert.equal(state.nudges.lastPerMessageNudgeTokens, 200_000, "turn 5: baseline NOT reset by nothingToCompress (#207 regression lock)")
+})

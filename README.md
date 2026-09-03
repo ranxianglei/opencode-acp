@@ -324,11 +324,12 @@ Each level overrides the previous, so project settings take priority over global
         // Soft upper threshold: above this, ACP keeps injecting strong
         // compression nudges (based on nudgeFrequency), so compression is
         // much more likely. Accepts: number or "X%" of model context window.
-        "maxContextLimit": "55%",
-        // Soft lower threshold for reminder nudges: below this, turn/iteration
-        // reminders are off (compression less likely). At/above this, reminders
-        // are on. Accepts: number or "X%" of model context window.
-        "minContextLimit": "45%",
+        "maxContextLimit": "80%",
+        // Soft lower threshold for turn/iteration reminder nudges: below this,
+        // those reminders are off (compression less likely). At/above this, they
+        // are on. Growth nudges have their own floor: minNudgeContextPercent.
+        // Accepts: number or "X%" of model context window.
+        "minContextLimit": "80%",
         // Optional per-model override for maxContextLimit by providerID/modelID.
         // If present, this wins over the global maxContextLimit.
         // Accepts: number or "X%".
@@ -338,10 +339,28 @@ Each level overrides the previous, so project settings take priority over global
         //     "anthropic/claude-sonnet-4.6": "80%"
         // },
         // Optional per-model override for minContextLimit.
+        // DEPRECATED — scheduled for removal alongside minContextLimit;
+        // use compress.providers (or minNudgeContextPercent for growth
+        // nudges) instead. Still honored until removed.
         // If present, this wins over the global minContextLimit.
         // "modelMinLimits": {
         //     "openai/gpt-5.3-codex": 50000,
         //     "anthropic/claude-sonnet-4.6": "25%"
+        // },
+        // Nested per-provider/per-model overrides for ANY compress field
+        // (23 fields: thresholds, nudge behavior, protection, ...).
+        // Resolution is per field: model > provider > global. Unknown
+        // provider/model IDs fall back to the global value.
+        // "providers": {
+        //     "anthropic": {
+        //         "nudgeGrowthTokens": 50000,
+        //         "models": {
+        //             "claude-sonnet-4.6": {
+        //                 "maxContextLimit": "70%",
+        //                 "minNudgeContextPercent": 10
+        //             }
+        //         }
+        //     }
         // },
         // How often the context-limit nudge fires (1 = every fetch, 5 = every 5th)
         "nudgeFrequency": 5,
@@ -401,6 +420,33 @@ Each level overrides the previous, so project settings take priority over global
 ```
 
 </details>
+
+### Per-Provider / Per-Model Overrides
+
+Any `compress` field can be overridden per provider and per model via the nested `compress.providers` map:
+
+```jsonc
+{
+    "compress": {
+        "maxContextLimit": "80%",
+        "providers": {
+            "anthropic": {
+                "nudgeGrowthTokens": 20000,
+                "models": {
+                    "claude-sonnet-4.6": { "maxContextLimit": "70%", "nudgeForce": "strong" }
+                }
+            },
+            "openai": { "nudgeGrowthTokens": 40000 }
+        }
+    }
+}
+```
+
+Resolution is **per field**: model > provider > global. Unknown provider/model IDs fall back to the global value. A nested `maxContextLimit` also wins over the legacy flat `modelMaxLimits` map. Overrides deep-merge across the three config layers (global → config dir → project) per provider/model key.
+
+Not overridable here: `permission`, the deprecated `minContextLimit` / `modelMinLimits` family, and the flat `modelMaxLimits` / `modelMinLimits` maps themselves. Note: `modelMaxLimits` is **not** deprecated — it stays fully supported; a nested `maxContextLimit` simply outranks it.
+
+See the [`compress.providers`](./CONFIGURATION.md#compressproviders) reference in CONFIGURATION.md for the full 23-field list and recipes.
 
 ### Prompt Overrides
 

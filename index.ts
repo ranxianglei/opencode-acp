@@ -25,6 +25,7 @@ import {
     createTextCompleteHandler,
 } from "./lib/hooks"
 import { configureClientAuth, isSecureMode } from "./lib/auth"
+import { findBiliProxyProviders } from "./lib/bili-proxy"
 import { startAutoUpdate } from "./lib/update"
 
 const server: Plugin = (async (ctx) => {
@@ -35,7 +36,9 @@ const server: Plugin = (async (ctx) => {
     }
 
     if (process.env.BILLION_CONTEXT_PROXY) {
-        console.log("[opencode-acp] disabled: BILLION_CONTEXT_PROXY detected — proxy handles compression")
+        console.log(
+            "[opencode-acp] disabled: BILLION_CONTEXT_PROXY detected — proxy handles compression",
+        )
         return {}
     }
 
@@ -100,31 +103,44 @@ const server: Plugin = (async (ctx) => {
         prompts,
     }
 
+    // [FIX #337] Manual proxy mode: the bili proxy may be detected in a
+    // provider baseURL by the config hook (the BILLION_CONTEXT_PROXY env var
+    // is only set by the `bili <client>` launcher, not by manual proxy mode).
+    // When detected, every ACP hook becomes a no-op so the proxy handles
+    // compression alone. Assigned (not latched) so a config reload that
+    // removes the proxy restores ACP behavior.
+    let disabledByBiliProxy = false
+    const guard =
+        <TArgs extends unknown[]>(fn: (...args: TArgs) => Promise<void>) =>
+        (...args: TArgs): Promise<void> =>
+            disabledByBiliProxy ? Promise.resolve() : fn(...args)
+
     return {
-        "experimental.chat.system.transform": createSystemPromptHandler(
-            registry,
-            logger,
-            config,
-            prompts,
+        "experimental.chat.system.transform": guard(
+            createSystemPromptHandler(registry, logger, config, prompts),
         ),
-        "experimental.chat.messages.transform": createChatMessageTransformHandler(
-            ctx.client,
-            registry,
-            logger,
-            config,
-            prompts,
-            hostPermissions,
+        "experimental.chat.messages.transform": guard(
+            createChatMessageTransformHandler(
+                ctx.client,
+                registry,
+                logger,
+                config,
+                prompts,
+                hostPermissions,
+            ),
         ) as any,
-        "experimental.text.complete": createTextCompleteHandler(),
-        "command.execute.before": createCommandExecuteHandler(
-            ctx.client,
-            registry,
-            logger,
-            config,
-            ctx.directory,
-            hostPermissions,
+        "experimental.text.complete": guard(createTextCompleteHandler()),
+        "command.execute.before": guard(
+            createCommandExecuteHandler(
+                ctx.client,
+                registry,
+                logger,
+                config,
+                ctx.directory,
+                hostPermissions,
+            ),
         ),
-        event: createEventHandler(registry, logger),
+        event: guard(createEventHandler(registry, logger)),
         tool: {
             ...(config.compress.permission !== "deny" && {
                 compress: createCompressRangeTool(compressToolContext),
@@ -135,6 +151,32 @@ const server: Plugin = (async (ctx) => {
             }),
         },
         config: async (opencodeConfig) => {
+            // [FIX #337] Manual proxy mode: a provider baseURL routed through
+            // the bili proxy (`/bili/` prefix) means the proxy handles context
+            // compression — ACP must stay fully off, mirroring the
+            // BILLION_CONTEXT_PROXY env-var guard. Denying the ACP tools
+            // removes them from the LLM tool list (verified against a live
+            // opencode instance), and the guard flag no-ops every hook.
+            const biliMatches = findBiliProxyProviders(opencodeConfig.provider)
+            disabledByBiliProxy = biliMatches.length > 0
+            if (biliMatches.length > 0) {
+                console.log(
+                    "[opencode-acp] disabled: /bili/ proxy detected in provider baseURL (" +
+                        biliMatches.map((m) => m.provider).join(", ") +
+                        ") — proxy handles compression",
+                )
+                const permission = opencodeConfig.permission ?? {}
+                opencodeConfig.permission = {
+                    ...permission,
+                    compress: "deny",
+                    decompress: "deny",
+                    search_context: "deny",
+                    acp_status: "deny",
+                    acp_context_recap: "deny",
+                } as typeof permission
+                return
+            }
+
             if (
                 config.compress.permission !== "deny" &&
                 compressDisabledByOpencode(opencodeConfig.permission)

@@ -79,7 +79,7 @@ npm run build
 - New/modified test files: `compression-candidates.test.ts`,
   `compression-candidates-property.test.ts`, `acp-status.test.ts`,
   `e2e-blocks-nudges.test.ts`, `sync.test.ts`, and `state-utils-pure.test.ts`.
-- Test count: Full suite 1049 tests, 1049 passed.
+- Test count: Full upstream-integrated suite 1098 tests, 1098 passed.
 - Key scenarios verified: pair-safe micro-ranges, episode aggregation,
   protection parity, deterministic cap, nudge/status parity, and E2E candidate
   selection.
@@ -95,6 +95,8 @@ npm run build
 - **Performance follow-up**: no-nudge turns skip candidate planning; unchanged
   active block membership retains existing per-message arrays after a repair
   sync; tool-cache ordering is retained because it records step-start turns.
+  Candidate planning occurs before truncation, while synthetic nudge suffixes
+  are excluded from truncation's real-message protection window.
 - **Key logs/data**: `npm run format:check` reports pre-existing formatting
   failures in unrelated files; all changed-file formatting checks pass.
 

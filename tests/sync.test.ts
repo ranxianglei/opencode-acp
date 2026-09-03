@@ -4,7 +4,7 @@ import test from "node:test"
 import { Logger } from "../lib/logger"
 import { syncCompressionBlocks } from "../lib/messages/sync"
 import { createSessionState, type WithParts, type CompressionBlock } from "../lib/state"
-import { loadPruneMessagesState } from "../lib/state/utils"
+import { loadPruneMessagesState, serializePruneMessagesState } from "../lib/state/utils"
 
 const SID = "ses-sync-test"
 const logger = new Logger(false)
@@ -187,8 +187,8 @@ test("syncCompressionBlocks clears stale persisted memberships when no blocks lo
             m2: { tokenCount: 200, allBlockIds: [1], activeBlockIds: [1] },
         },
         blocksById: {},
-        activeBlockIds: [],
-        activeByAnchorMessageId: {},
+        activeBlockIds: [1],
+        activeByAnchorMessageId: { m2: 1 },
         nextBlockId: 2,
         nextRunId: 2,
     } as any)
@@ -196,7 +196,12 @@ test("syncCompressionBlocks clears stale persisted memberships when no blocks lo
     syncCompressionBlocks(state, logger, [userMsg("m2")])
 
     assert.deepEqual(state.prune.messages.byMessageId.get("m2")!.activeBlockIds, [])
+    assert.deepEqual([...state.prune.messages.activeBlockIds], [])
+    assert.deepEqual([...state.prune.messages.activeByAnchorMessageId], [])
     assert.equal(state.prune.messages.membershipsVerified, true)
+    const persisted = serializePruneMessagesState(state.prune.messages)
+    assert.deepEqual(persisted.activeBlockIds, [])
+    assert.deepEqual(persisted.activeByAnchorMessageId, {})
 })
 
 test("syncCompressionBlocks processes blocks in creation order", () => {

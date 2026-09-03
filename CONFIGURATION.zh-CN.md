@@ -35,7 +35,7 @@ ACP 从最多三层配置文件中读取（后加载的覆盖先加载的）：
 
 ## 参数参考
 
-状态说明：**ACTIVE** = 当前生效 | **DEPRECATED** = 接受但无效果 | **EXPERIMENTAL** = 可能变更
+状态说明：**ACTIVE** = 当前生效 | **DEPRECATED** = 保留向后兼容，计划移除（在此之前可能仍生效） | **EXPERIMENTAL** = 可能变更
 
 ---
 
@@ -163,9 +163,9 @@ ACP 从最多三层配置文件中读取（后加载的覆盖先加载的）：
 
 #### `compress.minContextLimit`
 - **类型：** `number | \`${number}%\``
-- **默认值：** `"45%"`
-- **状态：** ACTIVE
-- **说明：** 上下文使用率下限。使用率降至此值以下时，ACP 停止 nudge。
+- **默认值：** `"80%"`
+- **状态：** DEPRECATED
+- **说明：** **已废弃——计划移除。** 轮次/迭代提醒 nudge 的上下文使用率下限。使用率降至此值以下时，ACP 停止注入这些提醒（当限制无法换算为具体数值时同样停止，例如模型上下文窗口未知时的 `"X%"`）。增长 nudge 由 `minNudgeContextPercent` 单独控制。在此之前仍然生效；移除时，轮次/迭代提醒 nudge 的下限门控将随之取消（新配置应依赖增长 nudge 体系）。
 
 #### `compress.modelMaxLimits`
 - **类型：** `Record<string, number | \`${number}%\`>`
@@ -176,8 +176,8 @@ ACP 从最多三层配置文件中读取（后加载的覆盖先加载的）：
 #### `compress.modelMinLimits`
 - **类型：** `Record<string, number | \`${number}%\`>`
 - **默认值：** `undefined`
-- **状态：** ACTIVE
-- **说明：** 按模型覆盖 `minContextLimit`。
+- **状态：** DEPRECATED
+- **说明：** **已废弃——将与 `minContextLimit` 一同移除。** 按模型覆盖 `minContextLimit`。在此之前仍然生效。
 
 #### `compress.nudgeFrequency`
 - **类型：** `number`
@@ -187,9 +187,41 @@ ACP 从最多三层配置文件中读取（后加载的覆盖先加载的）：
 
 #### `compress.minNudgeContextPercent`
 - **类型：** `number`
-- **默认值：** `15`
+- **默认值：** `5`
 - **状态：** ACTIVE
-- **说明：** 触发任何 nudge 的最低上下文使用率百分比。低于此值时不注入 nudge。
+- **说明：** 增长触发型 nudge 的上下文使用率下限（占模型上下文窗口的百分比）：增长 nudge 要求上下文使用率达到或超过此百分比（此外还需满足增长阈值）。超过上限（`maxContextLimit`）与 98% 紧急覆盖的 nudge 不受此下限约束。若模型上下文窗口未知，则无法计算该下限，增长 nudge 回退为仅按增长触发的行为。轮次/迭代提醒 nudge 由 `minContextLimit` 控制，而非此字段。默认值刻意设低：在默认 `nudgeGrowthTokens`（50K）下，5% 下限对典型工作周期不生效，仅在非常大的（≥2M 级）窗口上才生效——更高的默认值（如 15%）会在 ≥400K 窗口上生效，并推高大型窗口模型上每个压缩周期的工作区间。设为 `0` 可完全禁用该下限，或调高（如 15–30%）使增长 nudge 等待更大的窗口占用比例。可通过 [`compress.providers`](#compressproviders) 按 provider / 按模型细化（issue #344）。
+
+#### `compress.providers`
+- **类型：** `Record<string, ProviderOverrides>`，其中 `ProviderOverrides = Partial<CompressOverridableConfig> & { models?: Record<string, Partial<CompressOverridableConfig>> }`（两级均所有字段可选）
+- **默认值：** `undefined`
+- **状态：** ACTIVE
+- **说明：** 对**所有可调 compress 字段**的嵌套按 provider / 按模型覆盖，逐字段按 **模型 > provider > 全局** 级联解析（与姊妹项目 billion-context-pi 一致，issue #344）。深层仅在该字段被显式设置时才覆盖——未设置的字段不会清空浅层取值；`0` / `false` 是显式值，而非“未设置”。未知的 provider/model id 回退到全局值。百分比与 `"X%"` 限额按当前激活模型的上下文窗口换算。在三个配置文件层（全局 → 配置目录 → 项目）之间，该映射按 provider/model 键深度合并——项目层可以只细化某个 provider 而不清掉低层配置的其他 provider。
+- **可覆盖字段：** `maxContextLimit`、`emergencyThresholdPercent`、`minNudgeContextPercent`、`nudgeFrequency`、`iterationNudgeThreshold`、`toolOutputNudgeThreshold`、`nudgeGrowthTokens`、`minNudgeGrowthRatio`、`minNudgeGrowthFloor`、`nudgeForce`、`protectedTools`、`showCompression`、`summaryBuffer`、`protectTags`、`protectUserMessages`、`maxSummaryLengthHard`、`minCompressRange`、`maxVisibleSegments`、`keepEmbedMaxChars`、`lastSegmentSoftBlock`、`preserveRecentMessages`、`preserveRecentTokens`、`preserveLastUserMessage`。
+- **不可覆盖：** `permission`（会话级，在得知模型信息前已固定）、已废弃的 `minContextLimit` / `modelMinLimits` 系列、扁平 `modelMaxLimits` / `modelMinLimits` 映射自身、以及 `providers` 本身。`modelMaxLimits` 本身**未废弃** —— 仍完全支持（仅优先级被超越）。`maxContextLimit` 在嵌套层设置时的优先级为 **嵌套覆盖 > `modelMaxLimits` 扁平映射 > 全局**。在此设置的 `protectedTools` 影响压缩工具与 nudge 侧逻辑；系统提示词中的受保护工具列表（在提示词构建时生成，早于模型信息可用）始终反映全局值。
+
+```jsonc
+{
+    "compress": {
+        "maxContextLimit": "55%",
+        "minNudgeContextPercent": 5,
+        "nudgeGrowthTokens": 50000,
+        "providers": {
+            "anthropic": {
+                "minNudgeContextPercent": 8,
+                "nudgeForce": "strong",
+                "models": {
+                    "claude-sonnet-4-6": {
+                        "minNudgeContextPercent": 30,
+                        "maxContextLimit": "70%",
+                        "nudgeGrowthTokens": 20000
+                    }
+                }
+            }
+        }
+    }
+}
+```
+此例中，对 `anthropic/claude-sonnet-4-6`：下限为 30%，超限（over-max）区间从窗口的 70% 开始（而非全局 55%，即更大的工作区间），增长阈值为 20K，nudge 语气为 `strong`（继承自 provider 层）。其他 Anthropic 模型获得 8% 下限与 `strong` 语气，但保留全局的区间与 50K 增长阈值；其余全部使用纯全局值。provider 键为 provider id，model 键为模型 id（取自当前激活会话上报的标识，如 `anthropic`、`claude-sonnet-4-6`）。
 
 #### `compress.nudgeGrowthTokens`
 - **类型：** `number`
@@ -446,6 +478,45 @@ ACP 从最多三层配置文件中读取（后加载的覆盖先加载的）：
     }
 }
 ```
+
+### 按模型设置增长 nudge 下限（嵌套 providers.models）
+```jsonc
+{
+    "compress": {
+        "minNudgeContextPercent": 5,
+        "providers": {
+            "anthropic": {
+                "minNudgeContextPercent": 8,
+                "models": {
+                    "claude-sonnet-4-6": { "minNudgeContextPercent": 30 },
+                    "claude-haiku-4-5": { "minNudgeContextPercent": 0 }
+                }
+            }
+        }
+    }
+}
+```
+下限按 **模型 > provider > 全局** 逐字段解析。`0` 表示为该模型禁用下限——适用于小窗口模型，仅靠增长阈值触发即可。
+
+### 按模型调优任意 compress 字段（嵌套 providers.models）
+同样的级联适用于所有可调字段，而不仅是下限——例如给某个重度使用的模型设置更紧的增长阈值与更低的超限区间，而同 provider 的其他模型保持全局配置：
+```jsonc
+{
+    "compress": {
+        "providers": {
+            "anthropic": {
+                "models": {
+                    "claude-sonnet-4-6": {
+                        "nudgeGrowthTokens": 20000,
+                        "maxContextLimit": "40%"
+                    }
+                }
+            }
+        }
+    }
+}
+```
+完整可覆盖字段列表见 [`compress.providers`](#compressproviders) 参考节。
 
 ### 保护敏感文件
 ```jsonc

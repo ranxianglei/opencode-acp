@@ -21,10 +21,12 @@ export const syncCompressionBlocks = (
     state: SessionState,
     logger: Logger,
     messages: WithParts[],
-): void => {
+): boolean => {
     const messagesState = state.prune.messages
     if (!messagesState?.blocksById?.size) {
         if (!messagesState.membershipsVerified) {
+            messagesState.activeBlockIds.clear()
+            messagesState.activeByAnchorMessageId.clear()
             for (const entry of messagesState.byMessageId.values()) {
                 entry.allBlockIds = Array.isArray(entry.allBlockIds)
                     ? [...new Set(entry.allBlockIds.filter((id) => Number.isInteger(id) && id > 0))]
@@ -32,8 +34,9 @@ export const syncCompressionBlocks = (
                 entry.activeBlockIds = []
             }
             messagesState.membershipsVerified = true
+            return true
         }
-        return
+        return false
     }
 
     const messageIds = new Set(messages.map((msg) => msg.info.id))
@@ -95,10 +98,10 @@ export const syncCompressionBlocks = (
         }
     }
 
-    if (
+    const membershipsRebuilt =
         !messagesState.membershipsVerified ||
         !sameBlockIds(indexedActiveBlockIds, messagesState.activeBlockIds)
-    ) {
+    if (membershipsRebuilt) {
         for (const entry of messagesState.byMessageId.values()) {
             const allBlockIds = Array.isArray(entry.allBlockIds)
                 ? [...new Set(entry.allBlockIds.filter((id) => Number.isInteger(id) && id > 0))]
@@ -131,4 +134,6 @@ export const syncCompressionBlocks = (
             reactivatedCount,
         })
     }
+
+    return membershipsRebuilt || deactivatedCount > 0 || reactivatedCount > 0
 }

@@ -45,7 +45,9 @@ function config(overrides: Partial<PluginConfig["compress"]> = {}): PluginConfig
             preserveRecentMessages: 0,
             preserveRecentTokens: 0,
             preserveLastUserMessage: false,
-            minNudgeContextPercent: 15,
+            // Candidate tests exercise low-token nudge behavior; upstream floor
+            // policy is covered independently in inject tests.
+            minNudgeContextPercent: 0,
             maxSummaryLengthHard: 10000,
             minCompressRange: 100,
             minNudgeGrowthRatio: 0.45,
