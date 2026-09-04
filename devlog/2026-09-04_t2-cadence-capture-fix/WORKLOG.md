@@ -18,6 +18,16 @@
   legacy tests stay green; fix then re-applied.
 - Existing #235 regression test unaffected: its compress fixture uses `input: {}` →
   classifier returns conservative false → reset still happens.
+- CI Docker E2E caught a semantics change in scenario 11 (first PR push failed
+  `e2e: tier2BaselineSet === true — got null`). The fake LLM can only emit m-refs
+  (scripts/e2e/README Known Limitation 1), so scenario 11's `tier2BaselineSet: true`
+  was locking the OLD unconditional-reset behavior — a T1 capture no longer sets the
+  baseline (that IS the fix). Renamed to
+  `11-tier2-baseline-untouched-by-captures.json`, asserts `tier2BaselineSet: false`
+  (unset stays unset through captures); the #235 never-undefined invariant remains
+  locked by the unit tests (phase 1-3 + b-prefix contrast). README scenario table
+  updated. E2E coverage of the distill reset path needs fake-LLM b-ref support —
+  tracked as known limitation, not introduced here.
 
 ## Notes / decisions
 
