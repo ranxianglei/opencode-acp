@@ -18,7 +18,7 @@
 
 | Commit | Description |
 |--------|-------------|
-| _(见 PR)_ | docs: add "Which do I need?" section to READMEs (EN+ZH) |
+| `6fd6875` | docs: add "Which do I need?" section to READMEs (EN+ZH) |
 
 ### Key Files
 
