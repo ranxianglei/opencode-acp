@@ -22,12 +22,17 @@
   `e2e: tier2BaselineSet === true — got null`). The fake LLM can only emit m-refs
   (scripts/e2e/README Known Limitation 1), so scenario 11's `tier2BaselineSet: true`
   was locking the OLD unconditional-reset behavior — a T1 capture no longer sets the
-  baseline (that IS the fix). Renamed to
-  `11-tier2-baseline-untouched-by-captures.json`, asserts `tier2BaselineSet: false`
-  (unset stays unset through captures); the #235 never-undefined invariant remains
-  locked by the unit tests (phase 1-3 + b-prefix contrast). README scenario table
-  updated. E2E coverage of the distill reset path needs fake-LLM b-ref support —
-  tracked as known limitation, not introduced here.
+   baseline (that IS the fix). Content re-scoped to assert `tier2BaselineSet: false`
+   (unset stays unset through captures); the #235 never-undefined invariant remains
+   locked by the unit tests (phase 1-3 + b-prefix contrast). The FILENAME is kept as
+   `11-tier2-baseline-preserved-after-compress.json` (now a slight misnomer): the e2e
+   job in `.github/workflows/ci.yml` hardcodes the explicit scenario path list, and
+   the bot PAT lacks `workflow` scope — pushes touching `.github/workflows/` are
+   rejected by the remote ("refusing to allow a Personal Access Token to create or
+   update workflow ... without `workflow` scope"), so ci.yml cannot be updated from
+   this environment. A human may rename file + `ci.yml:59` together in a cosmetic
+   follow-up. README scenario table updated. E2E coverage of the distill reset path
+   needs fake-LLM b-ref support — tracked as known limitation, not introduced here.
 
 ## Notes / decisions
 
