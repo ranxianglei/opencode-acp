@@ -2600,3 +2600,176 @@ test("issue #344: per-model floor holds in production config across the full gro
     assert.equal(state.nudges.lastNudgeShownTokens, 400_000, "turn 5: lastNudgeShownTokens KEPT (resetting it reintroduces the nudge loop)")
     assert.equal(state.nudges.lastPerMessageNudgeTokens, 200_000, "turn 5: baseline NOT reset by nothingToCompress (#207 regression lock)")
 })
+
+function compressToolPartWithBounds(callID: string, bounds: any[], output: string) {
+    return {
+        id: `${callID}-part`, messageID: "msg", sessionID: SID,
+        type: "tool" as const, tool: "compress", callID,
+        state: { status: "completed" as const, input: { content: bounds }, output },
+    }
+}
+
+test("issue #364 P1: T1 capture compress does NOT reset tier cadence baselines (multi-turn, §5.7)", () => {
+    const state = createSessionState()
+    state.sessionId = "test-364-capture"
+    state.modelContextLimit = 1_000_000
+
+    const config = buildConfig()
+    config.compress.preserveRecentMessages = 5
+    config.compress.preserveRecentTokens = 5_000
+    config.compress.preserveLastUserMessage = true
+    // Production preserve-recent knobs restored — buildConfig zeroes them.
+
+    // Sentinel far above this test's context volume: any reset to
+    // currentTokens shows up as a value change.
+    state.nudges.lastTier2NudgeTokens = 500_000
+    state.nudges.lastTier3NudgeTokens = 500_000
+
+    // Turn 1: T1 capture compress (m-prefix boundaries).
+    const turn1: WithParts[] = [
+        userMsg("u1", "task one"),
+        assistantMsg("c1", "captured", [
+            compressToolPartWithBounds("cap-1", [{ startId: "m00001", endId: "m00005", summary: "x" }], "done"),
+        ]),
+    ]
+    injectCompressNudges(state, config, logger, turn1, {} as any)
+    assert.equal(
+        state.nudges.lastTier2NudgeTokens,
+        500_000,
+        "turn 1: T1 capture must not move the tier-2 baseline (old code reset it to currentTokens)",
+    )
+    assert.equal(
+        state.nudges.lastTier3NudgeTokens,
+        500_000,
+        "turn 1: tier-3 baseline untouched by a T1 capture",
+    )
+    assert.equal(state.nudges.shouldInjectThisTurn, false, "turn 1: compress turn — no nudge")
+
+    // Turn 2: a second capture — the starvation pattern where every capture
+    // used to re-arm the growthFloor wait so T2 could never catch up.
+    const turn2: WithParts[] = [
+        ...turn1,
+        userMsg("u2", "task two"),
+        assistantMsg("c2", "captured", [
+            compressToolPartWithBounds("cap-2", [{ startId: "m00006", endId: "m00012", summary: "y" }], "done"),
+        ]),
+    ]
+    injectCompressNudges(state, config, logger, turn2, {} as any)
+    assert.equal(
+        state.nudges.lastTier2NudgeTokens,
+        500_000,
+        "turn 2: baseline still intact across consecutive captures",
+    )
+    assert.equal(state.nudges.shouldInjectThisTurn, false, "turn 2: compress turn — no nudge")
+})
+
+test("issue #364 guard: block-ref distill compress DOES reset tier cadence baselines (loop-prevention preserved)", () => {
+    const state = createSessionState()
+    state.sessionId = "test-364-distill"
+    state.modelContextLimit = 1_000_000
+
+    const config = buildConfig()
+    config.compress.preserveRecentMessages = 5
+    config.compress.preserveRecentTokens = 5_000
+
+    state.nudges.lastTier2NudgeTokens = 500_000
+    state.nudges.lastTier3NudgeTokens = 500_000
+
+    const turn1: WithParts[] = [
+        userMsg("u1", "distill the old summaries"),
+        assistantMsg("d1", "distilled", [
+            compressToolPartWithBounds("dis-1", [{ startId: "b2", endId: "b7", summary: "z" }], "done"),
+        ]),
+    ]
+    injectCompressNudges(state, config, logger, turn1, {} as any)
+    assert.notEqual(
+        state.nudges.lastTier2NudgeTokens,
+        500_000,
+        "distill (b-prefix): baseline moves to currentTokens — #235 loop-prevention preserved",
+    )
+    assert.notEqual(
+        state.nudges.lastTier2NudgeTokens,
+        undefined,
+        "and stays defined (never undefined — the #235 bug)",
+    )
+    assert.equal(state.nudges.shouldInjectThisTurn, false, "compress turn — no nudge")
+})
+
+test("issue #364 cycle: baseline held through capture → T2 fires on first growth past floor", () => {
+    const state = createSessionState()
+    state.sessionId = "test-364-cycle"
+    state.modelContextLimit = 1_000_000
+
+    const config = buildConfig()
+    config.compress.maxContextLimit = 500_000
+    config.compress.minContextLimit = 200_000
+    config.compress.nudgeGrowthTokens = 10_000
+    config.compress.minNudgeGrowthFloor = 5_000
+    config.compress.minNudgeGrowthRatio = 0.01
+
+    // Seed tier-1 blocks: tier1Tokens = 25K >= nudgeGrowthTokens 10K.
+    for (let i = 0; i < 5; i++) {
+        const blockId = i + 1
+        state.prune.messages.blocksById.set(blockId, {
+            blockId,
+            runId: i + 1,
+            active: true,
+            tier: 1,
+            generation: "young",
+            survivedCount: 1,
+            directMessageIds: [],
+            effectiveMessageIds: [],
+            consumedBlockIds: [],
+            parentBlockIds: [],
+            summary: "T1 summary ".repeat(200),
+            summaryTokens: 5_000,
+            topic: `T1 block ${i}`,
+            createdAt: Date.now(),
+        })
+        state.prune.messages.activeBlockIds.add(blockId)
+    }
+
+    state.messageIds.byRawId.set("u1", "m00001")
+    state.nudges.lastPerMessageNudgeTokens = 500_000
+    state.nudges.lastTier2NudgeTokens = 100_000
+
+    // Turn A: T1 capture at ~135K context. The fix keeps the 100K baseline;
+    // the old code re-armed it to ~135K.
+    const turnA: WithParts[] = [
+        userMsg("u1", "task"),
+        assistantMsgWithTokens("a1", "cap", { input: 130_000, output: 5_000 }, [
+            compressToolPartWithBounds("cap-1", [{ startId: "m00001", endId: "m00009", summary: "x" }], "done"),
+        ]),
+    ]
+    injectCompressNudges(state, config, logger, turnA, {} as any)
+    assert.equal(
+        state.nudges.lastTier2NudgeTokens,
+        100_000,
+        "turn A: capture keeps the baseline (old: reset to ~135K)",
+    )
+    assert.equal(state.nudges.shouldInjectThisTurn, false, "turn A: compress turn — no nudge")
+
+    // Turn B: no compress, ~136K context — only ~1K growth since turn A,
+    // below the 5K floor. Old code stays blocked (baseline was re-armed to
+    // ~135K); with the baseline intact the cadence measures from 100K and
+    // T2 fires.
+    const turnB: WithParts[] = [
+        ...turnA,
+        userMsg("u2", "more"),
+        assistantMsgWithTokens("a2", "work", { input: 131_000, output: 5_000 }, [
+            toolPart("t2", "x".repeat(10_000)),
+        ]),
+    ]
+    injectCompressNudges(state, config, logger, turnB, {} as any)
+    assert.equal(state.nudges.shouldInjectThisTurn, true, "turn B: T2 fires — cadence measured from the intact baseline")
+    assert.notEqual(
+        state.nudges.lastTier2NudgeTokens,
+        100_000,
+        "turn B: T2 fired and set a fresh baseline",
+    )
+    assert.equal(
+        state.nudges.lastPerMessageNudgeTokens,
+        136_000,
+        "T1 baseline corrected downward to currentTokens (pre-existing correction path, inject.ts:294-302)"
+    )
+})

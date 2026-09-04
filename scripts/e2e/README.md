@@ -71,7 +71,7 @@ the turn counter for real conversation turns.
 | `08-nudge-with-protection.json` | Nudge→compress WITH protection enabled → verify compress succeeds despite protected zone, nudge baseline set, protected messages survived |
 | `09-nudge-refire-after-compress.json` | Multi-turn nudge→compress→growth→re-nudge→re-compress. Verifies minBlockCount ≥ 1 (full re-nudge cycle with baseline reset is in scenario 10 + unit tests), maxBlockCount ≤ 8 |
 | `10-autonomous-nudge-refire.json` | Issue #176: Autonomous session (bash tool calls grow context) → first nudge→compress → continued growth → second nudge→second compress → verify minBlockCount ≥ 2, maxCompressCallsVisible ≤ 2 |
-| `11-tier2-baseline-preserved-after-compress.json` | Bug #235 regression: verify lastTier2NudgeTokens preserved (not reset to undefined) after compress. Tests compress handler baseline preservation, not T2 cadence (T2 never fires — consumption chain leaves only 1 active T1 block) |
+| `11-tier2-baseline-preserved-after-compress.json` | Issue #364: verify raw-message T1 captures (m-refs) do NOT touch lastTier2NudgeTokens — stays unset when T2 never fired. The #235 never-undefined invariant is locked by unit tests on the distill/conservative reset path (filename kept from the pre-#364 revision because the CI e2e job hardcodes scenario paths) |
 | `12-consumed-call-hiding.json` | Bug #236 regression: T1 compresses auto-consume previous blocks → verify lastRequestCompressCalls=1 (consumed calls hidden from LLM) |
 
 ### Scenario Format

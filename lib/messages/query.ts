@@ -64,6 +64,81 @@ export const messageHasCompressAttempt = (message: WithParts): boolean => {
     return parts.some((part) => part.type === "tool" && part.tool === "compress")
 }
 
+/**
+ * Classifies a compress tool call by its range boundaries to detect whether it is
+ * a raw-message capture (T1) or a summary distillation/condensation (T2/T3).
+ *
+ * Returns `true` ONLY when the call is positively identified as a T1 capture: at
+ * least one range boundary is present and NONE of them is a block ref (`bN`). A
+ * block-ref boundary means the call consumes existing summaries (T2/T3); those
+ * must keep resetting the tier cadence baselines to prevent re-trigger loops
+ * (issue #235). A pure message capture (`mNNNNN` boundaries) only ADDS tier-1
+ * summaries, so resetting the baselines after every capture is what starves T2
+ * distillation (issue #364 P1) — callers skip the reset for these.
+ *
+ * Returns `false` when any boundary is a block ref OR when no parsable boundary
+ * is found (conservative: preserve the loop-prevention reset).
+ */
+export const isCaptureOnlyCompress = (message: WithParts | undefined): boolean => {
+    if (!isMessageWithInfo(message)) {
+        return false
+    }
+    if (message.info.role !== "assistant") {
+        return false
+    }
+
+    const parts = Array.isArray(message.parts) ? message.parts : []
+    let sawBoundary = false
+    for (const part of parts) {
+        if (!(part.type === "tool" && part.tool === "compress")) {
+            continue
+        }
+        for (const startId of extractCompressBoundaryIds(part.state?.input)) {
+            sawBoundary = true
+            if (/^b\d+$/i.test(startId)) {
+                return false // any block-ref boundary → T2/T3 distillation/condensation
+            }
+        }
+    }
+    // >=1 boundary present and none were block refs → pure raw-message T1 capture.
+    return sawBoundary
+}
+
+/**
+ * Extracts the startId/endId boundary refs from a compress tool part's input.
+ * The input may arrive as a parsed object or a JSON string; malformed shapes
+ * yield an empty list rather than throwing.
+ */
+function extractCompressBoundaryIds(rawInput: unknown): string[] {
+    let content: unknown[] = []
+    if (typeof rawInput === "string") {
+        try {
+            const parsed: unknown = JSON.parse(rawInput)
+            const c = (parsed as { content?: unknown })?.content
+            content = Array.isArray(c) ? (c as unknown[]) : []
+        } catch {
+            return []
+        }
+    } else if (rawInput && typeof rawInput === "object") {
+        const c = (rawInput as { content?: unknown }).content
+        content = Array.isArray(c) ? (c as unknown[]) : []
+    }
+
+    const ids: string[] = []
+    for (const entry of content) {
+        if (!entry || typeof entry !== "object") {
+            continue
+        }
+        const { startId, endId } = entry as { startId?: unknown; endId?: unknown }
+        for (const sid of [startId, endId]) {
+            if (typeof sid === "string" && sid.trim() !== "") {
+                ids.push(sid.trim())
+            }
+        }
+    }
+    return ids
+}
+
 export const isIgnoredUserMessage = (message: WithParts): boolean => {
     if (!isMessageWithInfo(message)) {
         return false

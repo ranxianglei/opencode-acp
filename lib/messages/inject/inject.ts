@@ -12,6 +12,7 @@ import {
     isProtectedUserMessage,
     messageHasCompress,
     messageHasCompressAttempt,
+    isCaptureOnlyCompress,
 } from "../query"
 import { saveSessionState } from "../../state/persistence"
 import {
@@ -130,14 +131,21 @@ export const injectCompressNudges = (
             state.nudges.iterationNudgeAnchors.clear()
             state.nudges.lastNudgeShownTokens = undefined
             state.nudges.lastToolOutputNudgeTokens = undefined
-            // Preserve tier cadence baselines instead of resetting to undefined.
-            // Resetting to undefined causes T2/T3 to immediately re-trigger on
-            // the next turn (cadence check treats undefined as "never fired"),
-            // creating a loop: T2 fires → compress attempted → baseline reset
-            // → T2 fires again. Set to currentTokens so the growthFloor gate
-            // applies naturally.
-            state.nudges.lastTier2NudgeTokens = currentTokens
-            state.nudges.lastTier3NudgeTokens = currentTokens
+            // Preserve tier cadence baselines instead of resetting to undefined
+            // (undefined = "never fired" → T2/T3 re-trigger immediately after
+            // their own compress — issue #235). Set to currentTokens so the
+            // growthFloor gate applies from here on.
+            //
+            // But only real distillations/condensations (block-ref boundaries)
+            // may move the baselines. A raw-message T1 capture only ADDS
+            // tier-1 summaries; resetting after every capture re-arms the
+            // growthFloor wait — that is what starves T2 in compression-active
+            // sessions (issue #364 P1).
+            const captureOnly = isCaptureOnlyCompress(lastCompressMsg)
+            if (!captureOnly) {
+                state.nudges.lastTier2NudgeTokens = currentTokens
+                state.nudges.lastTier3NudgeTokens = currentTokens
+            }
 
             const currentTurnHasSuccessfulCompress = messages
                 .slice(currentTurnStart)
