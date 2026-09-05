@@ -371,7 +371,7 @@ export function createCommandExecuteHandler(
             const sub = input.arguments?.trim().toLowerCase()
             if (sub === "stats" || sub === "status" || sub === "") {
                 await handleStatsCommand(commandCtx)
-                throw new Error("__DCP_CONTEXT_HANDLED__")
+                return
             }
 
             if (sub === "export" || sub.startsWith("export ")) {
@@ -392,7 +392,6 @@ export function createCommandExecuteHandler(
             }
 
             await handleContextCommand(commandCtx)
-            throw new Error("__DCP_CONTEXT_HANDLED__")
         }
     }
 }

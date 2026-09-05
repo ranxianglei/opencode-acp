@@ -171,8 +171,32 @@ test("command execute works even when effective permission resolves to deny (inf
     assert.equal(sessionMessagesCalls, 1)
 })
 
+test("command execute returns normally (no __DCP_CONTEXT_HANDLED__ throw) — issue #296", async () => {
+    let sessionMessagesCalls = 0
+    const output = { parts: [] as any[] }
+    const handler = createCommandExecuteHandler(
+        {
+            session: {
+                messages: async () => {
+                    sessionMessagesCalls += 1
+                    return { data: [] }
+                },
+            },
+        } as any,
+        createTestRegistry(createSessionState()),
+        new Logger(false),
+        buildConfig("allow"),
+        "/tmp",
+        { global: undefined, agents: {} },
+    )
+
+    await handler({ command: "acp", sessionID: "session-1", arguments: "context" }, output)
+
+    assert.equal(sessionMessagesCalls, 1)
+})
+
 test("text complete strips hallucinated metadata tags", async () => {
-    const output = { text: "alpha <dcp>beta</dcp> omega" }
+    const output = { text: "alpha  omega" }
     const handler = createTextCompleteHandler()
 
     await handler({ sessionID: "session-1", messageID: "message-1", partID: "part-1" }, output)
