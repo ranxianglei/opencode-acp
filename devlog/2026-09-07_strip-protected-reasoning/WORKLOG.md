@@ -18,7 +18,7 @@
 
 | Commit | Description |
 |--------|-------------|
-| _pending_ | implementation (see Key Files) |
+| `9477f97` | implementation (see Key Files) — PR #370 |
 
 ### Key Files
 
@@ -78,7 +78,7 @@ Both reviewers returned REQUEST-CHANGES; core logic / tests / pipeline integrati
 - **Risk points**: provider reasoning-replay semantics (mitigated: current round never touched; historical closed-turn reasoning is the standard-strippable case); one-time cache rebuild on enablement (bounded, not continuous); correctness of the protected-tool selector (matches `config.compress.protectedTools`).
 - **Rollback method**:
   - Config: set `compress.stripProtectedReasoning: false` (immediate no-op).
-  - Revert commit(s): _pending sha_.
+   - Revert commit(s): `9477f97` (PR #370).
 - **Compatibility notes**: additive config keys only; no persisted-state or internal-tag changes.
 
 ## 6. Lessons Learned
@@ -87,7 +87,8 @@ Both reviewers returned REQUEST-CHANGES; core logic / tests / pipeline integrati
 
 ## 7. Follow-ups (separate issues, source marker `来源: #368 ...`)
 
-- [ ] #368 secondary finding **A** — display/`acp_status` estimator excludes reasoning (`lib/messages/inject/utils.ts:586` `estimateContextComposition` counts only text+tool; real usage includes reasoning per `lib/token-utils.ts:19,44`).
-- [ ] #368 secondary finding **B** — orphaned `byMessageId` entries with emptied `activeBlockIds` stay visible forever (`lib/messages/prune.ts:60-66`).
-- [ ] #368 secondary finding **C** — `rewriteCompressInput` full-consumption leak (`lib/compress/hide-consumed.ts:42` `kept.length === 0 → return null`).
-- [ ] File the main #368 issue to `ranxianglei/billion-context` and `ranxianglei/billion-context-pi` (owner request).
+- [x] #368 secondary finding **A** → filed as **#371** (display/`acp_status` estimator excludes reasoning; `lib/messages/inject/utils.ts:586`).
+- [x] #368 secondary finding **B** → filed as **#372** (orphaned `byMessageId` entries stay visible; `lib/messages/prune.ts:60-66`).
+- [x] #368 secondary finding **C** → filed as **#373** (`rewriteCompressInput` full-consumption leak; `lib/compress/hide-consumed.ts:42`).
+- [x] Main #368 filed to `ranxianglei/billion-context` (**#651**) and `ranxianglei/billion-context-pi` (**#336**) (owner request).
+- [x] PR opened: **#370** (awaiting human merge).
