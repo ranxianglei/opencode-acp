@@ -21,7 +21,15 @@ type Permission = "ask" | "allow" | "deny"
  */
 export type CompressOverridableConfig = Omit<
     CompressConfig,
-    "permission" | "minContextLimit" | "modelMaxLimits" | "modelMinLimits" | "providers"
+    | "permission"
+    | "minContextLimit"
+    | "modelMaxLimits"
+    | "modelMinLimits"
+    | "providers"
+    // Global-only: the strip pass reads raw global config, so a per-provider form
+    // would be a silent no-op. Excluded to keep the overridable surface honest.
+    | "stripProtectedReasoning"
+    | "stripProtectedReasoningThreshold"
 >
 
 /** Per-model / per-provider override object (all overridable fields optional). */
@@ -80,6 +88,19 @@ export interface CompressConfig {
     preserveRecentTokens?: number
     /** Always protect the most recent user message (default: true). */
     preserveLastUserMessage?: boolean
+    /**
+     * Strip `reasoning` parts from protected-exempt (compress/skill) messages in
+     * CLOSED historical turns — they are re-sent every turn and otherwise form a
+     * never-reclaimable incompressible floor. The current (possibly-open) round is
+     * never touched. Default: true.
+     */
+    stripProtectedReasoning?: boolean
+    /**
+     * Minimum total reasoning length (chars) on a protected-exempt historical
+     * message before its reasoning is stripped. Small reasoning is left untouched
+     * to avoid prefix-cache churn. Default: 2048.
+     */
+    stripProtectedReasoningThreshold?: number
 }
 
 export interface Commands {
@@ -257,6 +278,8 @@ const defaultConfig: PluginConfig = {
         preserveRecentMessages: 5,
         preserveRecentTokens: 5000,
         preserveLastUserMessage: true,
+        stripProtectedReasoning: true,
+        stripProtectedReasoningThreshold: 2048,
     },
     gc: {
         algorithm: "truncate",
@@ -488,6 +511,8 @@ export function mergeCompress(
     preserveRecentMessages: override.preserveRecentMessages ?? base.preserveRecentMessages,
     preserveRecentTokens: override.preserveRecentTokens ?? base.preserveRecentTokens,
     preserveLastUserMessage: override.preserveLastUserMessage ?? base.preserveLastUserMessage,
+    stripProtectedReasoning: override.stripProtectedReasoning ?? base.stripProtectedReasoning,
+    stripProtectedReasoningThreshold: override.stripProtectedReasoningThreshold ?? base.stripProtectedReasoningThreshold,
     }
 }
 

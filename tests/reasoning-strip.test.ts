@@ -1,6 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { stripStaleMetadata } from "../lib/messages/reasoning-strip"
+import { stripProtectedReasoning, stripStaleMetadata } from "../lib/messages/reasoning-strip"
+import { mergeCompress, type CompressConfig } from "../lib/config"
 import type { WithParts } from "../lib/state"
 
 const SID = "ses-reasoning-strip"
@@ -38,6 +39,22 @@ function assistantMsg(
         info,
         parts: parts ?? [
             { id: `${id}-p`, messageID: id, sessionID: SID, type: "text", text: "assistant text", metadata: { foo: "bar" } },
+        ],
+    }
+}
+
+function protectedToolMsg(id: string, reasoningText: string, tool = "compress"): WithParts {
+    return {
+        info: {
+            id,
+            role: "assistant",
+            sessionID: SID,
+            agent: "assistant",
+            time: { created: 2 },
+        } as WithParts["info"],
+        parts: [
+            { id: `${id}-reason`, messageID: id, sessionID: SID, type: "reasoning", text: reasoningText },
+            { id: `${id}-tool`, messageID: id, sessionID: SID, type: "tool", tool, callID: `${id}-call`, state: { status: "completed", output: "ok" } },
         ],
     }
 }
@@ -112,4 +129,257 @@ test("stripStaleMetadata only considers the last user message's model", () => {
     ]
     stripStaleMetadata(messages)
     assert.ok(!("metadata" in messages[1]!.parts[0]!), "a1 metadata stripped (u2 has different model)")
+})
+
+const PROTECTED = ["compress", "skill"]
+
+test("stripProtectedReasoning strips reasoning from a historical compress message above threshold", () => {
+    const big = "x".repeat(3000)
+    const messages: WithParts[] = [
+        userMsg("u0", "claude-4", "anthropic"),
+        protectedToolMsg("a1", big),
+        userMsg("u1", "claude-4", "anthropic"),
+    ]
+    const removed = stripProtectedReasoning(messages, PROTECTED, 2048)
+    assert.equal(removed, 1)
+    assert.ok(!messages[1]!.parts.some((p) => p.type === "reasoning"), "reasoning removed")
+    assert.ok(messages[1]!.parts.some((p) => p.type === "tool"), "tool call preserved")
+})
+
+test("stripProtectedReasoning never touches the current round (after the last user message)", () => {
+    const big = "x".repeat(3000)
+    const messages: WithParts[] = [
+        userMsg("u0", "claude-4", "anthropic"),
+        protectedToolMsg("a1", big),
+        userMsg("u1", "claude-4", "anthropic"),
+        protectedToolMsg("a2", big),
+    ]
+    const removed = stripProtectedReasoning(messages, PROTECTED, 2048)
+    assert.equal(removed, 1, "only the historical message stripped")
+    assert.ok(!messages[1]!.parts.some((p) => p.type === "reasoning"), "historical a1 stripped")
+    assert.ok(messages[3]!.parts.some((p) => p.type === "reasoning"), "current-round a2 preserved")
+})
+
+test("stripProtectedReasoning no-op when the last user message is first (no history before it)", () => {
+    const big = "x".repeat(3000)
+    const messages: WithParts[] = [
+        userMsg("u0", "claude-4", "anthropic"),
+        protectedToolMsg("a1", big),
+    ]
+    const removed = stripProtectedReasoning(messages, PROTECTED, 2048)
+    assert.equal(removed, 0, "no historical messages before the only user message")
+    assert.ok(messages[1]!.parts.some((p) => p.type === "reasoning"), "a1 (current round) preserved")
+})
+
+test("stripProtectedReasoning anchors on the last GENUINE user message (skips synthetic)", () => {
+    const big = "x".repeat(3000)
+    const synthetic: WithParts = {
+        info: {
+            id: "msg_acp_recap_1",
+            role: "user",
+            sessionID: SID,
+            agent: "assistant",
+            model: { modelID: "claude-4", providerID: "anthropic" },
+            time: { created: 3 },
+        } as WithParts["info"],
+        parts: [{ id: "syn-p", messageID: "msg_acp_recap_1", sessionID: SID, type: "text", text: "recap" }],
+    }
+    const messages: WithParts[] = [
+        userMsg("u0", "claude-4", "anthropic"),
+        protectedToolMsg("a1", big),
+        userMsg("u1", "claude-4", "anthropic"),
+        protectedToolMsg("a2", big),
+        synthetic,
+        protectedToolMsg("a3", big),
+    ]
+    const removed = stripProtectedReasoning(messages, PROTECTED, 2048)
+    assert.equal(removed, 1, "only a1 (before the last genuine user message u1) stripped")
+    assert.ok(!messages[1]!.parts.some((p) => p.type === "reasoning"), "a1 stripped")
+    assert.ok(messages[3]!.parts.some((p) => p.type === "reasoning"), "a2 (after u1, before synthetic) preserved")
+    assert.ok(messages[5]!.parts.some((p) => p.type === "reasoning"), "a3 (current round) preserved")
+})
+
+test("stripProtectedReasoning leaves small reasoning untouched (<= threshold)", () => {
+    const small = "x".repeat(100)
+    const messages: WithParts[] = [
+        userMsg("u0", "claude-4", "anthropic"),
+        protectedToolMsg("a1", small),
+        userMsg("u1", "claude-4", "anthropic"),
+    ]
+    const removed = stripProtectedReasoning(messages, PROTECTED, 2048)
+    assert.equal(removed, 0)
+    assert.ok(messages[1]!.parts.some((p) => p.type === "reasoning"), "small reasoning preserved")
+})
+
+test("stripProtectedReasoning boundary: reasoning == threshold is NOT stripped (strict >)", () => {
+    const exact = "x".repeat(2048)
+    const messages: WithParts[] = [
+        userMsg("u0", "claude-4", "anthropic"),
+        protectedToolMsg("a1", exact),
+        userMsg("u1", "claude-4", "anthropic"),
+    ]
+    assert.equal(stripProtectedReasoning(messages, PROTECTED, 2048), 0)
+})
+
+test("stripProtectedReasoning ignores non-protected tools (bash)", () => {
+    const big = "x".repeat(3000)
+    const messages: WithParts[] = [
+        userMsg("u0", "claude-4", "anthropic"),
+        protectedToolMsg("a1", big, "bash"),
+        userMsg("u1", "claude-4", "anthropic"),
+    ]
+    const removed = stripProtectedReasoning(messages, PROTECTED, 2048)
+    assert.equal(removed, 0)
+    assert.ok(messages[1]!.parts.some((p) => p.type === "reasoning"), "bash reasoning preserved")
+})
+
+test("stripProtectedReasoning no-op when no user message exists", () => {
+    const big = "x".repeat(3000)
+    const messages: WithParts[] = [protectedToolMsg("a1", big)]
+    assert.equal(stripProtectedReasoning(messages, PROTECTED, 2048), 0)
+    assert.ok(messages[0]!.parts.some((p) => p.type === "reasoning"))
+})
+
+test("stripProtectedReasoning no-op when protectedTools is empty", () => {
+    const big = "x".repeat(3000)
+    const messages: WithParts[] = [
+        userMsg("u0", "claude-4", "anthropic"),
+        protectedToolMsg("a1", big),
+        userMsg("u1", "claude-4", "anthropic"),
+    ]
+    assert.equal(stripProtectedReasoning(messages, [], 2048), 0)
+})
+
+test("stripProtectedReasoning preserves the tool call and non-reasoning parts", () => {
+    const big = "x".repeat(3000)
+    const messages: WithParts[] = [
+        userMsg("u0", "claude-4", "anthropic"),
+        {
+            info: { id: "a1", role: "assistant", sessionID: SID, agent: "assistant", time: { created: 2 } } as WithParts["info"],
+            parts: [
+                { id: "a1-text", messageID: "a1", sessionID: SID, type: "text", text: "here is the summary" },
+                { id: "a1-reason", messageID: "a1", sessionID: SID, type: "reasoning", text: big },
+                { id: "a1-tool", messageID: "a1", sessionID: SID, type: "tool", tool: "compress", callID: "c1", state: { status: "completed", output: "ok" } },
+            ],
+        },
+        userMsg("u1", "claude-4", "anthropic"),
+    ]
+    const removed = stripProtectedReasoning(messages, PROTECTED, 2048)
+    assert.equal(removed, 1)
+    assert.deepEqual(messages[1]!.parts.map((p) => p.type), ["text", "tool"], "text + tool preserved, reasoning removed")
+})
+
+test("stripProtectedReasoning is idempotent (second pass removes nothing)", () => {
+    const big = "x".repeat(3000)
+    const messages: WithParts[] = [
+        userMsg("u0", "claude-4", "anthropic"),
+        protectedToolMsg("a1", big),
+        userMsg("u1", "claude-4", "anthropic"),
+    ]
+    const first = stripProtectedReasoning(messages, PROTECTED, 2048)
+    const second = stripProtectedReasoning(messages, PROTECTED, 2048)
+    assert.equal(first, 1)
+    assert.equal(second, 0, "idempotent — nothing left to remove")
+})
+
+test("stripProtectedReasoning strips all qualifying historical messages (compress + skill)", () => {
+    const big = "x".repeat(3000)
+    const messages: WithParts[] = [
+        userMsg("u0", "claude-4", "anthropic"),
+        protectedToolMsg("a1", big, "compress"),
+        protectedToolMsg("a2", big, "skill"),
+        userMsg("u1", "claude-4", "anthropic"),
+    ]
+    const removed = stripProtectedReasoning(messages, PROTECTED, 2048)
+    assert.equal(removed, 2)
+    assert.ok(!messages[1]!.parts.some((p) => p.type === "reasoning"), "a1 stripped")
+    assert.ok(!messages[2]!.parts.some((p) => p.type === "reasoning"), "a2 stripped")
+})
+
+test("stripProtectedReasoning multi-turn growth cycle: closed turns stripped, current round kept", () => {
+    const big = "x".repeat(3000)
+    const messages: WithParts[] = [
+        userMsg("u0", "claude-4", "anthropic"),
+        protectedToolMsg("a1", big),
+        userMsg("u1", "claude-4", "anthropic"),
+        protectedToolMsg("a2", big),
+        userMsg("u2", "claude-4", "anthropic"),
+        protectedToolMsg("a3", big),
+    ]
+    const removed = stripProtectedReasoning(messages, PROTECTED, 2048)
+    assert.equal(removed, 2, "a1 and a2 (closed turns) stripped")
+    assert.ok(!messages[1]!.parts.some((p) => p.type === "reasoning"), "a1 stripped")
+    assert.ok(!messages[3]!.parts.some((p) => p.type === "reasoning"), "a2 stripped")
+    assert.ok(messages[5]!.parts.some((p) => p.type === "reasoning"), "a3 (current round) preserved")
+})
+
+test("stripProtectedReasoning respects a custom threshold", () => {
+    const mid = "x".repeat(5000)
+    const mk = (): WithParts[] => [
+        userMsg("u0", "claude-4", "anthropic"),
+        protectedToolMsg("a1", mid),
+        userMsg("u1", "claude-4", "anthropic"),
+    ]
+    assert.equal(stripProtectedReasoning(mk(), PROTECTED, 2048), 1, "stripped at 2048")
+    assert.equal(stripProtectedReasoning(mk(), PROTECTED, 10000), 0, "not stripped at 10000")
+})
+
+test("stripProtectedReasoning sums reasoning length across multiple reasoning parts", () => {
+    const messages: WithParts[] = [
+        userMsg("u0", "claude-4", "anthropic"),
+        {
+            info: { id: "a1", role: "assistant", sessionID: SID, agent: "assistant", time: { created: 2 } } as WithParts["info"],
+            parts: [
+                { id: "a1-r1", messageID: "a1", sessionID: SID, type: "reasoning", text: "x".repeat(1500) },
+                { id: "a1-r2", messageID: "a1", sessionID: SID, type: "reasoning", text: "x".repeat(1500) },
+                { id: "a1-tool", messageID: "a1", sessionID: SID, type: "tool", tool: "compress", callID: "c1", state: { status: "completed", output: "ok" } },
+            ],
+        },
+        userMsg("u1", "claude-4", "anthropic"),
+    ]
+    const removed = stripProtectedReasoning(messages, PROTECTED, 2048)
+    assert.equal(removed, 2, "both reasoning parts removed (sum 3000 > 2048)")
+    assert.ok(!messages[1]!.parts.some((p) => p.type === "reasoning"))
+})
+
+const cfgBase: CompressConfig = {
+    permission: "allow",
+    showCompression: true,
+    summaryBuffer: true,
+    maxContextLimit: "55%",
+    minContextLimit: "45%",
+    nudgeFrequency: 5,
+    minNudgeContextPercent: 15,
+    iterationNudgeThreshold: 15,
+    nudgeForce: "soft",
+    protectedTools: ["skill", "compress"],
+    protectTags: false,
+    protectUserMessages: false,
+    maxSummaryLengthHard: 20000,
+    minCompressRange: 5000,
+    minNudgeGrowthRatio: 0.45,
+    minNudgeGrowthFloor: 5000,
+    emergencyThresholdPercent: "98%",
+    maxVisibleSegments: 50,
+    keepEmbedMaxChars: 2000,
+    stripProtectedReasoning: true,
+    stripProtectedReasoningThreshold: 2048,
+}
+
+test("config: stripProtectedReasoning keys survive a no-op merge (defaults preserved)", () => {
+    const merged = mergeCompress(cfgBase, {})
+    assert.equal(merged.stripProtectedReasoning, true)
+    assert.equal(merged.stripProtectedReasoningThreshold, 2048)
+})
+
+test("config: kill-switch override stripProtectedReasoning=false wins", () => {
+    const merged = mergeCompress(cfgBase, { stripProtectedReasoning: false })
+    assert.equal(merged.stripProtectedReasoning, false)
+    assert.equal(merged.stripProtectedReasoningThreshold, 2048, "threshold preserved")
+})
+
+test("config: custom threshold override wins, flag preserved", () => {
+    const merged = mergeCompress(cfgBase, { stripProtectedReasoningThreshold: 5000 })
+    assert.equal(merged.stripProtectedReasoningThreshold, 5000)
+    assert.equal(merged.stripProtectedReasoning, true, "flag preserved")
 })

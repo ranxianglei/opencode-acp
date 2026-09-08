@@ -15,7 +15,7 @@
 
 import assert from "node:assert/strict"
 import test, { beforeEach } from "node:test"
-import type { PluginConfig } from "../lib/config"
+import type { PluginConfig, CompressConfig } from "../lib/config"
 import { createChatMessageTransformHandler } from "../lib/hooks"
 import { Logger } from "../lib/logger"
 import { createSessionState, saveSessionState, type WithParts, type SessionState } from "../lib/state"
@@ -29,7 +29,11 @@ import { createTestRegistry } from "./registry-stub"
 
 const SID = "session-e2e-1"
 
-function buildConfig(overrides: Partial<PluginConfig> = {}): PluginConfig {
+function buildConfig(
+    overrides: { compress?: Partial<CompressConfig>; gc?: Partial<PluginConfig["gc"]> } & Partial<
+        Omit<PluginConfig, "compress" | "gc">
+    > = {},
+): PluginConfig {
     const base: PluginConfig = {
         enabled: true,
         autoUpdate: true,
@@ -62,7 +66,12 @@ function buildConfig(overrides: Partial<PluginConfig> = {}): PluginConfig {
             batchCleanup: { lowThreshold: "60%", highThreshold: "75%", forceThreshold: "90%" },
         },
     }
-    return { ...base, ...overrides }
+    return {
+        ...base,
+        ...overrides,
+        compress: { ...base.compress, ...(overrides.compress ?? {}) },
+        gc: { ...base.gc, ...(overrides.gc ?? {}) },
+    }
 }
 
 let msgCounter = 0
@@ -163,7 +172,10 @@ function createMockPrompts() {
     }
 }
 
-function setupPipeline(stateOverrides: Partial<SessionState> = {}) {
+function setupPipeline(
+    stateOverrides: Partial<SessionState> = {},
+    configOverrides: Parameters<typeof buildConfig>[0] = {},
+) {
     const tempDir = mkdtempSync(join(tmpdir(), "acp-e2e-"))
     process.env.XDG_DATA_HOME = tempDir
     process.env.XDG_CONFIG_HOME = tempDir
@@ -173,7 +185,7 @@ function setupPipeline(stateOverrides: Partial<SessionState> = {}) {
     Object.assign(state, stateOverrides)
 
     const logger = new Logger(false)
-    const config = buildConfig()
+    const config = buildConfig(configOverrides)
     const client = createMockClient()
     const prompts = createMockPrompts()
     const hostPermissions = { global: undefined, agents: {} }
@@ -853,4 +865,64 @@ test("normal agent request (build) is still fully processed", async () => {
         messages.length >= 2,
         "build: messages should be processed (suffix may be appended)",
     )
+})
+
+// ─── Test: stripProtectedReasoning kill-switch (hook-level guard) ───────────
+// The guard lives in lib/hooks.ts (`config.compress.stripProtectedReasoning !==
+// false`), not in the pure function, so it must be exercised through the full
+// transform handler. Regression: with the guard replaced by `if (true)`, the
+// flag=false case below would strip reasoning and fail.
+
+test("kill-switch: stripProtectedReasoning=false preserves historical reasoning through the handler", async () => {
+    const big = "x".repeat(3000)
+    const mkProtected = (id: string): WithParts =>
+        makeAssistantMessage(id, "summary text", [
+            { type: "reasoning", text: big, id: `${id}-reason`, sessionID: SID, messageID: id },
+            {
+                type: "tool",
+                tool: "compress",
+                callID: `${id}-call`,
+                id: `${id}-tool`,
+                sessionID: SID,
+                messageID: id,
+                state: { status: "completed", output: "ok", input: {} },
+            },
+        ])
+    const buildMessages = (): WithParts[] => [
+        makeUserMessage("u1", "do it"),
+        mkProtected("a1"),
+        makeUserMessage("u2", "next"),
+        mkProtected("a2"),
+    ]
+
+    // Kill-switch ON (disabled): the historical protected message's reasoning must survive.
+    {
+        const { handler } = setupPipeline(
+            {},
+            { compress: { protectedTools: ["compress"], stripProtectedReasoning: false } },
+        )
+        const messages = buildMessages()
+        const output = { messages }
+        await handler({}, output)
+        const a1 = output.messages.find((m) => m.info.id === "a1")!
+        const a2 = output.messages.find((m) => m.info.id === "a2")!
+        assert.ok(a1.parts.some((p) => p.type === "reasoning"), "disabled: historical a1 reasoning preserved")
+        assert.ok(a2.parts.some((p) => p.type === "reasoning"), "disabled: current a2 reasoning preserved")
+    }
+
+    // Kill-switch OFF (enabled, the default): historical reasoning stripped, current round kept.
+    {
+        const { handler } = setupPipeline(
+            {},
+            { compress: { protectedTools: ["compress"], stripProtectedReasoning: true } },
+        )
+        const messages = buildMessages()
+        const output = { messages }
+        await handler({}, output)
+        const a1 = output.messages.find((m) => m.info.id === "a1")!
+        const a2 = output.messages.find((m) => m.info.id === "a2")!
+        assert.ok(!a1.parts.some((p) => p.type === "reasoning"), "enabled: historical a1 reasoning stripped")
+        assert.ok(a1.parts.some((p) => p.type === "tool"), "enabled: a1 tool call preserved")
+        assert.ok(a2.parts.some((p) => p.type === "reasoning"), "enabled: current a2 reasoning preserved")
+    }
 })

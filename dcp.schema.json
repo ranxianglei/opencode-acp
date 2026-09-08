@@ -568,6 +568,17 @@
                     "type": "boolean",
                     "default": true,
                     "description": "Always protect the most recent user message from compression."
+                },
+                "stripProtectedReasoning": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Strip reasoning parts from protected-exempt (compress/skill) messages in closed historical turns. The current (possibly-open) round is never touched."
+                },
+                "stripProtectedReasoningThreshold": {
+                    "type": "number",
+                    "default": 2048,
+                    "minimum": 0,
+                    "description": "Minimum total reasoning length (chars) on a protected-exempt historical message before its reasoning is stripped."
                 }
             },
             "default": {
@@ -592,7 +603,9 @@
                 "lastSegmentSoftBlock": true,
                 "preserveRecentMessages": 20,
                 "preserveRecentTokens": 20000,
-                "preserveLastUserMessage": true
+                "preserveLastUserMessage": true,
+                "stripProtectedReasoning": true,
+                "stripProtectedReasoningThreshold": 2048
             }
         },
         "gc": {

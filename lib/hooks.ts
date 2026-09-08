@@ -11,6 +11,7 @@ import {
     prune,
     stripHallucinations,
     stripHallucinationsFromString,
+    stripProtectedReasoning,
     stripStaleMetadata,
     syncCompressionBlocks,
     computeInputBudget,
@@ -256,6 +257,18 @@ export function createChatMessageTransformHandler(
         prune(state, logger, config, output.messages)
         truncateLargeToolOutputs(state, config, logger, output.messages)
         hideConsumedCompressCalls(state, output.messages)
+        if (config.compress.stripProtectedReasoning !== false) {
+            const removedReasoning = stripProtectedReasoning(
+                output.messages,
+                config.compress.protectedTools,
+                config.compress.stripProtectedReasoningThreshold ?? 2048,
+            )
+            if (removedReasoning > 0) {
+                logger.debug("stripProtectedReasoning: removed reasoning parts from historical protected messages", {
+                    removed: removedReasoning,
+                })
+            }
+        }
         assignMessageRefs(state, output.messages)
         const compressionPriorities = buildPriorityMap(config, state, output.messages)
         prompts.reload()

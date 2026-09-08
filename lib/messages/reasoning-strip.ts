@@ -41,3 +41,93 @@ export function stripStaleMetadata(messages: WithParts[]): void {
         })
     })
 }
+
+/**
+ * Strip `reasoning` parts from protected-exempt HISTORICAL assistant messages.
+ *
+ * Protected (compress/skill) messages are excluded from every compression
+ * selection at message granularity (`filterProtectedToolMessages`), so they are
+ * re-sent every turn with their `reasoning` riding along — a monotonically
+ * growing, never-reclaimable floor in the incompressible baseline.
+ *
+ * This request-time pass removes ONLY the `reasoning` parts from such messages
+ * when ALL of the following gates hold (see devlog DESIGN.md):
+ *   1. turn-closure: the message is strictly before the last genuine user
+ *      message. The current, possibly-open round is never touched — providers
+ *      may require replaying the active round's thinking.
+ *   2. selector: the message contains a protected tool part (compress/skill).
+ *   3. size: the message's total reasoning length exceeds `threshold` chars.
+ *      Small reasoning is left untouched → zero prefix churn for it.
+ *
+ * The tool call and every non-reasoning part are preserved. No state/DB writes;
+ * deterministic (prefix-cache-stable within a turn).
+ *
+ * @returns the number of `reasoning` parts removed.
+ */
+export function stripProtectedReasoning(
+    messages: WithParts[],
+    protectedTools: string[],
+    threshold: number,
+): number {
+    if (protectedTools.length === 0) {
+        return 0
+    }
+
+    const lastUserMessage = getLastUserMessage(messages)
+    if (!lastUserMessage || lastUserMessage.info.role !== "user") {
+        return 0
+    }
+
+    // Index of the last genuine user message = start of the current round.
+    // Only messages strictly before it belong to closed historical turns.
+    let lastUserIndex = -1
+    for (let i = messages.length - 1; i >= 0; i--) {
+        if (messages[i] === lastUserMessage) {
+            lastUserIndex = i
+            break
+        }
+    }
+    if (lastUserIndex <= 0) {
+        return 0
+    }
+
+    const protectedSet = new Set(protectedTools)
+    let removed = 0
+
+    for (let i = 0; i < lastUserIndex; i++) {
+        const message = messages[i]
+        if (!message || message.info.role !== "assistant") {
+            continue
+        }
+
+        const parts = Array.isArray(message.parts) ? message.parts : []
+        let hasProtectedTool = false
+        let reasoningLength = 0
+
+        for (const part of parts) {
+            if (part.type === "tool") {
+                if (protectedSet.has(part.tool)) {
+                    hasProtectedTool = true
+                }
+            } else if (part.type === "reasoning") {
+                reasoningLength += part.text.length
+            }
+        }
+
+        if (!hasProtectedTool) {
+            continue
+        }
+        if (reasoningLength <= threshold) {
+            continue
+        }
+
+        const filtered = parts.filter((part) => part.type !== "reasoning")
+        if (filtered.length === parts.length) {
+            continue
+        }
+        message.parts = filtered
+        removed += parts.length - filtered.length
+    }
+
+    return removed
+}

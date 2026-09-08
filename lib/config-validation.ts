@@ -49,6 +49,8 @@ export const VALID_CONFIG_KEYS = new Set([
     "compress.preserveRecentMessages",
     "compress.preserveRecentTokens",
     "compress.preserveLastUserMessage",
+    "compress.stripProtectedReasoning",
+    "compress.stripProtectedReasoningThreshold",
     "gc",
     "gc.algorithm",
     "gc.promotionThreshold",
@@ -536,6 +538,30 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
                     key: "compress.preserveLastUserMessage",
                     expected: "boolean",
                     actual: typeof compress.preserveLastUserMessage,
+                })
+            }
+
+            if (
+                compress.stripProtectedReasoning !== undefined &&
+                typeof compress.stripProtectedReasoning !== "boolean"
+            ) {
+                errors.push({
+                    key: "compress.stripProtectedReasoning",
+                    expected: "boolean",
+                    actual: typeof compress.stripProtectedReasoning,
+                })
+            }
+
+            if (
+                compress.stripProtectedReasoningThreshold !== undefined &&
+                (typeof compress.stripProtectedReasoningThreshold !== "number" ||
+                    !Number.isFinite(compress.stripProtectedReasoningThreshold) ||
+                    compress.stripProtectedReasoningThreshold < 0)
+            ) {
+                errors.push({
+                    key: "compress.stripProtectedReasoningThreshold",
+                    expected: "number (>= 0)",
+                    actual: JSON.stringify(compress.stripProtectedReasoningThreshold),
                 })
             }
 
