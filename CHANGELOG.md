@@ -1,5 +1,31 @@
 # Changelog
 
+### v1.16.0 — storagePath: custom storage location for session state files
+
+**Problem**: ACP's per-session state files (`{sessionId}.json` — compression blocks, nudge state, token stats) were always written to the hardcoded `$XDG_DATA_HOME/opencode/storage/plugin/acp`. Users on containers, NFS homes, or tight XDG data dirs had no way to relocate them (issue #379).
+
+**Feature** (#380, closes #379):
+- New optional top-level config `storagePath` (string) relocating the session-state directory:
+
+| Value | Resolution |
+|---|---|
+| unset / empty | default `$XDG_DATA_HOME/opencode/storage/plugin/acp` (unchanged) |
+| `/abs/path` | as-is |
+| `~` / `~/x` | expanded against the home directory |
+| `rel/path` | resolved against the project directory (opencode cwd) |
+
+```jsonc
+// acp.jsonc — global / config-dir / project layers all supported
+{ "storagePath": "~/data/acp-state" }
+```
+
+- The resolved directory is computed once per session and carried on a transient `SessionState.storageDir` field that is never written to the persisted JSON.
+- **No auto-migration**: when `storagePath` is set, no valid state is found there, but a state file exists at the default location, ACP logs a one-time WARN per session pointing at the file to move manually.
+- Config validation, JSON schema, and CONFIGURATION (EN/zh) updated; 19 new tests (path resolution, custom-dir save/load round-trip, default-location regression, 3-layer merge, migration WARN, non-persistence, registry wiring); full suite 1131/1131; dual-agent code + test review.
+- Default location is byte-for-byte unchanged when the option is unset; all API changes are additive.
+
+**Install**: `opencode plugin opencode-acp@latest --global`
+
 ### v1.15.0 — compress.reasoning: drop oversized thinking from closed-turn compress calls
 
 **Problem**: `compress` tool-call messages are hard-exempt from every compression selection (Bug 39) and are therefore re-sent verbatim on every LLM request. Their `reasoning` (thinking) parts ride along forever — a monotonically growing, unreclaimable context floor (measured at 83.5% of residual context in a real session; issue #368).
