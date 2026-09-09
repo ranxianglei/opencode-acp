@@ -335,6 +335,30 @@ ACP 从最多三层配置文件中读取（后加载的覆盖先加载的）：
 - **状态：** ACTIVE
 - **说明：** 始终保护最近一条用户消息不被压缩，无论 `preserveRecentMessages` 或 `preserveRecentTokens` 如何设置。
 
+#### `compress.stripProtectedReasoning`
+- **类型：** `boolean`
+- **默认值：** `true`
+- **状态：** ACTIVE
+- **说明：** 闭轮思考剥离的总开关（#368）。受保护豁免消息（如 `compress`/`skill` 工具调用）以消息粒度被排除在压缩之外，其 `reasoning` 部分随每轮请求重复发送，形成永久不可压缩的上下文底座。启用时（默认），ACP 在请求时丢弃这些消息在**已关闭历史轮次**中（严格位于最后一条真实用户消息之前）的 `reasoning` 部分。当前活跃轮次永不受影响；不修改任何持久化状态。设为 `false` 可完全禁用。
+
+#### `compress.stripProtectedReasoningThreshold`
+- **类型：** `number`
+- **默认值：** `0`
+- **状态：** ACTIVE
+- **说明：** 受保护豁免历史消息上 `reasoning` 总长度（字符）达到该阈值后才剥离。默认 `0` 表示无论大小都剥离 —— 单条消息的大小对前缀缓存只是噪声（失效会从第一条被改写的消息向后传播）；缓存稳定性由 `stripProtectedReasoningMinMessages` 控制。
+
+#### `compress.stripProtectedReasoningProviders`
+- **类型：** `string[]`
+- **默认值：** `["anthropic", "gemini"]`
+- **状态：** ACTIVE
+- **说明：** 闭轮思考剥离的提供方白名单（对 provider id 大小写不敏感的子串匹配；`"*"` = 所有提供方；条目会做 trim）。**失败关闭（fail-closed）**：未知、未定义或不匹配的提供方一律不剥离；显式 `[]` 同样不剥离任何提供方。闭轮思考剥离仅在 Anthropic/Gemini 上验证过安全性；部分 GPT 系网关会拒绝历史思考块不完整的请求。
+
+#### `compress.stripProtectedReasoningMinMessages`
+- **类型：** `integer`（≥ 0）
+- **默认值：** `100`
+- **状态：** ACTIVE
+- **说明：** 激活门：仅当请求携带的消息数达到该值时才运行闭轮思考剥离。短会话保持字节稳定的前缀（无缓存扰动）；被回收的底座只在长会话中才有意义。`0` 禁用该门。小数会被校验拒绝。
+
 ---
 
 ### `gc`（生成与清理）

@@ -335,6 +335,30 @@ In this example, for `anthropic/claude-sonnet-4-6`: the floor is 30%, the over-m
 - **Status:** ACTIVE
 - **Description:** Always protect the most recent user message from compression, regardless of `preserveRecentMessages` or `preserveRecentTokens`.
 
+#### `compress.stripProtectedReasoning`
+- **Type:** `boolean`
+- **Default:** `true`
+- **Status:** ACTIVE
+- **Description:** Kill-switch for closed-turn thinking stripping (#368). Protected-exempt messages (e.g. `compress`/`skill` tool calls) are excluded from compression at message granularity, so their `reasoning` parts are re-sent on every request and form a permanently incompressible floor. When enabled (default), ACP drops the `reasoning` parts from those messages in **closed historical turns** (strictly before the last genuine user message) at request time. The active round is never touched; no persisted state is modified. Set to `false` to disable entirely.
+
+#### `compress.stripProtectedReasoningThreshold`
+- **Type:** `number`
+- **Default:** `0`
+- **Status:** ACTIVE
+- **Description:** Minimum total `reasoning` length (chars) on a protected-exempt historical message before its reasoning is stripped. `0` (default) strips regardless of size — per-message size is prefix-cache noise (invalidation propagates from the first stripped message); cache stability is controlled by `stripProtectedReasoningMinMessages` instead.
+
+#### `compress.stripProtectedReasoningProviders`
+- **Type:** `string[]`
+- **Default:** `["anthropic", "gemini"]`
+- **Status:** ACTIVE
+- **Description:** Provider allowlist for closed-turn thinking stripping (case-insensitive substring match on the provider id; `"*"` = all providers; entries are trimmed). **Fail-closed**: an unknown, undefined, or non-matching provider strips nothing, as does an explicit `[]` (strip for no provider). Closed-turn thinking stripping is only documented-safe for Anthropic/Gemini; some GPT-family gateways reject requests whose historical thinking blocks are incomplete.
+
+#### `compress.stripProtectedReasoningMinMessages`
+- **Type:** `integer` (≥ 0)
+- **Default:** `100`
+- **Status:** ACTIVE
+- **Description:** Activation gate: closed-turn thinking stripping only runs when the request carries at least this many messages. Short sessions keep a byte-stable prefix (no cache churn); the reclaimed floor only matters on long sessions. `0` disables the gate. Fractional values are rejected by validation.
+
 ---
 
 ### `gc` (Generation & Cleanup)

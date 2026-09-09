@@ -334,6 +334,13 @@ ACP 使用自己的配置文件，按以下顺序搜索：
         // Preserve your messages during compression.
         // Warning: large copy-pasted prompts will never be compressed away
         "protectUserMessages": false,
+        // 受保护豁免消息的闭轮思考剥离（#368）。
+        // 请求时丢弃已关闭历史轮次中 compress/skill 工具调用的
+        // "reasoning" 部分；当前活跃轮次永不受影响。
+        "stripProtectedReasoning": true,
+        "stripProtectedReasoningThreshold": 0,
+        "stripProtectedReasoningProviders": ["anthropic", "gemini"],
+        "stripProtectedReasoningMinMessages": 100
     },
     // 垃圾回收与批量清理
     "gc": {

@@ -381,6 +381,13 @@ Each level overrides the previous, so project settings take priority over global
         // Preserve your messages during compression.
         // Warning: large copy-pasted prompts will never be compressed away
         "protectUserMessages": false,
+        // Closed-turn thinking stripping on protected-exempt messages (#368).
+        // "reasoning" parts of compress/skill tool calls in closed historical
+        // turns are dropped at request time; the active turn is never touched.
+        "stripProtectedReasoning": true,
+        "stripProtectedReasoningThreshold": 0,
+        "stripProtectedReasoningProviders": ["anthropic", "gemini"],
+        "stripProtectedReasoningMinMessages": 100
     },
     // Garbage collection — hardcoded 100% fallback only
     "gc": {

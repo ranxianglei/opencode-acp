@@ -118,3 +118,4 @@ After applying the provider/activation gates, a second dual-agent review (source
 - [x] Main #368 filed to `ranxianglei/billion-context` (**#651**) and `ranxianglei/billion-context-pi` (**#336**) (owner request).
 - [x] PR opened: **#370** (awaiting human merge).
 - [x] 2026-09-08 review session applied to PR #370: provider allowlist + activation gate + threshold 0 (owner: "直接修改pr").
+- [x] 2026-09-09 config docs: added the 4 `stripProtectedReasoning` keys to `CONFIGURATION.md`, `CONFIGURATION.zh-CN.md` (reference sections) and `README.md`, `README.zh-CN.md` (example config blocks), both languages (user: "配置文件文档没改 中英文的").
