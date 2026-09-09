@@ -3,7 +3,7 @@
 - Task ID: `2026-09-09_fork-parent-state-transfer`
 - Home Repo: `opencode-acp`
 - Status: InProgress
-- Updated: 2026-09-09 09:35
+- Updated: 2026-09-09 20:30
 
 ## 1. Summary
 
@@ -19,6 +19,16 @@
 | Commit | Description |
 |--------|-------------|
 | `b389f61` | feat: recover fork compression blocks from parent state when historical compress inputs are stripped |
+| `5ba7484` | merge: resolve conflict with master (storagePath warning + fork parent-state transfer) |
+
+### Conflict resolution (2026-09-09)
+
+Merged master (`5135dfd`, incl. #380 storagePath) into the PR branch. Single conflict in
+`lib/state/state.ts` `ensureSessionInitialized()`: this PR's fork-recovery comment block
+overlapped the new storagePath default-location warning. Resolution keeps both — the
+storagePath warning runs first, then the fork recovery path (parent-state transfer →
+historical replay fallback). No behavior change on either side. Verified after merge:
+`npm run typecheck` clean, `npm run build` success, `npm run test` → 1138 pass / 0 fail.
 
 ### Key Files
 
