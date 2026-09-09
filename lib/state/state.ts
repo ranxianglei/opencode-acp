@@ -9,8 +9,9 @@ import {
 import { loadSessionState, saveSessionState } from "./persistence"
 import { createModelLimitCatalog } from "./model-limits"
 import { rebuildCompressionState } from "./rebuild"
+import { recoverFromParentState } from "./fork-transfer"
 import {
-    isSubAgentSession,
+    getForkParentId,
     findLastCompactionTimestamp,
     countTurns,
     resetOnCompaction,
@@ -266,8 +267,8 @@ export async function ensureSessionInitialized(
     resetSessionState(state)
     state.sessionId = sessionId
 
-    const isSubAgent = await isSubAgentSession(client, sessionId)
-    state.isSubAgent = isSubAgent
+    const parentId = await getForkParentId(client, sessionId)
+    state.isSubAgent = parentId !== null
 
     state.lastCompaction = findLastCompactionTimestamp(messages)
     state.currentTurn = countTurns(state, messages)
@@ -275,12 +276,18 @@ export async function ensureSessionInitialized(
 
     const persisted = await loadSessionState(sessionId, logger)
     if (persisted === null) {
-        // Fork recovery: no persisted state for this session. If config is
-        // available, replay historical compress tool invocations to rebuild
-        // pruning state using the current session's message IDs.
+        // Fork recovery: no persisted state for this session. Prefer
+        // parent-state transfer (robust to stripped compress inputs); fall
+        // back to replaying historical compress invocations.
         if (config) {
-            const rebuilt = rebuildCompressionState(state, messages, config, logger)
-            if (rebuilt > 0) {
+            let recovered = 0
+            if (parentId) {
+                recovered = await recoverFromParentState(client, state, messages, parentId, logger)
+            }
+            if (recovered === 0) {
+                recovered = rebuildCompressionState(state, messages, config, logger)
+            }
+            if (recovered > 0) {
                 await saveSessionState(state, logger)
             }
         }
