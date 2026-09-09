@@ -334,6 +334,14 @@ ACP 使用自己的配置文件，按以下顺序搜索：
         // Preserve your messages during compression.
         // Warning: large copy-pasted prompts will never be compressed away
         "protectUserMessages": false,
+        // [#368] 请求时丢弃历史 compress 工具调用中超大的 reasoning（思考）。
+        // compress 调用被硬排除在压缩之外，其思考内容会随每次请求原样重发，
+        // 形成无法回收的上下文底座。仅作用于已关闭的轮次，活跃轮永不触碰；
+        // 低于阈值的小思考保留。
+        "reasoning": {
+            "drop": true,
+            "threshold": 2048
+        },
     },
     // 垃圾回收与批量清理
     "gc": {

@@ -288,10 +288,16 @@ export function resolveCompressOverrides(
     }
     const { models: _models, ...providerFields } = providerEntry
     const modelEntry = modelId !== undefined ? providerEntry.models?.[modelId] : undefined
-    if (modelEntry) {
-        return { ...providerFields, ...modelEntry }
+    // `reasoning` is a nested object: merge it field-wise (model > provider)
+    // instead of letting the model entry's whole object replace the
+    // provider-level one (#368).
+    const merged: CompressModelOverrides = modelEntry
+        ? { ...providerFields, ...modelEntry }
+        : providerFields
+    if (providerFields.reasoning !== undefined || modelEntry?.reasoning !== undefined) {
+        merged.reasoning = { ...providerFields.reasoning, ...modelEntry?.reasoning }
     }
-    return providerFields
+    return merged
 }
 
 export function resolveMinNudgeContextPercent(
@@ -335,8 +341,14 @@ export function resolveMinNudgeFloorTokens(
  * - `maxContextLimit`: nested > legacy flat `modelMaxLimits` > global — enforced
  *   inside resolveContextTokenLimit, so blanket-applying it here would let the
  *   flat map override the nested value (wrong precedence).
+ * - `reasoning` (#368): a nested object that merges FIELD-WISE (model > provider
+ *   > global) — blanket-applying the shallow-merged object would let an
+ *   override that sets only `drop` wipe the global `threshold`.
  */
-const OVERRIDE_BLANKET_APPLY_EXCLUDE = new Set< keyof CompressModelOverrides >(["maxContextLimit"])
+const OVERRIDE_BLANKET_APPLY_EXCLUDE = new Set<keyof CompressModelOverrides>([
+    "maxContextLimit",
+    "reasoning",
+])
 
 /**
  * Build the effective PluginConfig for the active provider/model: a shallow
@@ -355,12 +367,18 @@ export function applyCompressOverrides(
     const applied = Object.keys(overrides).filter(
         (key) => !OVERRIDE_BLANKET_APPLY_EXCLUDE.has(key as keyof CompressModelOverrides),
     )
-    if (applied.length === 0 || !config.compress) {
+    // `reasoning` is excluded from blanket apply — deep-merge it explicitly
+    // below. A reasoning-only override must NOT hit the identity early-return.
+    const reasoningOverride = overrides.reasoning
+    if ((applied.length === 0 && reasoningOverride === undefined) || !config.compress) {
         return config
     }
     const effectiveCompress: Record<string, unknown> = { ...config.compress }
     for (const key of applied) {
         effectiveCompress[key] = overrides[key as keyof CompressModelOverrides]
+    }
+    if (reasoningOverride !== undefined) {
+        effectiveCompress.reasoning = { ...config.compress.reasoning, ...reasoningOverride }
     }
     return { ...config, compress: effectiveCompress as unknown as CompressConfig }
 }

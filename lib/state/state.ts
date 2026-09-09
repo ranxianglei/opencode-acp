@@ -1,3 +1,6 @@
+import { existsSync } from "fs"
+import { join } from "path"
+import { cwd } from "process"
 import type { SessionState, ToolParameterEntry, WithParts } from "./types"
 import type { PluginConfig } from "../config"
 import type { Logger } from "../logger"
@@ -6,7 +9,12 @@ import {
     type CompressionTimingState,
     type PendingCompressionDuration,
 } from "../compress/timing"
-import { loadSessionState, saveSessionState } from "./persistence"
+import {
+    getDefaultStorageDir,
+    loadSessionState,
+    resolveStorageDir,
+    saveSessionState,
+} from "./persistence"
 import { createModelLimitCatalog } from "./model-limits"
 import { rebuildCompressionState } from "./rebuild"
 import { recoverFromParentState } from "./fork-transfer"
@@ -78,7 +86,10 @@ export class SessionStateRegistry {
     // composes the same factory.
     private readonly catalog = createModelLimitCatalog()
 
-    constructor(private readonly logger: Logger) {}
+    constructor(
+        private readonly logger: Logger,
+        private readonly projectDir?: string,
+    ) {}
 
     recordModelLimit(
         providerId: string | undefined,
@@ -142,6 +153,7 @@ export class SessionStateRegistry {
                 this.logger,
                 messages,
                 config,
+                this.projectDir,
             )
         } catch (err: any) {
             this.logger.error("Failed to initialize session state", {
@@ -207,6 +219,7 @@ export function createSessionState(): SessionState {
         modelProviderID: undefined,
         modelID: undefined,
         systemPromptTokens: undefined,
+        storageDir: undefined,
         qualityGateRetryPending: false,
     }
 }
@@ -249,6 +262,7 @@ export function resetSessionState(state: SessionState): void {
     state.modelProviderID = undefined
     state.modelID = undefined
     state.systemPromptTokens = undefined
+    state.storageDir = undefined
     state.qualityGateRetryPending = false
 }
 
@@ -259,6 +273,7 @@ export async function ensureSessionInitialized(
     logger: Logger,
     messages: WithParts[],
     config?: PluginConfig,
+    projectDir?: string,
 ): Promise<void> {
     if (state.sessionId === sessionId) {
         return
@@ -266,6 +281,12 @@ export async function ensureSessionInitialized(
 
     resetSessionState(state)
     state.sessionId = sessionId
+    // Resolve the configured storage location once per session (transient).
+    // Relative paths resolve against projectDir (opencode's directory),
+    // falling back to process.cwd() when the caller has no directory context.
+    state.storageDir = config?.storagePath
+        ? resolveStorageDir(config.storagePath, projectDir ?? cwd())
+        : undefined
 
     const parentId = await getForkParentId(client, sessionId)
     state.isSubAgent = parentId !== null
@@ -274,8 +295,18 @@ export async function ensureSessionInitialized(
     state.currentTurn = countTurns(state, messages)
     state.nudges.turnNudgeAnchors = collectTurnNudgeAnchors(messages)
 
-    const persisted = await loadSessionState(sessionId, logger)
+    const persisted = await loadSessionState(sessionId, logger, state.storageDir)
     if (persisted === null) {
+        // storagePath points elsewhere but the session file still sits at the
+        // default location (e.g. the user just configured storagePath). No
+        // auto-migration — warn once (this init path runs once per session).
+        const defaultPath = join(getDefaultStorageDir(), `${sessionId}.json`)
+        if (state.storageDir && existsSync(defaultPath)) {
+            logger.warn(
+                "storagePath is set but no valid state was found there; a state file exists at the default location — move it manually to keep history",
+                { sessionId, storageDir: state.storageDir, defaultPath },
+            )
+        }
         // Fork recovery: no persisted state for this session. Prefer
         // parent-state transfer (robust to stripped compress inputs); fall
         // back to replaying historical compress invocations.
@@ -307,7 +338,8 @@ export async function ensureSessionInitialized(
     state.nudges.lastPerMessageNudgeTokens = persisted.nudges.lastPerMessageNudgeTokens
     state.nudges.lastNudgeShownTokens = persisted.nudges.lastNudgeShownTokens
     state.nudges.lastToolOutputNudgeTokens = persisted.nudges.lastToolOutputNudgeTokens
-    state.nudges.lastTier2NudgeTokens = persisted.nudges.lastTier2NudgeTokens ?? persisted.nudges.lastTierNudgeTokens
+    state.nudges.lastTier2NudgeTokens =
+        persisted.nudges.lastTier2NudgeTokens ?? persisted.nudges.lastTierNudgeTokens
     state.nudges.lastTier3NudgeTokens = persisted.nudges.lastTier3NudgeTokens
     state.nudges.compressBaselineSet = persisted.nudges.compressBaselineSet ?? false
     state.stats = {

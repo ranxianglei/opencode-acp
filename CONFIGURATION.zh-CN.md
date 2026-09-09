@@ -65,6 +65,17 @@ ACP 从最多三层配置文件中读取（后加载的覆盖先加载的）：
 - **状态：** ACTIVE
 - **说明：** 文件日志详细级别（`~/.config/opencode/logs/acp/daily/<日期>.log`）。默认 `info`：默认落盘决策级事件（压缩提示决策、转换摘要、自动更新检查、模型切换等）。`warn`/`error` 减少输出；`silent` 完全关闭文件日志；`debug` 额外启用按请求的上下文快照与详细转储。`debug: true` 时忽略此配置。
 
+#### `storagePath`
+- **类型：** `string`
+- **默认值：** 未设置 — `$XDG_DATA_HOME/opencode/storage/plugin/acp`（即 `~/.local/share/opencode/storage/plugin/acp`）
+- **状态：** ACTIVE
+- **说明：** 会话状态文件（`{sessionId}.json`，含压缩块、提示状态、token 统计）的持久化目录。路径语义：
+  - 绝对路径 → 原样使用
+  - `~` / `~/...` → 相对于主目录展开
+  - 相对路径 → 相对于项目目录（opencode 启动目录）解析
+
+  目录不存在时会自动创建。若设置了此项、但会话状态文件仍位于默认位置，ACP 会记录一条 WARN（每会话一次）而不会自动迁移——如需保留会话历史，请手动移动该文件。
+
 #### `pruneNotification`
 - **类型：** `"off" | "minimal" | "detailed"`
 - **默认值：** `"off"`
@@ -196,7 +207,7 @@ ACP 从最多三层配置文件中读取（后加载的覆盖先加载的）：
 - **默认值：** `undefined`
 - **状态：** ACTIVE
 - **说明：** 对**所有可调 compress 字段**的嵌套按 provider / 按模型覆盖，逐字段按 **模型 > provider > 全局** 级联解析（与姊妹项目 billion-context-pi 一致，issue #344）。深层仅在该字段被显式设置时才覆盖——未设置的字段不会清空浅层取值；`0` / `false` 是显式值，而非“未设置”。未知的 provider/model id 回退到全局值。百分比与 `"X%"` 限额按当前激活模型的上下文窗口换算。在三个配置文件层（全局 → 配置目录 → 项目）之间，该映射按 provider/model 键深度合并——项目层可以只细化某个 provider 而不清掉低层配置的其他 provider。
-- **可覆盖字段：** `maxContextLimit`、`emergencyThresholdPercent`、`minNudgeContextPercent`、`nudgeFrequency`、`iterationNudgeThreshold`、`toolOutputNudgeThreshold`、`nudgeGrowthTokens`、`minNudgeGrowthRatio`、`minNudgeGrowthFloor`、`nudgeForce`、`protectedTools`、`showCompression`、`summaryBuffer`、`protectTags`、`protectUserMessages`、`maxSummaryLengthHard`、`minCompressRange`、`maxVisibleSegments`、`keepEmbedMaxChars`、`lastSegmentSoftBlock`、`preserveRecentMessages`、`preserveRecentTokens`、`preserveLastUserMessage`。
+- **可覆盖字段：** `maxContextLimit`、`emergencyThresholdPercent`、`minNudgeContextPercent`、`nudgeFrequency`、`iterationNudgeThreshold`、`toolOutputNudgeThreshold`、`nudgeGrowthTokens`、`minNudgeGrowthRatio`、`minNudgeGrowthFloor`、`nudgeForce`、`protectedTools`、`showCompression`、`summaryBuffer`、`protectTags`、`protectUserMessages`、`maxSummaryLengthHard`、`minCompressRange`、`maxVisibleSegments`、`keepEmbedMaxChars`、`lastSegmentSoftBlock`、`preserveRecentMessages`、`preserveRecentTokens`、`preserveLastUserMessage`、`reasoning`（嵌套对象，字段级）。
 - **不可覆盖：** `permission`（会话级，在得知模型信息前已固定）、已废弃的 `minContextLimit` / `modelMinLimits` 系列、扁平 `modelMaxLimits` / `modelMinLimits` 映射自身、以及 `providers` 本身。`modelMaxLimits` 本身**未废弃** —— 仍完全支持（仅优先级被超越）。`maxContextLimit` 在嵌套层设置时的优先级为 **嵌套覆盖 > `modelMaxLimits` 扁平映射 > 全局**。在此设置的 `protectedTools` 影响压缩工具与 nudge 侧逻辑；系统提示词中的受保护工具列表（在提示词构建时生成，早于模型信息可用）始终反映全局值。
 
 ```jsonc
@@ -334,6 +345,32 @@ ACP 从最多三层配置文件中读取（后加载的覆盖先加载的）：
 - **默认值：** `true`
 - **状态：** ACTIVE
 - **说明：** 始终保护最近一条用户消息不被压缩，无论 `preserveRecentMessages` 或 `preserveRecentTokens` 如何设置。
+
+#### `compress.reasoning`
+- **类型：** `object { drop?: boolean; threshold?: number }`
+- **默认值：** `{ "drop": true, "threshold": 2048 }`
+- **状态：** ACTIVE (#368)
+- **说明：** 控制从历史 `compress` 工具调用中丢弃超大 reasoning（思考）部分。`compress` 调用被硬排除在压缩之外，其思考内容会随每次请求原样重发，形成无法回收的上下文底座。本 pass 在请求时（从不修改持久化历史）移除已关闭轮次中 reasoning 总长超过 `threshold` 的 compress 消息的思考部分。活跃轮（最后一条真实用户消息及之后）永不触碰。
+- **字段：**
+  - `drop`（`boolean`，默认 `true`）— 总开关；`false` 完全禁用本 pass。
+  - `threshold`（`number`，字符数，默认 `2048`）— 单条思考大小门：消息 reasoning 总长必须**严格大于**该值才丢弃。小思考保留；长度不跨消息累计。`0` 表示丢弃所有非空 reasoning（仅零长 reasoning 幸免）。
+- **按 provider/model 覆盖（字段级，走 `compress.providers` cascade）：
+
+```jsonc
+{
+    "compress": {
+        "reasoning": { "drop": true, "threshold": 2048 },
+        "providers": {
+            "my-gateway": { "reasoning": { "drop": false } },
+            "anthropic": {
+                "reasoning": { "threshold": 8000 },
+                "models": { "claude-opus-4-5": { "reasoning": { "threshold": 16000 } } }
+            }
+        }
+    }
+}
+```
+  解析顺序：model 级 `reasoning` > provider 级 `reasoning` > 全局 `compress.reasoning`，逐字段生效（深层只覆盖显式设置的字段）。provider/model id 取自当前请求的模型标识。
 
 ---
 
@@ -528,6 +565,15 @@ ACP 从最多三层配置文件中读取（后加载的覆盖先加载的）：
         "**/credentials.json",
         "**/secrets.*"
     ]
+}
+```
+
+### 自定义会话状态存储位置
+
+```jsonc
+{
+    // 绝对路径、~ 展开，或相对于项目目录
+    "storagePath": "~/data/acp-state"
 }
 ```
 

@@ -52,6 +52,7 @@ function buildConfig(overrides: Partial<PluginConfig> = {}): PluginConfig {
             protectedTools: ["task"],
             protectTags: false,
             protectUserMessages: false,
+            reasoning: { drop: true, threshold: 2048 },
         },
         gc: {
             algorithm: "truncate",
@@ -163,7 +164,7 @@ function createMockPrompts() {
     }
 }
 
-function setupPipeline(stateOverrides: Partial<SessionState> = {}) {
+function setupPipeline(stateOverrides: Partial<SessionState> = {}, configOverrides: Partial<PluginConfig> = {}) {
     const tempDir = mkdtempSync(join(tmpdir(), "acp-e2e-"))
     process.env.XDG_DATA_HOME = tempDir
     process.env.XDG_CONFIG_HOME = tempDir
@@ -173,7 +174,7 @@ function setupPipeline(stateOverrides: Partial<SessionState> = {}) {
     Object.assign(state, stateOverrides)
 
     const logger = new Logger(false)
-    const config = buildConfig()
+    const config = buildConfig(configOverrides)
     const client = createMockClient()
     const prompts = createMockPrompts()
     const hostPermissions = { global: undefined, agents: {} }
@@ -852,5 +853,208 @@ test("normal agent request (build) is still fully processed", async () => {
     assert.ok(
         messages.length >= 2,
         "build: messages should be processed (suffix may be appended)",
+    )
+})
+
+// ─── Test: compress.reasoning drop pass (#368) ─────────────────────────────
+
+function compressToolPart(id: string): any {
+    return {
+        id,
+        messageID: "x",
+        sessionID: SID,
+        type: "tool",
+        tool: "compress",
+        callID: `call-${id}`,
+        state: { status: "completed", output: "compressed" },
+    }
+}
+
+function bigReasoningPart(id: string): any {
+    return { id, messageID: "x", sessionID: SID, type: "reasoning", text: "x".repeat(3000) }
+}
+
+function smallReasoningPart(id: string): any {
+    return { id, messageID: "x", sessionID: SID, type: "reasoning", text: "short thinking" }
+}
+
+test("reasoning drop: oversized reasoning removed from closed-turn compress call by default", async () => {
+    const { handler } = setupPipeline()
+
+    const messages: WithParts[] = [
+        makeUserMessage("u1", "Hello"),
+        makeAssistantMessage("a1", "summary", [bigReasoningPart("r1"), compressToolPart("t1")]),
+        makeUserMessage("u2", "next round"),
+    ]
+    const output = { messages }
+
+    await handler({}, output)
+
+    const a1 = output.messages.find((m) => m.info.id === "a1")!
+    assert.deepEqual(
+        a1.parts.map((p) => p.type),
+        ["text", "tool"],
+        "oversized reasoning dropped, text + compress tool survive",
+    )
+})
+
+test("reasoning drop: drop:false kill-switch keeps oversized reasoning", async () => {
+    const { handler } = setupPipeline(
+        {},
+        { compress: { ...buildConfig().compress, reasoning: { drop: false, threshold: 2048 } } },
+    )
+
+    const messages: WithParts[] = [
+        makeUserMessage("u1", "Hello"),
+        makeAssistantMessage("a1", "summary", [bigReasoningPart("r1"), compressToolPart("t1")]),
+        makeUserMessage("u2", "next round"),
+    ]
+    const output = { messages }
+
+    await handler({}, output)
+
+    const a1 = output.messages.find((m) => m.info.id === "a1")!
+    assert.deepEqual(
+        a1.parts.map((p) => p.type),
+        ["text", "reasoning", "tool"],
+        "kill-switch keeps reasoning",
+    )
+})
+
+test("reasoning drop: small thinking survives the threshold gate; threshold 0 drops it", async () => {
+    // Default threshold 2048 → small thinking kept.
+    const kept = { messages: [
+        makeUserMessage("u1", "Hello"),
+        makeAssistantMessage("a1", "summary", [smallReasoningPart("r1"), compressToolPart("t1")]),
+        makeUserMessage("u2", "next round"),
+    ] }
+    await setupPipeline().handler({}, kept)
+    const keptA1 = kept.messages.find((m) => m.info.id === "a1")!
+    assert.deepEqual(keptA1.parts.map((p) => p.type), ["text", "reasoning", "tool"])
+
+    // threshold 0 → unconditional drop.
+    const dropped = { messages: [
+        makeUserMessage("u1", "Hello"),
+        makeAssistantMessage("a1", "summary", [smallReasoningPart("r1"), compressToolPart("t1")]),
+        makeUserMessage("u2", "next round"),
+    ] }
+    await setupPipeline(
+        {},
+        { compress: { ...buildConfig().compress, reasoning: { drop: true, threshold: 0 } } },
+    ).handler({}, dropped)
+    const droppedA1 = dropped.messages.find((m) => m.info.id === "a1")!
+    assert.deepEqual(droppedA1.parts.map((p) => p.type), ["text", "tool"])
+})
+
+test("reasoning drop: provider-level drop:false disables for matching provider", async () => {
+    // Request metadata provider is "test-provider" (hardcoded in makeUserMessage).
+    const { handler } = setupPipeline(
+        {},
+        {
+            compress: {
+                ...buildConfig().compress,
+                providers: { "test-provider": { reasoning: { drop: false } } },
+            },
+        },
+    )
+
+    const output = { messages: [
+        makeUserMessage("u1", "Hello"),
+        makeAssistantMessage("a1", "summary", [bigReasoningPart("r1"), compressToolPart("t1")]),
+        makeUserMessage("u2", "next round"),
+    ] }
+
+    await handler({}, output)
+
+    const a1 = output.messages.find((m) => m.info.id === "a1")!
+    assert.deepEqual(
+        a1.parts.map((p) => p.type),
+        ["text", "reasoning", "tool"],
+        "provider-level drop:false wins for the active provider",
+    )
+})
+
+test("reasoning drop: provider keyed for another id does not disable the drop", async () => {
+    const { handler } = setupPipeline(
+        {},
+        {
+            compress: {
+                ...buildConfig().compress,
+                providers: { "my-gateway": { reasoning: { drop: false } } },
+            },
+        },
+    )
+
+    const output = { messages: [
+        makeUserMessage("u1", "Hello"),
+        makeAssistantMessage("a1", "summary", [bigReasoningPart("r1"), compressToolPart("t1")]),
+        makeUserMessage("u2", "next round"),
+    ] }
+
+    await handler({}, output)
+
+    const a1 = output.messages.find((m) => m.info.id === "a1")!
+    assert.deepEqual(
+        a1.parts.map((p) => p.type),
+        ["text", "tool"],
+        "unrelated provider override must not affect test-provider requests",
+    )
+})
+
+test("reasoning drop: model-level override beats provider-level", async () => {
+    const { handler } = setupPipeline(
+        {},
+        {
+            compress: {
+                ...buildConfig().compress,
+                providers: {
+                    "test-provider": {
+                        reasoning: { drop: false },
+                        models: { "test-model": { reasoning: { drop: true } } },
+                    },
+                },
+            },
+        },
+    )
+
+    const output = { messages: [
+        makeUserMessage("u1", "Hello"),
+        makeAssistantMessage("a1", "summary", [bigReasoningPart("r1"), compressToolPart("t1")]),
+        makeUserMessage("u2", "next round"),
+    ] }
+
+    await handler({}, output)
+
+    const a1 = output.messages.find((m) => m.info.id === "a1")!
+    assert.deepEqual(
+        a1.parts.map((p) => p.type),
+        ["text", "tool"],
+        "model-level drop:true wins over provider-level drop:false",
+    )
+})
+
+test("reasoning drop: active round reasoning is never touched", async () => {
+    const { handler } = setupPipeline()
+
+    const output = { messages: [
+        makeUserMessage("u1", "Hello"),
+        makeAssistantMessage("a1", "old round", [bigReasoningPart("r1"), compressToolPart("t1")]),
+        makeUserMessage("u2", "current round"),
+        makeAssistantMessage("a2", "active", [bigReasoningPart("r2"), compressToolPart("t2")]),
+    ] }
+
+    await handler({}, output)
+
+    const a1 = output.messages.find((m) => m.info.id === "a1")!
+    const a2 = output.messages.find((m) => m.info.id === "a2")!
+    assert.deepEqual(
+        a1.parts.map((p) => p.type),
+        ["text", "tool"],
+        "closed round dropped",
+    )
+    assert.deepEqual(
+        a2.parts.map((p) => p.type),
+        ["text", "reasoning", "tool"],
+        "active round untouched (text + reasoning + tool)",
     )
 })

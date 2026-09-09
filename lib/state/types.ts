@@ -148,6 +148,12 @@ export interface SessionState {
     modelID: string | undefined
     systemPromptTokens: number | undefined
     /**
+     * Resolved directory for this session's persisted state file (absolute path).
+     * Transient (NOT persisted): resolved once per session from config.storagePath
+     * in ensureSessionInitialized. Undefined → default XDG location.
+     */
+    storageDir: string | undefined
+    /**
      * Transient flag (NOT persisted): set to true when a compress call is rejected
      * by the pre-commit quality gate. The model must retry with `acknowledgeRisk: true`
      * to bypass quality on the retry. Consumed (reset to false) on use.

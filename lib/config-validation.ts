@@ -9,6 +9,7 @@ export const VALID_CONFIG_KEYS = new Set([
     "autoUpdate",
     "debug",
     "logLevel",
+    "storagePath",
     "showUpdateToasts",
     "allowSubAgents",
     "pruneNotification",
@@ -49,6 +50,9 @@ export const VALID_CONFIG_KEYS = new Set([
     "compress.preserveRecentMessages",
     "compress.preserveRecentTokens",
     "compress.preserveLastUserMessage",
+    "compress.reasoning",
+    "compress.reasoning.drop",
+    "compress.reasoning.threshold",
     "gc",
     "gc.algorithm",
     "gc.promotionThreshold",
@@ -114,6 +118,10 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
 
     if (config.debug !== undefined && typeof config.debug !== "boolean") {
         errors.push({ key: "debug", expected: "boolean", actual: typeof config.debug })
+    }
+
+    if (config.storagePath !== undefined && typeof config.storagePath !== "string") {
+        errors.push({ key: "storagePath", expected: "string", actual: typeof config.storagePath })
     }
 
     if (config.allowSubAgents !== undefined && typeof config.allowSubAgents !== "boolean") {
@@ -539,6 +547,45 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
                 })
             }
 
+            // [#368] Nested compress.reasoning object — merged field-wise across
+            // config layers and the provider/model cascade.
+            if (compress.reasoning !== undefined) {
+                if (
+                    typeof compress.reasoning !== "object" ||
+                    compress.reasoning === null ||
+                    Array.isArray(compress.reasoning)
+                ) {
+                    errors.push({
+                        key: "compress.reasoning",
+                        expected: "object { drop?: boolean; threshold?: integer (>= 0) }",
+                        actual: JSON.stringify(compress.reasoning),
+                    })
+                } else {
+                    if (
+                        compress.reasoning.drop !== undefined &&
+                        typeof compress.reasoning.drop !== "boolean"
+                    ) {
+                        errors.push({
+                            key: "compress.reasoning.drop",
+                            expected: "boolean",
+                            actual: typeof compress.reasoning.drop,
+                        })
+                    }
+                    if (
+                        compress.reasoning.threshold !== undefined &&
+                        (typeof compress.reasoning.threshold !== "number" ||
+                            !Number.isInteger(compress.reasoning.threshold) ||
+                            compress.reasoning.threshold < 0)
+                    ) {
+                        errors.push({
+                            key: "compress.reasoning.threshold",
+                            expected: "integer (>= 0)",
+                            actual: JSON.stringify(compress.reasoning.threshold),
+                        })
+                    }
+                }
+            }
+
             if (
                 typeof compress.iterationNudgeThreshold === "number" &&
                 compress.iterationNudgeThreshold < 1
@@ -640,6 +687,7 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
                 | "limit"
                 | "nudgeForce"
                 | "stringArray"
+                | "reasoningConfig"
 
             const OVERRIDE_FIELD_TYPES: Record<string, OverrideFieldType> = {
                 showCompression: "boolean",
@@ -665,6 +713,7 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
                 keepEmbedMaxChars: "nonNegativeNumber",
                 preserveRecentMessages: "nonNegativeNumber",
                 preserveRecentTokens: "nonNegativeNumber",
+                reasoning: "reasoningConfig",
             }
 
             const validateOverrideField = (key: string, type: OverrideFieldType, value: unknown): void => {
@@ -710,6 +759,38 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
                             !value.every((entry) => typeof entry === "string")
                         ) {
                             errors.push({ key, expected: "string[]", actual: JSON.stringify(value) })
+                        }
+                        break
+                    case "reasoningConfig":
+                        // [#368] Nested compress.reasoning override — mirrors the
+                        // top-level compress.reasoning validation, null-guarded.
+                        if (typeof value !== "object" || value === null || Array.isArray(value)) {
+                            errors.push({
+                                key,
+                                expected: "object { drop?: boolean; threshold?: integer (>= 0) }",
+                                actual: JSON.stringify(value),
+                            })
+                            break
+                        }
+                        const reasoning = value as { drop?: unknown; threshold?: unknown }
+                        if (reasoning.drop !== undefined && typeof reasoning.drop !== "boolean") {
+                            errors.push({
+                                key: `${key}.drop`,
+                                expected: "boolean",
+                                actual: typeof reasoning.drop,
+                            })
+                        }
+                        if (
+                            reasoning.threshold !== undefined &&
+                            (typeof reasoning.threshold !== "number" ||
+                                !Number.isInteger(reasoning.threshold) ||
+                                reasoning.threshold < 0)
+                        ) {
+                            errors.push({
+                                key: `${key}.threshold`,
+                                expected: "integer (>= 0)",
+                                actual: JSON.stringify(reasoning.threshold),
+                            })
                         }
                         break
                 }

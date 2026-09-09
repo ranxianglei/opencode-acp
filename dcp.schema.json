@@ -31,6 +31,10 @@
             "default": "info",
             "description": "Log verbosity: decision-level events (info) are written by default. debug adds per-message detail; warn/error/silent reduce output."
         },
+        "storagePath": {
+            "type": "string",
+            "description": "Directory where per-session state files are persisted. Absolute paths are used as-is; ~/... expands against the home directory; relative paths resolve against the project directory. Unset: $XDG_DATA_HOME/opencode/storage/plugin/acp (default)."
+        },
         "pruneNotification": {
             "type": "string",
             "enum": [
@@ -365,6 +369,21 @@
                                 "type": "boolean",
                                 "description": "Override for protecting the most recent user message."
                             },
+                            "reasoning": {
+                                "type": "object",
+                                "description": "Field-wise override of the nested compress.reasoning config (#368). Only set fields override; unset fields inherit the global value.",
+                                "properties": {
+                                    "drop": {
+                                        "type": "boolean",
+                                        "description": "Override for the master switch."
+                                    },
+                                    "threshold": {
+                                        "type": "integer",
+                                        "minimum": 0,
+                                        "description": "Override for the single-thinking size gate (chars)."
+                                    }
+                                }
+                            },
                             "models": {
                                 "type": "object",
                                 "description": "Per-model overrides by model id (highest precedence)",
@@ -496,6 +515,21 @@
                                         "preserveLastUserMessage": {
                                             "type": "boolean",
                                             "description": "Override for protecting the most recent user message."
+                                        },
+                                        "reasoning": {
+                                            "type": "object",
+                                            "description": "Field-wise override of the nested compress.reasoning config (#368); model-level wins over provider-level, field by field.",
+                                            "properties": {
+                                                "drop": {
+                                                    "type": "boolean",
+                                                    "description": "Override for the master switch."
+                                                },
+                                                "threshold": {
+                                                    "type": "integer",
+                                                    "minimum": 0,
+                                                    "description": "Override for the single-thinking size gate (chars)."
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -568,6 +602,23 @@
                     "type": "boolean",
                     "default": true,
                     "description": "Always protect the most recent user message from compression."
+                },
+                "reasoning": {
+                    "type": "object",
+                    "description": "[#368] Config for dropping oversized reasoning from closed-turn compress tool calls. compress calls are hard-exempt from compression (Bug 39), so their thinking rides along every request as an unreclaimable floor. Only messages strictly BEFORE the last genuine user message are touched; only messages whose total reasoning length EXCEEDS threshold are dropped. Merged field-wise across config layers and the provider/model cascade.",
+                    "properties": {
+                        "drop": {
+                            "type": "boolean",
+                            "default": true,
+                            "description": "Master switch for the drop pass."
+                        },
+                        "threshold": {
+                            "type": "integer",
+                            "default": 2048,
+                            "minimum": 0,
+                            "description": "Single-thinking size gate (chars): a closed-turn compress message's total reasoning length must exceed this to be dropped. Small thinkings are kept (not accumulated across messages). 0 drops any non-empty reasoning."
+                        }
+                    }
                 }
             },
             "default": {
@@ -592,7 +643,11 @@
                 "lastSegmentSoftBlock": true,
                 "preserveRecentMessages": 20,
                 "preserveRecentTokens": 20000,
-                "preserveLastUserMessage": true
+                "preserveLastUserMessage": true,
+                "reasoning": {
+                    "drop": true,
+                    "threshold": 2048
+                }
             }
         },
         "gc": {

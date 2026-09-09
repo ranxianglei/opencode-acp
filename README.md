@@ -381,6 +381,15 @@ Each level overrides the previous, so project settings take priority over global
         // Preserve your messages during compression.
         // Warning: large copy-pasted prompts will never be compressed away
         "protectUserMessages": false,
+        // [#368] Drop oversized reasoning (thinking) from historical compress
+        // tool calls at request time. compress calls are hard-exempt from
+        // compression, so their thinking rides along every request as an
+        // unreclaimable floor. Closed turns only; the active round is never
+        // touched. Small thinkings under the threshold are kept.
+        "reasoning": {
+            "drop": true,
+            "threshold": 2048
+        },
     },
     // Garbage collection — hardcoded 100% fallback only
     "gc": {

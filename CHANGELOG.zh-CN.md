@@ -1,5 +1,49 @@
 # 更新日志
 
+### v1.15.0 — compress.reasoning：按需丢弃已关闭轮次 compress 调用的超大思考
+
+**问题**：`compress` 工具调用消息被硬排除在一切压缩选择之外（Bug 39），每轮请求原样重发，其 `reasoning`（思考）部分随之永久驻留 —— 单调增长、压缩永远无法回收的上下文底座（实测会话中占残余上下文 83.5%；issue #368）。
+
+**新功能**（#377，替代 #370）：
+- 新增请求时 pass，仅当全部门条件成立时才移除消息的 `reasoning` 部分：（1）**轮次已关闭** —— 严格位于最后一条真实用户消息之前（活跃轮永不触碰；部分 provider 要求重放活跃轮 thinking）；（2）**选择器** —— 消息携带 `tool === "compress"` 工具 part（任意 status；仅 compress，不含 skill/task）；（3）**单条大小** —— 消息 reasoning 总长（多 part 求和）**严格大于** `threshold`（字符数）。小思考保留；长度不跨消息累计。持久化历史从不修改。
+- 新增嵌套配置 `compress.reasoning { drop: true, threshold: 2048 }`，三层配置文件与 #344 provider/model cascade 均为**字段级**合并（model > provider > 全局；深层只覆盖显式设置的字段）：
+
+```jsonc
+{
+    "compress": {
+        "reasoning": { "drop": true, "threshold": 2048 },
+        "providers": {
+            "my-gateway": { "reasoning": { "drop": false } },
+            "anthropic": { "models": { "claude-opus-4-5": { "reasoning": { "threshold": 8000 } } } }
+        }
+    }
+}
+```
+
+- provider/model 标识取自当前请求最后一条用户消息的 `info.model`，取不到回落 session state。`threshold: 0` 表示丢弃所有非空 reasoning。
+- 校验、JSON schema、README/CONFIGURATION（中英）全部更新；新增 29+ 测试（单元 / cascade / 校验 / hook 级 e2e，逐门变异验证）；全量 1112/1112 通过；双 agent review（代码 + 测试）。
+- 同时修复 review 中发现的两个配置校验缺陷：`compress.providers` 内的 `reasoning` 覆盖被误报为未知字段；`compress.reasoning: null` 会导致插件启动崩溃而非警告。
+
+**流程**（#367）：AGENTS.md 要求开发中发现/修复的问题必须建 issue 跟踪。
+
+**安装**：`opencode plugin opencode-acp@latest --global`
+
+### v1.14.27 — 手动代理模式（/bili/ baseURL）也触发自动禁用
+
+**问题**：v1.14.25 的自动禁用只覆盖 `bili opencode` 启动器（环境变量 `BILLION_CONTEXT_PROXY`）。用户直接把某个 provider 的 `baseURL` 指向 billion-context 代理（手动模式）时，仍会同时加载两套上下文管理 —— ACP 的工具和 `/acp` 命令与代理在 wire 层的压缩并存（issue #337）。
+
+**修复**（#338）：
+- 插件的 config hook 现在扫描所有已配置 provider 的 `options.baseURL`，发现文档约定的 `/bili/` 路径前缀即自动禁用：五个 ACP 工具（`compress`、`decompress`、`search_context`、`acp_status`、`acp_context_recap`）全部 permission-deny（从 LLM 工具列表中移除）、跳过 `/acp` 命令和 `primary_tools` 注册、所有 transform/event hook 变为 no-op，并打印一行日志说明原因。
+- 检测按 provider 进行且区分大小写；相似前缀（`/bilix/`、`bilibili.com`、裸 `/bili`）不会误判。禁用标志在配置重新加载、不再有 provider 走代理后自动解除。
+- 没有任何 provider 走代理时行为零变化 —— 独立安装完全不受影响。新增 15 个测试（单元测试 + 通过真实插件工厂的集成测试）；全量测试 1044/1044 通过。
+
+**文档**（#352）：
+- 软废弃 `minContextLimit` 与 `modelMinLimits`（JSDoc + JSON schema + README/CONFIGURATION，中英）。两者在移除前仍完全生效；维护中的提醒机制是增长型提醒（`minNudgeContextPercent` + `nudgeGrowthTokens`）。`modelMaxLimits` **未**废弃。
+
+**记账**（#358）：将 npm `stable` dist-tag 提升到 1.14.26。
+
+**安装**：`opencode plugin opencode-acp@latest --global`
+
 ### v1.14.26 — 任意 compress 字段支持按 provider/按模型覆盖；增长型提醒遵循 minNudgeContextPercent 下限
 
 **问题**：T1 增长型提醒在远低于配置的上下文下限时就触发 —— `minNudgeContextPercent` 下限被传入触发策略但被忽略，导致增长型提醒在任何上下文大小下都会触发（issue #342：400K 模型上配置了 150K 下限，却在 67K–152K 触发了 10 次 `trigger=growth` 提醒）。

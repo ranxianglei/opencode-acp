@@ -243,3 +243,119 @@ test("getInvalidConfigKeys accepts new preserveRecent* keys", () => {
     })
     assert.equal(result.length, 0)
 })
+
+// ── compress.reasoning (#368): nested object validation ──
+
+test("getInvalidConfigKeys accepts compress.reasoning with valid drop/threshold", () => {
+    const result = getInvalidConfigKeys({
+        compress: {
+            reasoning: { drop: true, threshold: 2048 },
+        },
+    })
+    assert.equal(result.length, 0)
+})
+
+test("validateConfigTypes accepts partial compress.reasoning objects", () => {
+    assert.equal(
+        validateConfigTypes({ compress: { reasoning: { drop: false } } }).length,
+        0,
+    )
+    assert.equal(
+        validateConfigTypes({ compress: { reasoning: { threshold: 0 } } }).length,
+        0,
+    )
+    assert.equal(
+        validateConfigTypes({ compress: { reasoning: {} } }).length,
+        0,
+    )
+})
+
+test("validateConfigTypes rejects non-object compress.reasoning", () => {
+    const result = validateConfigTypes({ compress: { reasoning: true } })
+    assert.equal(result.length, 1)
+    assert.equal(result[0].key, "compress.reasoning")
+})
+
+test("validateConfigTypes catches wrong type for compress.reasoning.drop", () => {
+    const result = validateConfigTypes({ compress: { reasoning: { drop: "yes" } } })
+    assert.equal(result.length, 1)
+    assert.equal(result[0].key, "compress.reasoning.drop")
+    assert.equal(result[0].expected, "boolean")
+})
+
+test("validateConfigTypes rejects non-integer and negative compress.reasoning.threshold", () => {
+    const floaty = validateConfigTypes({ compress: { reasoning: { threshold: 12.5 } } })
+    assert.equal(floaty.length, 1)
+    assert.equal(floaty[0].key, "compress.reasoning.threshold")
+
+    const negative = validateConfigTypes({ compress: { reasoning: { threshold: -1 } } })
+    assert.equal(negative.length, 1)
+    assert.equal(negative[0].key, "compress.reasoning.threshold")
+
+    const stringy = validateConfigTypes({ compress: { reasoning: { threshold: "2048" } } })
+    assert.equal(stringy.length, 1)
+    assert.equal(stringy[0].key, "compress.reasoning.threshold")
+})
+
+test("validateConfigTypes treats null compress.reasoning as invalid, not a crash", () => {
+    // Regression: typeof null === "object" previously let null slip past the
+    // object check and crash on `.drop` instead of producing an error entry.
+    const result = validateConfigTypes({ compress: { reasoning: null } })
+    assert.equal(result.length, 1)
+    assert.equal(result[0].key, "compress.reasoning")
+})
+
+test("validateConfigTypes accepts reasoning overrides inside compress.providers", () => {
+    // Regression: reasoning was missing from OVERRIDE_FIELD_TYPES, so the
+    // documented cascade config produced a spurious "unknown field" warning.
+    const providerLevel = validateConfigTypes({
+        compress: {
+            providers: {
+                "my-gateway": { reasoning: { drop: false } },
+                anthropic: {
+                    reasoning: { threshold: 8000 },
+                    models: { "claude-opus-4-5": { reasoning: { threshold: 16000 } } },
+                },
+            },
+        },
+    })
+    assert.equal(providerLevel.length, 0)
+})
+
+test("validateConfigTypes rejects invalid reasoning overrides inside compress.providers", () => {
+    const result = validateConfigTypes({
+        compress: {
+            providers: {
+                "my-gateway": {
+                    reasoning: { drop: "no", threshold: -3 },
+                    models: { "bad-model": { reasoning: { threshold: 1.5 } } },
+                },
+            },
+        },
+    })
+    assert.equal(result.length, 3)
+    assert.deepEqual(
+        result.map((e) => e.key).sort(),
+        [
+            "compress.providers.my-gateway.models.bad-model.reasoning.threshold",
+            "compress.providers.my-gateway.reasoning.drop",
+            "compress.providers.my-gateway.reasoning.threshold",
+        ],
+    )
+})
+
+test("validateConfigTypes rejects non-object reasoning overrides inside compress.providers", () => {
+    const result = validateConfigTypes({
+        compress: { providers: { "my-gateway": { reasoning: true } } },
+    })
+    assert.equal(result.length, 1)
+    assert.equal(result[0].key, "compress.providers.my-gateway.reasoning")
+})
+
+test("getInvalidConfigKeys flags unknown fields nested inside compress.reasoning", () => {
+    // Typo safety: key-path walking recurses into the nested reasoning object.
+    const result = getInvalidConfigKeys({
+        compress: { reasoning: { dropp: true, threshold: 2048 } },
+    })
+    assert.deepEqual(result, ["compress.reasoning.dropp"])
+})

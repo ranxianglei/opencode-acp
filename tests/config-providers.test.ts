@@ -398,3 +398,114 @@ test("providers: multi-field validation rejects wrong-typed values at both level
         "compress.providers.anthropic.models.m.providers",
     ])
 })
+
+// ── reasoning cascade (#368): field-wise deep merge, model > provider > global ──
+
+const reasoningBase: CompressConfig = {
+    ...base,
+    reasoning: { drop: true, threshold: 2048 },
+}
+
+test("reasoning cascade: resolve merges provider and model reasoning field-wise", () => {
+    const config = pluginConfig({
+        ...reasoningBase,
+        providers: {
+            "my-gateway": {
+                reasoning: { drop: false },
+                models: {
+                    "claude-opus-4-5": { reasoning: { threshold: 8000 } },
+                },
+            },
+        },
+    })
+    // Model level: threshold from model, drop inherited from provider.
+    assert.deepEqual(
+        resolveCompressOverrides(config, "my-gateway", "claude-opus-4-5").reasoning,
+        { drop: false, threshold: 8000 },
+    )
+    // Sibling model: provider level only.
+    assert.deepEqual(
+        resolveCompressOverrides(config, "my-gateway", "gpt-5").reasoning,
+        { drop: false },
+    )
+    // Unknown provider: no reasoning override at all.
+    assert.equal(resolveCompressOverrides(config, "openai", "gpt-5").reasoning, undefined)
+})
+
+test("reasoning cascade: model-level reasoning wins over provider-level per field", () => {
+    const config = pluginConfig({
+        ...reasoningBase,
+        providers: {
+            "my-gateway": {
+                reasoning: { drop: false, threshold: 500 },
+                models: { "m1": { reasoning: { drop: true } } },
+            },
+        },
+    })
+    assert.deepEqual(resolveCompressOverrides(config, "my-gateway", "m1").reasoning, {
+        drop: true, // model wins
+        threshold: 500, // inherited from provider
+    })
+})
+
+test("reasoning cascade: applyCompressOverrides disables via provider-level drop:false", () => {
+    const config = pluginConfig({
+        ...reasoningBase,
+        providers: { "my-gateway": { reasoning: { drop: false } } },
+    })
+    const applied = applyCompressOverrides(config, "my-gateway", "some-model")
+    assert.notEqual(applied, config)
+    assert.deepEqual(applied.compress.reasoning, { drop: false, threshold: 2048 })
+    // The input config is never mutated.
+    assert.deepEqual(config.compress.reasoning, { drop: true, threshold: 2048 })
+})
+
+test("reasoning cascade: model-level threshold override wins over provider-level", () => {
+    const config = pluginConfig({
+        ...reasoningBase,
+        providers: {
+            anthropic: {
+                reasoning: { threshold: 4000 },
+                models: { "claude-opus-4-5": { reasoning: { threshold: 8000 } } },
+            },
+        },
+    })
+    // Sibling model inherits provider threshold.
+    assert.equal(
+        applyCompressOverrides(config, "anthropic", "claude-sonnet-4-6").compress.reasoning
+            .threshold,
+        4000,
+    )
+    // Named model wins.
+    assert.equal(
+        applyCompressOverrides(config, "anthropic", "claude-opus-4-5").compress.reasoning
+            .threshold,
+        8000,
+    )
+})
+
+test("reasoning cascade: reasoning-only override still applies and keeps identity when absent", () => {
+    const config = pluginConfig({
+        ...reasoningBase,
+        providers: { "my-gateway": { reasoning: { threshold: 0 } } },
+    })
+    // Reasoning-only override → new object, other fields untouched.
+    const applied = applyCompressOverrides(config, "my-gateway", "m")
+    assert.notEqual(applied, config)
+    assert.equal(applied.compress.nudgeFrequency, reasoningBase.nudgeFrequency)
+    assert.deepEqual(applied.compress.reasoning, { drop: true, threshold: 0 })
+    // Unknown provider, no reasoning anywhere in its chain → identity.
+    assert.equal(applyCompressOverrides(config, "openai", "gpt-5"), config)
+})
+
+test("reasoning cascade: legacy config without reasoning still applies a reasoning override", () => {
+    // Legacy compress config (no reasoning field) + provider reasoning override.
+    // Result is the partial merged object — applyCompressOverrides does not
+    // inject defaults for fields nobody set (that is mergeCompress's job).
+    const config = pluginConfig({
+        ...base,
+        providers: { "my-gateway": { reasoning: { drop: false } } },
+    })
+    const applied = applyCompressOverrides(config, "my-gateway", "m")
+    assert.deepEqual(applied.compress.reasoning, { drop: false })
+})

@@ -18,14 +18,20 @@ type Permission = "ask" | "allow" | "deny"
  * - `permission` — resolved at tool registration time, before any model info exists
  * - `minContextLimit` / `modelMinLimits` — deprecated (see CONFIGURATION.md)
  * - `modelMaxLimits`, `modelMinLimits`, `providers` — structural (maps themselves)
+ * - `reasoning` — an object; cascade merges it field-wise (see
+ *   `CompressReasoningConfig`), not by whole-value replacement, so it is handled
+ *   outside the flat Omit surface.
  */
 export type CompressOverridableConfig = Omit<
     CompressConfig,
-    "permission" | "minContextLimit" | "modelMaxLimits" | "modelMinLimits" | "providers"
+    "permission" | "minContextLimit" | "modelMaxLimits" | "modelMinLimits" | "providers" | "reasoning"
 >
 
 /** Per-model / per-provider override object (all overridable fields optional). */
-export type CompressModelOverrides = Partial<CompressOverridableConfig>
+export type CompressModelOverrides = Partial<CompressOverridableConfig> & {
+    /** Field-wise override of the nested `compress.reasoning` object (#368). */
+    reasoning?: Partial<CompressReasoningConfig>
+}
 
 /**
  * Per-provider overrides inside `compress.providers.<provider>`. Provider-level
@@ -80,6 +86,44 @@ export interface CompressConfig {
     preserveRecentTokens?: number
     /** Always protect the most recent user message (default: true). */
     preserveLastUserMessage?: boolean
+    /**
+     * [#368] Drop oversized `reasoning` from closed-turn `compress` tool calls.
+     * compress calls are hard-exempt from compression (Bug 39), so their
+     * thinking rides along every request as an unreclaimable floor. Nested
+     * object — merged field-wise across config layers and the provider/model
+     * cascade. Optional for backward compatibility with pre-#368 configs;
+     * `getConfig()` always populates it via `DEFAULT_COMPRESS_REASONING`.
+     */
+    reasoning?: CompressReasoningConfig
+}
+
+/**
+ * Nested `compress.reasoning` config (#368). Field-wise merge everywhere:
+ * config-file layers (global > configDir > project) and the provider/model
+ * cascade (`providers[p].models[m]` > `providers[p]` > global) — a deeper
+ * layer only overrides a field it explicitly sets; unset fields never clear
+ * shallower values.
+ */
+export interface CompressReasoningConfig {
+    /** Master switch. Default: true. */
+    drop: boolean
+    /**
+     * Single-thinking size gate (chars): a closed-turn compress message's
+     * total reasoning length must EXCEED this for its reasoning to be
+     * dropped. Small thinkings are kept. `0` drops any non-empty reasoning
+     * (only zero-length reasoning survives). Default: 2048.
+     */
+    threshold: number
+}
+
+/**
+ * Default `compress.reasoning` (#368). Readonly — always spread into a fresh
+ * object (`{ ...DEFAULT_COMPRESS_REASONING }`) when handing it out, never
+ * handed out directly, so consumers cannot corrupt the shared default.
+ */
+export const DEFAULT_COMPRESS_REASONING: Readonly<CompressReasoningConfig> = {
+    drop: true,
+    threshold: 2048,
 }
 
 export interface Commands {
@@ -127,6 +171,13 @@ export interface PluginConfig {
     debug: boolean
     /** Log verbosity when `debug` is false; `debug: true` forces full debug logging. Default: "info". */
     logLevel: LogLevel
+    /**
+     * Directory where per-session state files are persisted.
+     * Absolute paths are used as-is; `~`/`~/...` expand against the home
+     * directory; relative paths resolve against the project directory.
+     * Unset → `$XDG_DATA_HOME/opencode/storage/plugin/acp` (default).
+     */
+    storagePath?: string
     allowSubAgents: boolean
     pruneNotification: "off" | "minimal" | "detailed"
     pruneNotificationType: "chat" | "toast"
@@ -139,7 +190,9 @@ export interface PluginConfig {
     messageFilters: MessageFiltersConfig
 }
 
-type CompressOverride = Partial<CompressConfig>
+type CompressOverride = Omit<Partial<CompressConfig>, "reasoning"> & {
+    reasoning?: Partial<CompressReasoningConfig>
+}
 
 const DEFAULT_PROTECTED_TOOLS = [
     "task",
@@ -257,6 +310,7 @@ const defaultConfig: PluginConfig = {
         preserveRecentMessages: 5,
         preserveRecentTokens: 5000,
         preserveLastUserMessage: true,
+        reasoning: { ...DEFAULT_COMPRESS_REASONING },
     },
     gc: {
         algorithm: "truncate",
@@ -488,6 +542,13 @@ export function mergeCompress(
     preserveRecentMessages: override.preserveRecentMessages ?? base.preserveRecentMessages,
     preserveRecentTokens: override.preserveRecentTokens ?? base.preserveRecentTokens,
     preserveLastUserMessage: override.preserveLastUserMessage ?? base.preserveLastUserMessage,
+    reasoning: {
+        drop: override.reasoning?.drop ?? base.reasoning?.drop ?? DEFAULT_COMPRESS_REASONING.drop,
+        threshold:
+            override.reasoning?.threshold ??
+            base.reasoning?.threshold ??
+            DEFAULT_COMPRESS_REASONING.threshold,
+    },
     }
 }
 
@@ -619,6 +680,7 @@ function mergeLayer(config: PluginConfig, data: Record<string, any>): PluginConf
         autoUpdate: data.autoUpdate ?? config.autoUpdate,
         debug: data.debug ?? config.debug,
         logLevel: data.logLevel ?? config.logLevel,
+        storagePath: data.storagePath ?? config.storagePath,
         allowSubAgents: data.allowSubAgents ?? data.experimental?.allowSubAgents ?? config.allowSubAgents,
         pruneNotification: data.pruneNotification ?? config.pruneNotification,
         pruneNotificationType: data.pruneNotificationType ?? config.pruneNotificationType,

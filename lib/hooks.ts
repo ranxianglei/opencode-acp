@@ -5,6 +5,8 @@ import { assignMessageRefs } from "./message-ids"
 import {
     buildPriorityMap,
     buildToolIdList,
+    computeInputBudget,
+    dropCompressReasoning,
     dropEmptyMessages,
     injectCompressNudges,
     injectMessageIds,
@@ -13,10 +15,11 @@ import {
     stripHallucinationsFromString,
     stripStaleMetadata,
     syncCompressionBlocks,
-    computeInputBudget,
 } from "./messages"
+import { applyCompressOverrides } from "./messages/inject/utils"
 import { renderSystemPrompt, type PromptStore } from "./prompts"
 import { buildProtectedToolsExtension } from "./prompts/extensions/system"
+import { DEFAULT_COMPRESS_REASONING } from "./config"
 import {
     applyPendingCompressionDurations,
     buildCompressionTimingKey,
@@ -233,6 +236,36 @@ export function createChatMessageTransformHandler(
         }
 
         stripHallucinations(output.messages)
+
+        // [#368] Drop oversized reasoning from closed-turn compress tool calls.
+        // compress calls are hard-exempt from compression (Bug 39), so their
+        // thinking otherwise rides along every request as an unreclaimable
+        // floor. Gated by the nested `compress.reasoning` config, resolved
+        // through the #344 cascade (model > provider > global) using THIS
+        // request's model identity (request metadata first, session state as
+        // fallback). Runs BEFORE token accounting / pruning so every later
+        // stage sees the post-drop array.
+        const dropReasoningModel = (
+            lastUserMessage?.info as { model?: { providerID?: string; modelID?: string } } | undefined
+        )?.model
+        const reasoningConfig = applyCompressOverrides(
+            config,
+            dropReasoningModel?.providerID ?? state.modelProviderID,
+            dropReasoningModel?.modelID ?? state.modelID,
+        ).compress.reasoning
+        if (reasoningConfig?.drop !== false) {
+            const droppedReasoning = dropCompressReasoning(
+                output.messages,
+                reasoningConfig?.threshold ?? DEFAULT_COMPRESS_REASONING.threshold,
+            )
+            if (droppedReasoning > 0) {
+                logger.debug("compress.reasoning: dropped oversized reasoning parts", {
+                    dropped: droppedReasoning,
+                    threshold: reasoningConfig?.threshold ?? DEFAULT_COMPRESS_REASONING.threshold,
+                })
+            }
+        }
+
         ensureBuiltinFiltersRegistered()
         applyMessageFilters(output.messages, config.messageFilters, logger, {
             sessionId: state.sessionId ?? "",

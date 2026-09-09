@@ -22,6 +22,7 @@ const base: CompressConfig = {
     emergencyThresholdPercent: "98%",
     maxVisibleSegments: 50,
     keepEmbedMaxChars: 2000,
+    reasoning: { drop: true, threshold: 2048 },
 }
 
 test("no override returns base protectedTools unchanged", () => {
@@ -54,4 +55,27 @@ test("force-protection survives across multiple config merge layers", () => {
     assert.deepEqual(emptyGlobal.protectedTools, ["compress"])
     const taskProject = mergeCompress(emptyGlobal, { protectedTools: ["task"] })
     assert.deepEqual(taskProject.protectedTools, ["task", "compress"])
+})
+
+test("reasoning merges field-wise across layers and defaults when unset", () => {
+    // No reasoning in either layer -> defaults
+    const defaults = mergeCompress(base, {})
+    assert.deepEqual(defaults.reasoning, { drop: true, threshold: 2048 })
+
+    // Override layer sets only drop -> threshold inherits from base
+    const partial = mergeCompress(base, { reasoning: { drop: false } })
+    assert.deepEqual(partial.reasoning, { drop: false, threshold: 2048 })
+
+    // Override layer sets only threshold -> drop inherits from base
+    const thresholdOnly = mergeCompress(base, { reasoning: { threshold: 0 } })
+    assert.deepEqual(thresholdOnly.reasoning, { drop: true, threshold: 0 })
+
+    // Both layers present -> override wins per field
+    const stacked = mergeCompress(partial, { reasoning: { threshold: 8000 } })
+    assert.deepEqual(stacked.reasoning, { drop: false, threshold: 8000 })
+
+    // Base without reasoning (legacy fixture) falls back to defaults
+    const legacy = { ...base, reasoning: undefined } as unknown as CompressConfig
+    const legacyMerged = mergeCompress(legacy, {})
+    assert.deepEqual(legacyMerged.reasoning, { drop: true, threshold: 2048 })
 })

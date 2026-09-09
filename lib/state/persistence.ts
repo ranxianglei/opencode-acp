@@ -1,13 +1,14 @@
 /**
  * State persistence module for ACP plugin.
  * Persists pruned tool IDs across sessions so they survive OpenCode restarts.
- * Storage location: ~/.local/share/opencode/storage/plugin/acp/{sessionId}.json
+ * Storage location: $XDG_DATA_HOME/opencode/storage/plugin/acp/{sessionId}.json
+ * by default, or the directory configured via `storagePath` (see resolveStorageDir).
  */
 
 import * as fs from "fs/promises"
 import { existsSync } from "fs"
 import { homedir } from "os"
-import { join } from "path"
+import { isAbsolute, join } from "path"
 import type { CompressionBlock, PrunedMessageEntry, SessionState, SessionStats } from "./types"
 import type { Logger } from "../logger"
 import { serializePruneMessagesState } from "./utils"
@@ -62,7 +63,8 @@ export interface PersistedSessionState {
     modelID?: string
 }
 
-function getStorageDir(): string {
+/** Default storage directory: $XDG_DATA_HOME/opencode/storage/plugin/acp */
+export function getDefaultStorageDir(): string {
     return join(
         process.env.XDG_DATA_HOME || join(homedir(), ".local", "share"),
         "opencode",
@@ -72,28 +74,50 @@ function getStorageDir(): string {
     )
 }
 
-async function ensureStorageDir(logger: Logger): Promise<void> {
-    const storageDir = getStorageDir()
-    if (!existsSync(storageDir)) {
-        await fs.mkdir(storageDir, { recursive: true })
+/**
+ * Resolve the configured `storagePath` to an absolute directory.
+ * - undefined/empty → default location
+ * - `~` or `~/...` → expanded against the home directory
+ * - absolute → used as-is
+ * - relative → resolved against `projectDir` (opencode's working directory)
+ */
+export function resolveStorageDir(configured: string | undefined, projectDir: string): string {
+    const trimmed = configured?.trim()
+    if (!trimmed) {
+        return getDefaultStorageDir()
     }
+    if (trimmed === "~") {
+        return homedir()
+    }
+    if (trimmed.startsWith("~/")) {
+        return join(homedir(), trimmed.slice(2))
+    }
+    if (isAbsolute(trimmed)) {
+        return trimmed
+    }
+    return join(projectDir, trimmed)
 }
 
-function getSessionFilePath(sessionId: string): string {
-    return join(getStorageDir(), `${sessionId}.json`)
+function getStorageDir(override?: string): string {
+    return override || getDefaultStorageDir()
+}
+
+function getSessionFilePath(sessionId: string, storageDir?: string): string {
+    return join(getStorageDir(storageDir), `${sessionId}.json`)
 }
 
 async function writePersistedSessionState(
     sessionId: string,
     state: PersistedSessionState,
     logger: Logger,
+    storageDir?: string,
 ): Promise<void> {
     // Capture file path synchronously before any await — prevents race condition
     // when fire-and-forget saves execute after XDG_DATA_HOME has changed (tests).
-    const filePath = getSessionFilePath(sessionId)
-    const storageDir = getStorageDir()
-    if (!existsSync(storageDir)) {
-        await fs.mkdir(storageDir, { recursive: true })
+    const filePath = getSessionFilePath(sessionId, storageDir)
+    const dir = getStorageDir(storageDir)
+    if (!existsSync(dir)) {
+        await fs.mkdir(dir, { recursive: true })
     }
 
     const content = JSON.stringify(state, null, 2)
@@ -145,15 +169,16 @@ export async function saveSessionState(
         modelID: sessionState.modelID,
     }
 
-    await writePersistedSessionState(sessionState.sessionId, state, logger)
+    await writePersistedSessionState(sessionState.sessionId, state, logger, sessionState.storageDir)
 }
 
 export async function loadSessionState(
     sessionId: string,
     logger: Logger,
+    storageDir?: string,
 ): Promise<PersistedSessionState | null> {
     try {
-        const filePath = getSessionFilePath(sessionId)
+        const filePath = getSessionFilePath(sessionId, storageDir)
 
         if (!existsSync(filePath)) {
             return null
@@ -255,7 +280,10 @@ export interface AggregatedStats {
     sessionCount: number
 }
 
-export async function loadAllSessionStats(logger: Logger): Promise<AggregatedStats> {
+export async function loadAllSessionStats(
+    logger: Logger,
+    storageDir?: string,
+): Promise<AggregatedStats> {
     const result: AggregatedStats = {
         totalTokens: 0,
         totalTools: 0,
@@ -264,17 +292,17 @@ export async function loadAllSessionStats(logger: Logger): Promise<AggregatedSta
     }
 
     try {
-        const storageDir = getStorageDir()
-        if (!existsSync(storageDir)) {
+        const dir = getStorageDir(storageDir)
+        if (!existsSync(dir)) {
             return result
         }
 
-        const files = await fs.readdir(storageDir)
+        const files = await fs.readdir(dir)
         const jsonFiles = files.filter((f) => f.endsWith(".json"))
 
         for (const file of jsonFiles) {
             try {
-                const filePath = join(storageDir, file)
+                const filePath = join(dir, file)
                 const content = await fs.readFile(filePath, "utf-8")
                 const state = JSON.parse(content) as PersistedSessionState
 
