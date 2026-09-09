@@ -58,13 +58,18 @@ export function serializePruneMessagesState(
     }
 }
 
-export async function isSubAgentSession(client: any, sessionID: string): Promise<boolean> {
+export async function getForkParentId(client: any, sessionID: string): Promise<string | null> {
     try {
         const result = await client.session.get({ path: { id: sessionID } })
-        return !!result.data?.parentID
+        return result.data?.parentID ?? null
     } catch (error: any) {
-        return false
+        return null
     }
+}
+
+export async function isSubAgentSession(client: any, sessionID: string): Promise<boolean> {
+    const parentId = await getForkParentId(client, sessionID)
+    return parentId !== null
 }
 
 export function findLastCompactionTimestamp(messages: WithParts[]): number {
