@@ -576,9 +576,21 @@
                 },
                 "stripProtectedReasoningThreshold": {
                     "type": "number",
-                    "default": 2048,
+                    "default": 0,
                     "minimum": 0,
-                    "description": "Minimum total reasoning length (chars) on a protected-exempt historical message before its reasoning is stripped."
+                    "description": "Minimum total reasoning length (chars) on a protected-exempt historical message before its reasoning is stripped. Default 0 strips regardless of size; cache protection comes from stripProtectedReasoningMinMessages."
+                },
+                "stripProtectedReasoningProviders": {
+                    "type": "array",
+                    "items": { "type": "string", "minLength": 1 },
+                    "default": ["anthropic", "gemini"],
+                    "description": "Provider allowlist for stripProtectedReasoning (case-insensitive substring match on the provider id; '*' = all providers). Fail-closed: unknown provider or empty list strips nothing. Closed-turn thinking stripping is only documented-safe for Anthropic/Gemini; some GPT-family gateways reject incomplete historical thinking."
+                },
+                "stripProtectedReasoningMinMessages": {
+                    "type": "integer",
+                    "default": 100,
+                    "minimum": 0,
+                    "description": "Activation gate: stripProtectedReasoning only runs when the request carries at least this many messages. Short sessions keep a byte-stable prefix; the reclaimed floor only matters on long sessions. 0 disables the gate."
                 }
             },
             "default": {
@@ -605,7 +617,9 @@
                 "preserveRecentTokens": 20000,
                 "preserveLastUserMessage": true,
                 "stripProtectedReasoning": true,
-                "stripProtectedReasoningThreshold": 2048
+                "stripProtectedReasoningThreshold": 0,
+                "stripProtectedReasoningProviders": ["anthropic", "gemini"],
+                "stripProtectedReasoningMinMessages": 100
             }
         },
         "gc": {

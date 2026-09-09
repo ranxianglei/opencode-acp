@@ -56,20 +56,69 @@ export function stripStaleMetadata(messages: WithParts[]): void {
  *      message. The current, possibly-open round is never touched — providers
  *      may require replaying the active round's thinking.
  *   2. selector: the message contains a protected tool part (compress/skill).
- *   3. size: the message's total reasoning length exceeds `threshold` chars.
- *      Small reasoning is left untouched → zero prefix churn for it.
+ *   3. size: the message's total reasoning length exceeds `threshold` chars
+ *      (default 0 — strip regardless of size; the cache-protective gate is the
+ *      session-size activation gate below, not the per-message size).
+ *   4. provider allowlist: only strip when the current request's provider is
+ *      on `allowedProviders` (case-insensitive substring; `"*"` = all).
+ *      FAIL-CLOSED: unknown/undefined provider or empty list strips nothing.
+ *      Closed-turn stripping is only *documented-safe* for a known set of
+ *      providers (Anthropic, Gemini); some upstreams (GPT-family via certain
+ *      gateways) reject incomplete historical thinking — so unknown providers
+ *      must not be touched (issue #368 review).
+ *   5. activation: only strip when the request carries at least `minMessages`
+ *      messages (default 100). Small sessions keep byte-stable prefixes for
+ *      free; the floor this pass reclaims only matters on long sessions.
  *
  * The tool call and every non-reasoning part are preserved. No state/DB writes;
  * deterministic (prefix-cache-stable within a turn).
  *
  * @returns the number of `reasoning` parts removed.
  */
+export interface StripProtectedReasoningOptions {
+    /** Provider id of the current request (e.g. "anthropic"). Undefined = unknown → fail-closed. */
+    providerID?: string
+    /** Allowlist entries (case-insensitive substring match). `"*"` = all providers. Undefined = gate disabled (legacy callers); empty list = strip nothing (fail-closed). */
+    allowedProviders?: string[]
+    /** Activation gate: strip only when `messages.length >= minMessages`. 0/undefined = always. */
+    minMessages?: number
+}
+
 export function stripProtectedReasoning(
     messages: WithParts[],
     protectedTools: string[],
     threshold: number,
+    options?: StripProtectedReasoningOptions,
 ): number {
     if (protectedTools.length === 0) {
+        return 0
+    }
+
+    // Gate 4 — provider allowlist (fail-closed). An explicitly provided list
+    // gates the pass: no entry matches (or provider unknown / list empty) →
+    // strip nothing. `"*"` opts in for every provider.
+    const allowedProviders = options?.allowedProviders
+    if (allowedProviders !== undefined) {
+        if (allowedProviders.length === 0) {
+            return 0
+        }
+        if (!allowedProviders.some((entry) => entry.trim() === "*")) {
+            const providerID = options?.providerID
+            if (
+                providerID === undefined ||
+                !allowedProviders.some((entry) =>
+                    providerID.toLowerCase().includes(entry.trim().toLowerCase()),
+                )
+            ) {
+                return 0
+            }
+        }
+    }
+
+    // Gate 5 — session-size activation. Below the floor the pass is a no-op so
+    // short sessions never pay any prefix-cache churn for it.
+    const minMessages = options?.minMessages
+    if (minMessages !== undefined && minMessages > 0 && messages.length < minMessages) {
         return 0
     }
 

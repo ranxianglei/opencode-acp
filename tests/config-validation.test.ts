@@ -223,6 +223,79 @@ test("validateConfigTypes rejects negative compress.preserveRecentTokens", () =>
     assert.equal(result[0].key, "compress.preserveRecentTokens")
 })
 
+test("validateConfigTypes accepts valid compress.stripProtectedReasoningProviders (#368)", () => {
+    const result = validateConfigTypes({
+        compress: { stripProtectedReasoningProviders: ["anthropic", "gemini", "*"] },
+    })
+    assert.equal(result.length, 0)
+})
+
+test("validateConfigTypes accepts empty compress.stripProtectedReasoningProviders (#368)", () => {
+    // Explicit empty array is a legal value ("strip for no provider"), not an error.
+    const result = validateConfigTypes({
+        compress: { stripProtectedReasoningProviders: [] },
+    })
+    assert.equal(result.length, 0)
+})
+
+test("validateConfigTypes catches wrong type for compress.stripProtectedReasoningProviders", () => {
+    const result = validateConfigTypes({
+        compress: { stripProtectedReasoningProviders: "anthropic" },
+    })
+    assert.equal(result.length, 1)
+    assert.equal(result[0].key, "compress.stripProtectedReasoningProviders")
+    assert.equal(result[0].expected, 'string[] (non-empty strings; "*" = all providers)')
+})
+
+test("validateConfigTypes catches non-string entries in stripProtectedReasoningProviders", () => {
+    const result = validateConfigTypes({
+        compress: { stripProtectedReasoningProviders: ["anthropic", 123] },
+    })
+    assert.equal(result.length, 1)
+    assert.equal(result[0].key, "compress.stripProtectedReasoningProviders")
+})
+
+test("validateConfigTypes rejects empty-string entries in stripProtectedReasoningProviders", () => {
+    const result = validateConfigTypes({
+        compress: { stripProtectedReasoningProviders: ["anthropic", ""] },
+    })
+    assert.equal(result.length, 1)
+    assert.equal(result[0].key, "compress.stripProtectedReasoningProviders")
+})
+
+test("validateConfigTypes accepts valid compress.stripProtectedReasoningMinMessages (#368)", () => {
+    const result = validateConfigTypes({
+        compress: { stripProtectedReasoningMinMessages: 100 },
+    })
+    assert.equal(result.length, 0)
+})
+
+test("validateConfigTypes catches wrong type for compress.stripProtectedReasoningMinMessages", () => {
+    const result = validateConfigTypes({
+        compress: { stripProtectedReasoningMinMessages: "100" },
+    })
+    assert.equal(result.length, 1)
+    assert.equal(result[0].key, "compress.stripProtectedReasoningMinMessages")
+    assert.equal(result[0].expected, "integer (>= 0)")
+})
+
+test("validateConfigTypes rejects negative compress.stripProtectedReasoningMinMessages", () => {
+    const result = validateConfigTypes({
+        compress: { stripProtectedReasoningMinMessages: -1 },
+    })
+    assert.equal(result.length, 1)
+    assert.equal(result[0].key, "compress.stripProtectedReasoningMinMessages")
+})
+
+test("validateConfigTypes rejects fractional compress.stripProtectedReasoningMinMessages", () => {
+    // Message counts are integers; 2.5 would act as a fractional floor.
+    const result = validateConfigTypes({
+        compress: { stripProtectedReasoningMinMessages: 2.5 },
+    })
+    assert.equal(result.length, 1)
+    assert.equal(result[0].key, "compress.stripProtectedReasoningMinMessages")
+})
+
 test("validateConfigTypes catches wrong type for compress.preserveLastUserMessage", () => {
     const result = validateConfigTypes({
         compress: { preserveLastUserMessage: 1 },

@@ -363,23 +363,205 @@ const cfgBase: CompressConfig = {
     maxVisibleSegments: 50,
     keepEmbedMaxChars: 2000,
     stripProtectedReasoning: true,
-    stripProtectedReasoningThreshold: 2048,
+    stripProtectedReasoningThreshold: 0,
+    stripProtectedReasoningProviders: ["anthropic", "gemini"],
+    stripProtectedReasoningMinMessages: 100,
 }
 
 test("config: stripProtectedReasoning keys survive a no-op merge (defaults preserved)", () => {
     const merged = mergeCompress(cfgBase, {})
     assert.equal(merged.stripProtectedReasoning, true)
-    assert.equal(merged.stripProtectedReasoningThreshold, 2048)
+    assert.equal(merged.stripProtectedReasoningThreshold, 0)
+    assert.deepEqual(merged.stripProtectedReasoningProviders, ["anthropic", "gemini"])
+    assert.equal(merged.stripProtectedReasoningMinMessages, 100)
 })
 
 test("config: kill-switch override stripProtectedReasoning=false wins", () => {
     const merged = mergeCompress(cfgBase, { stripProtectedReasoning: false })
     assert.equal(merged.stripProtectedReasoning, false)
-    assert.equal(merged.stripProtectedReasoningThreshold, 2048, "threshold preserved")
+    assert.equal(merged.stripProtectedReasoningThreshold, 0, "threshold preserved")
 })
 
 test("config: custom threshold override wins, flag preserved", () => {
     const merged = mergeCompress(cfgBase, { stripProtectedReasoningThreshold: 5000 })
     assert.equal(merged.stripProtectedReasoningThreshold, 5000)
     assert.equal(merged.stripProtectedReasoning, true, "flag preserved")
+})
+
+test("config: explicit providers array replaces the default list (even empty)", () => {
+    const replaced = mergeCompress(cfgBase, { stripProtectedReasoningProviders: ["zhipu"] })
+    assert.deepEqual(replaced.stripProtectedReasoningProviders, ["zhipu"])
+    const emptied = mergeCompress(cfgBase, { stripProtectedReasoningProviders: [] })
+    assert.deepEqual(emptied.stripProtectedReasoningProviders, [], "explicit [] = strip for no provider")
+})
+
+test("config: minMessages override wins", () => {
+    const merged = mergeCompress(cfgBase, { stripProtectedReasoningMinMessages: 0 })
+    assert.equal(merged.stripProtectedReasoningMinMessages, 0)
+})
+
+// ─── Gate 4: provider allowlist (fail-closed) ───────────────────────────────
+
+const OPT_ANTHROPIC = { allowedProviders: ["anthropic", "gemini"] }
+
+function stripFixture(): WithParts[] {
+    const big = "x".repeat(3000)
+    return [
+        userMsg("u0", "claude-4", "anthropic"),
+        protectedToolMsg("a1", big),
+        userMsg("u1", "claude-4", "anthropic"),
+    ]
+}
+
+test("provider gate: strips when providerID matches an allowlist entry", () => {
+    const messages = stripFixture()
+    const removed = stripProtectedReasoning(messages, PROTECTED, 0, {
+        ...OPT_ANTHROPIC,
+        providerID: "anthropic",
+    })
+    assert.equal(removed, 1)
+    assert.ok(!messages[1]!.parts.some((p) => p.type === "reasoning"), "stripped for allowlisted provider")
+})
+
+test("provider gate: fail-closed when providerID does not match", () => {
+    const messages = stripFixture()
+    const removed = stripProtectedReasoning(messages, PROTECTED, 0, {
+        ...OPT_ANTHROPIC,
+        providerID: "openai",
+    })
+    assert.equal(removed, 0)
+    assert.ok(messages[1]!.parts.some((p) => p.type === "reasoning"), "preserved for non-allowlisted provider")
+})
+
+test("provider gate: fail-closed when providerID is undefined", () => {
+    const messages = stripFixture()
+    const removed = stripProtectedReasoning(messages, PROTECTED, 0, OPT_ANTHROPIC)
+    assert.equal(removed, 0, "unknown provider must never be stripped (fail-closed)")
+    assert.ok(messages[1]!.parts.some((p) => p.type === "reasoning"))
+})
+
+test("provider gate: empty allowlist strips nothing", () => {
+    const messages = stripFixture()
+    const removed = stripProtectedReasoning(messages, PROTECTED, 0, {
+        allowedProviders: [],
+        providerID: "anthropic",
+    })
+    assert.equal(removed, 0)
+    assert.ok(messages[1]!.parts.some((p) => p.type === "reasoning"), "part itself is still present")
+})
+
+test("provider gate: '*' strips for any provider, including undefined", () => {
+    for (const providerID of ["zhipu", "openai", undefined]) {
+        const messages = stripFixture()
+        const removed = stripProtectedReasoning(messages, PROTECTED, 0, {
+            allowedProviders: ["*"],
+            providerID,
+        })
+        assert.equal(removed, 1, `stripped for providerID=${String(providerID)}`)
+    }
+})
+
+test("provider gate: matching is case-insensitive substring", () => {
+    const messages = stripFixture()
+    const removed = stripProtectedReasoning(messages, PROTECTED, 0, {
+        allowedProviders: ["Anthropic"],
+        providerID: "ANTHROPIC-claude",
+    })
+    assert.equal(removed, 1, "substring + case-insensitive entry matches")
+})
+
+test("provider gate: padded allowlist entries (and padded '*') are trimmed at match time", () => {
+    const messages = stripFixture()
+    const removed = stripProtectedReasoning(messages, PROTECTED, 0, {
+        allowedProviders: ["  anthropic \t"],
+        providerID: "anthropic-claude",
+    })
+    assert.equal(removed, 1, "padded entry still matches")
+
+    const wildcard = stripFixture()
+    assert.equal(
+        stripProtectedReasoning(wildcard, PROTECTED, 0, {
+            allowedProviders: [" * "],
+            providerID: undefined,
+        }),
+        1,
+        "padded '*' still short-circuits the gate",
+    )
+})
+
+test("provider gate: omitted options keeps legacy ungated behavior (pure-function callers)", () => {
+    const messages = stripFixture()
+    const removed = stripProtectedReasoning(messages, PROTECTED, 0)
+    assert.equal(removed, 1, "no options → no provider/activation gate")
+})
+
+// ─── Gate 5: session-size activation ───────────────────────────────────────
+
+test("activation gate: below minMessages strips nothing", () => {
+    const messages = stripFixture()
+    const removed = stripProtectedReasoning(messages, PROTECTED, 0, {
+        allowedProviders: ["*"],
+        minMessages: 100,
+    })
+    assert.equal(removed, 0, "3-message fixture < 100 → no-op")
+    assert.ok(messages[1]!.parts.some((p) => p.type === "reasoning"), "small session prefix untouched")
+})
+
+test("activation gate: at or above minMessages strips", () => {
+    const messages = stripFixture()
+    assert.equal(
+        stripProtectedReasoning(messages, PROTECTED, 0, { allowedProviders: ["*"], minMessages: 3 }),
+        1,
+        "messages.length == minMessages (>=) → strips",
+    )
+    assert.ok(!messages[1]!.parts.some((p) => p.type === "reasoning"), "reasoning part actually removed")
+})
+
+test("activation gate: tight boundary — one below minMessages strips nothing", () => {
+    // 3-message fixture, minMessages 4: the only difference from the >= case
+    // above is the boundary itself. Catches < vs <= mutants precisely.
+    const messages = stripFixture()
+    assert.equal(
+        stripProtectedReasoning(messages, PROTECTED, 0, { allowedProviders: ["*"], minMessages: 4 }),
+        0,
+        "messages.length == minMessages - 1 → no-op",
+    )
+    assert.ok(messages[1]!.parts.some((p) => p.type === "reasoning"), "small-session prefix untouched")
+})
+
+test("activation gate: 0 disables the gate", () => {
+    const messages = stripFixture()
+    assert.equal(
+        stripProtectedReasoning(messages, PROTECTED, 0, { allowedProviders: ["*"], minMessages: 0 }),
+        1,
+    )
+})
+
+test("combined gates: provider mismatch wins even on a large session", () => {
+    const big = "x".repeat(3000)
+    const messages: WithParts[] = [userMsg("u0", "gpt-5", "openai")]
+    for (let i = 0; i < 150; i++) {
+        messages.push(protectedToolMsg(`a${i}`, big))
+    }
+    messages.push(userMsg("u1", "gpt-5", "openai"))
+    const removed = stripProtectedReasoning(messages, PROTECTED, 0, {
+        allowedProviders: ["anthropic", "gemini"],
+        providerID: "openai",
+        minMessages: 100,
+    })
+    assert.equal(removed, 0, "fail-closed provider gate blocks the strip regardless of session size")
+})
+
+test("default threshold 0 strips small historical reasoning too (activation gate is the cache lever)", () => {
+    const small = "x".repeat(100)
+    const messages: WithParts[] = [
+        userMsg("u0", "claude-4", "anthropic"),
+        protectedToolMsg("a1", small),
+        userMsg("u1", "claude-4", "anthropic"),
+    ]
+    assert.equal(
+        stripProtectedReasoning(messages, PROTECTED, 0, { allowedProviders: ["*"], minMessages: 0 }),
+        1,
+        "threshold 0 = strip regardless of reasoning size",
+    )
 })

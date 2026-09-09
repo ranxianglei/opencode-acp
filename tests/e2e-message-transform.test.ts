@@ -56,6 +56,12 @@ function buildConfig(
             protectedTools: ["task"],
             protectTags: false,
             protectUserMessages: false,
+            // Permissive strip-gate values so fixture-sized e2e cases exercise the
+            // strip itself; the gates get dedicated e2e tests below.
+            stripProtectedReasoning: true,
+            stripProtectedReasoningThreshold: 0,
+            stripProtectedReasoningProviders: ["*"],
+            stripProtectedReasoningMinMessages: 0,
         },
         gc: {
             algorithm: "truncate",
@@ -924,5 +930,223 @@ test("kill-switch: stripProtectedReasoning=false preserves historical reasoning 
         assert.ok(!a1.parts.some((p) => p.type === "reasoning"), "enabled: historical a1 reasoning stripped")
         assert.ok(a1.parts.some((p) => p.type === "tool"), "enabled: a1 tool call preserved")
         assert.ok(a2.parts.some((p) => p.type === "reasoning"), "enabled: current a2 reasoning preserved")
+    }
+})
+
+// ─── Test: provider allowlist gate (hook-level, fail-closed) ───────────────
+// The gate reads state.modelProviderID in lib/hooks.ts. Unknown provider must
+// never be stripped (issue #368 review: GPT-family gateways may reject
+// incomplete historical thinking). Regression: removing the provider check in
+// stripProtectedReasoning makes the preserved-cases below fail.
+
+test("provider gate: unknown provider is fail-closed, allowlisted provider strips", async () => {
+    const big = "x".repeat(3000)
+    const mkProtected = (id: string): WithParts =>
+        makeAssistantMessage(id, "summary text", [
+            { type: "reasoning", text: big, id: `${id}-reason`, sessionID: SID, messageID: id },
+            {
+                type: "tool",
+                tool: "compress",
+                callID: `${id}-call`,
+                id: `${id}-tool`,
+                sessionID: SID,
+                messageID: id,
+                state: { status: "completed", output: "ok", input: {} },
+            },
+        ])
+    // User message with controllable model metadata. hooks.ts resolves the
+    // request provider as `requestModel?.providerID ?? state.modelProviderID`
+    // (this request's metadata first, cached identity pair as fallback).
+    const userWithModel = (
+        id: string,
+        text: string,
+        model?: { providerID: string | undefined; modelID: string },
+    ): WithParts => {
+        const msg = makeUserMessage(id, text)
+        ;(msg.info as { model?: { providerID: string; modelID: string } }).model = model
+        return msg
+    }
+    const buildMessages = (lastUserModel?: { providerID: string | undefined; modelID: string }): WithParts[] => [
+        makeUserMessage("u1", "do it"),
+        mkProtected("a1"),
+        userWithModel("u2", "next", lastUserModel),
+    ]
+    const gates = {
+        compress: {
+            protectedTools: ["compress"],
+            stripProtectedReasoningProviders: ["anthropic", "gemini"] as string[],
+            stripProtectedReasoningMinMessages: 0,
+        },
+    }
+
+    // Unknown provider (fixture default "test-provider", not allowlisted, no
+    // cached state) → fail-closed, no strip. (The metadata-AND-state-both-
+    // undefined case is covered at the unit level; stripStaleMetadata assumes
+    // info.model is present on user messages, so the fixture keeps it.)
+    {
+        const { handler } = setupPipeline({}, gates)
+        const output = { messages: buildMessages({ providerID: "test-provider", modelID: "test-model" }) }
+        await handler({}, output)
+        const a1 = output.messages.find((m) => m.info.id === "a1")!
+        assert.ok(a1.parts.some((p) => p.type === "reasoning"), "unknown provider: fail-closed, reasoning kept")
+    }
+
+    // This request's metadata names a non-allowlisted provider → no strip
+    // (metadata wins over the cached state below).
+    {
+        const { handler } = setupPipeline({ modelProviderID: "anthropic" }, gates)
+        const output = { messages: buildMessages({ providerID: "openai", modelID: "gpt-test" }) }
+        await handler({}, output)
+        const a1 = output.messages.find((m) => m.info.id === "a1")!
+        assert.ok(
+            a1.parts.some((p) => p.type === "reasoning"),
+            "openai: not allowlisted, reasoning kept (request metadata preferred)",
+        )
+    }
+
+    // This request's metadata names an allowlisted provider → strip.
+    {
+        const { handler } = setupPipeline({}, gates)
+        const output = { messages: buildMessages({ providerID: "anthropic", modelID: "claude-test" }) }
+        await handler({}, output)
+        const a1 = output.messages.find((m) => m.info.id === "a1")!
+        assert.ok(!a1.parts.some((p) => p.type === "reasoning"), "anthropic: allowlisted, reasoning stripped")
+        assert.ok(a1.parts.some((p) => p.type === "tool"), "anthropic: tool call preserved")
+    }
+
+    // Request metadata carries no providerID (e.g. some gateways) but the
+    // cached identity pair is allowlisted → the `?? state.modelProviderID`
+    // fallback alone gates the strip.
+    // (info.model itself must stay present: stripStaleMetadata assumes it.)
+    {
+        const { handler } = setupPipeline({ modelProviderID: "gemini" }, gates)
+        const output = {
+            messages: buildMessages({ providerID: undefined as unknown as string, modelID: "test-model" }),
+        }
+        await handler({}, output)
+        const a1 = output.messages.find((m) => m.info.id === "a1")!
+        assert.ok(!a1.parts.some((p) => p.type === "reasoning"), "fallback to cached gemini: stripped")
+    }
+})
+
+// ─── Test: session-size activation gate (hook-level) ───────────────────────
+
+test("activation gate: below minMessages the handler preserves reasoning", async () => {
+    const big = "x".repeat(3000)
+    const mkProtected = (id: string): WithParts =>
+        makeAssistantMessage(id, "summary text", [
+            { type: "reasoning", text: big, id: `${id}-reason`, sessionID: SID, messageID: id },
+            {
+                type: "tool",
+                tool: "compress",
+                callID: `${id}-call`,
+                id: `${id}-tool`,
+                sessionID: SID,
+                messageID: id,
+                state: { status: "completed", output: "ok", input: {} },
+            },
+        ])
+    const { handler } = setupPipeline(
+        {},
+        { compress: { protectedTools: ["compress"], stripProtectedReasoningMinMessages: 100 } },
+    )
+    // Allowlisted provider via request metadata so ONLY the activation gate
+    // can block the strip (mutation coverage for the minMessages check).
+    const lastUser = makeUserMessage("u2", "next")
+    ;(lastUser.info as { model?: { providerID: string; modelID: string } }).model = {
+        providerID: "anthropic",
+        modelID: "claude-test",
+    }
+    const output = {
+        messages: [makeUserMessage("u1", "do it"), mkProtected("a1"), lastUser],
+    }
+    await handler({}, output)
+    const a1 = output.messages.find((m) => m.info.id === "a1")!
+    assert.ok(
+        a1.parts.some((p) => p.type === "reasoning"),
+        "3-message session < minMessages 100: prefix must stay byte-stable",
+    )
+})
+
+// ─── Test: hook-level fallback defaults (config fields absent) ─────────────
+
+test("gate fallbacks: absent config fields fall back to defaults (anthropic/gemini, 100, 0)", async () => {
+    const big = "x".repeat(3000)
+    const mkProtected = (id: string): WithParts =>
+        makeAssistantMessage(id, "summary text", [
+            { type: "reasoning", text: big, id: `${id}-reason`, sessionID: SID, messageID: id },
+            {
+                type: "tool",
+                tool: "compress",
+                callID: `${id}-call`,
+                id: `${id}-tool`,
+                sessionID: SID,
+                messageID: id,
+                state: { status: "completed", output: "ok", input: {} },
+            },
+        ])
+    const userWithModel = (
+        id: string,
+        text: string,
+        providerID: string,
+    ): WithParts => {
+        const msg = makeUserMessage(id, text)
+        ;(msg.info as { model?: { providerID: string; modelID: string } }).model = {
+            providerID,
+            modelID: "test-model",
+        }
+        return msg
+    }
+    // Undefined gate fields simulate configs from before these keys existed
+    // (older installs / partial overrides): hooks.ts must apply the same
+    // fail-closed defaults as DEFAULT_CONFIG (providers [anthropic, gemini],
+    // minMessages 100, threshold 0). Spread with explicit undefined values so
+    // buildConfig does NOT fill in its permissive ["*"]/0 base.
+    const gates = {
+        compress: {
+            protectedTools: ["compress"],
+            stripProtectedReasoningThreshold: undefined,
+            stripProtectedReasoningProviders: undefined as unknown as string[],
+            stripProtectedReasoningMinMessages: undefined as unknown as number,
+        },
+    }
+
+    // Fallback providers: openai (via request metadata) is NOT allowlisted.
+    {
+        const { handler } = setupPipeline({}, gates)
+        const output = {
+            messages: [makeUserMessage("u1", "do it"), mkProtected("a1"), userWithModel("u2", "next", "openai")],
+        }
+        await handler({}, output)
+        const a1 = output.messages.find((m) => m.info.id === "a1")!
+        assert.ok(a1.parts.some((p) => p.type === "reasoning"), "fallback providers: openai kept")
+    }
+
+    // Fallback minMessages: anthropic short session (< 100) is a no-op.
+    {
+        const { handler } = setupPipeline({}, gates)
+        const output = {
+            messages: [makeUserMessage("u1", "do it"), mkProtected("a1"), userWithModel("u2", "next", "anthropic")],
+        }
+        await handler({}, output)
+        const a1 = output.messages.find((m) => m.info.id === "a1")!
+        assert.ok(a1.parts.some((p) => p.type === "reasoning"), "fallback minMessages: short anthropic session kept")
+    }
+
+    // Both fallbacks satisfied: long (101-message) allowlisted session strips.
+    // NOTE: assert the LAST protected message — hideConsumedCompressCalls runs
+    // before the strip and hides all but the last 2 orphaned compress calls,
+    // so earlier ones (a1…) have already lost their tool parts and are no
+    // longer selector-eligible. a99 keeps its tool part and its reasoning.
+    {
+        const { handler } = setupPipeline({}, gates)
+        const messages: WithParts[] = [makeUserMessage("u1", "do it")]
+        for (let i = 1; i <= 99; i++) messages.push(mkProtected(`a${i}`))
+        messages.push(userWithModel("u2", "next", "anthropic"))
+        const output = { messages }
+        await handler({}, output)
+        const a99 = output.messages.find((m) => m.info.id === "a99")!
+        assert.ok(a99.parts.some((p) => p.type === "tool"), "precondition: a99 kept its tool part")
+        assert.ok(!a99.parts.some((p) => p.type === "reasoning"), "fallbacks satisfied: long anthropic session strips")
     }
 })

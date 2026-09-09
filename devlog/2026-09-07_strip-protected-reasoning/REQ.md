@@ -3,7 +3,7 @@
 - Task ID: `2026-09-07_strip-protected-reasoning`
 - Home Repo: `opencode-acp`
 - Created: 2026-09-07
-- Status: InProgress (design settled; **owner decision 2026-09-07: no provider gate — "provider 先不管 有问题再说"**; see §3 + DESIGN.md §8)
+- Status: InProgress (**updated 2026-09-08 per review**: provider gate + activation gate added, threshold default 2048→0 — supersedes the 2026-09-07 "no provider gate" decision; see §3 + DESIGN.md §8)
 - Priority: P1
 - Owner: ework-daemon (agent) / ranxianglei
 - References: https://github.com/ranxianglei/opencode-acp/issues/368
@@ -29,7 +29,7 @@
 
 - **Constraints**:
   - **Request-time transform only.** ACP is a plugin with the `experimental.chat.messages.transform` hook; it can only rewrite the per-request message array. It **cannot** modify opencode's stored messages, and (per reporter) must avoid persistent/DB writes.
-   - **Provider safety (owner decision: no gate).** Some upstreams may require reasoning to be replayed complete (operator: **GPT/OpenAI** requires complete thinking). The owner chose **not** to add a provider gate ("provider 先不管 有问题再说") — the **turn-closure gate** is the safety mechanism (only closed historical rounds are ever touched; the active round is always preserved). Residual risk: a provider that validates thinking-signatures *across* user-turn boundaries could 400 on a stripped historical block; this is handled **reactively** (kill-switch `stripProtectedReasoning: false`, or a provider gate added later if a real breakage is reported). The kill-switch is the self-service mitigation.
+  - **Provider safety (review update 2026-09-08: allowlist gate, fail-closed).** Some upstreams may require reasoning to be replayed complete (operator: **GPT/OpenAI** requires complete thinking). The initial design shipped without a provider gate (owner 2026-09-07: "provider 先不管 有问题再说"); the independent review of PR #370 recommended a **provider allowlist** (fail-closed: unknown/unmatched/undefined provider → strip nothing) and the owner approved applying the review to the PR directly ("直接修改pr", 2026-09-08). Defaults: `["anthropic","gemini"]`, `"*"` = all providers, case-insensitive substring match. The **turn-closure gate** remains the primary safety mechanism (the active round is always preserved); kill-switch `stripProtectedReasoning: false` remains the self-service mitigation.
   - **Turn safety.** Never strip the **current open round's** reasoning (Anthropic thinking-signature / Gemini `thought_signature` replay on the active tool round).
   - **Cache stability.** The sent prefix must be byte-identical across consecutive requests *within a turn* so prompt caching keeps hitting; invalidation must be bounded (turn-boundary shifts + one-time enablement rebuild only).
   - **Surgical.** Only drop `reasoning` parts; never touch user-visible `text`; message identity/order unchanged (no effect on `mNNNNN` ref assignment).
@@ -40,9 +40,10 @@
 ## 4. Acceptance Criteria (must be testable)
 
 - **Correctness**:
-   - [ ] `reasoning` parts are removed from assistant messages that are (a) **before** the last genuine user message, (b) contain a **protected tool part** (`compress`/`skill`), and (c) whose total `reasoning` length **exceeds the configured threshold**. (No provider gate — owner decision.)
+   - [ ] `reasoning` parts are removed from assistant messages only when **all five gates** hold: (1) **provider allowlist** (`stripProtectedReasoningProviders`, default `["anthropic","gemini"]`; fail-closed on unknown/undefined provider; `"*"` = all; case-insensitive substring), (2) **session activation** (`stripProtectedReasoningMinMessages`, default 100; `0` = always; strips only when `messages.length >= minMessages`), (3) message is **before** the last genuine user message, (4) contains a **protected tool part** (`compress`/`skill`), (5) total `reasoning` length **exceeds the threshold** (default 0 = strip regardless of size).
+  - [ ] Provider gate is **fail-closed**: undefined/unmatched `modelProviderID` → no stripping (verified at hook level).
+  - [ ] Below `minMessages` the pass is a byte-stable no-op (small-session prefix cache untouched).
   - [ ] `reasoning` is **never** removed from any assistant message at/after the last genuine user message (the current round).
-  - [ ] Messages whose total `reasoning` length is **at or below** the threshold are left untouched (no prefix change).
   - [ ] Messages carrying user-visible `text` are not modified (only `reasoning` parts dropped).
    - [ ] Kill-switch `stripProtectedReasoning: false` disables the pass entirely (no-op) — verified at the **hook level** (full transform handler), not just the pure function.
   - [ ] No DB/state writes; request-time only (idempotent, no persisted mutation).
@@ -58,12 +59,14 @@
 - **Affected modules & entry files**:
   - `lib/messages/reasoning-strip.ts` — add the new pass function (distinct name from existing `stripStaleMetadata`).
   - `lib/hooks.ts` — wire the pass **after** `hideConsumedCompressCalls` (`:258`), **before** `assignMessageRefs` (`:259`).
-   - `lib/config.ts` + `dcp.schema.json` + `lib/config-validation.ts` — new config keys: `compress.stripProtectedReasoning` (bool, kill-switch, default `true`) + `compress.stripProtectedReasoningThreshold` (number, default `2048` chars). Both registered in `VALID_CONFIG_KEYS` + `validateConfigTypes`; excluded from `CompressOverridableConfig` (global-only, not per-provider overridable).
+   - `lib/config.ts` + `dcp.schema.json` + `lib/config-validation.ts` — config keys: `compress.stripProtectedReasoning` (bool, kill-switch, default `true`), `compress.stripProtectedReasoningThreshold` (number, default `0` chars — review: cache invalidation propagates from the first divergent message, so per-message size gating saves nothing; the activation gate is the cache lever), `compress.stripProtectedReasoningProviders` (string[], default `["anthropic","gemini"]`, `"*"` = all, case-insensitive substring; explicit `[]` = strip for no provider), `compress.stripProtectedReasoningMinMessages` (integer ≥ 0, default `100`; `0` = always active; fractional rejected by validation). All registered in `VALID_CONFIG_KEYS` + `validateConfigTypes`; threshold/providers/minMessages excluded from `CompressOverridableConfig` (global-only, not per-provider overridable).
    - `tests/reasoning-strip.test.ts` — unit tests for the pass; `tests/e2e-message-transform.test.ts` — hook-level kill-switch test.
 - **Risks**:
    - Provider semantics (no provider gate per owner decision; mitigated by the turn-closure gate + global kill-switch; residual cross-turn thinking-signature validation risk handled reactively).
    - Cache invalidation (mitigated: turn-stable prefix; bounded to boundary shifts + one-time enablement rebuild).
 - **Rollback strategy**: config kill-switch (`stripProtectedReasoning: false`) for immediate disable; revert the commit for full rollback.
-- **RESOLVED (owner decision 2026-09-07)** — see DESIGN.md §8:
-   - **No provider gate** ("provider 先不管 有问题再说"). Turn-closure gate is the safety mechanism; the global kill-switch is the self-service mitigation; a provider gate is added reactively only if a real breakage is reported.
-   - Ships **default-on** with the global kill-switch `stripProtectedReasoning: false` + threshold `2048` (owner: "阈值按照你的推荐").
+- **RESOLVED (owner decision 2026-09-07; updated 2026-09-08 review session)** — see DESIGN.md §8:
+   - **Provider gate: ADDED** (review update). Initial decision was no gate ("provider 先不管 有问题再说"); the independent PR #370 review recommended a fail-closed allowlist and the owner approved direct application to the PR ("直接修改pr"). Default `["anthropic","gemini"]`.
+   - Ships **default-on** with the global kill-switch `stripProtectedReasoning: false`.
+   - **Threshold default 2048→0** (review: per-message size is noise for prefix-cache purposes — invalidation propagates from the first divergent message; the activation gate is the cache lever).
+   - **Activation gate ADDED** (`stripProtectedReasoningMinMessages: 100`; absorbs the issue-thread "turn-count-gated handling of ancient content" idea — same intent, scoped to the strip pass instead of compression itself).

@@ -30,6 +30,8 @@ export type CompressOverridableConfig = Omit<
     // would be a silent no-op. Excluded to keep the overridable surface honest.
     | "stripProtectedReasoning"
     | "stripProtectedReasoningThreshold"
+    | "stripProtectedReasoningProviders"
+    | "stripProtectedReasoningMinMessages"
 >
 
 /** Per-model / per-provider override object (all overridable fields optional). */
@@ -97,10 +99,29 @@ export interface CompressConfig {
     stripProtectedReasoning?: boolean
     /**
      * Minimum total reasoning length (chars) on a protected-exempt historical
-     * message before its reasoning is stripped. Small reasoning is left untouched
-     * to avoid prefix-cache churn. Default: 2048.
+     * message before its reasoning is stripped. Default: 0 — strip regardless
+     * of size. Cache protection comes from the activation gate
+     * (`stripProtectedReasoningMinMessages`), not the per-message size: prefix
+     * invalidation propagates from the first divergent message, so sparing
+     * small-reasoning messages rarely avoids a fork (issue #368 review).
      */
     stripProtectedReasoningThreshold?: number
+    /**
+     * Provider allowlist for `stripProtectedReasoning` (case-insensitive
+     * substring match on the request's provider id; `"*"` = all providers).
+     * FAIL-CLOSED: an unknown provider id or an explicit `[]` strips nothing —
+     * closed-turn thinking stripping is only documented-safe for a known set
+     * (Anthropic, Gemini); some upstreams (GPT-family gateways) reject
+     * incomplete historical thinking. Default: ["anthropic", "gemini"].
+     */
+    stripProtectedReasoningProviders?: string[]
+    /**
+     * Activation gate: `stripProtectedReasoning` only runs when the request
+     * carries at least this many messages. Short sessions keep a byte-stable
+     * prefix for free; the reclaimed floor only matters on long sessions.
+     * Default: 100. Set 0 to disable the gate.
+     */
+    stripProtectedReasoningMinMessages?: number
 }
 
 export interface Commands {
@@ -279,7 +300,9 @@ const defaultConfig: PluginConfig = {
         preserveRecentTokens: 5000,
         preserveLastUserMessage: true,
         stripProtectedReasoning: true,
-        stripProtectedReasoningThreshold: 2048,
+        stripProtectedReasoningThreshold: 0,
+        stripProtectedReasoningProviders: ["anthropic", "gemini"],
+        stripProtectedReasoningMinMessages: 100,
     },
     gc: {
         algorithm: "truncate",
@@ -513,6 +536,10 @@ export function mergeCompress(
     preserveLastUserMessage: override.preserveLastUserMessage ?? base.preserveLastUserMessage,
     stripProtectedReasoning: override.stripProtectedReasoning ?? base.stripProtectedReasoning,
     stripProtectedReasoningThreshold: override.stripProtectedReasoningThreshold ?? base.stripProtectedReasoningThreshold,
+    stripProtectedReasoningProviders: Array.isArray(override.stripProtectedReasoningProviders)
+        ? [...override.stripProtectedReasoningProviders]
+        : base.stripProtectedReasoningProviders,
+    stripProtectedReasoningMinMessages: override.stripProtectedReasoningMinMessages ?? base.stripProtectedReasoningMinMessages,
     }
 }
 

@@ -164,6 +164,12 @@ export function createChatMessageTransformHandler(
         }
 
         const lastUserMessage = getLastUserMessage(messages)
+        // Model named on this request's last user message. Hoisted so the
+        // stripProtectedReasoning call below can gate on the CURRENT request's
+        // provider even before state.modelProviderID is populated.
+        const requestModel = (
+            lastUserMessage?.info as { model?: { providerID?: string; modelID?: string } } | undefined
+        )?.model
         let state: SessionState
         if (!lastUserMessage) {
             // Ephemeral state: no session to resolve, but keep running
@@ -185,9 +191,6 @@ export function createChatMessageTransformHandler(
             // value still reflects the previous model. Reconcile it from the
             // catalog entry for the model named on this request's user message
             // before any consumer (filters, GC, nudge thresholds) reads it.
-            const requestModel = (
-                lastUserMessage.info as { model?: { providerID?: string; modelID?: string } }
-            ).model
             const requestModelLimit = registry.resolveModelLimit(
                 requestModel?.providerID,
                 requestModel?.modelID,
@@ -261,7 +264,19 @@ export function createChatMessageTransformHandler(
             const removedReasoning = stripProtectedReasoning(
                 output.messages,
                 config.compress.protectedTools,
-                config.compress.stripProtectedReasoningThreshold ?? 2048,
+                config.compress.stripProtectedReasoningThreshold ?? 0,
+                {
+                    // Prefer this request's provider from the user-message
+                    // model metadata; fall back to the cached identity pair
+                    // (undefined on the first request of a fresh session →
+                    // fail-closed).
+                    providerID: requestModel?.providerID ?? state.modelProviderID,
+                    allowedProviders: config.compress.stripProtectedReasoningProviders ?? [
+                        "anthropic",
+                        "gemini",
+                    ],
+                    minMessages: config.compress.stripProtectedReasoningMinMessages ?? 100,
+                },
             )
             if (removedReasoning > 0) {
                 logger.debug("stripProtectedReasoning: removed reasoning parts from historical protected messages", {

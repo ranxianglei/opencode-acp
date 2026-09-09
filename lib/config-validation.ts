@@ -51,6 +51,8 @@ export const VALID_CONFIG_KEYS = new Set([
     "compress.preserveLastUserMessage",
     "compress.stripProtectedReasoning",
     "compress.stripProtectedReasoningThreshold",
+    "compress.stripProtectedReasoningProviders",
+    "compress.stripProtectedReasoningMinMessages",
     "gc",
     "gc.algorithm",
     "gc.promotionThreshold",
@@ -562,6 +564,33 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
                     key: "compress.stripProtectedReasoningThreshold",
                     expected: "number (>= 0)",
                     actual: JSON.stringify(compress.stripProtectedReasoningThreshold),
+                })
+            }
+
+            if (
+                compress.stripProtectedReasoningProviders !== undefined &&
+                (!Array.isArray(compress.stripProtectedReasoningProviders) ||
+                    !(compress.stripProtectedReasoningProviders as unknown[]).every(
+                        (entry) => typeof entry === "string" && entry.trim() !== "",
+                    ))
+            ) {
+                errors.push({
+                    key: "compress.stripProtectedReasoningProviders",
+                    expected: "string[] (non-empty strings; \"*\" = all providers)",
+                    actual: JSON.stringify(compress.stripProtectedReasoningProviders),
+                })
+            }
+
+            if (
+                compress.stripProtectedReasoningMinMessages !== undefined &&
+                (typeof compress.stripProtectedReasoningMinMessages !== "number" ||
+                    !Number.isInteger(compress.stripProtectedReasoningMinMessages) ||
+                    compress.stripProtectedReasoningMinMessages < 0)
+            ) {
+                errors.push({
+                    key: "compress.stripProtectedReasoningMinMessages",
+                    expected: "integer (>= 0)",
+                    actual: JSON.stringify(compress.stripProtectedReasoningMinMessages),
                 })
             }
 
