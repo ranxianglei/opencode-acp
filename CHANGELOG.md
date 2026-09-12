@@ -1,5 +1,20 @@
 # Changelog
 
+### v1.18.0 — adaptive compression candidates (opt-in): MICRO/EPISODE targets, executor-parity validated
+
+**PR #341 + follow-ups.** Adds a candidate-planning layer on top of the existing range nudges — off by default, byte-exact with v1.17.1 behavior until you opt in.
+
+**What it does when enabled** (`{"compress": {"candidates": true}}`):
+- Nudges and `acp_status` advertise pre-validated, batchable compression targets instead of raw ranges: **MICRO** = one large message or a complete tool transaction (call+result closed pair); **EPISODE** = a contiguous historical segment of smaller units (≥ `minCompressRange`).
+- Executor-parity: candidates are validated through the same `prepareExecutableRangePlans` path the `compress` tool uses — everything listed is submittable as-is (tool-pair closure, protection parity, Bug 39 semantics preserved). Planning is fail-closed and bounded to the visible context (v1.17.1 #385 guarantees ~1.2 ms).
+- Solves the over-compression failure mode where a model facing "compress m00150–m00220" nukes a whole span to save one big tool output.
+
+**Default OFF means exactly v1.17.1**: base nudge templates, breakdown copy, `acp_status` overview, and debug logs are restored byte-exact; candidate planning never runs (zero cost). Per-post-merge review, `compress.candidates` is NOT per-model overridable (global/project layers only) — the type surface, validation allowlist, and docs now agree. One deliberate carry-over from the PR branch: the transform pipeline reorder (tool-output truncation and budget guard now run after nudge injection) applies in both modes; e2e scenarios 01–12 all pass in OFF mode with the reorder in place.
+
+**Also in this release**: system-prompt and `compress-range`-prompt candidate guidance is gated behind the same switch (a1a2f23); e2e scenario 13 opts in explicitly; 12 new tests including a §5.7 four-turn growth-cycle with production `preserveRecentMessages: 20` and #207 baseline-retention assertions. Full suite 1263/1263.
+
+**Install**: `opencode plugin opencode-acp@latest --global`
+
 ### v1.17.1 — transform no longer scales with compression history (13.6 s → 1.2 ms) + config/CI fixes
 
 Three fixes bundled — headliner is #385, which removes the long-session slowdown reported in #384:
