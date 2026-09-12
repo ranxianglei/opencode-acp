@@ -284,12 +284,6 @@ function renderOverview(
     }
 
     if (!fetchFailed) {
-        const pruneMap = ctx.state.prune.messages.byMessageId
-        const visibleRaw = rawMessages.filter((msg) => {
-            const msgId = (msg.info as any)?.id || ""
-            const entry = pruneMap.get(msgId)
-            return !entry || entry.activeBlockIds.length === 0
-        })
         if (ctx.config?.compress?.candidates === true) {
             const candidates = renderCompressionCandidates(rawMessages, ctx)
             if (candidates.length > 0) {
@@ -297,6 +291,12 @@ function renderOverview(
                 lines.push(...candidates)
             }
         } else {
+            const pruneMap = ctx.state.prune.messages.byMessageId
+            const visibleRaw = rawMessages.filter((msg) => {
+                const msgId = (msg.info as any)?.id || ""
+                const entry = pruneMap.get(msgId)
+                return !entry || entry.activeBlockIds.length === 0
+            })
             const protectedRefs = ctx.config?.compress
                 ? computeProtectedRefs(visibleRaw, ctx.state, ctx.config.compress)
                 : new Set<string>()
