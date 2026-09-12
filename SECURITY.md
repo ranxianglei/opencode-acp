@@ -6,9 +6,10 @@ that loads it, so we take reports seriously.
 
 ## Supported Versions
 
-We apply security fixes to the **latest release line** published on npm as
-[`opencode-acp@latest`](https://www.npmjs.com/package/opencode-acp). Older releases
-receive critical security fixes only when they can be backported cleanly.
+We apply security fixes to the current npm release lines:
+[`opencode-acp@stable`](https://www.npmjs.com/package/opencode-acp) (the recommended
+install per the README) and [`opencode-acp@latest`](https://www.npmjs.com/package/opencode-acp).
+Older releases receive critical security fixes only when they can be backported cleanly.
 
 ## Reporting a Vulnerability
 
@@ -19,7 +20,8 @@ Report a suspected vulnerability privately using one of the following:
 
 - **GitHub Security Advisory** (preferred): open a private report at
   <https://github.com/ranxianglei/opencode-acp/security/advisories/new>.
-- **Email the maintainer**: see the `author` field in [`package.json`](./package.json).
+- **Contact the maintainer**: reach out to [ranxianglei](https://github.com/ranxianglei)
+  on GitHub.
 
 ### What to include
 
