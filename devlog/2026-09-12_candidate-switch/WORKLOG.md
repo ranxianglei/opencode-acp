@@ -29,6 +29,19 @@
    （`getCurrentTokenUsage` 倒序查找），不是消息求和；且 inject 会向
    messages 追加合成 suffix —— 测试须按引用捕获 tail。
 
+## 评审跟进（独立 reviewer，双评审之一）
+
+Reviewer 结论 "fix first"，处理如下：
+
+| 发现 | 处置 |
+|---|---|
+| C（Medium，开关提交引入）：docs 称 `candidates` 可按模型覆盖，但 `OVERRIDE_FIELD_TYPES`/嵌套 schema/运行时均不支持 —— 四向不一致 | ✅ 已修：`CompressOverridableConfig` Omit 列表排除 `candidates`，CONFIGURATION.md/.zh-CN 可覆盖字段列表移除（全局/项目层配置不受影响） |
+| A（Low）：OFF 模式 efficiencyNote 措辞多了 "when content is no longer needed" | ✅ 已修：OFF 时恢复 master 原文 |
+| D（Low）：OFF 模式 acp_status 无参概览输出 renderUncompressedRanges 块（含表头/提示）而非 master 的裸范围列表 | ✅ 已修：OFF 恢复 master 裸 `formatCompressibleRanges` + 原 Tip 行 |
+| E（Info）：OFF 模式 debug 日志报 "0 candidate(s)" | ✅ 已修：OFF 恢复 master 的 range 日志行 |
+| F（Info）：每次 transform 无条件 `messages.slice()` | ✅ 已修：仅 candidates 开启时拷贝 |
+| B（Medium，PR 既有）：hooks.ts 管道重排（truncateLargeToolOutputs/enforceContextBudget 移到 nudge 之后）未门控 | ⛔ 保留：属 PR #341 既有设计，四轮 ework 评审通过；e2e 场景 01–12 全部在 OFF 模式下通过验证重排无害。已在 PR 评论中明示 |
+
 ## 验证
 
 - typecheck 0 错误；**1261/1261** 测试通过；build OK。

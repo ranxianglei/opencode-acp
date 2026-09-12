@@ -734,7 +734,9 @@ export const injectCompressNudges = (
         const lines = [
             `[ACP Debug] Recommendation filter:`,
             `  Input: ${compressible.length} range(s), ${fmt(compressible.reduce((s, r) => s + r.tokens, 0))} tokens`,
-            `  Output: ${candidatePlan.candidates.length} candidate(s) (${candidatePlan.truncatedCount} truncated)`,
+            candidatesEnabled
+                ? `  Output: ${candidatePlan.candidates.length} candidate(s) (${candidatePlan.truncatedCount} truncated)`
+                : `  Output: ${recommendedRanges.length} range(s) (last segment marked dangerous)`,
         ]
         logger.debug(lines.join("\n"))
     }
@@ -760,8 +762,11 @@ export const injectCompressNudges = (
             // warnings — a separate, stronger alert fires at maxLimit (below).
             const efficiencyNote =
                 effectiveTipsVariant !== "maxLimit"
-                    ? "\nThis is an efficiency nudge to compress early when content is no longer needed and keep context lean — not an overflow warning. A separate, stronger alert will appear if the context is actually full.\n\n" +
-                      COMPRESS_PHILOSOPHY
+                    ? candidatesEnabled
+                        ? "\nThis is an efficiency nudge to compress early when content is no longer needed and keep context lean — not an overflow warning. A separate, stronger alert will appear if the context is actually full.\n\n" +
+                          COMPRESS_PHILOSOPHY
+                        : "\nThis is an efficiency nudge to compress early and keep context lean — not an overflow warning. A separate, stronger alert will appear if the context is actually full.\n\n" +
+                          COMPRESS_PHILOSOPHY
                     : ""
             const sysPart =
                 composition.systemTokens > 0

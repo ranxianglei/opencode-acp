@@ -360,7 +360,9 @@ export function createChatMessageTransformHandler(
         // Keep the full post-filter projection for candidate planning. The
         // nudge receives a pruned view, while range validation still needs the
         // original ordering to prove tool-pair and protection parity.
-        const candidateMessages = output.messages.slice()
+        // Skip the copy entirely when candidates are disabled (default).
+        const candidateMessages =
+            config.compress.candidates === true ? output.messages.slice() : undefined
         prune(state, logger, config, output.messages)
         hideConsumedCompressCalls(state, output.messages)
         assignMessageRefs(state, output.messages)
