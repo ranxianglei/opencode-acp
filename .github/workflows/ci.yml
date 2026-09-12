@@ -57,7 +57,8 @@ jobs:
                     scripts/e2e/scenarios/09-nudge-refire-after-compress.json \
                     scripts/e2e/scenarios/10-autonomous-nudge-refire.json \
                     scripts/e2e/scenarios/11-tier2-baseline-preserved-after-compress.json \
-                    scripts/e2e/scenarios/12-consumed-call-hiding.json
+                    scripts/e2e/scenarios/12-consumed-call-hiding.json \
+                    scripts/e2e/scenarios/13-adaptive-compression-candidates.json
             - name: Dump diagnostics on failure
               if: failure()
               run: |

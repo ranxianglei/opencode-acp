@@ -1,12 +1,18 @@
 import "./test-env"
 import assert from "node:assert/strict"
 import test from "node:test"
-import { rebuildCompressionState } from "../lib/state/rebuild"
-import { createSessionState } from "../lib/state/state"
+import { rebuildCompressionState, restoreForkCompressionState } from "../lib/state/rebuild"
+import { createSessionState, ensureSessionInitialized } from "../lib/state/state"
 import { assignMessageRefs } from "../lib/message-ids"
 import { Logger } from "../lib/logger"
 import type { PluginConfig } from "../lib/config"
 import type { SessionState, WithParts } from "../lib/state/types"
+import {
+    loadSessionState,
+    saveSessionState,
+    type PersistedSessionState,
+} from "../lib/state/persistence"
+import { serializePruneMessagesState } from "../lib/state/utils"
 
 const logger = new Logger(false)
 
@@ -95,10 +101,7 @@ function makeTextPart(text: string): any {
     return { type: "text", text }
 }
 
-function makeCompressPart(
-    callId: string,
-    input: any,
-): any {
+function makeCompressPart(callId: string, input: any): any {
     return {
         type: "tool",
         tool: "compress",
@@ -125,6 +128,24 @@ function freshState(): SessionState {
     return createSessionState()
 }
 
+function persistedState(state: SessionState): PersistedSessionState {
+    return {
+        prune: { messages: serializePruneMessagesState(state.prune.messages) },
+        nudges: {
+            contextLimitAnchors: [],
+            turnNudgeAnchors: [],
+            iterationNudgeAnchors: [],
+            lastPerMessageNudgeTurn: 0,
+        },
+        stats: { pruneTokenCounter: 0, totalPruneTokens: 0 },
+        messageIds: {
+            byRawId: Object.fromEntries(state.messageIds.byRawId),
+            byRef: Object.fromEntries(state.messageIds.byRef),
+            nextRef: state.messageIds.nextRef,
+        },
+        lastCompaction: 0,
+    }
+}
 
 test("rebuild returns 0 and makes no state changes when no compress parts exist", () => {
     const state = freshState()
@@ -237,6 +258,170 @@ test("rebuild handles fork: new message IDs but same mNNNNN refs resolve correct
     assert.equal(state.messageIds.byRawId.get(forkId3), "m00003")
 })
 
+test("parent-state transfer restores a fork when historical compress input is absent", () => {
+    const parentState = freshState()
+    const parentUser = "parent-u1"
+    const parentAssistant = "parent-a1"
+    const parentCompress = "parent-compress"
+    const parentMessages: WithParts[] = [
+        makeUserMessage(parentUser, "original request"),
+        makeAssistantMessage(parentAssistant, [makeTextPart("original response")]),
+        makeAssistantMessage(parentCompress, [
+            makeCompressPart("parent-call", {
+                topic: "Parent work",
+                content: [{ startId: "m00001", endId: "m00002", summary: "Parent summary." }],
+            }),
+        ]),
+    ]
+    const config = buildConfig()
+    assert.equal(rebuildCompressionState(parentState, parentMessages, config, logger), 1)
+
+    const forkMessages: WithParts[] = [
+        makeUserMessage("fork-u1", "original request"),
+        makeAssistantMessage("fork-a1", [makeTextPart("original response")]),
+        makeAssistantMessage("fork-compress", [
+            {
+                type: "tool",
+                tool: "compress",
+                callID: "fork-call",
+                state: { status: "completed", output: "compression copied without input" },
+            } as any,
+        ]),
+    ]
+
+    const replayState = freshState()
+    assert.equal(rebuildCompressionState(replayState, forkMessages, config, logger), 0)
+
+    const forkState = freshState()
+    const restored = restoreForkCompressionState(
+        forkState,
+        forkMessages,
+        persistedState(parentState),
+        parentMessages,
+        logger,
+    )
+
+    assert.equal(restored, 1)
+    assert.equal(forkState.prune.messages.blocksById.size, 1)
+    assert.ok(forkState.prune.messages.byMessageId.get("fork-u1")?.activeBlockIds.includes(1))
+    assert.ok(forkState.prune.messages.byMessageId.get("fork-a1")?.activeBlockIds.includes(1))
+    assert.equal(forkState.prune.messages.blocksById.get(1)?.anchorMessageId, "fork-u1")
+    assert.equal(forkState.prune.messages.blocksById.get(1)?.compressCallId, "fork-call")
+    assert.equal(parentState.prune.messages.blocksById.get(1)?.anchorMessageId, parentUser)
+})
+
+test("parent-state transfer rejects a mismatched fork without partial state", () => {
+    const parentState = freshState()
+    const parentMessages: WithParts[] = [
+        makeUserMessage("parent-u1", "original request"),
+        makeAssistantMessage("parent-a1", [makeTextPart("original response")]),
+        makeAssistantMessage("parent-compress", [
+            makeCompressPart("parent-call", {
+                topic: "Parent work",
+                content: [{ startId: "m00001", endId: "m00002", summary: "Parent summary." }],
+            }),
+        ]),
+    ]
+    const config = buildConfig()
+    assert.equal(rebuildCompressionState(parentState, parentMessages, config, logger), 1)
+
+    const forkMessages: WithParts[] = [
+        makeUserMessage("fork-u1", "original request"),
+        makeAssistantMessage("fork-a1", [makeTextPart("changed response")]),
+        makeAssistantMessage("fork-compress", [
+            {
+                type: "tool",
+                tool: "compress",
+                callID: "fork-call",
+                state: { status: "completed", output: "compression copied without input" },
+            } as any,
+        ]),
+    ]
+
+    const forkState = freshState()
+    const restored = restoreForkCompressionState(
+        forkState,
+        forkMessages,
+        persistedState(parentState),
+        parentMessages,
+        logger,
+    )
+
+    assert.equal(restored, 0)
+    assert.equal(forkState.prune.messages.blocksById.size, 0)
+    assert.equal(forkState.prune.messages.byMessageId.size, 0)
+})
+
+test("session initialization restores matching parent state before replay fallback", async () => {
+    const parentSessionId = `parent-fork-${Date.now()}-${process.pid}`
+    const forkSessionId = `fork-${Date.now()}-${process.pid}`
+    const parentState = freshState()
+    parentState.sessionId = parentSessionId
+    const parentMessages: WithParts[] = [
+        makeUserMessage("parent-u1", "original request"),
+        makeAssistantMessage("parent-a1", [makeTextPart("original response")]),
+        makeAssistantMessage("parent-compress", [
+            makeCompressPart("parent-call", {
+                topic: "Parent work",
+                content: [{ startId: "m00001", endId: "m00002", summary: "Parent summary." }],
+            }),
+        ]),
+    ]
+    const config = buildConfig()
+    assert.equal(rebuildCompressionState(parentState, parentMessages, config, logger), 1)
+    await saveSessionState(parentState, logger)
+
+    const forkMessages: WithParts[] = [
+        makeUserMessage("fork-u1", "original request"),
+        makeAssistantMessage("fork-a1", [makeTextPart("original response")]),
+        makeAssistantMessage("fork-compress", [
+            {
+                type: "tool",
+                tool: "compress",
+                callID: "fork-call",
+                state: { status: "completed", output: "compression copied without input" },
+            } as any,
+        ]),
+    ]
+    let parentMessageFetches = 0
+    const client = {
+        session: {
+            get: async () => ({ data: { parentID: parentSessionId } }),
+            messages: async () => {
+                parentMessageFetches++
+                return { data: parentMessages }
+            },
+        },
+    }
+    const loadedParent = await loadSessionState(parentSessionId, logger)
+    assert.ok(loadedParent?.messageIds?.byRef.m00001)
+    const directTransferState = freshState()
+    assert.equal(
+        restoreForkCompressionState(
+            directTransferState,
+            forkMessages,
+            loadedParent!,
+            parentMessages,
+            logger,
+        ),
+        1,
+    )
+    const forkState = freshState()
+
+    await ensureSessionInitialized(client, forkState, forkSessionId, logger, forkMessages, config)
+
+    assert.equal(parentMessageFetches, 1)
+    assert.equal(forkState.prune.messages.blocksById.size, 1)
+    assert.equal(forkState.prune.messages.blocksById.get(1)?.anchorMessageId, "fork-u1")
+    assert.ok(forkState.prune.messages.byMessageId.get("fork-u1")?.activeBlockIds.includes(1))
+    assert.equal(
+        (await loadSessionState(forkSessionId, logger))?.prune.messages.blocksById["1"]
+            ?.anchorMessageId,
+        "fork-u1",
+    )
+    assert.equal(parentState.prune.messages.blocksById.get(1)?.anchorMessageId, "parent-u1")
+})
+
 test("rebuild deactivates consumed blocks in nested compression (b1 consumed by b2)", () => {
     const state = freshState()
     const id1 = nextId()
@@ -266,7 +451,9 @@ test("rebuild deactivates consumed blocks in nested compression (b1 consumed by 
         makeAssistantMessage(secondCompressId, [
             makeCompressPart("call-2", {
                 topic: "Second batch",
-                content: [{ startId: "b1", endId: "m00007", summary: "Expanded summary covering all." }],
+                content: [
+                    { startId: "b1", endId: "m00007", summary: "Expanded summary covering all." },
+                ],
             }),
         ]),
     ]
@@ -389,9 +576,7 @@ test("rebuild gracefully skips malformed compress invocations", () => {
         makeUserMessage(id1, "message one"),
         makeAssistantMessage(id2, [makeTextPart("message two")]),
         // Malformed: missing content array
-        makeAssistantMessage(malformedCompressId, [
-            makeCompressPart("call-bad", { topic: "Bad" }),
-        ]),
+        makeAssistantMessage(malformedCompressId, [makeCompressPart("call-bad", { topic: "Bad" })]),
         // Valid compress
         makeAssistantMessage(validCompressId, [
             makeCompressPart("call-good", {

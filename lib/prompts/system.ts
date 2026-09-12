@@ -1,6 +1,49 @@
 import { HOW_TO_COMPRESS_RULES } from "context-compress-algorithms/prompts"
 
-export const SYSTEM = `
+// Per-mode variants of the four template spots that differ between
+// compress.candidates off (legacy range behavior) and on (MICRO/EPISODE candidates).
+
+const ACP_STATUS_TOOL_LINE_RANGES = `- \`acp_status\` — Context status with compressible ranges. No args = overview + ranges. \`scope:"uncompressed"\` for range view; add \`view:"messages"\` for per-message listing with \`tool\`/\`sort\` filters. \`scope:"compressed"\` for block details.`
+
+const ACP_STATUS_TOOL_LINE_CANDIDATES = `- \`acp_status\` — Context status with compression candidates. No args = overview + candidates. \`scope:"uncompressed"\` defaults to independent candidates; use \`view:"ranges"\` for raw grouped ranges or \`view:"messages"\` for per-message listing with \`tool\`/\`sort\` filters. \`scope:"compressed"\` shows block details.`
+
+const PHILOSOPHY_TAIL_RANGES = `All ranges listed in the context breakdown should be compressed to summary format \u2014 the only exceptions are protected content, content the current step is actively using, or critical content you cannot reconstruct.`
+
+const PHILOSOPHY_TAIL_CANDIDATES = `Candidate guidance is advisory: a candidate is structurally safe to submit, not a command to compress. Preserve current intent and active work even when a candidate is displayed.`
+
+const COMPRESSION_CANDIDATES_SECTION = `COMPRESSION CANDIDATES
+
+ACP may append a bounded list headed \`COMPRESSION CANDIDATES\` below a nudge or status report:
+
+- \`MICRO\` is one large plain message or one complete tool transaction, including every message needed to keep its tool call/result structure valid.
+- \`EPISODE\` is a contiguous historical segment made from smaller adjacent units.
+- Candidate ranges are independent, non-overlapping, and can be submitted together as separate \`content[]\` entries.
+- Choose candidates only when their content is no longer needed for the current task. Do not invent a target when no candidate is listed; call \`acp_status\` for a fresh view. If an arbitrary range is unavoidable, verify current visible IDs, protection boundaries, and complete tool-pair coverage first.
+- Keep summaries self-contained and use the existing \`compress\` tool. Candidate labels do not replace the semantic judgment to preserve useful context.
+- When a nudge lists a clearly stale candidate, call \`compress\` in that reply before continuing. A repeated nudge means compression was not completed; act on one clearly stale candidate rather than merely recommending compression.`
+
+const BREAKDOWN_TAIL_RANGES = `Below the breakdown, the system lists compressible ranges grouped by conversation turn. All listed ranges should be compressed to summary format — the only exceptions are protected content, content the current step is actively using, or critical content you cannot reconstruct. Compress the largest ranges first when the current step no longer needs them.`
+
+const BREAKDOWN_TAIL_CANDIDATES = `Below the breakdown, the system may list independent compression candidates. Prefer a large stale micro-range when it removes an isolated artifact; use an episode range when a completed historical phase is more coherent as one summary. Compress only content the current step no longer needs.`
+
+/**
+ * Build the bundled ACP system prompt.
+ *
+ * candidatesEnabled mirrors `compress.candidates`: false renders the legacy
+ * range-based guidance (behavior identical to pre-candidate master), true
+ * renders MICRO/EPISODE candidate guidance. All other wording is shared.
+ */
+export function buildSystemPrompt(candidatesEnabled: boolean): string {
+    const acpStatusToolLine = candidatesEnabled
+        ? ACP_STATUS_TOOL_LINE_CANDIDATES
+        : ACP_STATUS_TOOL_LINE_RANGES
+    const philosophyTail = candidatesEnabled ? PHILOSOPHY_TAIL_CANDIDATES : PHILOSOPHY_TAIL_RANGES
+    const compressionCandidatesBlock = candidatesEnabled
+        ? `\n\n${COMPRESSION_CANDIDATES_SECTION}\n\n`
+        : "\n\n"
+    const breakdownTail = candidatesEnabled ? BREAKDOWN_TAIL_CANDIDATES : BREAKDOWN_TAIL_RANGES
+
+    return `
 
 You operate in a context-constrained environment. All compression serves the primary task, but be frugal. Context management helps preserve retrieval quality, but your primary goal is completing the task at hand. Do not let context management distract from the actual work.
 
@@ -26,7 +69,7 @@ You have five context-management tools:
 - \`compress\` — Replace a contiguous range of older conversation with a single detailed summary you write. Use when content is genuinely consumed (no longer needed for the current task step). Single range: \`compress({ topic: "API exploration", content: [{ startId: "m00150", endId: "m00220", summary: "..." }] })\`. Batch (multiple unrelated ranges, each with its own topic): \`compress({ content: [{ topic: "Auth", startId: "m00150", endId: "m00220", summary: "..." }, { topic: "Deploy", startId: "m00300", endId: "m00350", summary: "..." }] })\`.
 - \`decompress\` — Restore a previously compressed block's content. By default restores one tier up (T2→T1 summaries, not raw messages). Use \`full: true\` to restore all the way to original messages. Use \`toFile\` to write to file instead of inflating context. Example: \`decompress({ blockId: "b5" })\` or \`decompress({ blockId: "b5", toFile: "path" })\` or \`decompress({ blockId: "b5", full: true })\`.
 - \`search_context\` — Search compressed block summaries (and optionally visible messages) by keyword. Use BEFORE decompressing to find the right block. Example: \`search_context({ query: "auth token refresh" })\`.
-- \`acp_status\` — Context status with compressible ranges. No args = overview + ranges. \`scope:"uncompressed"\` for range view; add \`view:"messages"\` for per-message listing with \`tool\`/\`sort\` filters. \`scope:"compressed"\` for block details.
+${acpStatusToolLine}
 
 COMPRESSION PHILOSOPHY
 
@@ -34,7 +77,7 @@ Two failure modes to avoid:
 - Over-compression: Compressing too aggressively loses critical details, decisions, and state needed for your task. This directly harms task quality.
 - Under-compression: Failing to compress verbose outputs causes context overflow, reducing accuracy and eventually blocking your work.
 
-Balance is key. The single test for whether to compress is: "Is this content still needed by the current task step?" If yes, keep it. If no, compress it. All ranges listed in the context breakdown should be compressed to summary format \u2014 the only exceptions are protected content, content the current step is actively using, or critical content you cannot reconstruct.
+Balance is key. The single test for whether to compress is: "Is this content still needed by the current task step?" If yes, keep it. If no, compress it. ${philosophyTail}
 
 Be frugal with context. Compress obvious waste proactively — verbose outputs you have already used, duplicate reads, abandoned explorations. Do not wait until context is critically full; that harms retrieval quality and risks overflow. But never let the urge to compress distract from the actual task.
 
@@ -55,9 +98,7 @@ WHEN NOT TO COMPRESS
 - Important user messages — preserve their exact intent, constraints, and acceptance criteria verbatim, not just the most recent one.
 - Protected tool outputs (default: \`skill\` only) — hard-excluded from compression ranges, survive intact in visible context.
 
-${HOW_TO_COMPRESS_RULES}
-
-MULTI-TIER COMPRESSION
+${HOW_TO_COMPRESS_RULES}${compressionCandidatesBlock}MULTI-TIER COMPRESSION
 
 Summaries accumulate as the session grows. When tier-1 summaries pile up, the system injects a [Tier 2 Trigger] prompting you to DISTILL old blocks into a single tier-2 summary. If tier-2 summaries also accumulate, a [Tier 3 Trigger] asks you to CONDENSE them further.
 
@@ -82,7 +123,11 @@ Breakdown: 4.2K system (21%) | 8.0K tool (40%) | 2.0K summaries (10%) | 2.6K cod
 - "text" = plain text messages
 - "reasoning" = model thinking blocks (counted to match real API usage; freed when their message is compressed)
 
-Below the breakdown, the system lists compressible ranges grouped by conversation turn. All listed ranges should be compressed to summary format — the only exceptions are protected content, content the current step is actively using, or critical content you cannot reconstruct. Compress the largest ranges first when the current step no longer needs them.
+${breakdownTail}
 
 Each compression creates a reusable summary block you can decompress later if needed.
 `
+}
+
+/** Bundled system prompt with candidate guidance enabled (`compress.candidates: true`). */
+export const SYSTEM = buildSystemPrompt(true)

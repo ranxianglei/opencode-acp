@@ -45,6 +45,7 @@ database, or ACP state. The test home is wiped and recreated each run.
 ### Fake LLM
 
 `fake-llm-server.ts` is a Bun HTTP server that:
+
 - Responds to OpenAI `/v1/chat/completions` with SSE streaming
 - Reads a JSON scenario file defining turn-by-turn responses
 - Emits either text responses or `compress` tool_use calls
@@ -73,35 +74,37 @@ the turn counter for real conversation turns.
 | `10-autonomous-nudge-refire.json` | Issue #176: Autonomous session (bash tool calls grow context) → first nudge→compress → continued growth → second nudge→second compress → verify minBlockCount ≥ 2, maxCompressCallsVisible ≤ 2 |
 | `11-tier2-baseline-preserved-after-compress.json` | Issue #364: verify raw-message T1 captures (m-refs) do NOT touch lastTier2NudgeTokens — stays unset when T2 never fired. The #235 never-undefined invariant is locked by unit tests on the distill/conservative reset path (filename kept from the pre-#364 revision because the CI e2e job hardcodes scenario paths) |
 | `12-consumed-call-hiding.json` | Bug #236 regression: T1 compresses auto-consume previous blocks → verify lastRequestCompressCalls=1 (consumed calls hidden from LLM) |
+| `13-adaptive-compression-candidates.json` | Real nudge→compress flow where the fake model selects an advertised MICRO candidate and verifies candidate selection plus state baseline |
 
 ### Scenario Format
 
 ```json
 {
-  "name": "scenario-name",
-  "description": "What this tests",
-  "turns": [
-    { "respond": "text", "text": "LLM response for turn 1" },
-    { "respond": "text", "text": "LLM response for turn 2" },
-    {
-      "respond": "compress",
-      "topic": "Topic",
-      "summary": "Summary text",
-      "range": "all",
-      "retryOnReject": {
-        "summary": "Better summary",
-        "acknowledgeRisk": true
-      }
-    },
-    { "respond": "text", "text": "Auto ack", "auto": true }
-  ],
-  "verify": {
-    "blockCount": 1
-  }
+    "name": "scenario-name",
+    "description": "What this tests",
+    "turns": [
+        { "respond": "text", "text": "LLM response for turn 1" },
+        { "respond": "text", "text": "LLM response for turn 2" },
+        {
+            "respond": "compress",
+            "topic": "Topic",
+            "summary": "Summary text",
+            "range": "all",
+            "retryOnReject": {
+                "summary": "Better summary",
+                "acknowledgeRisk": true
+            }
+        },
+        { "respond": "text", "text": "Auto ack", "auto": true }
+    ],
+    "verify": {
+        "blockCount": 1
+    }
 }
 ```
 
 **Fields:**
+
 - `respond`: `"text"`, `"compress"`, `"nudge-compress"`, `"task"`, or `"tool"`, `"autonomous-nudge"`
 - `auto`: `true` = triggered by tool result, no user message needed
 - `range`: `"all"` (entire conversation) or `[startIdx, endIdx]` (0-indexed into mNNNNN refs)
@@ -120,6 +123,7 @@ the turn counter for real conversation turns.
 - `verify.maxCompressCallsVisible`: upper bound on compress tool_use calls visible in any single LLM request
 - `verify.lastRequestCompressCalls`: exact compress call count in the final LLM request
 - `verify.maxNudgeCount`: upper bound on total nudge detections across all requests
+- `verify.candidateSelected`: `true` = at least one nudge response selected a parsed MICRO/EPISODE candidate line
 
 ### Known Limitations
 

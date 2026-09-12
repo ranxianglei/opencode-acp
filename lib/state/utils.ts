@@ -69,13 +69,20 @@ export function serializePruneMessagesState(
     }
 }
 
-export async function isSubAgentSession(client: any, sessionID: string): Promise<boolean> {
+export async function getSessionParentId(
+    client: any,
+    sessionID: string,
+): Promise<string | undefined> {
     try {
         const result = await client.session.get({ path: { id: sessionID } })
-        return !!result.data?.parentID
+        return typeof result.data?.parentID === "string" ? result.data.parentID : undefined
     } catch (error: any) {
-        return false
+        return undefined
     }
+}
+
+export async function isSubAgentSession(client: any, sessionID: string): Promise<boolean> {
+    return (await getSessionParentId(client, sessionID)) !== undefined
 }
 
 export function findLastCompactionTimestamp(messages: WithParts[]): number {
@@ -119,6 +126,7 @@ export function createPruneMessagesState(): PruneMessagesState {
         nextBlockId: 1,
         nextRunId: 1,
         markedForCleanup: new Set<number>(),
+        membershipsVerified: false,
     }
 }
 
@@ -203,8 +211,7 @@ export function loadPruneMessagesState(
                         : blockId,
                 active: block.active === true,
                 deactivatedByUser: block.deactivatedByUser === true,
-                deactivatedByUserDeep:
-                    block.deactivatedByUserDeep === true ? true : undefined,
+                deactivatedByUserDeep: block.deactivatedByUserDeep === true ? true : undefined,
                 compressedTokens:
                     typeof block.compressedTokens === "number" &&
                     Number.isFinite(block.compressedTokens)
@@ -371,9 +378,11 @@ export function getActiveSummaryTokenUsage(
     return total
 }
 
-export function getTierTokenUsage(
-    state: SessionState,
-): { tier1Tokens: number; tier2Tokens: number; tier3Tokens: number } {
+export function getTierTokenUsage(state: SessionState): {
+    tier1Tokens: number
+    tier2Tokens: number
+    tier3Tokens: number
+} {
     let tier1Tokens = 0
     let tier2Tokens = 0
     let tier3Tokens = 0

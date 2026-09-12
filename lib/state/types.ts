@@ -82,6 +82,8 @@ export interface PruneMessagesState {
     nextBlockId: number
     nextRunId: number
     markedForCleanup: Set<number>
+    /** Transient: persisted memberships need one repair sync before fast-path reuse. */
+    membershipsVerified: boolean
 
     /**
      * [Issue #384] Transient fields below are NEVER persisted — serialization

@@ -1,6 +1,6 @@
 import { tool } from "@opencode-ai/plugin"
 import { type ToolFactoryContext, resolveToolContext } from "./types"
-import { countMessageCharacters, countTokens } from "../token-utils"
+import { countTokens } from "../token-utils"
 import { RANGE_FORMAT_EXTENSION } from "../prompts/extensions/tool"
 import {
     finalizeSession,
@@ -16,17 +16,13 @@ import {
     appendProtectedPromptInfo,
     appendProtectedTools,
     appendProtectedUserMessages,
-    filterLastUserMessage,
-    filterProtectedRecentMessages,
-    filterProtectedToolMessages,
 } from "./protected-content"
 import {
     appendMissingBlockSummaries,
     injectBlockPlaceholders,
     parseBlockPlaceholders,
-    resolveRanges,
+    prepareExecutableRangePlans,
     validateArgs,
-    validateNonOverlapping,
     validateSummaryPlaceholders,
 } from "./range-utils"
 import {
@@ -128,7 +124,6 @@ export function createCompressRangeTool(factoryCtx: ToolFactoryContext): ReturnT
                 toolCtx,
                 `Compress Range: ${input.topic ?? "(batch)"}`,
             )
-
             // Three-level cascade (issue #344): once the session messages are
             // loaded, swap in the effective compress config for the active
             // provider/model so every ctx.config.compress.X read below picks up
@@ -138,68 +133,16 @@ export function createCompressRangeTool(factoryCtx: ToolFactoryContext): ReturnT
                 ...ctx0,
                 config: applyCompressOverrides(ctx0.config, providerId, modelId),
             }
-            const resolvedPlans = resolveRanges(input, searchContext, ctx.state, ctx.logger)
-            validateNonOverlapping(resolvedPlans)
-
-            const filteredPlans = resolvedPlans
-                .map((plan) => ({
-                    ...plan,
-                    selection: filterProtectedToolMessages(
-                        plan.selection,
-                        searchContext,
-                        ctx.config.compress.protectedTools,
-                        ctx.config.protectedFilePatterns,
-                    ),
-                }))
-                .map((plan) => ({
-                    ...plan,
-                    selection: filterLastUserMessage(
-                        plan.selection,
-                        searchContext,
-                        ctx.state,
-                        ctx.config.compress,
-                    ),
-                }))
-                .map((plan) => ({
-                    ...plan,
-                    selection: filterProtectedRecentMessages(
-                        plan.selection,
-                        searchContext,
-                        ctx.state,
-                        ctx.config.compress,
-                    ),
-                }))
-                .filter((plan) => plan.selection.messageIds.length > 0)
-
-            if (filteredPlans.length === 0) {
-                throw new Error(
-                    "All selected messages were filtered out (protected tool outputs and/or the last user message). They must remain in visible context.",
-                )
-            }
-
-            const minCompressRange = ctx.config.compress.minCompressRange
-            if (minCompressRange > 0) {
-                let totalChars = 0
-                const counted = new Set<string>()
-                for (const plan of filteredPlans) {
-                    for (const messageId of plan.selection.messageIds) {
-                        if (counted.has(messageId)) continue
-                        counted.add(messageId)
-                        const rawMessage = searchContext.rawMessagesById.get(messageId)
-                        if (rawMessage) {
-                            totalChars += countMessageCharacters(rawMessage)
-                        }
-                    }
-                }
-                // Intentionally throws after prepareSession: the char count needs
-                // resolved plans + rawMessages, only available post-prepare. No state
-                // is persisted (finalizeSession/saveSessionState never runs).
-                if (totalChars < minCompressRange) {
-                    throw new Error(
-                        `Range too small (${totalChars} chars, min ${minCompressRange}). Not worth compressing — overhead exceeds savings.`,
-                    )
-                }
-            }
+            // Intentionally runs after prepareSession: resolution and char accounting
+            // require the prepared search context, and no state is persisted on error.
+            // Use the effective provider/model config so planning and execution agree.
+            const { plans: filteredPlans } = prepareExecutableRangePlans(
+                input,
+                searchContext,
+                ctx.state,
+                ctx.config,
+                ctx.logger,
+            )
 
             const notifications: NotificationEntry[] = []
             let preparedPlans: Array<{
@@ -333,7 +276,9 @@ export function createCompressRangeTool(factoryCtx: ToolFactoryContext): ReturnT
             const bypassQuality = acknowledgeRisk && ctx.state.qualityGateRetryPending
             const ignoredAcknowledgeRisk = acknowledgeRisk && !ctx.state.qualityGateRetryPending
             if (ignoredAcknowledgeRisk) {
-                ctx.logger.warn("compress: acknowledgeRisk ignored — no quality gate rejection pending")
+                ctx.logger.warn(
+                    "compress: acknowledgeRisk ignored — no quality gate rejection pending",
+                )
             }
             ctx.state.qualityGateRetryPending = false
             if (!bypassQuality) {

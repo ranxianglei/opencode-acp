@@ -16,9 +16,9 @@ import {
     saveSessionState,
 } from "./persistence"
 import { createModelLimitCatalog } from "./model-limits"
-import { rebuildCompressionState } from "./rebuild"
+import { rebuildCompressionState, restoreForkCompressionState } from "./rebuild"
 import {
-    isSubAgentSession,
+    getSessionParentId,
     findLastCompactionTimestamp,
     countTurns,
     resetOnCompaction,
@@ -313,8 +313,9 @@ export async function ensureSessionInitialized(
         ? resolveStorageDir(config.storagePath, projectDir ?? cwd())
         : undefined
 
-    const isSubAgent = await isSubAgentSession(client, sessionId)
-    state.isSubAgent = isSubAgent
+    const parentSessionId = await getSessionParentId(client, sessionId)
+    const isChildSession = parentSessionId !== undefined
+    state.isSubAgent = isChildSession
 
     state.lastCompaction = findLastCompactionTimestamp(messages)
     state.currentTurn = countTurns(state, messages)
@@ -322,6 +323,11 @@ export async function ensureSessionInitialized(
 
     const persisted = await loadSessionState(sessionId, logger, state.storageDir)
     if (persisted === null) {
+        // Fork recovery: a fork gets new raw IDs and may omit historical
+        // compress inputs. Prefer translating the parent state; replay remains
+        // the cross-machine and legacy fallback.
+        // The parent state transfer below is preferred for forks; replay remains
+        // the cross-machine and legacy fallback.
         // storagePath points elsewhere but the session file still sits at the
         // default location (e.g. the user just configured storagePath). No
         // auto-migration — warn once (this init path runs once per session).
@@ -336,14 +342,54 @@ export async function ensureSessionInitialized(
         // available, replay historical compress tool invocations to rebuild
         // pruning state using the current session's message IDs.
         if (config) {
-            const rebuilt = rebuildCompressionState(state, messages, config, logger)
-            if (rebuilt > 0) {
+            let restored = 0
+            if (parentSessionId) {
+                try {
+                    const parent = await loadSessionState(parentSessionId, logger)
+                    const response = parent
+                        ? await client.session.messages({ path: { id: parentSessionId } })
+                        : undefined
+                    const parentMessages = Array.isArray(response?.data)
+                        ? response.data
+                        : Array.isArray(response)
+                          ? response
+                          : []
+                    if (parent && parentMessages.length > 0) {
+                        // Standard subagents skip their first user prompt when
+                        // assigning refs. A copied fork needs that prompt to
+                        // match the parent state, but only for this transfer.
+                        state.isSubAgent = false
+                        try {
+                            restored = restoreForkCompressionState(
+                                state,
+                                messages,
+                                parent,
+                                parentMessages,
+                                logger,
+                            )
+                        } finally {
+                            state.isSubAgent = isChildSession
+                        }
+                    }
+                } catch (error: any) {
+                    logger.warn("fork: parent state transfer unavailable, replaying history", {
+                        parentSessionId,
+                        error: error?.message,
+                    })
+                }
+            }
+
+            const rebuilt =
+                restored > 0 ? 0 : rebuildCompressionState(state, messages, config, logger)
+            if (restored > 0 || rebuilt > 0) {
                 await saveSessionState(state, logger)
             }
         }
+        state.isSubAgent = isChildSession
         return
     }
 
+    state.isSubAgent = isChildSession
     state.prune.messages = loadPruneMessagesState(persisted.prune.messages)
     state.nudges.contextLimitAnchors = new Set<string>(persisted.nudges.contextLimitAnchors || [])
     state.nudges.turnNudgeAnchors = new Set<string>([

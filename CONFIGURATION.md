@@ -180,6 +180,13 @@ Core compression behavior.
 - **Status:** ACTIVE
 - **Description:** Inject summary buffer guidance into the system prompt, helping the model understand which blocks exist and their coverage.
 
+#### `compress.candidates`
+
+- **Type:** `boolean`
+- **Default:** `false`
+- **Status:** ACTIVE (opt-in)
+- **Description:** Enable MICRO/EPISODE compression candidates. When `true`, nudges and `acp_status` show pre-validated, batchable compression candidates (MICRO = one large message or a complete tool transaction; EPISODE = a contiguous historical segment of smaller units) instead of raw compressible ranges. Candidates are validated through the same execution path as the `compress` tool, so every listed target is submittable. When `false` (default), legacy range-list behavior is kept.
+
 #### `compress.maxContextLimit`
 
 - **Type:** `number | \`${number}%\``
@@ -235,7 +242,7 @@ Core compression behavior.
 - **Default:** `undefined`
 - **Status:** ACTIVE
 - **Description:** Nested per-provider / per-model overrides for **every tunable compress field**, resolved field-by-field with the cascade **model > provider > global** (mirrors the sibling project billion-context-pi, issue #344). Deeper levels only override when the field is explicitly set — unset fields never clear shallower values. `0` / `false` are explicit values, not "unset". Unknown provider/model ids fall back to the global value. Percentages and `"X%"` limits resolve against the active model's context window. Across the three config file layers (global → config dir → project) the maps deep-merge per provider/model key — a project layer can narrow one provider without wiping others configured in lower layers.
-- **Overridable fields:** `maxContextLimit`, `emergencyThresholdPercent`, `minNudgeContextPercent`, `nudgeFrequency`, `iterationNudgeThreshold`, `toolOutputNudgeThreshold`, `nudgeGrowthTokens`, `minNudgeGrowthRatio`, `minNudgeGrowthFloor`, `nudgeForce`, `protectedTools`, `showCompression`, `summaryBuffer`, `protectTags`, `protectUserMessages`, `maxSummaryLengthHard`, `minCompressRange`, `maxVisibleSegments`, `keepEmbedMaxChars`, `lastSegmentSoftBlock`, `preserveRecentMessages`, `preserveRecentTokens`, `preserveLastUserMessage`, `reasoning` (nested, field-wise).
+- **Overridable fields:** `maxContextLimit`, `emergencyThresholdPercent`, `minNudgeContextPercent`, `nudgeFrequency`, `iterationNudgeThreshold`, `toolOutputNudgeThreshold`, `nudgeGrowthTokens`, `minNudgeGrowthRatio`, `minNudgeGrowthFloor`, `nudgeForce`, `protectedTools`, `showCompression`, `summaryBuffer`, `candidates`, `protectTags`, `protectUserMessages`, `maxSummaryLengthHard`, `minCompressRange`, `maxVisibleSegments`, `keepEmbedMaxChars`, `lastSegmentSoftBlock`, `preserveRecentMessages`, `preserveRecentTokens`, `preserveLastUserMessage`, `reasoning` (nested, field-wise).
 - **Not overridable:** `permission` (session-level, fixed before model info is known), the deprecated `minContextLimit` / `modelMinLimits` family, the flat `modelMaxLimits` / `modelMinLimits` maps themselves, and `providers` itself. `modelMaxLimits` itself is **not** deprecated — it remains fully supported (only outranked). For `maxContextLimit` the precedence when set nested is **nested override > `modelMaxLimits` flat map > global**. `protectedTools` set here affects the compress tool and nudge-side logic; the system-prompt protected-tools listing (shown at prompt build time, before model info is available) always reflects the global value.
 
 ```jsonc

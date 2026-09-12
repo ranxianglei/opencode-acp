@@ -25,6 +25,7 @@ export const VALID_CONFIG_KEYS = new Set([
     "compress.permission",
     "compress.showCompression",
     "compress.summaryBuffer",
+    "compress.candidates",
     "compress.maxContextLimit",
     "compress.minContextLimit",
     "compress.modelMaxLimits",

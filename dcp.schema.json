@@ -27,7 +27,13 @@
         },
         "logLevel": {
             "type": "string",
-            "enum": ["debug", "info", "warn", "error", "silent"],
+            "enum": [
+                "debug",
+                "info",
+                "warn",
+                "error",
+                "silent"
+            ],
             "default": "info",
             "description": "Log verbosity: decision-level events (info) are written by default. debug adds per-message detail; warn/error/silent reduce output."
         },
@@ -37,13 +43,20 @@
         },
         "pruneNotification": {
             "type": "string",
-            "enum": ["off", "minimal", "detailed"],
+            "enum": [
+                "off",
+                "minimal",
+                "detailed"
+            ],
             "default": "off",
             "description": "Level of notification shown when context management occurs"
         },
         "pruneNotificationType": {
             "type": "string",
-            "enum": ["chat", "toast"],
+            "enum": [
+                "chat",
+                "toast"
+            ],
             "default": "toast",
             "description": "Where to display notifications (chat deprecated, falls back to toast)"
         },
@@ -111,7 +124,11 @@
             "properties": {
                 "permission": {
                     "type": "string",
-                    "enum": ["ask", "allow", "deny"],
+                    "enum": [
+                        "ask",
+                        "allow",
+                        "deny"
+                    ],
                     "default": "allow",
                     "description": "Permission mode (deny disables the tool)"
                 },
@@ -201,7 +218,10 @@
                 },
                 "nudgeForce": {
                     "type": "string",
-                    "enum": ["strong", "soft"],
+                    "enum": [
+                        "strong",
+                        "soft"
+                    ],
                     "default": "soft",
                     "description": "Controls how likely compression is after user messages. 'strong' is more likely, 'soft' is less likely."
                 },
@@ -210,7 +230,10 @@
                     "items": {
                         "type": "string"
                     },
-                    "default": ["skill", "compress"],
+                    "default": [
+                        "skill",
+                        "compress"
+                    ],
                     "description": "Tool names or wildcard patterns to hard-exclude from compression ranges. The root default is [\"skill\", \"compress\"]; an explicit array replaces the inherited policy. Use [] to allow all tool outputs to compress. Supports glob wildcards: * matches any characters, ? matches a single character (e.g., \"mcp_*\", \"my_tool_?\")"
                 },
                 "protectTags": {
@@ -249,7 +272,10 @@
                                 "description": "Override for the soft upper threshold. Precedence when set here: nested override > modelMaxLimits flat map > global value."
                             },
                             "emergencyThresholdPercent": {
-                                "type": ["number", "string"],
+                                "type": [
+                                    "number",
+                                    "string"
+                                ],
                                 "description": "Override for the emergency threshold (absolute tokens or percentage string)."
                             },
                             "minNudgeContextPercent": {
@@ -291,7 +317,10 @@
                             },
                             "nudgeForce": {
                                 "type": "string",
-                                "enum": ["strong", "soft"],
+                                "enum": [
+                                    "strong",
+                                    "soft"
+                                ],
                                 "description": "Override for the nudge force mode."
                             },
                             "protectedTools": {
@@ -390,7 +419,10 @@
                                             "description": "Override for the soft upper threshold. Precedence when set here: nested override > modelMaxLimits flat map > global value."
                                         },
                                         "emergencyThresholdPercent": {
-                                            "type": ["number", "string"],
+                                            "type": [
+                                                "number",
+                                                "string"
+                                            ],
                                             "description": "Override for the emergency threshold (absolute tokens or percentage string)."
                                         },
                                         "minNudgeContextPercent": {
@@ -432,7 +464,10 @@
                                         },
                                         "nudgeForce": {
                                             "type": "string",
-                                            "enum": ["strong", "soft"],
+                                            "enum": [
+                                                "strong",
+                                                "soft"
+                                            ],
                                             "description": "Override for the nudge force mode."
                                         },
                                         "protectedTools": {
@@ -557,7 +592,10 @@
                     "description": "Absolute floor for nudge growth threshold (in tokens). Prevents small-context models from having an excessively low growth floor. See minNudgeGrowthRatio."
                 },
                 "emergencyThresholdPercent": {
-                    "type": ["number", "string"],
+                    "type": [
+                        "number",
+                        "string"
+                    ],
                     "default": "98%",
                     "description": "Context usage threshold at which the growth floor is bypassed and nudges fire unconditionally (emergency override). Accepts absolute token count or percentage string (e.g. \"98%\")."
                 },
@@ -605,6 +643,11 @@
                     "default": 32768,
                     "minimum": 0,
                     "description": "Tokens reserved for the model's completion when the context-budget guard prunes tool outputs so the request fits the window. Default 32768 covers opencode's 32000 max_tokens fallback for models with no declared limit.output. The guard is a no-op unless the model's context window is known (declared limit or catalog entry); an absolute maxContextLimit is a soft nudge threshold and does not enable the guard."
+                },
+                "candidates": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Opt-in MICRO/EPISODE compression candidates in nudges and acp_status (default false = legacy range lists)"
                 }
             },
             "default": {
@@ -616,7 +659,10 @@
                 "nudgeFrequency": 5,
                 "iterationNudgeThreshold": 15,
                 "nudgeForce": "soft",
-                "protectedTools": ["skill", "compress"],
+                "protectedTools": [
+                    "skill",
+                    "compress"
+                ],
                 "protectTags": false,
                 "protectUserMessages": false,
                 "minNudgeContextPercent": 5,
@@ -634,7 +680,8 @@
                     "drop": true,
                     "threshold": 2048
                 },
-                "completionReserveTokens": 32768
+                "completionReserveTokens": 32768,
+                "candidates": false
             }
         },
         "gc": {
@@ -644,7 +691,9 @@
             "properties": {
                 "algorithm": {
                     "type": "string",
-                    "enum": ["truncate"],
+                    "enum": [
+                        "truncate"
+                    ],
                     "default": "truncate"
                 },
                 "promotionThreshold": {

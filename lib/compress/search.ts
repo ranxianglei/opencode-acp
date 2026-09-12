@@ -304,6 +304,7 @@ export function resolveSelection(
     context: SearchContext,
     startReference: BoundaryReference,
     endReference: BoundaryReference,
+    options?: { includeTokenAccounting?: boolean },
 ): SelectionResolution {
     const startRawIndex = startReference.rawIndex
     const endRawIndex = endReference.rawIndex
@@ -330,7 +331,7 @@ export function resolveSelection(
             messageIds.push(messageId)
         }
 
-        if (!messageTokenById.has(messageId)) {
+        if (options?.includeTokenAccounting !== false && !messageTokenById.has(messageId)) {
             messageTokenById.set(messageId, estimateAllMessageTokensFast(rawMessage))
         }
 
@@ -460,10 +461,10 @@ function buildBoundaryLookup(
     return lookup
 }
 
-const SEARCH_CONTEXT_TOOL_DESCRIPTION = `Search through all compressed block summaries AND visible messages to find relevant content. Use this BEFORE decompressing to find the right block. Returns a hit list with block/message IDs, relevance scores, and previews.
+const SEARCH_CONTEXT_TOOL_DESCRIPTION = `Search through active compressed block summaries to find relevant content. Use this BEFORE decompressing to find the right block. Returns a hit list with block IDs, relevance scores, and previews.
 
 Examples:
-- search_context({ query: "decoder accuracy" }) — find blocks/messages about decoder accuracy
+- search_context({ query: "decoder accuracy" }) — find compressed blocks about decoder accuracy
 - search_context({ query: "training loss PPL" }) — find training results
 - search_context({ query: "architecture design", limit: 5 }) — top 5 results`
 
@@ -515,7 +516,7 @@ export function createSearchContextTool(factoryCtx: ToolFactoryContext): ReturnT
                 .boolean()
                 .optional()
                 .describe(
-                    "If true, also search visible (uncompressed) messages. Slower but more thorough (default: false)",
+                    "Reserved for compatibility; the current search indexes active compressed block summaries.",
                 ),
         },
         async execute(args, toolCtx) {

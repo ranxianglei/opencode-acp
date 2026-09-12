@@ -26,7 +26,7 @@ import {
     resolveCompressionDuration,
 } from "./compress/timing"
 import { filterMessages, filterMessagesInPlace } from "./messages/shape"
-import { getLastUserMessage } from "./messages/query"
+import { getLastUserMessage, isSyntheticMessage } from "./messages/query"
 import { OUTPUT_RESERVE_TOKENS, truncateLargeToolOutputs } from "./messages/truncate-tools"
 import { resolveEffectiveContextLimit } from "./state/utils"
 import { enforceContextBudget } from "./messages/enforce-budget"
@@ -342,8 +342,11 @@ export function createChatMessageTransformHandler(
         cacheSystemPromptTokens(state, output.messages)
         assignMessageRefs(state, output.messages)
         const activeBlockCountBefore = state.prune.messages.activeBlockIds.size // [FIX Bug 4]
-        syncCompressionBlocks(state, logger, output.messages)
-        if (state.prune.messages.activeBlockIds.size !== activeBlockCountBefore) {
+        const compressionStateChanged = syncCompressionBlocks(state, logger, output.messages)
+        if (
+            compressionStateChanged ||
+            state.prune.messages.activeBlockIds.size !== activeBlockCountBefore
+        ) {
             // [FIX Bug 4]
             saveSessionState(state, logger).catch(() => {}) // [FIX Bug 4] persist deactivations
         }
@@ -354,9 +357,11 @@ export function createChatMessageTransformHandler(
             saveSessionState(state, logger).catch(() => {})
         }
         const prePruneTokens = getCurrentTokenUsage(state, output.messages)
+        // Keep the full post-filter projection for candidate planning. The
+        // nudge receives a pruned view, while range validation still needs the
+        // original ordering to prove tool-pair and protection parity.
+        const candidateMessages = output.messages.slice()
         prune(state, logger, config, output.messages)
-        truncateLargeToolOutputs(state, config, logger, output.messages)
-        enforceContextBudget(state, config, logger, output.messages)
         hideConsumedCompressCalls(state, output.messages)
         assignMessageRefs(state, output.messages)
         const compressionPriorities = buildPriorityMap(config, state, output.messages)
@@ -388,7 +393,20 @@ export function createChatMessageTransformHandler(
                   }
                 : undefined,
             prePruneTokens,
+            candidateMessages,
         )
+        // Candidate planning consumes the pre-truncation snapshot so its
+        // executor-parity check matches the fresh messages fetched by compress.
+        truncateLargeToolOutputs(
+            state,
+            config,
+            logger,
+            output.messages.filter((message) => !isSyntheticMessage(message)),
+        )
+        // Keep candidate planning independent from the final budget guard:
+        // candidates are computed from the pre-truncation snapshot so their
+        // ranges remain valid when the compress executor fetches fresh history.
+        enforceContextBudget(state, config, logger, output.messages)
         injectMessageIds(state, config, output.messages, compressionPriorities)
         hideFailedCompressCalls(output.messages)
         stripStaleMetadata(output.messages)

@@ -62,6 +62,8 @@ interface ScenarioStep {
     growthText?: string
     /** For autonomous-nudge: stop after this many total compressions emitted (default: 2) */
     maxCompressCount?: number
+    /** Prefer an advertised candidate category when responding to a nudge. */
+    candidateKind?: "micro" | "episode"
 }
 
 interface Scenario {
@@ -83,6 +85,9 @@ export interface RequestObservation {
     compressCallCount: number
     nudgeDetected: boolean
     nudgeSystemTokens?: number
+    candidateSelected?: boolean
+    candidateStartId?: string
+    candidateEndId?: string
     isChild: boolean
     isAuxiliary: boolean
 }
@@ -105,11 +110,33 @@ function recordObservation(
     isChild: boolean,
     isAuxiliary: boolean,
 ): void {
-    observations.requests.push({ turn, inputTokens, messageCount, compressCallCount, nudgeDetected, nudgeSystemTokens, isChild, isAuxiliary })
+    observations.requests.push({
+        turn,
+        inputTokens,
+        messageCount,
+        compressCallCount,
+        nudgeDetected,
+        nudgeSystemTokens,
+        isChild,
+        isAuxiliary,
+    })
     try {
         writeFileSync(OBSERVATIONS_FILE, JSON.stringify(observations, null, 2))
     } catch {
         // best-effort — verify.ts treats missing file as "no constraints"
+    }
+}
+
+function markLastObservationCandidateSelected(startId: string, endId: string): void {
+    const last = observations.requests[observations.requests.length - 1]
+    if (!last) return
+    last.candidateSelected = true
+    last.candidateStartId = startId
+    last.candidateEndId = endId
+    try {
+        writeFileSync(OBSERVATIONS_FILE, JSON.stringify(observations, null, 2))
+    } catch {
+        // best-effort — verification reports missing observation data separately
     }
 }
 
@@ -201,7 +228,16 @@ async function handleChatCompletion(req: Request): Promise<Response> {
 
     const isAuxiliary = tools.length === 0
 
-    recordObservation(readTurnCounter(), inputTokens, messages.length, compressCallCount, nudgeDetected, extractNudgeSystemTokens(messages), isChild, isAuxiliary)
+    recordObservation(
+        readTurnCounter(),
+        inputTokens,
+        messages.length,
+        compressCallCount,
+        nudgeDetected,
+        extractNudgeSystemTokens(messages),
+        isChild,
+        isAuxiliary,
+    )
 
     log(
         `  body: stream=${isStream} msgs=${messages.length} ` +
@@ -219,7 +255,10 @@ async function handleChatCompletion(req: Request): Promise<Response> {
 
     if (lastRole === "tool" || lastRole === "function") {
         const toolText = extractMessageText(lastMsg)
-        if (toolText.includes("QUALITY GATE FAILURE") || toolText.includes("COMPRESSION REJECTED")) {
+        if (
+            toolText.includes("QUALITY GATE FAILURE") ||
+            toolText.includes("COMPRESSION REJECTED")
+        ) {
             const currentIdx = readTurnCounter() - 1
             const currentStep = scenario.turns[currentIdx]
             if (currentStep?.retryOnReject) {
@@ -349,7 +388,13 @@ function handleCompressStep(
         })
 
         log(`  → batch compress: ${content.length} ranges`)
-        return compressResponse(model, { topic: "Batch compression", content }, step.acknowledgeRisk ?? false, isStream, inputTokens)
+        return compressResponse(
+            model,
+            { topic: "Batch compression", content },
+            step.acknowledgeRisk ?? false,
+            isStream,
+            inputTokens,
+        )
     }
 
     const [startId, endId] = resolveRange(refs, step.range ?? "all")
@@ -362,8 +407,16 @@ function handleCompressStep(
         },
     ]
 
-    log(`  → compress: ${startId}..${endId}, summary=${(step.summary ?? "").length} chars, ack=${step.acknowledgeRisk ?? false}`)
-    return compressResponse(model, { content }, step.acknowledgeRisk ?? false, isStream, inputTokens)
+    log(
+        `  → compress: ${startId}..${endId}, summary=${(step.summary ?? "").length} chars, ack=${step.acknowledgeRisk ?? false}`,
+    )
+    return compressResponse(
+        model,
+        { content },
+        step.acknowledgeRisk ?? false,
+        isStream,
+        inputTokens,
+    )
 }
 
 function detectNudge(messages: any[]): boolean {
@@ -407,8 +460,12 @@ function handleNudgeCompressStep(
     const nudgeDetected = detectNudge(messages)
 
     if (!nudgeDetected) {
-        const growthText = step.growthText ?? "Working on the task. Generating content to fill the context window with meaningful discussion about software architecture and implementation details."
-        log(`  → nudge-compress: no nudge detected, emitting ${growthText.length} chars of growth text`)
+        const growthText =
+            step.growthText ??
+            "Working on the task. Generating content to fill the context window with meaningful discussion about software architecture and implementation details."
+        log(
+            `  → nudge-compress: no nudge detected, emitting ${growthText.length} chars of growth text`,
+        )
         return textResponse(model, growthText, isStream, inputTokens)
     }
 
@@ -419,17 +476,23 @@ function handleNudgeCompressStep(
         return textResponse(model, "No messages to compress.", isStream, inputTokens)
     }
 
-    const [startId, endId] = resolveRange(refs, step.range ?? "all")
+    const advertised = parseCompressionCandidate(messages, refs, step.candidateKind)
+    if (advertised) markLastObservationCandidateSelected(advertised[0], advertised[1])
+    const [startId, endId] = advertised ?? resolveRange(refs, step.range ?? "all")
     const content = [
         {
             topic: step.topic ?? "Nudge-triggered compression",
             startId,
             endId,
-            summary: step.summary ?? "Summary of compressed content generated during nudge-triggered E2E test.",
+            summary:
+                step.summary ??
+                "Summary of compressed content generated during nudge-triggered E2E test.",
         },
     ]
 
-    log(`  → compress: ${startId}..${endId}, summary=${(step.summary ?? "").length} chars`)
+    log(
+        `  → compress: ${startId}..${endId}, summary=${(step.summary ?? "").length} chars${advertised ? " (advertised candidate)" : ""}`,
+    )
     return compressResponse(model, { content }, false, isStream, inputTokens)
 }
 
@@ -455,36 +518,58 @@ function handleAutonomousNudgeStep(
     const visibleCompressCount = countCompressCalls(messages)
     const nudgeDetected = detectNudge(messages)
     const maxCompress = step.maxCompressCount ?? 2
-    const growthText = step.growthText ?? "Autonomous work generating output to fill the context window with meaningful discussion about software architecture patterns dependency injection inversion of control and SOLID principles applied to the authentication module service layer and data access layer with proper separation of concerns and testability through mockable interfaces and dependency injection containers."
+    const growthText =
+        step.growthText ??
+        "Autonomous work generating output to fill the context window with meaningful discussion about software architecture patterns dependency injection inversion of control and SOLID principles applied to the authentication module service layer and data access layer with proper separation of concerns and testability through mockable interfaces and dependency injection containers."
 
     if (totalCompressionsEmitted >= maxCompress) {
-        log(`  → autonomous-nudge: totalCompressions=${totalCompressionsEmitted} ≥ ${maxCompress}, task complete (visible=${visibleCompressCount})`)
+        log(
+            `  → autonomous-nudge: totalCompressions=${totalCompressionsEmitted} ≥ ${maxCompress}, task complete (visible=${visibleCompressCount})`,
+        )
         return textResponse(model, "Task complete.", isStream, inputTokens)
     }
 
     if (nudgeDetected) {
-        log(`  → autonomous-nudge: nudge DETECTED (total=${totalCompressionsEmitted}, visible=${visibleCompressCount}), emitting compress call`)
+        log(
+            `  → autonomous-nudge: nudge DETECTED (total=${totalCompressionsEmitted}, visible=${visibleCompressCount}), emitting compress call`,
+        )
         const refs = parseMessageRefs(messages)
         if (refs.length === 0) {
             log("  ⚠ no mNNNNN refs found — emitting fallback text")
             return textResponse(model, "No messages to compress.", isStream, inputTokens)
         }
         const [startId, endId] = resolveRange(refs, step.range ?? "all")
-        return compressResponse(model, {
-            content: [{
-                topic: step.topic ?? "Autonomous compression",
-                startId,
-                endId,
-                summary: step.summary ?? "Compressed autonomous work output.",
-            }],
-        }, false, isStream, inputTokens)
+        return compressResponse(
+            model,
+            {
+                content: [
+                    {
+                        topic: step.topic ?? "Autonomous compression",
+                        startId,
+                        endId,
+                        summary: step.summary ?? "Compressed autonomous work output.",
+                    },
+                ],
+            },
+            false,
+            isStream,
+            inputTokens,
+        )
     }
 
-    log(`  → autonomous-nudge: no nudge yet (total=${totalCompressionsEmitted}, visible=${visibleCompressCount}), emitting growth bash call`)
-    return toolUseResponse(model, "bash", {
-        command: `echo '${growthText.replace(/'/g, "'\\''")}'`,
-        description: "Generate autonomous work output",
-    }, isStream, inputTokens)
+    log(
+        `  → autonomous-nudge: no nudge yet (total=${totalCompressionsEmitted}, visible=${visibleCompressCount}), emitting growth bash call`,
+    )
+    return toolUseResponse(
+        model,
+        "bash",
+        {
+            command: `echo '${growthText.replace(/'/g, "'\\''")}'`,
+            description: "Generate autonomous work output",
+        },
+        isStream,
+        inputTokens,
+    )
 }
 
 function handleChildRequest(
@@ -500,7 +585,10 @@ function handleChildRequest(
 
     if (lastRole === "tool" || lastRole === "function") {
         const toolText = extractMessageText(lastMsg)
-        if (toolText.includes("QUALITY GATE FAILURE") || toolText.includes("COMPRESSION REJECTED")) {
+        if (
+            toolText.includes("QUALITY GATE FAILURE") ||
+            toolText.includes("COMPRESSION REJECTED")
+        ) {
             const idx = readChildTurnCounter() - 1
             const step = childTurns[idx]
             if (step?.retryOnReject) {
@@ -550,7 +638,12 @@ function handleChildRequest(
     return textResponse(model, step.text ?? "Done.", isStream, inputTokens)
 }
 
-function handleTaskStep(model: string, step: ScenarioStep, isStream: boolean, inputTokens: number): Response {
+function handleTaskStep(
+    model: string,
+    step: ScenarioStep,
+    isStream: boolean,
+    inputTokens: number,
+): Response {
     const args: Record<string, unknown> = {
         description: step.description ?? "E2E subagent task",
         prompt: step.prompt ?? "Complete the assigned task.",
@@ -584,6 +677,28 @@ function parseMessageRefs(messages: any[]): string[] {
     }
 
     return refs
+}
+
+function parseCompressionCandidate(
+    messages: any[],
+    refs: string[],
+    preferredKind?: "micro" | "episode",
+): [string, string] | null {
+    const refSet = new Set(refs)
+    const candidateRegex = /\b(MICRO|EPISODE)\s+(m\d+)[–-](m\d+)\b/g
+    for (const message of messages) {
+        if (message?.role !== "user") continue
+        const text = extractMessageText(message)
+        let match: RegExpExecArray | null
+        while ((match = candidateRegex.exec(text)) !== null) {
+            const kind = match[1]!.toLowerCase()
+            if (preferredKind && kind !== preferredKind) continue
+            const start = match[2]!
+            const end = match[3]!
+            if (refSet.has(start) && refSet.has(end)) return [start, end]
+        }
+    }
+    return null
 }
 
 function extractMessageText(msg: any): string {
@@ -667,7 +782,7 @@ function compressResponse(
     totalCompressionsEmitted++
     const fullArgs = { ...args }
     if (acknowledgeRisk) {
-       ;(fullArgs as any).acknowledgeRisk = true
+        ;(fullArgs as any).acknowledgeRisk = true
     }
 
     const argsJson = JSON.stringify(fullArgs)
@@ -756,11 +871,7 @@ function toolUseResponse(
         })
     }
 
-    return sseStream(
-        model,
-        [{ type: "tool_use", toolName, callId, args: argsJson }],
-        usage,
-    )
+    return sseStream(model, [{ type: "tool_use", toolName, callId, args: argsJson }], usage)
 }
 
 // --- SSE streaming ---
@@ -797,7 +908,10 @@ function sseStream(model: string, chunks_data: StreamChunk[], usage: any): Respo
                                                     index: 0,
                                                     id: chunk.callId,
                                                     type: "function",
-                                                    function: { name: chunk.toolName, arguments: "" },
+                                                    function: {
+                                                        name: chunk.toolName,
+                                                        arguments: "",
+                                                    },
                                                 },
                                             ],
                                         },
@@ -877,7 +991,11 @@ function sseStream(model: string, chunks_data: StreamChunk[], usage: any): Respo
                                     created,
                                     model,
                                     choices: [
-                                        { index: 0, delta: { content: textChunks[i] }, finish_reason: null },
+                                        {
+                                            index: 0,
+                                            delta: { content: textChunks[i] },
+                                            finish_reason: null,
+                                        },
                                     ],
                                 }),
                             ),

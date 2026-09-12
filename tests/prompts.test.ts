@@ -5,9 +5,13 @@ import { join } from "node:path"
 import { tmpdir } from "node:os"
 import { Logger } from "../lib/logger"
 import { PromptStore } from "../lib/prompts/store"
-import { SYSTEM as SYSTEM_PROMPT } from "../lib/prompts/system"
+import { SYSTEM as SYSTEM_PROMPT, buildSystemPrompt } from "../lib/prompts/system"
 
-function createPromptStoreFixture(overrideContent?: string, overrideFileName = "system.md") {
+function createPromptStoreFixture(
+    overrideContent?: string,
+    overrideFileName = "system.md",
+    candidatesEnabled = false,
+) {
     const rootDir = mkdtempSync(join(tmpdir(), "opencode-dcp-prompts-"))
     const configHome = join(rootDir, "config")
     const workspaceDir = join(rootDir, "workspace")
@@ -27,7 +31,7 @@ function createPromptStoreFixture(overrideContent?: string, overrideFileName = "
         writeFileSync(join(overrideDir, overrideFileName), overrideContent, "utf-8")
     }
 
-    const store = new PromptStore(new Logger(false), workspaceDir, true)
+    const store = new PromptStore(new Logger(false), workspaceDir, true, candidatesEnabled)
 
     return {
         store,
@@ -102,7 +106,7 @@ test("system prompt overrides handle reminder tags safely", async (t) => {
 })
 
 test("prompt store exposes bundled range-mode compress prompt", () => {
-    const fixture = createPromptStoreFixture()
+    const fixture = createPromptStoreFixture(undefined, "system.md", true)
 
     try {
         const runtimePrompts = fixture.store.getRuntimePrompts()
@@ -111,7 +115,56 @@ test("prompt store exposes bundled range-mode compress prompt", () => {
         assert.match(runtimePrompts.compressRange, /COMPRESSED BLOCK PLACEHOLDERS/)
         assert.match(runtimePrompts.compressRange, /BATCHING/)
         assert.match(runtimePrompts.compressRange, /content` array/)
+        assert.match(runtimePrompts.compressRange, /CANDIDATE GUIDANCE/)
+        assert.match(runtimePrompts.compressRange, /MICRO/)
+        assert.match(runtimePrompts.compressRange, /EPISODE/)
     } finally {
         fixture.cleanup()
     }
+})
+
+test("bundled prompts gate candidate guidance on compress.candidates", () => {
+    const offFixture = createPromptStoreFixture()
+    const onFixture = createPromptStoreFixture(undefined, "system.md", true)
+
+    try {
+        const offPrompts = offFixture.store.getRuntimePrompts()
+        const onPrompts = onFixture.store.getRuntimePrompts()
+
+        assert.doesNotMatch(offPrompts.system, /COMPRESSION CANDIDATES/)
+        assert.doesNotMatch(offPrompts.system, /Candidate guidance is advisory/i)
+        assert.doesNotMatch(offPrompts.system, /independent candidates/)
+        assert.match(offPrompts.system, /Context status with compressible ranges/)
+        assert.match(offPrompts.system, /lists compressible ranges grouped by conversation turn/)
+        assert.doesNotMatch(offPrompts.compressRange, /CANDIDATE GUIDANCE/)
+
+        assert.match(onPrompts.system, /COMPRESSION CANDIDATES/)
+        assert.match(onPrompts.system, /defaults to independent candidates/)
+        assert.match(onPrompts.system, /Candidate guidance is advisory/i)
+        assert.match(onPrompts.compressRange, /CANDIDATE GUIDANCE/)
+    } finally {
+        offFixture.cleanup()
+        onFixture.cleanup()
+    }
+})
+
+test("buildSystemPrompt(false) renders the pre-candidate master wording", () => {
+    const systemOff = buildSystemPrompt(false)
+
+    assert.doesNotMatch(systemOff, /COMPRESSION CANDIDATES/)
+    assert.doesNotMatch(systemOff, /MICRO|EPISODE/)
+    assert.match(systemOff, /No args = overview \+ ranges/)
+    assert.match(systemOff, /scope:"uncompressed"` for range view/)
+    assert.match(systemOff, /All listed ranges should be compressed to summary format/)
+})
+
+test("bundled system prompt explains advisory compression candidates", () => {
+    assert.match(SYSTEM_PROMPT, /COMPRESSION CANDIDATES/)
+    assert.match(SYSTEM_PROMPT, /structurally safe to submit, not a command to compress/i)
+    assert.match(SYSTEM_PROMPT, /MICRO/)
+    assert.match(SYSTEM_PROMPT, /EPISODE/)
+    assert.match(SYSTEM_PROMPT, /independent, non-overlapping/i)
+    assert.match(SYSTEM_PROMPT, /acp_status.*candidates/i)
+    assert.match(SYSTEM_PROMPT, /call `compress` in that reply/i)
+    assert.match(SYSTEM_PROMPT, /repeated nudge/i)
 })

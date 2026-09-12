@@ -21,7 +21,12 @@
 import type { GCConfig, PluginConfig } from "../config"
 import type { Logger } from "../logger"
 import { assignMessageRefs } from "../message-ids"
-import { buildSearchContext, resolveAnchorMessageId, resolveBoundaryIds, resolveSelection } from "../compress/search"
+import {
+    buildSearchContext,
+    resolveAnchorMessageId,
+    resolveBoundaryIds,
+    resolveSelection,
+} from "../compress/search"
 import { filterProtectedToolMessages } from "../compress/protected-content"
 import { resolveRanges } from "../compress/range-utils"
 import {
@@ -31,6 +36,9 @@ import {
     wrapCompressedSummary,
 } from "../compress/state"
 import { countTokens } from "../token-utils"
+import { createHash } from "node:crypto"
+import type { PersistedSessionState } from "./persistence"
+import { createPruneMessagesState } from "./utils"
 import type {
     BoundaryReference,
     CompressRangeToolArgs,
@@ -89,7 +97,11 @@ function extractBoundaryConsumedBlocks(
     const consumed: number[] = []
     const seen = new Set<number>()
     for (const ref of [startReference, endReference]) {
-        if (ref.kind === "compressed-block" && ref.blockId !== undefined && !seen.has(ref.blockId)) {
+        if (
+            ref.kind === "compressed-block" &&
+            ref.blockId !== undefined &&
+            !seen.has(ref.blockId)
+        ) {
             seen.add(ref.blockId)
             consumed.push(ref.blockId)
         }
@@ -107,6 +119,189 @@ function dedupeBlockIds(ids: number[]): number[] {
         result.push(id)
     }
     return result
+}
+
+function fingerprintMessage(message: WithParts): string {
+    const parts = (message.parts ?? []).map((part) => {
+        if (part.type === "text") {
+            return { type: "text", text: part.text }
+        }
+        if (part.type === "tool") {
+            // Forks can omit historical compress inputs, which is precisely the
+            // case parent-state transfer must recover from.
+            if (part.tool === "compress") {
+                return { type: "tool", tool: part.tool, status: part.state?.status }
+            }
+            return {
+                type: "tool",
+                tool: part.tool,
+                status: part.state?.status,
+                input: part.state?.input,
+                output: part.state?.status === "completed" ? part.state.output : undefined,
+            }
+        }
+        return { type: part.type }
+    })
+    return createHash("sha256")
+        .update(JSON.stringify({ role: message.info.role, parts }))
+        .digest("hex")
+}
+
+interface ForkIdMap {
+    messages: Map<string, string>
+    tools: Map<string, string>
+}
+
+function mapForkIds(
+    state: SessionState,
+    parent: PersistedSessionState,
+    parentMessages: WithParts[],
+    forkMessages: WithParts[],
+): ForkIdMap | null {
+    const parentRefs = parent.messageIds?.byRef
+    if (!parentRefs) return null
+
+    const parentById = new Map(parentMessages.map((message) => [message.info.id, message]))
+    const forkById = new Map(forkMessages.map((message) => [message.info.id, message]))
+    const messages = new Map<string, string>()
+    const tools = new Map<string, string>()
+
+    for (const [ref, parentId] of Object.entries(parentRefs)) {
+        const forkId = state.messageIds.byRef.get(ref)
+        if (!forkId) continue
+        const parentMessage = parentById.get(parentId)
+        const forkMessage = forkById.get(forkId)
+        if (!parentMessage || !forkMessage) continue
+        if (fingerprintMessage(parentMessage) !== fingerprintMessage(forkMessage)) continue
+        messages.set(parentId, forkId)
+        for (let index = 0; index < parentMessage.parts.length; index++) {
+            const parentPart = parentMessage.parts[index]
+            const forkPart = forkMessage.parts[index]
+            if (
+                parentPart?.type === "tool" &&
+                typeof parentPart.callID === "string" &&
+                forkPart?.type === "tool" &&
+                forkPart.tool === parentPart.tool &&
+                typeof forkPart.callID === "string"
+            ) {
+                tools.set(parentPart.callID, forkPart.callID)
+            }
+        }
+    }
+
+    return { messages, tools }
+}
+
+function translateIds(ids: string[], mapped: Map<string, string>): string[] | null {
+    const translated = ids.map((id) => mapped.get(id))
+    return translated.some((id) => !id) ? null : (translated as string[])
+}
+
+/**
+ * Restore pre-fork compression blocks from the parent state when the fork's
+ * copied history no longer includes replayable compress inputs. This is
+ * intentionally all-or-nothing for active blocks: an uncertain mapping falls
+ * back to normal history replay instead of risking an incorrect prune.
+ */
+export function restoreForkCompressionState(
+    state: SessionState,
+    forkMessages: WithParts[],
+    parent: PersistedSessionState,
+    parentMessages: WithParts[],
+    logger: Logger,
+): number {
+    if (!parent.prune.messages || !parent.messageIds) return 0
+
+    assignMessageRefs(state, forkMessages)
+    const mapped = mapForkIds(state, parent, parentMessages, forkMessages)
+    if (!mapped) return 0
+
+    const parentBlocks = Object.values(parent.prune.messages.blocksById)
+    const translatedBlocks = new Map<number, (typeof parentBlocks)[number]>()
+    for (const block of parentBlocks) {
+        const anchorMessageId = mapped.messages.get(block.anchorMessageId)
+        const compressMessageId = mapped.messages.get(block.compressMessageId)
+        const directMessageIds = translateIds(block.directMessageIds, mapped.messages)
+        const effectiveMessageIds = translateIds(block.effectiveMessageIds, mapped.messages)
+        const directToolIds = translateIds(block.directToolIds, mapped.tools)
+        const effectiveToolIds = translateIds(block.effectiveToolIds, mapped.tools)
+        const compressCallId = block.compressCallId
+            ? mapped.tools.get(block.compressCallId)
+            : undefined
+        if (
+            !anchorMessageId ||
+            !compressMessageId ||
+            !directMessageIds ||
+            !effectiveMessageIds ||
+            !directToolIds ||
+            !effectiveToolIds ||
+            (block.compressCallId && !compressCallId)
+        ) {
+            continue
+        }
+        translatedBlocks.set(block.blockId, {
+            ...block,
+            anchorMessageId,
+            compressMessageId,
+            compressCallId,
+            directMessageIds,
+            directToolIds,
+            effectiveMessageIds,
+            effectiveToolIds,
+        })
+    }
+
+    const activeParentIds = new Set(parent.prune.messages.activeBlockIds)
+    if (
+        activeParentIds.size === 0 ||
+        Array.from(activeParentIds).some((blockId) => !translatedBlocks.has(blockId))
+    ) {
+        return 0
+    }
+
+    const copiedBlockIds = new Set(translatedBlocks.keys())
+    for (const block of translatedBlocks.values()) {
+        if (
+            block.active &&
+            [...block.consumedBlockIds, ...block.includedBlockIds].some(
+                (blockId) => !copiedBlockIds.has(blockId),
+            )
+        ) {
+            return 0
+        }
+    }
+
+    const messagesState = createPruneMessagesState()
+    for (const block of translatedBlocks.values()) {
+        messagesState.blocksById.set(block.blockId, block)
+        if (block.active) {
+            messagesState.activeBlockIds.add(block.blockId)
+            messagesState.activeByAnchorMessageId.set(block.anchorMessageId, block.blockId)
+        }
+    }
+    for (const [parentMessageId, entry] of Object.entries(parent.prune.messages.byMessageId)) {
+        const forkMessageId = mapped.messages.get(parentMessageId)
+        if (!forkMessageId) continue
+        const allBlockIds = entry.allBlockIds.filter((blockId) => copiedBlockIds.has(blockId))
+        if (allBlockIds.length === 0) continue
+        messagesState.byMessageId.set(forkMessageId, {
+            tokenCount: entry.tokenCount,
+            allBlockIds,
+            activeBlockIds: allBlockIds.filter((blockId) =>
+                messagesState.activeBlockIds.has(blockId),
+            ),
+        })
+    }
+    messagesState.nextBlockId = Math.max(parent.prune.messages.nextBlockId, ...copiedBlockIds) + 1
+    messagesState.nextRunId = parent.prune.messages.nextRunId
+    messagesState.membershipsVerified = true
+    state.prune.messages = messagesState
+
+    logger.info("fork: restored compression state from parent", {
+        blocks: copiedBlockIds.size,
+        activeBlocks: messagesState.activeBlockIds.size,
+    })
+    return copiedBlockIds.size
 }
 
 /**
@@ -213,12 +408,7 @@ function resolveMessageEntry(
     }
 
     try {
-        const { startReference, endReference } = resolveBoundaryIds(
-            searchContext,
-            state,
-            ref,
-            ref,
-        )
+        const { startReference, endReference } = resolveBoundaryIds(searchContext, state, ref, ref)
         const selection = resolveSelection(searchContext, startReference, endReference)
         return {
             selection,

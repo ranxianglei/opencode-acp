@@ -55,6 +55,12 @@ export interface CompressConfig {
     permission: Permission
     showCompression: boolean
     summaryBuffer: boolean
+    /**
+     * Opt-in MICRO/EPISODE compression candidates in nudges and acp_status
+     * (PR #341). Default false — legacy range-list behavior. When true, the
+     * nudge lists pre-validated, batchable candidates instead of raw ranges.
+     */
+    candidates: boolean
     maxContextLimit: number | `${number}%`
     /**
      * @deprecated Soft lower bound for turn/iteration reminder nudges. Scheduled
@@ -318,6 +324,7 @@ const defaultConfig: PluginConfig = {
         permission: "allow",
         showCompression: true,
         summaryBuffer: true,
+        candidates: false,
         maxContextLimit: "80%",
         minContextLimit: "80%",
         contextLimitFallback: 128000,
@@ -545,6 +552,7 @@ export function mergeCompress(
         permission: override.permission ?? base.permission,
         showCompression: override.showCompression ?? base.showCompression,
         summaryBuffer: override.summaryBuffer ?? base.summaryBuffer,
+        candidates: override.candidates ?? base.candidates,
         maxContextLimit: override.maxContextLimit ?? base.maxContextLimit,
         minContextLimit: override.minContextLimit ?? base.minContextLimit,
         modelMaxLimits: override.modelMaxLimits ?? base.modelMaxLimits,

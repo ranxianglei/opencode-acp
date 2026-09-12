@@ -12,14 +12,31 @@ function sortBlocksByCreation(
     return a.blockId - b.blockId
 }
 
+function sameBlockIds(left: Set<number>, right: Set<number>): boolean {
+    if (left.size !== right.size) return false
+    return Array.from(left).every((id) => right.has(id))
+}
+
 export const syncCompressionBlocks = (
     state: SessionState,
     logger: Logger,
     messages: WithParts[],
-): void => {
+): boolean => {
     const messagesState = state.prune.messages
     if (!messagesState?.blocksById?.size) {
-        return
+        if (!messagesState.membershipsVerified) {
+            messagesState.activeBlockIds.clear()
+            messagesState.activeByAnchorMessageId.clear()
+            for (const entry of messagesState.byMessageId.values()) {
+                entry.allBlockIds = Array.isArray(entry.allBlockIds)
+                    ? [...new Set(entry.allBlockIds.filter((id) => Number.isInteger(id) && id > 0))]
+                    : []
+                entry.activeBlockIds = []
+            }
+            messagesState.membershipsVerified = true
+            return true
+        }
+        return false
     }
 
     const messageIds = new Set(messages.map((msg) => msg.info.id))
@@ -52,7 +69,7 @@ export const syncCompressionBlocks = (
                 previous.set(anchor, id)
             }
         }
-        return
+        return false
     }
 
     const previousActiveBlockIds = new Set<number>(
@@ -60,6 +77,7 @@ export const syncCompressionBlocks = (
             .filter((block) => block.active)
             .map((block) => block.blockId),
     )
+    const indexedActiveBlockIds = new Set(messagesState.activeBlockIds)
 
     messagesState.activeBlockIds.clear()
     messagesState.activeByAnchorMessageId.clear()
@@ -112,13 +130,19 @@ export const syncCompressionBlocks = (
         }
     }
 
-    for (const entry of messagesState.byMessageId.values()) {
-        const allBlockIds = Array.isArray(entry.allBlockIds)
-            ? [...new Set(entry.allBlockIds.filter((id) => Number.isInteger(id) && id > 0))]
-            : []
+    const membershipsRebuilt =
+        !messagesState.membershipsVerified ||
+        !sameBlockIds(indexedActiveBlockIds, messagesState.activeBlockIds)
+    if (membershipsRebuilt) {
+        for (const entry of messagesState.byMessageId.values()) {
+            const allBlockIds = Array.isArray(entry.allBlockIds)
+                ? [...new Set(entry.allBlockIds.filter((id) => Number.isInteger(id) && id > 0))]
+                : []
 
-        entry.allBlockIds = allBlockIds
-        entry.activeBlockIds = allBlockIds.filter((id) => messagesState.activeBlockIds.has(id))
+            entry.allBlockIds = allBlockIds
+            entry.activeBlockIds = allBlockIds.filter((id) => messagesState.activeBlockIds.has(id))
+        }
+        messagesState.membershipsVerified = true
     }
 
     const nextActiveBlockIds = messagesState.activeBlockIds
@@ -144,4 +168,5 @@ export const syncCompressionBlocks = (
     }
 
     messagesState.lastSyncedStructureVersion = structureVersion
+    return membershipsRebuilt || deactivatedCount > 0 || reactivatedCount > 0
 }
