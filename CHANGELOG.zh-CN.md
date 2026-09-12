@@ -1,5 +1,20 @@
 # 更新日志
 
+### v1.18.0 — 自适应压缩候选（opt-in）：MICRO/EPISODE 目标，执行同构校验
+
+**PR #341 + 后续修复。** 在既有范围 nudge 之上加了一层候选规划 —— 默认关闭，未开启时与 v1.17.1 行为逐字节一致。
+
+**开启后**（`{"compress": {"candidates": true}}`）：
+- nudge 与 `acp_status` 展示预先校验、可批量提交的压缩目标，而非原始范围：**MICRO** = 单条大消息或完整工具事务（call+result 闭包）；**EPISODE** = 相邻小单元构成的历史片段（≥ `minCompressRange`）。
+- 执行同构：候选通过与 `compress` 工具相同的 `prepareExecutableRangePlans` 路径校验 —— 列表中的目标均可直接提交（工具对闭合、保护同等、Bug 39 语义保留）。规划 fail-closed，开销限制在可见上下文内（v1.17.1 #385 保证 ~1.2 ms）。
+- 解决过度压缩问题：模型面对 "compress m00150–m00220" 时不再为了省一个大工具输出而整段压掉。
+
+**默认 OFF = 精确还原 v1.17.1**：基础 nudge 模板、breakdown 文案、`acp_status` 概览、debug 日志均恢复原文；候选规划不执行（零开销）。合并后评审确认：`compress.candidates` 不可按模型覆盖（仅全局/项目层）—— 类型、校验白名单、文档三处已对齐。一个有意保留的 PR 分支变更：transform 管道重排（工具输出截断与预算守卫移到 nudge 注入之后）在两种模式下均生效；e2e 场景 01–12 全部在 OFF 模式下通过。
+
+**同版本包含**：system prompt 与 compress-range prompt 的候选指导同样受开关门控（a1a2f23）；e2e 场景 13 显式开启；新增 12 个测试（含 §5.7 四轮 growth-cycle、生产配置 `preserveRecentMessages: 20`、#207 baseline 保留断言）。全量 1263/1263。
+
+**安装**：`opencode plugin opencode-acp@latest --global`
+
 ### v1.17.1 — transform 开销不再随压缩历史增长（13.6 s → 1.2 ms）+ 配置/CI 修复
 
 捆绑三项修复 —— 主打 #385，消除 #384 报告的长会话卡顿：
