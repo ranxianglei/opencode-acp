@@ -29,6 +29,7 @@ type Permission = "ask" | "allow" | "deny"
 export type CompressOverridableConfig = Omit<
     CompressConfig,
     | "permission"
+    | "candidates"
     | "minContextLimit"
     | "modelMaxLimits"
     | "modelMinLimits"

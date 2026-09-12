@@ -284,16 +284,35 @@ function renderOverview(
     }
 
     if (!fetchFailed) {
-        const pruneMap = ctx.state.prune.messages.byMessageId
-        const visibleRaw = rawMessages.filter((msg) => {
-            const msgId = (msg.info as any)?.id || ""
-            const entry = pruneMap.get(msgId)
-            return !entry || entry.activeBlockIds.length === 0
-        })
-        const candidates = renderCompressionCandidates(rawMessages, ctx)
-        if (candidates.length > 0) {
-            lines.push("")
-            lines.push(...candidates)
+        if (ctx.config?.compress?.candidates === true) {
+            const candidates = renderCompressionCandidates(rawMessages, ctx)
+            if (candidates.length > 0) {
+                lines.push("")
+                lines.push(...candidates)
+            }
+        } else {
+            const pruneMap = ctx.state.prune.messages.byMessageId
+            const visibleRaw = rawMessages.filter((msg) => {
+                const msgId = (msg.info as any)?.id || ""
+                const entry = pruneMap.get(msgId)
+                return !entry || entry.activeBlockIds.length === 0
+            })
+            const protectedRefs = ctx.config?.compress
+                ? computeProtectedRefs(visibleRaw, ctx.state, ctx.config.compress)
+                : new Set<string>()
+            const contextRanges = buildCompressibleRanges(
+                visibleRaw,
+                ctx.state,
+                ctx.config?.compress?.protectedTools ?? [],
+                ctx.config?.protectedFilePatterns ?? [],
+                protectedRefs,
+            )
+            if (contextRanges.compressible.length > 0 || contextRanges.protected.length > 0) {
+                lines.push("")
+                lines.push(
+                    formatCompressibleRanges(contextRanges.compressible, contextRanges.protected),
+                )
+            }
         }
     }
 
@@ -301,7 +320,9 @@ function renderOverview(
 
     const hintTool = topToolName || "bash"
     lines.push(
-        `Tip: acp_status({scope:"uncompressed", view:"ranges"}) for raw ranges, or acp_status({scope:"uncompressed", view:"messages", tool:"${hintTool}"}) for per-message listing`,
+        ctx.config?.compress?.candidates === true
+            ? `Tip: acp_status({scope:"uncompressed", view:"ranges"}) for raw ranges, or acp_status({scope:"uncompressed", view:"messages", tool:"${hintTool}"}) for per-message listing`
+            : `Tip: acp_status({scope:"uncompressed", view:"messages", tool:"${hintTool}"}) for per-message listing`,
     )
 
     return lines
