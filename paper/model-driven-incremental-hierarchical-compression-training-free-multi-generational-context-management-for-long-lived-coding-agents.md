@@ -2,6 +2,8 @@
 
 **Preprint v0.2 — 2026-09-07.** Evidence markers: **[V]** = verified against logged data (production logs; pilot/experiment logs marked separately where applicable); **[A]** = analytical/simulated; **[P]** = planned experiment (remaining RQs). Author: Xianglei Ran <ranxianglei@gmail.com>.
 
+> **License & editing:** This paper is open-sourced under the **MIT License** as part of the codebase. It is a living document — anyone may edit it, and improvements are welcome via pull request.
+
 > Editor's note: at the authors' request, the system is uniformly renamed **billion-context** (BC) throughout; the kernel repository name `acp-kernel` (Active Context Pruning) is retained for historical reasons and is unrelated to Zed's Agent Client Protocol or the Linux Foundation's Agent Communication Protocol — a footnote in the paper clarifies this.
 
 ## Abstract
