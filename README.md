@@ -22,6 +22,14 @@ The model decides <em>when</em> and <em>what</em> to compress — not a hard lim
 
 ---
 
+## Community
+
+Discussion, help, and updates on QQ — one group covers all three projects (`billion-context`, `billion-context-pi`, `opencode-acp`):
+
+**QQ Group: 1056132097**
+
+---
+
 ## Why ACP
 
 ACP hands all context-management authority to the model itself — not relying on
