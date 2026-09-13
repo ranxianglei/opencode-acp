@@ -564,6 +564,11 @@ Every PR MUST have a corresponding devlog entry in `devlog/{YYYY-MM-DD_short-tit
 - `WORKLOG.md` should be updated **DURING** and **AFTER** implementation
 - Devlog files are committed alongside code changes — not as a separate afterthought
 
+**Bot-managed branches** (e.g., `dependabot/*`) are exempt from the branch-naming and
+devlog requirements above — they cannot follow human conventions, so
+`scripts/ci/check-pr.sh` skips those checks for them. The changelog/version check
+still applies.
+
 See `devlog/README.md` for templates and naming conventions.
 
 ### 5.1.3 Problem Discovery & Fix Reporting (MANDATORY)

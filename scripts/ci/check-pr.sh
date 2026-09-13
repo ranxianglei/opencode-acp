@@ -8,6 +8,10 @@
 #   4. If package.json version changed, CHANGELOG.md or CHANGELOG.zh-CN.md
 #      must be modified AND contain the new version in changelog
 #
+# Bot-managed branches (dependabot/*) are exempt from checks 1-3 — they cannot
+# follow human branch-naming/devlog conventions (see AGENTS.md Section 5.1.2).
+# Check 4 still applies to them.
+#
 # Usage: ./scripts/ci/check-pr.sh [branch-name] [base-branch]
 #   branch-name defaults to $GITHUB_HEAD_REF or current branch
 #   base-branch defaults to "origin/master"
@@ -16,6 +20,11 @@ set -euo pipefail
 
 BRANCH="${1:-${GITHUB_HEAD_REF:-$(git branch --show-current)}}"
 BASE="${2:-origin/master}"
+
+BOT_BRANCH=false
+case "$BRANCH" in
+    dependabot/*) BOT_BRANCH=true ;;
+esac
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -34,7 +43,9 @@ echo ""
 
 # ── Check 1: Branch name convention ──────────────────────────
 echo "── Branch name convention ──"
-if echo "$BRANCH" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}_[a-z0-9.-]+$'; then
+if [ "$BOT_BRANCH" = true ]; then
+    warn "Branch '$BRANCH' is bot-managed — skipping branch-name & devlog checks"
+elif echo "$BRANCH" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}_[a-z0-9.-]+$'; then
     pass "Branch name matches YYYY-MM-DD_short-title"
 else
     fail "Branch name '$BRANCH' does not match YYYY-MM-DD_short-title (e.g., 2026-07-11_compress-baseline-fix)"
@@ -45,13 +56,17 @@ echo ""
 # ── Check 2 & 3: Devlog exists ───────────────────────────────
 echo "── Devlog entry ──"
 DEVLOG_DIR="devlog/$BRANCH"
-if [ -f "$DEVLOG_DIR/REQ.md" ]; then
+if [ "$BOT_BRANCH" = true ]; then
+    : # devlog requirement waived for bot-managed branches (AGENTS.md Section 5.1.2)
+elif [ -f "$DEVLOG_DIR/REQ.md" ]; then
     pass "devlog/$BRANCH/REQ.md exists"
 else
     fail "devlog/$BRANCH/REQ.md is missing (required by AGENTS.md Section 5.1.2)"
 fi
 
-if [ -f "$DEVLOG_DIR/WORKLOG.md" ]; then
+if [ "$BOT_BRANCH" = true ]; then
+    : # devlog requirement waived for bot-managed branches (AGENTS.md Section 5.1.2)
+elif [ -f "$DEVLOG_DIR/WORKLOG.md" ]; then
     pass "devlog/$BRANCH/WORKLOG.md exists"
 else
     fail "devlog/$BRANCH/WORKLOG.md is missing (required by AGENTS.md Section 5.1.2)"
