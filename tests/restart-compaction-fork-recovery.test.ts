@@ -23,10 +23,12 @@ function buildConfig(overrides: Partial<PluginConfig> = {}): PluginConfig {
         enabled: true,
         autoUpdate: true,
         debug: false,
+        logLevel: "info",
+        allowSubAgents: false,
         pruneNotification: "off",
         pruneNotificationType: "chat",
         commands: { enabled: true, protectedTools: [] },
-        experimental: { allowSubAgents: false, customPrompts: false },
+        experimental: { customPrompts: false },
         protectedFilePatterns: [],
         compress: {
             permission: "allow",
@@ -52,6 +54,22 @@ function buildConfig(overrides: Partial<PluginConfig> = {}): PluginConfig {
             maxOldGenSummaryLength: 3000,
             majorGcThresholdPercent: "100%",
             batchCleanup: { lowThreshold: "60%", highThreshold: "75%", forceThreshold: "90%" },
+        },
+        qualityGate: {
+            enabled: false,
+            algorithm: "rouge-recall-v1",
+            algorithms: {
+                "rouge-recall-v1": {
+                    layer1MinChars: 200,
+                    layer1MinRetentionPct: 5.0,
+                    layer2MaxRougeF1: 0.05,
+                    layer2MaxTop20Recall: 0.2,
+                },
+            },
+        },
+        messageFilters: {
+            enabled: true,
+            filters: {},
         },
     }
     return { ...base, ...overrides }
@@ -247,6 +265,9 @@ test("restart after native compaction resets stale transient state but preserves
     assert.equal(phase2.nudges.turnNudgeAnchors.size, 0)
     assert.equal(phase2.nudges.lastPerMessageNudgeTokens, undefined)
     assert.equal(phase2.nudges.compressBaselineSet, false)
+    // The tool cache is re-derived from messages each turn (syncToolCache); it
+    // is transient by design and never restored from disk. Asserted here to pin
+    // that resetOnCompaction clears it, not because persistence ever carried it.
     assert.equal(phase2.toolParameters.size, 0)
     // ...while compression blocks and stats survive the reset.
     assert.equal(phase2.prune.messages.blocksById.size, 1)
@@ -320,6 +341,36 @@ test("fork recovery loads parent state from the resolved storagePath directory",
     }
 })
 
+test("fork recovery falls back to default storage dir for parent during storagePath transition", async () => {
+    // Parent state lives at the DEFAULT location while config.storagePath is
+    // newly configured (child has no state in the custom dir yet) — the exact
+    // transition warned about in ensureSessionInitialized. Transfer must still
+    // work via the default-dir fallback instead of degrading to replay.
+    const { parentSessionId, parentMessages } = await setupParentWithBlock("tr")
+    const customDir = mkdtempSync(join(tmpdir(), "acp-issue407-transition-"))
+    try {
+        assert.ok(!existsSync(join(customDir, `${parentSessionId}.json`)))
+        const forkSessionId = `issue407-fork-transition-${Date.now()}-${process.pid}`
+        const forkMessages = makeForkCopy("tr")
+        const client = makeClientMock(parentSessionId, parentMessages)
+        const forkState = createSessionState()
+        await ensureSessionInitialized(
+            client,
+            forkState,
+            forkSessionId,
+            logger,
+            forkMessages,
+            buildConfig({ storagePath: customDir }),
+            "/some/project",
+        )
+
+        assert.equal(forkState.prune.messages.blocksById.size, 1)
+        assert.ok(forkState.prune.messages.byMessageId.get("tr-fu1")?.activeBlockIds.includes(1))
+    } finally {
+        rmSync(customDir, { recursive: true, force: true })
+    }
+})
+
 test("fork recovery normalizes legacy 4-digit parent refs before translation", async () => {
     const { parentSessionId, parentMessages } = await setupParentWithBlock("lg")
     const persisted = await loadSessionState(parentSessionId, logger)
@@ -367,4 +418,7 @@ test("session initialization restores fork state for a parent with legacy 4-digi
 
     assert.equal(forkState.prune.messages.blocksById.size, 1)
     assert.ok(forkState.prune.messages.byMessageId.get("lg2-fu1")?.activeBlockIds.includes(1))
+    // Corrected fork state persisted (default storage location here).
+    const forkReloaded = await loadSessionState(forkSessionId, logger)
+    assert.ok(forkReloaded?.prune.messages.blocksById["1"])
 })

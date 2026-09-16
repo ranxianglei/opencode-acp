@@ -347,8 +347,13 @@ export async function ensureSessionInitialized(
                 try {
                     // [Issue #407] Load the parent state from the same resolved storage
                     // directory as the child — with a custom `storagePath`, the parent
-                    // file lives there too, not in the default location.
-                    const parent = await loadSessionState(parentSessionId, logger, state.storageDir)
+                    // file lives there too, not in the default location. During the
+                    // storagePath transition (files still at the default location,
+                    // warned about above) the parent may be found there instead.
+                    let parent = await loadSessionState(parentSessionId, logger, state.storageDir)
+                    if (!parent && state.storageDir) {
+                        parent = await loadSessionState(parentSessionId, logger)
+                    }
                     const response = parent
                         ? await client.session.messages({ path: { id: parentSessionId } })
                         : undefined
