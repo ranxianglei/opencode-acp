@@ -20,7 +20,7 @@
  */
 import type { GCConfig, PluginConfig } from "../config"
 import type { Logger } from "../logger"
-import { assignMessageRefs } from "../message-ids"
+import { assignMessageRefs, migrateMessageRef } from "../message-ids"
 import {
     buildSearchContext,
     resolveAnchorMessageId,
@@ -248,6 +248,10 @@ export function restoreForkCompressionState(
             directToolIds,
             effectiveMessageIds,
             effectiveToolIds,
+            // [Issue #415] The parent record is raw persisted JSON; legacy
+            // 4-digit boundary refs must be normalized like every other ref.
+            startId: migrateMessageRef(block.startId),
+            endId: migrateMessageRef(block.endId),
         })
     }
 
