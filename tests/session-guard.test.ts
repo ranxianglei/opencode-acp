@@ -29,9 +29,12 @@ import {
     type WithParts,
 } from "../lib/state"
 import { snapshotCompressionState, restoreCompressionState } from "../lib/compress/pipeline"
+import { createCompressRangeTool } from "../lib/compress/range"
+import { createDecompressTool } from "../lib/compress/decompress"
 import { createChatMessageTransformHandler } from "../lib/hooks"
 import type { PluginConfig } from "../lib/config"
 import { Logger } from "../lib/logger"
+import { singletonRegistry } from "./registry-stub"
 
 const MESSAGES: WithParts[] = []
 
@@ -398,4 +401,245 @@ test("concurrent transforms on one session serialize through the guard (wiring r
     assert.equal(state.modelContextLimit, 200000)
     assert.equal(state.messageIds.byRef.get("m00001"), "u1")
     assert.equal(state.messageIds.byRef.get("m00003"), "u2")
+})
+
+test("[Issue #410] an abandoned compress permission prompt does not wedge the session", async () => {
+    // Regression for #410: PR #408 wraps the whole compress/decompress execute() in
+    // withSessionGuard. When the body's first step is the interactive toolCtx.ask()
+    // permission prompt, a host that abandons the tool execution (session deleted /
+    // turn aborted / continuation dropped) leaves ask() unsettled — and pre-fix the
+    // guard was held ACROSS that await, so the per-session chain never released and
+    // every later same-session operation hung forever. The fix moves ask() OUTSIDE the
+    // guard; this asserts a subsequent same-session op still acquires the guard and
+    // completes. Verified to FAIL on pre-fix code (ask inside the guard) and PASS post-fix.
+    const sessionID = "ses_abandoned_ask"
+    const rawMessages: WithParts[] = [
+        {
+            info: {
+                id: "m-a1",
+                role: "user",
+                sessionID,
+                agent: "assistant",
+                model: { providerID: "anthropic", modelID: "claude-test" },
+                time: { created: 1 },
+            } as WithParts["info"],
+            parts: [{ id: "p1", messageID: "m-a1", sessionID, type: "text" as const, text: "first" }],
+        },
+        {
+            info: {
+                id: "m-a2",
+                role: "assistant",
+                sessionID,
+                agent: "assistant",
+                time: { created: 2 },
+            } as WithParts["info"],
+            parts: [{ id: "p2", messageID: "m-a2", sessionID, type: "text" as const, text: "second" }],
+        },
+    ]
+
+    const state = createSessionState()
+    state.sessionId = sessionID
+    const logger = new Logger(false)
+    const registry = singletonRegistry(state)
+
+    const tool = createCompressRangeTool({
+        client: {
+            session: {
+                messages: async () => ({ data: rawMessages }),
+                get: async () => ({ data: { parentID: null } }),
+            },
+        },
+        registry,
+        logger,
+        config: {
+            enabled: true,
+            debug: false,
+            pruneNotification: "off",
+            pruneNotificationType: "chat",
+            commands: { enabled: true, protectedTools: [] },
+            experimental: { allowSubAgents: true, customPrompts: false },
+            protectedFilePatterns: [],
+            compress: {
+                permission: "allow",
+                showCompression: false,
+                maxContextLimit: 150000,
+                minContextLimit: 50000,
+                nudgeFrequency: 5,
+                iterationNudgeThreshold: 15,
+                nudgeForce: "soft",
+                protectedTools: [],
+                protectTags: false,
+                protectUserMessages: false,
+                lastSegmentSoftBlock: false,
+            },
+            gc: {
+                algorithm: "truncate",
+                promotionThreshold: 5,
+                maxBlockAge: 15,
+                maxOldGenSummaryLength: 3000,
+                majorGcThresholdPercent: "100%",
+                batchCleanup: { lowThreshold: "60%", highThreshold: "75%", forceThreshold: "90%" },
+            },
+        } as unknown as PluginConfig,
+        prompts: {
+            reload() {},
+            getRuntimePrompts() {
+                return { compressRange: "", compressMessage: "" }
+            },
+        },
+    } as any)
+
+    // The host abandons the tool execution while the permission dialog is open:
+    // ask() is entered but never settles (no resolve, no reject).
+    let askEntered = false
+    const toolCtx = {
+        ask: async () => {
+            askEntered = true
+            return new Promise<void>(() => {})
+        },
+        metadata: () => {},
+        sessionID,
+        messageID: "msg-compress",
+    }
+
+    void tool.execute(
+        { topic: "abandoned", content: [{ startId: "m00001", endId: "m00002", summary: "captured" }] },
+        toolCtx as any,
+    )
+
+    // Let the abandoned execution reach its permission step.
+    await new Promise((r) => setTimeout(r, 30))
+    assert.equal(askEntered, true, "abandoned execution must have reached the permission prompt")
+
+    // A subsequent same-session operation (transforms / tools / event-hook saves all
+    // funnel through withSessionGuard) must still acquire the guard and finish. Pre-fix
+    // this awaited the abandoned execution's never-settling ask() forever and timed out.
+    let nextCompleted = false
+    const outcome = await Promise.race([
+        registry
+            .withSessionGuard(sessionID, async () => {
+                nextCompleted = true
+                return "ok"
+            })
+            .then(() => "completed"),
+        new Promise<"timeout">((r) => setTimeout(() => r("timeout"), 300)),
+    ])
+
+    assert.equal(outcome, "completed", "same-session op must complete despite the abandoned tool execution")
+    assert.equal(nextCompleted, true)
+})
+
+test("[Issue #410] an abandoned decompress permission prompt does not wedge the session", async () => {
+    // Mirror of the compress-range regression above for the second fixed code path
+    // (lib/compress/decompress.ts). Same mechanism: the interactive ask() now runs
+    // OUTSIDE withSessionGuard, so a host that abandons the call before it settles
+    // never acquires the lock and a concurrent same-session op still completes.
+    // Config mirrors tests/compress-range.test.ts buildConfig() (complete incl. gc);
+    // kept inline to stay consistent with this file's other wiring tests.
+    const sessionID = "ses_abandoned_ask_decompress"
+    const rawMessages: WithParts[] = [
+        {
+            info: {
+                id: "m-d1",
+                role: "user",
+                sessionID,
+                agent: "assistant",
+                model: { providerID: "anthropic", modelID: "claude-test" },
+                time: { created: 1 },
+            } as WithParts["info"],
+            parts: [{ id: "dp1", messageID: "m-d1", sessionID, type: "text" as const, text: "first" }],
+        },
+        {
+            info: {
+                id: "m-d2",
+                role: "assistant",
+                sessionID,
+                agent: "assistant",
+                time: { created: 2 },
+            } as WithParts["info"],
+            parts: [{ id: "dp2", messageID: "m-d2", sessionID, type: "text" as const, text: "second" }],
+        },
+    ]
+
+    const state = createSessionState()
+    state.sessionId = sessionID
+    const logger = new Logger(false)
+    const registry = singletonRegistry(state)
+
+    const tool = createDecompressTool({
+        client: {
+            session: {
+                messages: async () => ({ data: rawMessages }),
+                get: async () => ({ data: { parentID: null } }),
+            },
+        },
+        registry,
+        logger,
+        config: {
+            enabled: true,
+            debug: false,
+            pruneNotification: "off",
+            pruneNotificationType: "chat",
+            commands: { enabled: true, protectedTools: [] },
+            experimental: { allowSubAgents: true, customPrompts: false },
+            protectedFilePatterns: [],
+            compress: {
+                permission: "allow",
+                showCompression: false,
+                maxContextLimit: 150000,
+                minContextLimit: 50000,
+                nudgeFrequency: 5,
+                iterationNudgeThreshold: 15,
+                nudgeForce: "soft",
+                protectedTools: [],
+                protectTags: false,
+                protectUserMessages: false,
+                lastSegmentSoftBlock: false,
+            },
+            gc: {
+                algorithm: "truncate",
+                promotionThreshold: 5,
+                maxBlockAge: 15,
+                maxOldGenSummaryLength: 3000,
+                majorGcThresholdPercent: "100%",
+                batchCleanup: { lowThreshold: "60%", highThreshold: "75%", forceThreshold: "90%" },
+            },
+        } as unknown as PluginConfig,
+        prompts: {
+            reload() {},
+            getRuntimePrompts() {
+                return { compressRange: "", compressMessage: "" }
+            },
+        },
+    } as any)
+
+    let askEntered = false
+    const toolCtx = {
+        ask: async () => {
+            askEntered = true
+            return new Promise<void>(() => {})
+        },
+        metadata: () => {},
+        sessionID,
+        messageID: "msg-decompress",
+    }
+
+    void tool.execute({ blockId: "b0" }, toolCtx as any)
+
+    await new Promise((r) => setTimeout(r, 30))
+    assert.equal(askEntered, true, "abandoned execution must have reached the permission prompt")
+
+    let nextCompleted = false
+    const outcome = await Promise.race([
+        registry
+            .withSessionGuard(sessionID, async () => {
+                nextCompleted = true
+                return "ok"
+            })
+            .then(() => "completed"),
+        new Promise<"timeout">((r) => setTimeout(() => r("timeout"), 300)),
+    ])
+
+    assert.equal(outcome, "completed", "same-session op must complete despite the abandoned tool execution")
+    assert.equal(nextCompleted, true)
 })

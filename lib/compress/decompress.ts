@@ -16,6 +16,7 @@ import {
     resolveSelection,
 } from "./search"
 import { resolveCompressionTarget } from "../commands/compression-targets"
+import { requestCompressPermission } from "./pipeline"
 import {
     parseBlockIdArg,
     resolveDecompressMode,
@@ -43,15 +44,13 @@ interface RunContext {
 async function prepareDecompressSession(
     ctx: ToolContext,
     toolCtx: RunContext,
+    opts?: { preApproved?: boolean },
 ): Promise<{ rawMessages: WithParts[] }> {
-    await toolCtx.ask({
-        permission: "compress",
-        patterns: ["*"],
-        always: ["*"],
-        metadata: {},
-    })
-
-    toolCtx.metadata({ title: "Decompress" })
+    // [Issue #410] When the caller already requested permission outside the guard,
+    // skip it here; otherwise request it (kept for direct/test callers).
+    if (!opts?.preApproved) {
+        await requestCompressPermission(toolCtx, "Decompress")
+    }
 
     const rawMessages = await fetchSessionMessages(ctx.client, toolCtx.sessionID)
 
@@ -279,7 +278,7 @@ export function createDecompressTool(factoryCtx: ToolFactoryContext): ReturnType
             // per-session guard (see compress/range.ts for rationale). The body intentionally
             // keeps its original indentation inside `run` to keep this change additive-only.
             const run = async () => {
-            const { rawMessages } = await prepareDecompressSession(ctx, toolCtx)
+            const { rawMessages } = await prepareDecompressSession(ctx, toolCtx, { preApproved: true })
 
             const effectiveLimitBefore = resolveEffectiveContextLimit(ctx.state, ctx.config)
             const contextUsageBefore = effectiveLimitBefore
@@ -412,6 +411,10 @@ export function createDecompressTool(factoryCtx: ToolFactoryContext): ReturnType
 
             return lines.join("\n")
             }
+            // [Issue #410] Request permission OUTSIDE the per-session guard (same rationale as
+            // compress/range.ts): toolCtx.ask can wait unbounded or be abandoned without settling,
+            // and holding the session lock across it would wedge every later same-session op.
+            await requestCompressPermission(toolCtx, "Decompress")
             return factoryCtx.registry.withSessionGuard(toolCtx.sessionID, () => run())
         },
     })
