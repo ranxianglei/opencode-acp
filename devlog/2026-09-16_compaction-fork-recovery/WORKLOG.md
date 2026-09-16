@@ -16,10 +16,10 @@
 
 ### Commits
 
-| Commit | Description |
-|--------|-------------|
-| `419045b` | fix: reconcile compaction restart and custom-storage fork recovery (lib + tests + REQ) |
-| `f30da03` | docs: worklog for compaction restart / fork recovery fix |
+| Commit      | Description                                                                                                                                 |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `419045b`   | fix: reconcile compaction restart and custom-storage fork recovery (lib + tests + REQ)                                                      |
+| `f30da03`   | docs: worklog for compaction restart / fork recovery fix                                                                                    |
 | (follow-up) | review fixes: default-dir parent fallback during storagePath transition + transition test; test config type-conformance; assertion comments |
 
 ### Key Files
@@ -30,7 +30,7 @@
 
 ## 3. Design & Implementation Notes
 
-- **Why reconcile at init instead of relying on `updatePerTurnState`**: `state.lastCompaction = findLastCompactionTimestamp(messages)` runs *before* the persisted load, so by the time stale fields are restored, the "newer than persisted" signal only exists as a comparison between current history and `_persistedLastCompaction`. The reconciliation uses exactly that comparison; `Math.max` keeps the merged value when the persisted boundary is newer (no spurious reset).
+- **Why reconcile at init instead of relying on `updatePerTurnState`**: `state.lastCompaction = findLastCompactionTimestamp(messages)` runs _before_ the persisted load, so by the time stale fields are restored, the "newer than persisted" signal only exists as a comparison between current history and `_persistedLastCompaction`. The reconciliation uses exactly that comparison; `Math.max` keeps the merged value when the persisted boundary is newer (no spurious reset).
 - **Reset scope**: `resetOnCompaction` (lib/state/utils.ts) clears tool cache, all nudge anchors/baselines, and message refs; it deliberately preserves `prune.messages` and stats (Bug 2 patch comment). This matches the issue's required semantics and gives parity with the live-compaction path. The freshly seeded `turnNudgeAnchors` (from `collectTurnNudgeAnchors`) are wiped too — the inject pipeline re-derives them per turn, identical to the live path's one-turn behavior.
 - **Fork storageDir**: passing `state.storageDir` (possibly `undefined`) to the parent load is backward compatible — `getStorageDir(override)` falls back to the default directory, so default-storage forks behave exactly as before.
 - **Legacy ref normalization**: mirrors the own-session migration loop in `state.ts` (`parseMessageRef`/`formatMessageRef`). `byRef` is rebuilt from `byRawId` (authoritative direction) with defensive carry-over of byRef-only entries. Non-matching keys pass through unchanged, so malformed refs behave exactly as before (skipped during translation).
