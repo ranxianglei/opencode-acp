@@ -18,8 +18,8 @@
 
 | Commit | Description |
 |--------|-------------|
-| `<sha-1>` | fix: serialize same-session state initialization and transforms (#404) |
-| `<sha-2>` | docs: fill devlog commit SHAs |
+| `571ccf0` | fix: serialize same-session state initialization and transforms (#404) |
+| `see-branch` | docs: fill devlog commit SHAs (this commit; self-referential SHA omitted) |
 
 ### Key Files
 
