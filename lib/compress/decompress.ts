@@ -275,6 +275,10 @@ export function createDecompressTool(factoryCtx: ToolFactoryContext): ReturnType
         args: buildSchema(),
         async execute(args, toolCtx) {
             const ctx = resolveToolContext(factoryCtx, toolCtx.sessionID)
+            // [Issue #404] Serialize the full prepare→mutate→finalize transaction under the
+            // per-session guard (see compress/range.ts for rationale). The body intentionally
+            // keeps its original indentation inside `run` to keep this change additive-only.
+            const run = async () => {
             const { rawMessages } = await prepareDecompressSession(ctx, toolCtx)
 
             const effectiveLimitBefore = resolveEffectiveContextLimit(ctx.state, ctx.config)
@@ -407,6 +411,8 @@ export function createDecompressTool(factoryCtx: ToolFactoryContext): ReturnType
             })
 
             return lines.join("\n")
+            }
+            return factoryCtx.registry.withSessionGuard(toolCtx.sessionID, () => run())
         },
     })
 }

@@ -124,29 +124,35 @@ export function createSystemPromptHandler(
         // hook is the only writer and fires AFTER messages.transform within
         // a request, so without this the limit is learned and lost every
         // message and the safety net never engages.
-        if (input.model?.limit?.context) {
-            const limit = input.model.limit.context
-            const providerID = input.model?.providerID
-            const modelID = input.model?.id
-            // Identity fields are only written when present: a limit without
-            // identity must not clobber the pair the messages hook relies on
-            // for staleness detection (#312).
-            const changed =
-                state.modelContextLimit !== limit ||
-                (providerID !== undefined && state.modelProviderID !== providerID) ||
-                (modelID !== undefined && state.modelID !== modelID)
-            state.modelContextLimit = limit
-            // [FIX #312 follow-up] Record WHICH model the limit belongs to so
-            // the messages hook can detect staleness on a catalog miss.
-            if (providerID !== undefined) {
-                state.modelProviderID = providerID
-            }
-            if (modelID !== undefined) {
-                state.modelID = modelID
-            }
-            if (changed) {
-                saveSessionState(state, logger).catch(() => {})
-            }
+        if (input.model?.limit?.context && input.sessionID) {
+            // [Issue #404] Serialize the limit write + save against same-session
+            // transforms/tools: this hook fires AFTER messages.transform within a
+            // request, so an unsynchronized mutation+save could interleave with a
+            // transform's persistence of newer in-memory state.
+            await registry.withSessionGuard(input.sessionID, () => {
+                const limit = input.model.limit.context
+                const providerID = input.model?.providerID
+                const modelID = input.model?.id
+                // Identity fields are only written when present: a limit without
+                // identity must not clobber the pair the messages hook relies on
+                // for staleness detection (#312).
+                const changed =
+                    state.modelContextLimit !== limit ||
+                    (providerID !== undefined && state.modelProviderID !== providerID) ||
+                    (modelID !== undefined && state.modelID !== modelID)
+                state.modelContextLimit = limit
+                // [FIX #312 follow-up] Record WHICH model the limit belongs to so
+                // the messages hook can detect staleness on a catalog miss.
+                if (providerID !== undefined) {
+                    state.modelProviderID = providerID
+                }
+                if (modelID !== undefined) {
+                    state.modelID = modelID
+                }
+                if (changed) {
+                    saveSessionState(state, logger).catch(() => {})
+                }
+            })
         }
 
         const effectivePermission = compressPermission(state, config)
@@ -197,15 +203,189 @@ export function createChatMessageTransformHandler(
         }
 
         const lastUserMessage = getLastUserMessage(messages)
-        let state: SessionState
+
+        // [Issue #404] Shared post-resolution pipeline stages, invoked exactly
+        // once per request below. For real sessions it runs INSIDE the session
+        // guard so init + mutations + persistence serialize per session.
+        const runPipeline = async (state: SessionState): Promise<void> => {
+            syncCompressPermissionState(state, config, hostPermissions, output.messages)
+
+            if (state.isSubAgent && !config.allowSubAgents) {
+                return
+            }
+
+            stripHallucinations(output.messages)
+
+            // [#368] Drop oversized reasoning from closed-turn compress tool calls.
+            // compress calls are hard-exempt from compression (Bug 39), so their
+            // thinking otherwise rides along every request as an unreclaimable
+            // floor. Gated by the nested `compress.reasoning` config, resolved
+            // through the #344 cascade (model > provider > global) using THIS
+            // request's model identity (request metadata first, session state as
+            // fallback). Runs BEFORE token accounting / pruning so every later
+            // stage sees the post-drop array.
+            const dropReasoningModel = (
+                lastUserMessage?.info as
+                    { model?: { providerID?: string; modelID?: string } } | undefined
+            )?.model
+            const reasoningConfig = applyCompressOverrides(
+                config,
+                dropReasoningModel?.providerID ?? state.modelProviderID,
+                dropReasoningModel?.modelID ?? state.modelID,
+            ).compress.reasoning
+            if (reasoningConfig?.drop !== false) {
+                const droppedReasoning = dropCompressReasoning(
+                    output.messages,
+                    reasoningConfig?.threshold ?? DEFAULT_COMPRESS_REASONING.threshold,
+                )
+                if (droppedReasoning > 0) {
+                    logger.debug("compress.reasoning: dropped oversized reasoning parts", {
+                        dropped: droppedReasoning,
+                        threshold: reasoningConfig?.threshold ?? DEFAULT_COMPRESS_REASONING.threshold,
+                    })
+                }
+            }
+
+            ensureBuiltinFiltersRegistered()
+            const effectiveLimit = resolveEffectiveContextLimit(state, config)
+            applyMessageFilters(output.messages, config.messageFilters, logger, {
+                sessionId: state.sessionId ?? "",
+                isSubAgent: state.isSubAgent,
+                modelContextLimit: effectiveLimit?.limit,
+            })
+            cacheSystemPromptTokens(state, output.messages)
+            assignMessageRefs(state, output.messages)
+            const activeBlockCountBefore = state.prune.messages.activeBlockIds.size // [FIX Bug 4]
+            const compressionStateChanged = syncCompressionBlocks(state, logger, output.messages)
+            if (
+                compressionStateChanged ||
+                state.prune.messages.activeBlockIds.size !== activeBlockCountBefore
+            ) {
+                // [FIX Bug 4]
+                saveSessionState(state, logger).catch(() => {}) // [FIX Bug 4] persist deactivations
+            }
+            syncToolCache(state, config, logger, output.messages)
+            buildToolIdList(state, output.messages)
+            const batchResult = runBatchCleanup(state, config, logger, output.messages)
+            if (batchResult.mergedCount > 0) {
+                saveSessionState(state, logger).catch(() => {})
+            }
+            const prePruneTokens = getCurrentTokenUsage(state, output.messages)
+            // Keep the full post-filter projection for candidate planning. The
+            // nudge receives a pruned view, while range validation still needs the
+            // original ordering to prove tool-pair and protection parity.
+            // Skip the copy entirely when candidates are disabled (default).
+            const candidateMessages =
+                config.compress.candidates === true ? output.messages.slice() : undefined
+            prune(state, logger, config, output.messages)
+            hideConsumedCompressCalls(state, output.messages)
+            assignMessageRefs(state, output.messages)
+            const compressionPriorities = buildPriorityMap(config, state, output.messages)
+            prompts.reload()
+            injectCompressNudges(
+                state,
+                config,
+                logger,
+                output.messages,
+                prompts.getRuntimePrompts(),
+                compressionPriorities,
+                config.debug
+                    ? (text: string) => {
+                          // sendIgnoredMessage writes an ignored:true user msg to DB.
+                          // opencode's runtime loop detects it as "last user" (role-only,
+                          // ignores the flag) → phantom turn → compress → notification →
+                          // infinite loop. Use logger.debug + toast instead.
+                          logger.debug(`[ACP Debug] Nudge injected:\n${text}`)
+                          client.tui
+                              .showToast({
+                                  body: {
+                                      title: "ACP: Nudge Injected",
+                                      message: text.slice(0, 500),
+                                      variant: "info",
+                                      duration: 5000,
+                                  },
+                              })
+                              .catch(() => {})
+                      }
+                    : undefined,
+                prePruneTokens,
+                candidateMessages,
+            )
+            // Candidate planning consumes the pre-truncation snapshot so its
+            // executor-parity check matches the fresh messages fetched by compress.
+            truncateLargeToolOutputs(
+                state,
+                config,
+                logger,
+                output.messages.filter((message) => !isSyntheticMessage(message)),
+            )
+            // Keep candidate planning independent from the final budget guard:
+            // candidates are computed from the pre-truncation snapshot so their
+            // ranges remain valid when the compress executor fetches fresh history.
+            enforceContextBudget(state, config, logger, output.messages)
+            injectMessageIds(state, config, output.messages, compressionPriorities)
+            hideFailedCompressCalls(output.messages)
+            stripStaleMetadata(output.messages)
+            dropEmptyMessages(output.messages)
+            const postTokens = getCurrentTokenUsage(state, output.messages)
+            // [FIX #346] Hard guard: if the post-transform context still exceeds
+            // the model's real request budget (window minus system prompt + tool
+            // schemas + output-token reserve), the backend will reject the
+            // request. opencode exits 0 with zero output in that case (upstream
+            // behavior the plugin cannot change), so this ERROR is the only
+            // signal that the session has hit the length-rejection wall.
+            if (postTokens !== undefined && effectiveLimit) {
+                const budget =
+                    effectiveLimit.limit - (state.systemPromptTokens ?? 0) - OUTPUT_RESERVE_TOKENS
+                if (postTokens > budget) {
+                    logger.error(
+                        "ACP hard guard: context exceeds model budget after in-flight reduction",
+                        {
+                            session: state.sessionId,
+                            postTokens,
+                            budget,
+                            contextLimit: effectiveLimit.limit,
+                            contextLimitSource: effectiveLimit.source,
+                            hint: "request will likely be rejected; run /compact or start a new session",
+                        },
+                    )
+                }
+            }
+            logger.info("Chat transform complete", {
+                session: state.sessionId,
+                model: state.modelID,
+                messages: output.messages.length,
+                prePruneTokens,
+                postTokens,
+                contextLimit: effectiveLimit?.limit,
+                contextLimitSource: effectiveLimit?.source,
+                usagePct:
+                    postTokens !== undefined && effectiveLimit
+                        ? `${((postTokens / effectiveLimit.limit) * 100).toFixed(1)}%`
+                        : undefined,
+                nudged: state.nudges.shouldInjectThisTurn,
+            })
+
+            if (state.sessionId) {
+                await logger.saveContext(state.sessionId, output.messages)
+            }
+        }
+
         if (!lastUserMessage) {
             // Ephemeral state: no session to resolve, but keep running
             // state-independent stages (e.g. stripHallucinations).
-            state = createSessionState()
-        } else {
+            await runPipeline(createSessionState())
+            return
+        }
+
+        // [Issue #404] Serialize the entire same-session request path (init,
+        // model-limit reconciliation, mutations, persistence) so concurrent
+        // transforms of one session cannot interleave at awaits and persist
+        // stale snapshots over each other's committed state.
+        await registry.withSessionGuard(lastUserMessage.info.sessionID, async () => {
             // [FIX #33] Per-session state: each session keeps its own SessionState,
             // so interleaved sessions no longer reset each other's modelContextLimit.
-            state = await registry.getOrCreate(
+            const state = await registry.getOrCreate(
                 client,
                 lastUserMessage.info.sessionID,
                 messages,
@@ -292,169 +472,8 @@ export function createChatMessageTransformHandler(
                     },
                 )
             }
-        }
-
-        syncCompressPermissionState(state, config, hostPermissions, output.messages)
-
-        if (state.isSubAgent && !config.allowSubAgents) {
-            return
-        }
-
-        stripHallucinations(output.messages)
-
-        // [#368] Drop oversized reasoning from closed-turn compress tool calls.
-        // compress calls are hard-exempt from compression (Bug 39), so their
-        // thinking otherwise rides along every request as an unreclaimable
-        // floor. Gated by the nested `compress.reasoning` config, resolved
-        // through the #344 cascade (model > provider > global) using THIS
-        // request's model identity (request metadata first, session state as
-        // fallback). Runs BEFORE token accounting / pruning so every later
-        // stage sees the post-drop array.
-        const dropReasoningModel = (
-            lastUserMessage?.info as
-                { model?: { providerID?: string; modelID?: string } } | undefined
-        )?.model
-        const reasoningConfig = applyCompressOverrides(
-            config,
-            dropReasoningModel?.providerID ?? state.modelProviderID,
-            dropReasoningModel?.modelID ?? state.modelID,
-        ).compress.reasoning
-        if (reasoningConfig?.drop !== false) {
-            const droppedReasoning = dropCompressReasoning(
-                output.messages,
-                reasoningConfig?.threshold ?? DEFAULT_COMPRESS_REASONING.threshold,
-            )
-            if (droppedReasoning > 0) {
-                logger.debug("compress.reasoning: dropped oversized reasoning parts", {
-                    dropped: droppedReasoning,
-                    threshold: reasoningConfig?.threshold ?? DEFAULT_COMPRESS_REASONING.threshold,
-                })
-            }
-        }
-
-        ensureBuiltinFiltersRegistered()
-        const effectiveLimit = resolveEffectiveContextLimit(state, config)
-        applyMessageFilters(output.messages, config.messageFilters, logger, {
-            sessionId: state.sessionId ?? "",
-            isSubAgent: state.isSubAgent,
-            modelContextLimit: effectiveLimit?.limit,
+            await runPipeline(state)
         })
-        cacheSystemPromptTokens(state, output.messages)
-        assignMessageRefs(state, output.messages)
-        const activeBlockCountBefore = state.prune.messages.activeBlockIds.size // [FIX Bug 4]
-        const compressionStateChanged = syncCompressionBlocks(state, logger, output.messages)
-        if (
-            compressionStateChanged ||
-            state.prune.messages.activeBlockIds.size !== activeBlockCountBefore
-        ) {
-            // [FIX Bug 4]
-            saveSessionState(state, logger).catch(() => {}) // [FIX Bug 4] persist deactivations
-        }
-        syncToolCache(state, config, logger, output.messages)
-        buildToolIdList(state, output.messages)
-        const batchResult = runBatchCleanup(state, config, logger, output.messages)
-        if (batchResult.mergedCount > 0) {
-            saveSessionState(state, logger).catch(() => {})
-        }
-        const prePruneTokens = getCurrentTokenUsage(state, output.messages)
-        // Keep the full post-filter projection for candidate planning. The
-        // nudge receives a pruned view, while range validation still needs the
-        // original ordering to prove tool-pair and protection parity.
-        // Skip the copy entirely when candidates are disabled (default).
-        const candidateMessages =
-            config.compress.candidates === true ? output.messages.slice() : undefined
-        prune(state, logger, config, output.messages)
-        hideConsumedCompressCalls(state, output.messages)
-        assignMessageRefs(state, output.messages)
-        const compressionPriorities = buildPriorityMap(config, state, output.messages)
-        prompts.reload()
-        injectCompressNudges(
-            state,
-            config,
-            logger,
-            output.messages,
-            prompts.getRuntimePrompts(),
-            compressionPriorities,
-            config.debug
-                ? (text: string) => {
-                      // sendIgnoredMessage writes an ignored:true user msg to DB.
-                      // opencode's runtime loop detects it as "last user" (role-only,
-                      // ignores the flag) → phantom turn → compress → notification →
-                      // infinite loop. Use logger.debug + toast instead.
-                      logger.debug(`[ACP Debug] Nudge injected:\n${text}`)
-                      client.tui
-                          .showToast({
-                              body: {
-                                  title: "ACP: Nudge Injected",
-                                  message: text.slice(0, 500),
-                                  variant: "info",
-                                  duration: 5000,
-                              },
-                          })
-                          .catch(() => {})
-                  }
-                : undefined,
-            prePruneTokens,
-            candidateMessages,
-        )
-        // Candidate planning consumes the pre-truncation snapshot so its
-        // executor-parity check matches the fresh messages fetched by compress.
-        truncateLargeToolOutputs(
-            state,
-            config,
-            logger,
-            output.messages.filter((message) => !isSyntheticMessage(message)),
-        )
-        // Keep candidate planning independent from the final budget guard:
-        // candidates are computed from the pre-truncation snapshot so their
-        // ranges remain valid when the compress executor fetches fresh history.
-        enforceContextBudget(state, config, logger, output.messages)
-        injectMessageIds(state, config, output.messages, compressionPriorities)
-        hideFailedCompressCalls(output.messages)
-        stripStaleMetadata(output.messages)
-        dropEmptyMessages(output.messages)
-        const postTokens = getCurrentTokenUsage(state, output.messages)
-        // [FIX #346] Hard guard: if the post-transform context still exceeds
-        // the model's real request budget (window minus system prompt + tool
-        // schemas + output-token reserve), the backend will reject the
-        // request. opencode exits 0 with zero output in that case (upstream
-        // behavior the plugin cannot change), so this ERROR is the only
-        // signal that the session has hit the length-rejection wall.
-        if (postTokens !== undefined && effectiveLimit) {
-            const budget =
-                effectiveLimit.limit - (state.systemPromptTokens ?? 0) - OUTPUT_RESERVE_TOKENS
-            if (postTokens > budget) {
-                logger.error(
-                    "ACP hard guard: context exceeds model budget after in-flight reduction",
-                    {
-                        session: state.sessionId,
-                        postTokens,
-                        budget,
-                        contextLimit: effectiveLimit.limit,
-                        contextLimitSource: effectiveLimit.source,
-                        hint: "request will likely be rejected; run /compact or start a new session",
-                    },
-                )
-            }
-        }
-        logger.info("Chat transform complete", {
-            session: state.sessionId,
-            model: state.modelID,
-            messages: output.messages.length,
-            prePruneTokens,
-            postTokens,
-            contextLimit: effectiveLimit?.limit,
-            contextLimitSource: effectiveLimit?.source,
-            usagePct:
-                postTokens !== undefined && effectiveLimit
-                    ? `${((postTokens / effectiveLimit.limit) * 100).toFixed(1)}%`
-                    : undefined,
-            nudged: state.nudges.shouldInjectThisTurn,
-        })
-
-        if (state.sessionId) {
-            await logger.saveContext(state.sessionId, output.messages)
-        }
     }
 }
 
@@ -604,16 +623,25 @@ export function createEventHandler(registry: SessionStateRegistry, logger: Logge
             })
 
             for (const state of registry.all()) {
-                const updates = applyPendingCompressionDurations(state)
-                if (updates > 0) {
-                    await saveSessionState(state, logger)
-                    logger.info("Attached compression time to blocks", {
-                        messageID: part.messageID,
-                        callID: part.callID,
-                        blocks: updates,
-                        durationMs,
-                    })
+                if (!state.sessionId) {
+                    continue
                 }
+                // [Issue #404] Apply mutates block durations and the save persists
+                // them: serialize against same-session transforms so a duration
+                // applied here cannot clobber (or be clobbered by) a concurrent
+                // transform's snapshot.
+                await registry.withSessionGuard(state.sessionId, async () => {
+                    const updates = applyPendingCompressionDurations(state)
+                    if (updates > 0) {
+                        await saveSessionState(state, logger)
+                        logger.info("Attached compression time to blocks", {
+                            messageID: part.messageID,
+                            callID: part.callID,
+                            blocks: updates,
+                            durationMs,
+                        })
+                    }
+                })
             }
             return
         }

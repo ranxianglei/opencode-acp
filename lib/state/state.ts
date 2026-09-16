@@ -60,6 +60,50 @@ export async function updatePerTurnState(
 // access; modelContextLimit and all persisted fields survive eviction.
 const REGISTRY_SOFT_CAP = 32
 
+/**
+ * [Issue #404] Per-session FIFO mutex serializing same-session mutations
+ * (message transforms, compress/decompress tools, event-hook saves,
+ * system-hook limit writes). Node is single-threaded, but async work
+ * interleaves at awaits: without this, a stale transform resuming after a
+ * newer one can persist last-write-wins garbage over committed state.
+ * Chain-based promise queue (not a boolean flag): waiters line up in arrival
+ * order; the entry is deleted once the tail task finishes, so the map stays
+ * empty when idle and cannot leak.
+ *
+ * Run `fn` serialized against every other guard user of the same sessionId.
+ * MUST NOT be nested for the same session (deadlock) — callers acquire it
+ * exactly once at their outermost boundary.
+ */
+export type SessionGuard = <T>(sessionId: string, fn: () => Promise<T> | T) => Promise<T>
+
+export function createSessionGuard(): SessionGuard {
+    const locks = new Map<string, Promise<void>>()
+    return async (sessionId, fn) => {
+        const previous = locks.get(sessionId) ?? Promise.resolve()
+        let release!: () => void
+        const released = new Promise<void>((resolve) => {
+            release = resolve
+        })
+        const chain = previous.then(() => released)
+        locks.set(sessionId, chain)
+        try {
+            await previous
+        } catch {
+            // A rejected task must not poison the queue for later tasks.
+        }
+        try {
+            return await fn()
+        } finally {
+            release()
+            // Delete only when we are still the tail — a newer waiter may have
+            // already chained onto us.
+            if (locks.get(sessionId) === chain) {
+                locks.delete(sessionId)
+            }
+        }
+    }
+}
+
 // [FIX #33] Per-session state. Replaces the single shared SessionState singleton
 // whose resetSessionState-on-switch wiped modelContextLimit (set only by
 // system.transform, which fires AFTER messages.transform) and flipped
@@ -150,9 +194,16 @@ export class SessionStateRegistry {
         return this.states.size
     }
 
+    // [Issue #404] Per-session FIFO mutex serializing same-session mutations
+    // (message transforms, compress/decompress tools, event-hook saves,
+    // system-hook limit writes). Shared factory so test stubs compose the
+    // exact same implementation instead of drifting.
+    readonly withSessionGuard: SessionGuard = createSessionGuard()
+
     // Idempotent: ensureSessionInitialized returns immediately once
-    // state.sessionId === sessionId (assigned synchronously before any await),
-    // so repeat calls for the same session never re-reset.
+    // state.sessionId === sessionId, and coalesces concurrent inits per state
+    // object ([Issue #404]), so racing calls for the same session never
+    // re-reset or observe partially initialized state.
     async getOrCreate(
         client: any,
         sessionId: string,
@@ -291,6 +342,15 @@ export function resetSessionState(state: SessionState): void {
     state.noContextLimitWarned = false
 }
 
+// [Issue #404] In-flight init coalescing keyed by state object: concurrent
+// callers (e.g. two same-session message transforms racing on the first
+// request) share one init instead of racing past each other — the old
+// synchronous `state.sessionId = sessionId` assignment let a second caller
+// early-return and observe partially initialized state. Keyed by the state
+// OBJECT (WeakMap) so soft-cap eviction + recreation starts a fresh init
+// rather than awaiting a promise tied to an evicted instance.
+const inflightInits = new WeakMap<SessionState, Promise<void>>()
+
 export async function ensureSessionInitialized(
     client: any,
     state: SessionState,
@@ -300,10 +360,35 @@ export async function ensureSessionInitialized(
     config?: PluginConfig,
     projectDir?: string,
 ): Promise<void> {
+    // In-flight check FIRST: runSessionInitialization assigns
+    // state.sessionId synchronously before its first await, so the fast path
+    // below would otherwise let racing callers early-return mid-init.
+    const inflight = inflightInits.get(state)
+    if (inflight) {
+        await inflight
+        return
+    }
     if (state.sessionId === sessionId) {
         return
     }
+    const run = runSessionInitialization(client, state, sessionId, logger, messages, config, projectDir)
+    inflightInits.set(state, run)
+    try {
+        await run
+    } finally {
+        inflightInits.delete(state)
+    }
+}
 
+async function runSessionInitialization(
+    client: any,
+    state: SessionState,
+    sessionId: string,
+    logger: Logger,
+    messages: WithParts[],
+    config?: PluginConfig,
+    projectDir?: string,
+): Promise<void> {
     resetSessionState(state)
     state.sessionId = sessionId
     // Resolve the configured storage location once per session (transient).
