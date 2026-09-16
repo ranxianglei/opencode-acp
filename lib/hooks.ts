@@ -241,7 +241,8 @@ export function createChatMessageTransformHandler(
                 if (droppedReasoning > 0) {
                     logger.debug("compress.reasoning: dropped oversized reasoning parts", {
                         dropped: droppedReasoning,
-                        threshold: reasoningConfig?.threshold ?? DEFAULT_COMPRESS_REASONING.threshold,
+                        threshold: reasoningConfig?.threshold ??
+                            DEFAULT_COMPRESS_REASONING.threshold,
                     })
                 }
             }
@@ -514,9 +515,15 @@ export function createCommandExecuteHandler(
             })
             const messages = filterMessages(messagesResponse.data || messagesResponse)
 
-            const state = await registry.getOrCreate(client, input.sessionID, messages, config)
-
-            syncCompressPermissionState(state, config, hostPermissions, messages)
+            // [Issue #404] getOrCreate can initialize + persist, and sync
+            // recomputes permission state in memory: keep both under the
+            // per-session guard so command-triggered mutations follow the same
+            // single-writer invariant as transforms and tools.
+            const state = await registry.withSessionGuard(input.sessionID, async () => {
+                const s = await registry.getOrCreate(client, input.sessionID, messages, config)
+                syncCompressPermissionState(s, config, hostPermissions, messages)
+                return s
+            })
 
             const commandCtx = {
                 client,
@@ -622,27 +629,35 @@ export function createEventHandler(registry: SessionStateRegistry, logger: Logge
                 durationMs,
             })
 
+            // [Issue #404] Apply mutates block durations and the save persists
+            // them: serialize against same-session transforms so a duration
+            // applied here cannot clobber (or be clobbered by) a concurrent
+            // transform's snapshot. Sessions are independent, so acquisitions
+            // run concurrently across sessions — one long-held guard (e.g. an
+            // open permission dialog) must not delay other sessions' duration
+            // attachment. Per-session failures stay contained (the persistence
+            // layer logs save errors); one failing session must not skip the rest.
+            const settles: Array<Promise<unknown>> = []
             for (const state of registry.all()) {
                 if (!state.sessionId) {
                     continue
                 }
-                // [Issue #404] Apply mutates block durations and the save persists
-                // them: serialize against same-session transforms so a duration
-                // applied here cannot clobber (or be clobbered by) a concurrent
-                // transform's snapshot.
-                await registry.withSessionGuard(state.sessionId, async () => {
-                    const updates = applyPendingCompressionDurations(state)
-                    if (updates > 0) {
-                        await saveSessionState(state, logger)
-                        logger.info("Attached compression time to blocks", {
-                            messageID: part.messageID,
-                            callID: part.callID,
-                            blocks: updates,
-                            durationMs,
-                        })
-                    }
-                })
+                settles.push(
+                    registry.withSessionGuard(state.sessionId, async () => {
+                        const updates = applyPendingCompressionDurations(state)
+                        if (updates > 0) {
+                            await saveSessionState(state, logger)
+                            logger.info("Attached compression time to blocks", {
+                                messageID: part.messageID,
+                                callID: part.callID,
+                                blocks: updates,
+                                durationMs,
+                            })
+                        }
+                    }),
+                )
             }
+            await Promise.allSettled(settles)
             return
         }
 

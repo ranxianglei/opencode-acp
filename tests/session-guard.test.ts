@@ -11,6 +11,8 @@ import "./test-env"
  *   - failed init coalescing semantics (waiters resolve like today)
  *   - read-modify-write safety: a stale transaction cannot overwrite newer
  *     committed state while serialized
+ *   - transform-handler wiring: concurrent same-session requests serialize
+ *     through the guard (end-to-end, real createChatMessageTransformHandler)
  *   - restoreCompressionState preserves shared compressionTiming identity
  */
 
@@ -27,6 +29,8 @@ import {
     type WithParts,
 } from "../lib/state"
 import { snapshotCompressionState, restoreCompressionState } from "../lib/compress/pipeline"
+import { createChatMessageTransformHandler } from "../lib/hooks"
+import type { PluginConfig } from "../lib/config"
 import { Logger } from "../lib/logger"
 
 const MESSAGES: WithParts[] = []
@@ -194,4 +198,204 @@ test("restoreCompressionState preserves the shared compressionTiming object iden
 
     assert.equal(state.prune.messages.activeBlockIds.size, 0)
     assert.equal(state.compressionTiming, timingBefore)
+})
+
+test("concurrent transforms on one session serialize through the guard (wiring regression)", async () => {
+    // End-to-end wiring check for [Issue #404]: two chat-message-transform
+    // requests for the SAME session must not interleave their
+    // init→mutate→persist sections. Pre-fix, the second request's getOrCreate
+    // hit the sessionId fast path mid-init and ran its pipeline concurrently
+    // on partially initialized state (stale-snapshot corruption). We observe
+    // guard acquisition order through the registry seam: serialized handlers
+    // produce strictly nested enter/exit pairs; unsynchronized ones interleave
+    // (or, before the guard existed, never acquire at all).
+    const logger = new Logger(false)
+    const seed = createSessionState()
+    seed.sessionId = "session-wire"
+    seed.modelContextLimit = 200000
+    // [FIX #312] A persisted limit only survives the transform's reconciliation
+    // when its model identity matches the request; seed the pair like a real
+    // session so the loaded value is what we assert on.
+    seed.modelProviderID = "test-provider"
+    seed.modelID = "test-model"
+    await saveSessionState(seed, logger)
+
+    const client = {
+        session: {
+            get: async () => {
+                // Hold the init window open so concurrent requests genuinely
+                // overlap (pre-fix interleaving requires this window).
+                await new Promise((r) => setTimeout(r, 25))
+                return { data: { parentID: null } }
+            },
+        },
+    }
+
+    const config: PluginConfig = {
+        enabled: true,
+        autoUpdate: true,
+        debug: false,
+        pruneNotification: "off",
+        pruneNotificationType: "chat",
+        commands: { enabled: true, protectedTools: [] },
+        experimental: { allowSubAgents: false, customPrompts: false },
+        protectedFilePatterns: [],
+        compress: {
+            mode: "message",
+            permission: "allow",
+            showCompression: false,
+            summaryBuffer: true,
+            candidates: true,
+            maxContextLimit: 150000,
+            minContextLimit: 50000,
+            nudgeFrequency: 5,
+            iterationNudgeThreshold: 15,
+            nudgeForce: "soft",
+            protectedTools: ["task"],
+            protectTags: false,
+            protectUserMessages: false,
+            reasoning: { drop: true, threshold: 2048 },
+        },
+        gc: {
+            algorithm: "truncate",
+            promotionThreshold: 5,
+            maxBlockAge: 15,
+            maxOldGenSummaryLength: 3000,
+            majorGcThresholdPercent: "100%",
+            batchCleanup: { lowThreshold: "60%", highThreshold: "75%", forceThreshold: "90%" },
+        },
+    }
+    const prompts = {
+        reload() {},
+        getRuntimePrompts() {
+            return {
+                system: "ACP system",
+                compressRange: "compress range",
+                compressMessage: "compress message",
+                contextLimitNudge: "nudge",
+                turnNudge: "turn nudge",
+                iterationNudge: "iteration nudge",
+                manualExtension: "",
+                subagentExtension: "",
+            }
+        },
+    }
+    const hostPermissions = { global: undefined, agents: {} }
+
+    const registry = new SessionStateRegistry(logger)
+    const events: string[] = []
+    const originalGuard = registry.withSessionGuard
+    // Markers are pushed INSIDE the locked fn: "enter" means the task actually
+    // started running under the lock (not merely arrived at the FIFO queue), so
+    // strictly nested pairs prove serialization while interleave proves overlap.
+    registry.withSessionGuard = <T>(sessionId: string, fn: () => Promise<T> | T): Promise<T> =>
+        originalGuard(sessionId, async (): Promise<T> => {
+            events.push(`enter:${sessionId}`)
+            try {
+                return await fn()
+            } finally {
+                events.push(`exit:${sessionId}`)
+            }
+        })
+
+    const handler = createChatMessageTransformHandler(
+        client,
+        registry,
+        logger,
+        config,
+        prompts,
+        hostPermissions,
+    )
+
+    const mkMessages = (): WithParts[] => [
+        {
+            info: {
+                id: "u1",
+                sessionID: "session-wire",
+                role: "user",
+                agent: "assistant",
+                model: { providerID: "test-provider", modelID: "test-model" },
+                time: { created: Date.now() },
+            } as WithParts["info"],
+            parts: [
+                {
+                    type: "text",
+                    text: "hello",
+                    id: "u1-p1",
+                    sessionID: "session-wire",
+                    messageID: "u1",
+                },
+            ],
+        },
+        {
+            info: {
+                id: "a1",
+                sessionID: "session-wire",
+                role: "assistant",
+                agent: "assistant",
+                parentID: "parent-placeholder",
+                modelID: "test-model",
+                providerID: "test-provider",
+                mode: "normal",
+                path: { cwd: "/", root: "/" },
+                summary: false,
+                cost: 0,
+                tokens: { input: 100, output: 50, reasoning: 0, cache: { read: 0, write: 0 } },
+                time: { created: Date.now() },
+            } as WithParts["info"],
+            parts: [
+                {
+                    type: "step-start",
+                    id: "a1-ss",
+                    sessionID: "session-wire",
+                    messageID: "a1",
+                },
+                {
+                    type: "text",
+                    text: "hi there",
+                    id: "a1-p1",
+                    sessionID: "session-wire",
+                    messageID: "a1",
+                },
+            ],
+        },
+        {
+            info: {
+                id: "u2",
+                sessionID: "session-wire",
+                role: "user",
+                agent: "assistant",
+                model: { providerID: "test-provider", modelID: "test-model" },
+                time: { created: Date.now() },
+            } as WithParts["info"],
+            parts: [
+                {
+                    type: "text",
+                    text: "again",
+                    id: "u2-p1",
+                    sessionID: "session-wire",
+                    messageID: "u2",
+                },
+            ],
+        },
+    ]
+
+    await Promise.all([handler({}, { messages: mkMessages() }), handler({}, { messages: mkMessages() })])
+
+    // Same-session work ran strictly serially (nested pairs, no overlap). An
+    // unsynchronized pre-fix interleave would look like enter,enter,exit,exit —
+    // or produce no events at all before the guard existed.
+    assert.deepEqual(events, [
+        "enter:session-wire",
+        "exit:session-wire",
+        "enter:session-wire",
+        "exit:session-wire",
+    ])
+    // Both requests observed fully initialized state (persisted limit loaded),
+    // and refs were assigned for the shared input.
+    const state = registry.get("session-wire")
+    assert.ok(state)
+    assert.equal(state.modelContextLimit, 200000)
+    assert.equal(state.messageIds.byRef.get("m00001"), "u1")
+    assert.equal(state.messageIds.byRef.get("m00003"), "u2")
 })

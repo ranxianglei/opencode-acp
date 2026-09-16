@@ -198,7 +198,9 @@ export class SessionStateRegistry {
     // (message transforms, compress/decompress tools, event-hook saves,
     // system-hook limit writes). Shared factory so test stubs compose the
     // exact same implementation instead of drifting.
-    readonly withSessionGuard: SessionGuard = createSessionGuard()
+    // Not readonly: the session-guard wiring test wraps this to observe
+    // acquisition order (Issue #404).
+    withSessionGuard: SessionGuard = createSessionGuard()
 
     // Idempotent: ensureSessionInitialized returns immediately once
     // state.sessionId === sessionId, and coalesces concurrent inits per state
@@ -371,7 +373,15 @@ export async function ensureSessionInitialized(
     if (state.sessionId === sessionId) {
         return
     }
-    const run = runSessionInitialization(client, state, sessionId, logger, messages, config, projectDir)
+    const run = runSessionInitialization(
+        client,
+        state,
+        sessionId,
+        logger,
+        messages,
+        config,
+        projectDir,
+    )
     inflightInits.set(state, run)
     try {
         await run

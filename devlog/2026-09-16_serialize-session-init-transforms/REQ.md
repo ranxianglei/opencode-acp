@@ -30,7 +30,7 @@
 
 - **Constraints**:
   - Backward compatibility: persisted state format unchanged; exported API only grows (`createSessionGuard`, `SessionGuard`, `registry.withSessionGuard`); internal `dcp` naming untouched.
-  - Performance requirements: zero overhead on the steady-state path (fast path still returns without touching the lock map when nothing is in flight); different sessions must never block each other.
+  - Performance requirements: O(1) constant overhead on the steady-state path (one Map get/set/delete plus a microtask hop per guarded request when nothing else is in flight); different sessions must never block each other.
   - Resource limits: lock map must be empty when idle (no per-session leak); init-coalescing map keyed by state object (WeakMap) so eviction + recreation starts fresh.
 - **Non-Goals** (explicitly out of scope):
   - Cross-process locking (out of scope for an in-process plugin).
