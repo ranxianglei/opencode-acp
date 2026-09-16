@@ -91,15 +91,24 @@ export type BiliEnvYield = "launcher" | "native"
  * native bootstrap refuses to run while it is set, so both cannot normally
  * coexist), `"native"` when only `BILLION_CONTEXT_NATIVE` is set, else `null`.
  */
-export function detectBiliEnvYield(env: Record<string, string | undefined> = process.env): BiliEnvYield | null {
+export function detectBiliEnvYield(
+    env: Record<string, string | undefined> = process.env,
+): BiliEnvYield | null {
     if (env[BILI_PROXY_ENV_VAR]) return "launcher"
     if (env[BILI_NATIVE_ENV_VAR]) return "native"
     return null
 }
 
-/** Human-readable ownership source for logs and error messages. */
+/** Human-readable ownership source for error messages thrown by tool gates. */
 export function describeBiliEnvYield(source: BiliEnvYield): string {
     return source === "native"
         ? "BILLION_CONTEXT_NATIVE set (billion-context native mode)"
         : "BILLION_CONTEXT_PROXY set (billion-context launcher mode)"
+}
+
+/** Console announcement text per ownership source (callers log once each). */
+export function biliYieldLogMessage(source: BiliEnvYield): string {
+    return source === "native"
+        ? "[opencode-acp] disabled: BILLION_CONTEXT_NATIVE detected — billion-context native mode handles compression"
+        : "[opencode-acp] disabled: BILLION_CONTEXT_PROXY detected — proxy handles compression"
 }

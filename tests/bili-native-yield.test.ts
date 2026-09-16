@@ -219,6 +219,13 @@ test("runtime native marker: every ACP hook is a no-op", async () => {
         await hooks.event!({
             event: { type: "session.idle", properties: { sessionID: "session-nat-2" } },
         })
+
+        const commandOutput = { parts: [] }
+        await hooks["command.execute.before"]!(
+            { command: "acp", sessionID: "session-nat-2", arguments: "context" },
+            commandOutput,
+        )
+        assert.equal(commandOutput.parts.length, 0)
     } finally {
         delete process.env.BILLION_CONTEXT_NATIVE
     }
@@ -228,19 +235,25 @@ test("runtime native marker: tool execute throws instead of acting", async () =>
     const hooks = await makeHooks()
     process.env.BILLION_CONTEXT_NATIVE = "opencode"
     try {
-        const compressTool = hooks.tool?.compress
-        assert.ok(compressTool, "compress tool must be registered before the marker lands")
-        await assert.rejects(
-            () => compressTool.execute(VALID_RANGE_ARGS, makeToolCtx()),
-            /disabled in this process[\s\S]*BILLION_CONTEXT_NATIVE/,
-        )
-        // Second tool proves the shared resolveToolContext gate covers all five.
-        const recapTool = hooks.tool?.acp_context_recap
-        assert.ok(recapTool, "acp_context_recap tool must be registered")
-        await assert.rejects(
-            () => recapTool.execute({}, makeToolCtx()),
-            /disabled in this process[\s\S]*BILLION_CONTEXT_NATIVE/,
-        )
+        // The yield check runs before arg validation, so minimal args suffice;
+        // each entry proves the shared resolveToolContext gate covers its tool.
+        const toolCalls: Array<[string, () => Promise<unknown>]> = [
+            ["compress", () => hooks.tool!.compress!.execute(VALID_RANGE_ARGS, makeToolCtx())],
+            ["decompress", () => hooks.tool!.decompress!.execute({}, makeToolCtx())],
+            [
+                "search_context",
+                () => hooks.tool!.search_context!.execute({ query: "test" }, makeToolCtx()),
+            ],
+            ["acp_status", () => hooks.tool!.acp_status!.execute({}, makeToolCtx())],
+            ["acp_context_recap", () => hooks.tool!.acp_context_recap!.execute({}, makeToolCtx())],
+        ]
+        for (const [name, invoke] of toolCalls) {
+            await assert.rejects(
+                invoke,
+                /disabled in this process[\s\S]*BILLION_CONTEXT_NATIVE/,
+                `${name} execute must yield when the native marker is set`,
+            )
+        }
     } finally {
         delete process.env.BILLION_CONTEXT_NATIVE
     }
@@ -273,10 +286,13 @@ test("re-enable: unsetting the marker restores ACP behavior", async () => {
     const hooks = await makeHooks()
 
     process.env.BILLION_CONTEXT_NATIVE = "opencode"
-    const whileDisabled: Config = structuredClone(PLAIN_CONFIG)
-    await hooks.config!(whileDisabled)
-    assert.equal((whileDisabled.permission as Record<string, unknown>)["compress"], "deny")
-    delete process.env.BILLION_CONTEXT_NATIVE
+    try {
+        const whileDisabled: Config = structuredClone(PLAIN_CONFIG)
+        await hooks.config!(whileDisabled)
+        assert.equal((whileDisabled.permission as Record<string, unknown>)["compress"], "deny")
+    } finally {
+        delete process.env.BILLION_CONTEXT_NATIVE
+    }
 
     // Simulate the marker disappearing (e.g. the native plugin was removed and
     // the process is restarted into a clean env): ACP must resume.

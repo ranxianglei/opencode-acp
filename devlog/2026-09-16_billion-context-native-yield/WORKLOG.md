@@ -16,16 +16,18 @@
 
 ### Commits
 
-| Commit | Description                                                                    |
-| ------ | ------------------------------------------------------------------------------ |
-| TBD    | feat: yield to billion-context native mode via action-time env re-check (#405) |
+| Commit      | Description                                                                    |
+| ----------- | ------------------------------------------------------------------------------ |
+| 278bea6     | feat: yield to billion-context native mode via action-time env re-check (#405) |
+| (this rev.) | fix: address PR #406 dual-agent review findings                                |
 
 ### Key Files
 
-- `lib/bili-proxy.ts` — new pure `detectBiliEnvYield(env?)` + `describeBiliEnvYield(source)` + exported env-var name constants; documents the cross-repo marker timing contract.
+- `lib/bili-proxy.ts` — new pure `detectBiliEnvYield(env?)` + `describeBiliEnvYield(source)` + `biliYieldLogMessage(source)` (single source of truth for the console announcement; keeps the launcher wording byte-identical to master) + exported env-var name constants; documents the cross-repo marker timing contract.
 - `index.ts` — setup early-return now covers both markers; `guard()` re-samples env per call with one-time log per source; config hook re-samples env each run and denies all 5 ACP tools via extracted `denyAcpTools()` helper (shared with the existing `/bili/` branch).
 - `lib/compress/types.ts` — `resolveToolContext()` (first statement of every ACP tool's execute) now throws a clear "disabled" error when either marker is set at action time — defense-in-depth covering all five tools at one chokepoint.
-- `tests/bili-native-yield.test.ts` — new: unit tests for the pure detector + integration tests through the real factory (setup fast path ×2 markers, runtime marker → deny/no-op/tool-throws, launcher parity, re-enable, one-time log).
+- `tests/bili-native-yield.test.ts` — new: unit tests for the pure detector + integration tests through the real factory (setup fast path ×2 markers, runtime marker → deny/no-op/tool-throws for ALL five tools, launcher parity, re-enable, one-time log).
+- `tests/bili-proxy-integration.test.ts` — one line: also `delete process.env.BILLION_CONTEXT_NATIVE` in the pre-import env setup (the new setup fast path would otherwise break this suite if the host env carried the marker).
 
 ## 3. Design & Implementation Notes
 
@@ -40,4 +42,22 @@
 - [x] `npm test` — 1273 pass / 0 fail (new file adds 10 tests, all green)
 - [x] `npm run build` — success
 - [x] Mutation check: with `index.ts` + `lib/compress/types.ts` reverted to master, 7/10 new tests FAIL; with the fix, 10/10 PASS
-- [x] `format:check`: repo baseline already fails (450 files pre-existing drift); only NEW files formatted with prettier, tracked files untouched to keep the diff clean
+- [x] `format:check`: repo baseline already fails (~450 files pre-existing drift, left untouched); new files fully prettier-formatted; two targeted prettier fixes applied to tracked files per review (import line in `index.ts`, wrapped signature in `lib/bili-proxy.ts`)
+
+## 5. Review Round (PR #406, dual-agent)
+
+Two independent agents reviewed source + tests. Dispositions:
+
+| Finding | Severity | Disposition |
+| ------- | -------- | ----------- |
+| Prettier violations introduced in tracked files (import block >100 cols, unwrapped signature) | low | Fixed — collapsed import to one line, wrapped `detectBiliEnvYield` signature |
+| Env branch returned before assigning `disabledByBiliProxy` → stale-flag edge when an env marker and a `/bili/` provider appear/disappear together | low | Fixed — flag computed before either branch (invariant documented in code) |
+| Launcher log wording drifted from master (hidden external dependency risk) | info | Fixed — `biliYieldLogMessage()` restores the exact master string for launcher |
+| Fail-closed tradeoff not documented (marker set but billion-context bootstrap later fails → ACP stays off until restart) | info | Documented in PR body (chosen over fail-open double-compression risk) |
+| Tool-gate test covered only 2 of 5 tools | test | Fixed — all five tools exercised through the shared `resolveToolContext` gate |
+| Hooks-no-op test missed `command.execute.before` | test | Fixed — invocation added, asserts output parts stay empty |
+| Re-enable test lacked try/finally around the env mutation (demonstrated cascade failures) | test | Fixed |
+| Sibling `bili-proxy-integration.test.ts` didn't clean `BILLION_CONTEXT_NATIVE` | test | Fixed — one-line delete in pre-import setup |
+| `announcedEnvYieldSource` never resets (cosmetic: re-announce if marker toggles off/on within one process lifetime) | info | Accepted — detection itself is live every call; only the announcement dedup is sticky |
+
+Re-verified after fixes: `npm run typecheck` clean, `npm test` 1273/1273, `npm run build` OK, new test file prettier-clean.

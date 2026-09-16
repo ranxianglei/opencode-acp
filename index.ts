@@ -25,11 +25,8 @@ import {
     createTextCompleteHandler,
 } from "./lib/hooks"
 import { configureClientAuth, isSecureMode } from "./lib/auth"
-import {
-    describeBiliEnvYield,
-    detectBiliEnvYield,
-    findBiliProxyProviders,
-} from "./lib/bili-proxy"
+import { biliYieldLogMessage, detectBiliEnvYield, findBiliProxyProviders } from "./lib/bili-proxy"
+import type { BiliEnvYield } from "./lib/bili-proxy"
 import { startAutoUpdate } from "./lib/update"
 
 const server: Plugin = (async (ctx) => {
@@ -44,9 +41,7 @@ const server: Plugin = (async (ctx) => {
     // re-sampling in guard() / config hook / resolveToolContext.
     const setupBiliYield = detectBiliEnvYield()
     if (setupBiliYield) {
-        console.log(
-            `[opencode-acp] disabled: ${describeBiliEnvYield(setupBiliYield)} detected — billion-context handles compression`,
-        )
+        console.log(biliYieldLogMessage(setupBiliYield))
         return {}
     }
 
@@ -129,13 +124,11 @@ const server: Plugin = (async (ctx) => {
     // native mode writes BILLION_CONTEXT_NATIVE at the billion-context
     // plugin's module evaluation, which can land after ACP setup. One-time
     // log per source (the guard runs on every LLM request — no log spam).
-    let announcedEnvYieldSource: string | undefined
-    const noteEnvYield = (source: string | null) => {
+    let announcedEnvYieldSource: BiliEnvYield | undefined
+    const noteEnvYield = (source: BiliEnvYield | null) => {
         if (source === null || announcedEnvYieldSource === source) return
         announcedEnvYieldSource = source
-        console.log(
-            `[opencode-acp] disabled: ${source} detected — billion-context handles compression`,
-        )
+        console.log(biliYieldLogMessage(source))
     }
 
     const guard =
@@ -144,7 +137,7 @@ const server: Plugin = (async (ctx) => {
             if (disabledByBiliProxy) return Promise.resolve()
             const envYield = detectBiliEnvYield()
             if (envYield !== null) {
-                noteEnvYield(describeBiliEnvYield(envYield))
+                noteEnvYield(envYield)
                 return Promise.resolve()
             }
             return fn(...args)
@@ -206,15 +199,18 @@ const server: Plugin = (async (ctx) => {
                 } as typeof permission
             }
 
+            // Flag is computed before either branch so it is never stale when
+            // an env marker and a /bili/ provider appear/disappear together.
+            const biliMatches = findBiliProxyProviders(opencodeConfig.provider)
+            disabledByBiliProxy = biliMatches.length > 0
+
             const envYield = detectBiliEnvYield()
             if (envYield !== null) {
-                noteEnvYield(describeBiliEnvYield(envYield))
+                noteEnvYield(envYield)
                 denyAcpTools(opencodeConfig)
                 return
             }
 
-            const biliMatches = findBiliProxyProviders(opencodeConfig.provider)
-            disabledByBiliProxy = biliMatches.length > 0
             if (biliMatches.length > 0) {
                 console.log(
                     "[opencode-acp] disabled: /bili/ proxy detected in provider baseURL (" +
