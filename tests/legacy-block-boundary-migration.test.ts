@@ -4,6 +4,7 @@ import { readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import test from "node:test"
 import { migrateMessageRef } from "../lib/message-ids"
+import { hideConsumedCompressCalls } from "../lib/compress/hide-consumed"
 import { loadPruneMessagesState, serializePruneMessagesState } from "../lib/state/utils"
 import { rebuildCompressionState, restoreForkCompressionState } from "../lib/state/rebuild"
 import { createSessionState, ensureSessionInitialized } from "../lib/state/state"
@@ -265,6 +266,47 @@ test("restoreForkCompressionState normalizes 4-digit parent block boundaries", (
     assert.equal(forkBlock.endId, "m00002")
     assert.equal(forkBlock.anchorMessageId, "fork-u1")
     assert.equal(forkBlock.compressCallId, "fork-call")
+})
+
+test("hideConsumedCompressCalls matches migrated block keys against legacy 4-digit tool inputs", () => {
+    // Post-migration block boundaries are canonical 5-digit, but the immutable
+    // historical compress tool input of a pre-1.1.0 session still carries the
+    // 4-digit refs the model originally typed. Batch filtering must survive the
+    // width difference or consumed batch-mate summaries leak back into context.
+    const { state } = buildParentWithBlock()
+    const b1 = state.prune.messages.blocksById.get(1)!
+    b1.startId = "m00001"
+    b1.endId = "m00002"
+    b1.compressCallId = "batch-call"
+    const b2 = { ...b1, blockId: 2, startId: "m00003", endId: "m00004", active: false }
+    state.prune.messages.blocksById.set(2, b2)
+
+    const messages: WithParts[] = [
+        makeAssistantMessage("batch-msg", [
+            {
+                type: "tool",
+                tool: "compress",
+                callID: "batch-call",
+                state: {
+                    status: "completed",
+                    input: {
+                        topic: "Batch",
+                        content: [
+                            { startId: "m0001", endId: "m0002", summary: "Summary A." },
+                            { startId: "m0003", endId: "m0004", summary: "Summary B." },
+                        ],
+                    },
+                    output: "Compressed messages into [Compressed conversation section].",
+                },
+            } as any,
+        ]),
+    ]
+
+    const hidden = hideConsumedCompressCalls(state, messages)
+    assert.equal(hidden, 0)
+    const part = messages[0].parts[0] as any
+    assert.equal(part.state.input.content.length, 1)
+    assert.equal(part.state.input.content[0].startId, "m0001")
 })
 
 test("session initialization migrates legacy block boundaries and re-saves normalized state", async () => {

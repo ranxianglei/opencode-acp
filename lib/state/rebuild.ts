@@ -250,8 +250,11 @@ export function restoreForkCompressionState(
             effectiveToolIds,
             // [Issue #415] The parent record is raw persisted JSON; legacy
             // 4-digit boundary refs must be normalized like every other ref.
-            startId: migrateMessageRef(block.startId),
-            endId: migrateMessageRef(block.endId),
+            startId:
+                typeof block.startId === "string"
+                    ? migrateMessageRef(block.startId)
+                    : block.startId,
+            endId: typeof block.endId === "string" ? migrateMessageRef(block.endId) : block.endId,
         })
     }
 
