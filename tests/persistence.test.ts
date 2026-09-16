@@ -185,7 +185,9 @@ test("saveSessionState: synchronous burst coalesces to a single latest-snapshot 
 
     await Promise.all([p1, p2, p3])
 
-    const content = JSON.parse(await fs.readFile(join(STORAGE_DIR, `${TEST_SESSION}.json`), "utf-8"))
+    const content = JSON.parse(
+        await fs.readFile(join(STORAGE_DIR, `${TEST_SESSION}.json`), "utf-8"),
+    )
     assert.equal(
         content.stats.totalPruneTokens,
         3,
@@ -202,7 +204,9 @@ test("saveSessionState: sequential saves never let a stale snapshot win", async 
     // Batch 1 settles first...
     state.stats.totalPruneTokens = 1
     await saveSessionState(state, logger)
-    const afterFirst = JSON.parse(await fs.readFile(join(STORAGE_DIR, `${TEST_SESSION}.json`), "utf-8"))
+    const afterFirst = JSON.parse(
+        await fs.readFile(join(STORAGE_DIR, `${TEST_SESSION}.json`), "utf-8"),
+    )
     assert.equal(afterFirst.stats.totalPruneTokens, 1)
 
     // ...then a burst for batches 2+3 must not be reordered behind batch 1's file.
@@ -212,7 +216,9 @@ test("saveSessionState: sequential saves never let a stale snapshot win", async 
     const p3 = saveSessionState(state, logger)
     await Promise.all([p2, p3])
 
-    const content = JSON.parse(await fs.readFile(join(STORAGE_DIR, `${TEST_SESSION}.json`), "utf-8"))
+    const content = JSON.parse(
+        await fs.readFile(join(STORAGE_DIR, `${TEST_SESSION}.json`), "utf-8"),
+    )
     assert.equal(content.stats.totalPruneTokens, 3, "final file holds the newest snapshot")
     await cleanup()
 })
@@ -237,6 +243,69 @@ test("saveSessionState: a failed write rejects waiters but the queue keeps worki
     const content = JSON.parse(await fs.readFile(filePath, "utf-8"))
     assert.equal(content.stats.totalPruneTokens, 7, "queue must continue after a failure")
     await cleanup()
+})
+
+// [Issue #411] loadSessionState must distinguish "absent / unrecoverably corrupt"
+// (null → fresh session) from transient I/O failures (must propagate so session
+// init fails and is retried on the next request, instead of pinning the session
+// on a fresh empty state for the process lifetime).
+test("loadSessionState rejects on unreadable file instead of resolving null (#411)", async (t) => {
+    if (typeof process.getuid === "function" && process.getuid() === 0) {
+        t.skip("root bypasses file permissions; EACCES cannot be simulated")
+        return
+    }
+    const { tmpdir } = await import("os")
+    const dir = await fs.mkdtemp(join(tmpdir(), "acp-persist-411-"))
+    try {
+        const state = createSessionState()
+        state.sessionId = TEST_SESSION
+        state.storageDir = dir
+        await saveSessionState(state, logger)
+
+        const filePath = join(dir, `${TEST_SESSION}.json`)
+        await fs.chmod(filePath, 0o000)
+        try {
+            await assert.rejects(
+                loadSessionState(TEST_SESSION, logger, dir),
+                /EACCES/,
+                "unreadable state file must reject with the I/O error, not resolve null",
+            )
+        } finally {
+            await fs.chmod(filePath, 0o644)
+        }
+    } finally {
+        await fs.rm(dir, { recursive: true, force: true })
+    }
+})
+
+test("loadSessionState rejects on unsearchable storage directory (#411)", async (t) => {
+    if (typeof process.getuid === "function" && process.getuid() === 0) {
+        t.skip("root bypasses file permissions; EACCES cannot be simulated")
+        return
+    }
+    const { tmpdir } = await import("os")
+    const dir = await fs.mkdtemp(join(tmpdir(), "acp-persist-411-dir-"))
+    try {
+        const state = createSessionState()
+        state.sessionId = TEST_SESSION
+        state.storageDir = dir
+        await saveSessionState(state, logger)
+
+        // Directory without search permission: an existsSync pre-check would
+        // report false here and hide the failure as "file absent".
+        await fs.chmod(dir, 0o000)
+        try {
+            await assert.rejects(
+                loadSessionState(TEST_SESSION, logger, dir),
+                /EACCES/,
+                "unsearchable storage dir must reject, not resolve null",
+            )
+        } finally {
+            await fs.chmod(dir, 0o700)
+        }
+    } finally {
+        await fs.rm(dir, { recursive: true, force: true })
+    }
 })
 
 test("saveSessionState: storageDir override isolates files per directory", async () => {
