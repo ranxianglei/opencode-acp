@@ -1,6 +1,6 @@
 /** ACP version, injected at build time by tsup define */
 declare const ACP_VERSION: string | undefined
-import type { Plugin } from "@opencode-ai/plugin"
+import type { Config, Plugin } from "@opencode-ai/plugin"
 import { getConfig } from "./lib/config"
 import {
     createAcpStatusTool,
@@ -25,7 +25,11 @@ import {
     createTextCompleteHandler,
 } from "./lib/hooks"
 import { configureClientAuth, isSecureMode } from "./lib/auth"
-import { findBiliProxyProviders } from "./lib/bili-proxy"
+import {
+    describeBiliEnvYield,
+    detectBiliEnvYield,
+    findBiliProxyProviders,
+} from "./lib/bili-proxy"
 import { startAutoUpdate } from "./lib/update"
 
 const server: Plugin = (async (ctx) => {
@@ -35,9 +39,13 @@ const server: Plugin = (async (ctx) => {
         return {}
     }
 
-    if (process.env.BILLION_CONTEXT_PROXY) {
+    // [FIX #405] Fast path covering BOTH owner markers (launcher + native).
+    // Markers written after this point are still caught by the action-time
+    // re-sampling in guard() / config hook / resolveToolContext.
+    const setupBiliYield = detectBiliEnvYield()
+    if (setupBiliYield) {
         console.log(
-            "[opencode-acp] disabled: BILLION_CONTEXT_PROXY detected — proxy handles compression",
+            `[opencode-acp] disabled: ${describeBiliEnvYield(setupBiliYield)} detected — billion-context handles compression`,
         )
         return {}
     }
@@ -115,10 +123,32 @@ const server: Plugin = (async (ctx) => {
     // compression alone. Assigned (not latched) so a config reload that
     // removes the proxy restores ACP behavior.
     let disabledByBiliProxy = false
+
+    // [FIX #405] Env owner markers are re-sampled at every action (hook call,
+    // config run, tool call) instead of trusting the setup-time snapshot:
+    // native mode writes BILLION_CONTEXT_NATIVE at the billion-context
+    // plugin's module evaluation, which can land after ACP setup. One-time
+    // log per source (the guard runs on every LLM request — no log spam).
+    let announcedEnvYieldSource: string | undefined
+    const noteEnvYield = (source: string | null) => {
+        if (source === null || announcedEnvYieldSource === source) return
+        announcedEnvYieldSource = source
+        console.log(
+            `[opencode-acp] disabled: ${source} detected — billion-context handles compression`,
+        )
+    }
+
     const guard =
         <TArgs extends unknown[]>(fn: (...args: TArgs) => Promise<void>) =>
-        (...args: TArgs): Promise<void> =>
-            disabledByBiliProxy ? Promise.resolve() : fn(...args)
+        (...args: TArgs): Promise<void> => {
+            if (disabledByBiliProxy) return Promise.resolve()
+            const envYield = detectBiliEnvYield()
+            if (envYield !== null) {
+                noteEnvYield(describeBiliEnvYield(envYield))
+                return Promise.resolve()
+            }
+            return fn(...args)
+        }
 
     return {
         "experimental.chat.system.transform": guard(
@@ -162,14 +192,9 @@ const server: Plugin = (async (ctx) => {
             // BILLION_CONTEXT_PROXY env-var guard. Denying the ACP tools
             // removes them from the LLM tool list (verified against a live
             // opencode instance), and the guard flag no-ops every hook.
-            const biliMatches = findBiliProxyProviders(opencodeConfig.provider)
-            disabledByBiliProxy = biliMatches.length > 0
-            if (biliMatches.length > 0) {
-                console.log(
-                    "[opencode-acp] disabled: /bili/ proxy detected in provider baseURL (" +
-                        biliMatches.map((m) => m.provider).join(", ") +
-                        ") — proxy handles compression",
-                )
+            // [FIX #405] Env owner markers are re-sampled here too: the
+            // native-mode marker may appear only after ACP setup sampled env.
+            const denyAcpTools = (opencodeConfig: Config) => {
                 const permission = opencodeConfig.permission ?? {}
                 opencodeConfig.permission = {
                     ...permission,
@@ -179,6 +204,24 @@ const server: Plugin = (async (ctx) => {
                     acp_status: "deny",
                     acp_context_recap: "deny",
                 } as typeof permission
+            }
+
+            const envYield = detectBiliEnvYield()
+            if (envYield !== null) {
+                noteEnvYield(describeBiliEnvYield(envYield))
+                denyAcpTools(opencodeConfig)
+                return
+            }
+
+            const biliMatches = findBiliProxyProviders(opencodeConfig.provider)
+            disabledByBiliProxy = biliMatches.length > 0
+            if (biliMatches.length > 0) {
+                console.log(
+                    "[opencode-acp] disabled: /bili/ proxy detected in provider baseURL (" +
+                        biliMatches.map((m) => m.provider).join(", ") +
+                        ") — proxy handles compression",
+                )
+                denyAcpTools(opencodeConfig)
                 return
             }
 
