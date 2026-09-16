@@ -308,6 +308,22 @@ test("loadSessionState rejects on unsearchable storage directory (#411)", async 
     }
 })
 
+// [Issue #411] Corrupted-layout preservation: when the state "file" is actually a
+// directory, readFile throws EISDIR (POSIX) / ENOTDIR (Windows). Both must resolve
+// null (warn) — retrying cannot repair a local layout, so this branch must not
+// reject like transient I/O errors do.
+test("loadSessionState resolves null when the state path is a directory (#411)", async () => {
+    const { tmpdir } = await import("os")
+    const dir = await fs.mkdtemp(join(tmpdir(), "acp-persist-411-eisdir-"))
+    try {
+        await fs.mkdir(join(dir, `${TEST_SESSION}.json`))
+        const loaded = await loadSessionState(TEST_SESSION, logger, dir)
+        assert.equal(loaded, null)
+    } finally {
+        await fs.rm(dir, { recursive: true, force: true })
+    }
+})
+
 test("saveSessionState: storageDir override isolates files per directory", async () => {
     const { tmpdir } = await import("os")
     const dirA = await fs.mkdtemp(join(tmpdir(), "acp-persist-a-"))

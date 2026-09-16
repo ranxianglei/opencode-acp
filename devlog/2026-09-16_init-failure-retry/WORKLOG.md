@@ -48,14 +48,20 @@
 - `npm run build` — success.
 - Prettier: only touched files formatted; verified HEAD versions were prettier-clean beforehand (no unrelated reformat noise).
 
+### 5. Review follow-ups (direct fixes on the PR branch)
+
+- Added `tests/persistence.test.ts` "loadSessionState resolves null when the state path is a directory (#411)": pins the preserved EISDIR/ENOTDIR warn+null branch (previously untested; portable across POSIX EISDIR / Windows ENOTDIR). Suite now **1278 pass, 0 fail**.
+- Updated REQ.md acceptance checkboxes to reflect implemented+verified state.
+- Review follow-up candidate (NOT in this PR): under a persistent write-only FS failure (reads OK, trailing save fails), every request re-runs full init and wipes accumulated in-memory compression work. Defensible fail-loud tradeoff today; consider scoping the `sessionId` reset to failures at-or-before `loadSessionState` so a successful load survives trailing-save outages.
+
 ## Files changed
 
-| File                        | Change                                                                                                      |
-| --------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `lib/state/persistence.ts`  | `loadSessionState` propagates transient I/O errors; ENOENT/corrupt still resolve `null`                     |
-| `lib/state/state.ts`        | `ensureSessionInitialized` resets `sessionId` on init failure; body extracted to `runSessionInitialization` |
-| `tests/registry.test.ts`    | Regression test: fail-once → retry loads persisted state                                                    |
-| `tests/persistence.test.ts` | Unit test: unreadable file rejects instead of resolving null                                                |
+| File                        | Change                                                                                                            |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `lib/state/persistence.ts`  | `loadSessionState` propagates transient I/O errors; ENOENT/corrupt still resolve `null`                           |
+| `lib/state/state.ts`        | `ensureSessionInitialized` resets `sessionId` on init failure; body extracted to `runSessionInitialization`       |
+| `tests/registry.test.ts`    | Regression test: fail-once → retry loads persisted state                                                          |
+| `tests/persistence.test.ts` | Unit tests: unreadable file rejects; unsearchable dir rejects; directory-path resolves null (layout preservation) |
 
 ## Independent review (agent review of PR #412 diff)
 

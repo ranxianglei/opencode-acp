@@ -45,11 +45,11 @@
 
 - **Correctness**:
     - [x] `loadSessionState`: missing file → resolves `null` (no log), corrupt JSON → resolves `null` + warn, unreadable file (EACCES) → rejects with the original error; unsearchable storage directory also rejects (the removed `existsSync` pre-check hid this as "file absent")
-    - [ ] `ensureSessionInitialized`: on any init failure, `state.sessionId` reset to `null` and the error re-thrown (callers log as today)
-    - [ ] Next `getOrCreate` after a failed init retries full initialization and loads persisted state (regression test T1 above flips from FAIL to PASS)
+    - [x] `ensureSessionInitialized`: on any init failure, `state.sessionId` reset to `null` and the error re-thrown (callers log as today)
+    - [x] Next `getOrCreate` after a failed init retries full initialization and loads persisted state (regression test T1 above flips from FAIL to PASS)
 - **Testing**:
-    - [ ] New test in tests/registry.test.ts verifies fail-once → retry-succeeds with side-effect assertions (`modelContextLimit`, `state.sessionId`)
-    - [ ] New unit tests in tests/persistence.test.ts cover the three `loadSessionState` outcomes
-    - [ ] Full suite green: `npm run typecheck && npm run test && npm run build`
+    - [x] New test in tests/registry.test.ts verifies fail-once → retry-succeeds with side-effect assertions (`modelContextLimit`, `state.sessionId`)
+    - [x] New unit tests in tests/persistence.test.ts cover the `loadSessionState` error outcomes (unreadable file rejects, unsearchable dir rejects, directory-path resolves null; corrupt-JSON outcome covered by the pre-existing roundtrip-file test)
+    - [x] Full suite green: `npm run typecheck && npm run test && npm run build`
 - **Compatibility**:
-    - [ ] No version bump; no state-format change; `getSessionParentId` behavior untouched
+    - [x] No version bump; no state-format change; `getSessionParentId` behavior untouched
