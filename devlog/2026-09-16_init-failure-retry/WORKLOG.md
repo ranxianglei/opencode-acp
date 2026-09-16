@@ -57,6 +57,17 @@
 | `tests/registry.test.ts`    | Regression test: fail-once → retry loads persisted state                                                    |
 | `tests/persistence.test.ts` | Unit test: unreadable file rejects instead of resolving null                                                |
 
+## Independent review (agent review of PR #412 diff)
+
+**Verdict: APPROVE.** Verified: no new concurrency race (the clear runs synchronously inside the single in-flight init's rejection handler; a second concurrent caller fast-paths on the set flag exactly as on master), deleted-file edge is correct (retry hits ENOENT → silent null → fresh branch, same as master), all `sessionId` consumers null-safe, persisted format/API/tags unchanged, no `as any`, regression test statically proven to fail without the fix.
+
+Applied from review: added `try/finally` around the failed-init assertions in `tests/registry.test.ts` so the chmod restore runs even when an assertion throws mid-test.
+
+Deferred follow-ups (review findings 1–2, acceptable trade-offs for v1):
+
+- `lib/compress/pipeline.ts:70` / `lib/compress/decompress.ts:58` surface transient I/O failures as raw tool errors to the model (intended — better than master's silent empty state); optionally wrap in a friendlier "session state temporarily unavailable, retry" message later.
+- While the underlying FS condition persists, every LLM request re-runs full init and logs one ERROR per request; optionally rate-limit that log later.
+
 ## Follow-ups (not in this PR)
 
 - PR #408 (`2026-09-16_serialize-session-init-transforms`) needs the same failure handling inside its `runSessionInitialization` wrapper plus an update to its "failed init coalesces" test if it pins the old semantics.

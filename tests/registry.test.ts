@@ -132,16 +132,20 @@ test("transient init failure does not permanently suppress persisted-state load 
     chmodSync(stateFile, 0o000)
 
     // First request: initialization fails; the fast-path condition must be cleared.
-    const first = await registry.getOrCreate(makeClient(), sessionId, MESSAGES)
-    assert.equal(first.modelContextLimit, undefined, "failed init must not claim loaded state")
-    assert.equal(
-        first.sessionId,
-        null,
-        "failed init must reset the idempotency flag so the next request retries",
-    )
+    try {
+        const first = await registry.getOrCreate(makeClient(), sessionId, MESSAGES)
+        assert.equal(first.modelContextLimit, undefined, "failed init must not claim loaded state")
+        assert.equal(
+            first.sessionId,
+            null,
+            "failed init must reset the idempotency flag so the next request retries",
+        )
+    } finally {
+        // Restore readability even if an assertion above fails.
+        chmodSync(stateFile, 0o644)
+    }
 
     // Condition recovers; second request must retry full init and load persisted state.
-    chmodSync(stateFile, 0o644)
     const second = await registry.getOrCreate(makeClient(), sessionId, MESSAGES)
     assert.equal(second.sessionId, sessionId)
     assert.equal(second.modelContextLimit, 314_159, "retry must load persisted modelContextLimit")
