@@ -345,7 +345,10 @@ export async function ensureSessionInitialized(
             let restored = 0
             if (parentSessionId) {
                 try {
-                    const parent = await loadSessionState(parentSessionId, logger)
+                    // [Issue #407] Load the parent state from the same resolved storage
+                    // directory as the child — with a custom `storagePath`, the parent
+                    // file lives there too, not in the default location.
+                    const parent = await loadSessionState(parentSessionId, logger, state.storageDir)
                     const response = parent
                         ? await client.session.messages({ path: { id: parentSessionId } })
                         : undefined
@@ -441,6 +444,28 @@ export async function ensureSessionInitialized(
     }
     if (persistedAny._persistedLastCompaction !== undefined) {
         state.lastCompaction = Math.max(state.lastCompaction, persistedAny._persistedLastCompaction)
+    }
+    // [Issue #407] Reconcile against the persisted compaction boundary. If the
+    // current history contains a newer completed compaction than the persisted
+    // state recorded (process restarted between the native compaction and the
+    // next transform), the transient fields restored above — message refs,
+    // nudge anchors/baselines, tool cache — are stale: their underlying
+    // messages were replaced by the compaction summary. updatePerTurnState
+    // cannot catch this because state.lastCompaction was already set to the
+    // current boundary before loading (findLastCompactionTimestamp above).
+    // resetOnCompaction preserves prune.messages (compression blocks) and
+    // stats by design; the final save below persists the corrected state so
+    // the next restart starts clean.
+    const persistedBoundary =
+        typeof persistedAny._persistedLastCompaction === "number"
+            ? persistedAny._persistedLastCompaction
+            : 0
+    if (state.lastCompaction > persistedBoundary) {
+        resetOnCompaction(state)
+        logger.info("Restarted after native compaction - reset stale transient state", {
+            timestamp: state.lastCompaction,
+            persistedBoundary,
+        })
     }
     if (typeof persisted.modelContextLimit === "number" && persisted.modelContextLimit > 0) {
         state.modelContextLimit = persisted.modelContextLimit
