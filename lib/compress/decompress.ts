@@ -378,15 +378,19 @@ export function createDecompressTool(factoryCtx: ToolFactoryContext): ReturnType
                     constants.O_CREAT |
                     constants.O_TRUNC |
                     (process.platform === "win32" ? 0 : constants.O_NOFOLLOW)
-                const handle = await fsp.open(safe.filePath, flags, 0o600)
                 try {
-                    await handle.write(Buffer.from(fileContent, "utf-8"))
-                } finally {
-                    await handle.close()
+                    const handle = await fsp.open(safe.filePath, flags, 0o600)
+                    try {
+                        await handle.write(Buffer.from(fileContent, "utf-8"))
+                    } finally {
+                        await handle.close()
+                    }
+                } catch (err) {
+                    return `Error: toFile write failed: ${(err as Error).message}`
                 }
 
                 const displayIds = targets.map((t) => `b${t.displayId}`).join(", ")
-                return `Block(s) ${displayIds} content (${sourceNote}, ${fileContent.length} chars) written to ${targetPath}. Block(s) stay compressed — context unchanged. Use read tool to access specific parts.`
+                return `Block(s) ${displayIds} content (${sourceNote}, ${fileContent.length} chars) written to ${safe.filePath}. Block(s) stay compressed — context unchanged. Use read tool to access specific parts.`
             }
 
             // [Issue #446] Fail closed when host history no longer contains the

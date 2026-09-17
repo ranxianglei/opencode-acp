@@ -18,6 +18,11 @@ export type ToFileTargetResult = { ok: true; filePath: string } | { ok: false; e
  *
  * Hardlinks inside an allowed root are out of scope: a hardlinked inode
  * still writes through to its target. This guard targets symlink redirection.
+ *
+ * Known limitation: a component swapped to a symlink *after* validation but
+ * before open is not covered (O_NOFOLLOW guards only the final component).
+ * Exploiting that needs direct write access to an allowed root plus a race —
+ * outside this guard's threat model, where the caller supplies path strings.
  */
 export async function resolveSafeToFileTarget(
     targetPath: string,
