@@ -358,6 +358,8 @@ export function createDecompressTool(factoryCtx: ToolFactoryContext): ReturnType
                 }
                 const blockMessages = rawMessages.filter((m) => msgIdSet.has(extractMessageId(m)))
                 const lines = blockMessages.map(extractMessageText)
+                const fsp = await import("fs/promises")
+                const { constants } = await import("fs")
                 let fileContent: string
                 let sourceNote: string
                 if (lines.length > 0) {
@@ -369,10 +371,8 @@ export function createDecompressTool(factoryCtx: ToolFactoryContext): ReturnType
                     fileContent = targets[0]?.blocks[0]?.summary ?? "(no content available)"
                     sourceNote = `no original messages found; wrote block summary (${targets.length} block${targets.length === 1 ? "" : "s"})`
                 }
-                // O_NOFOLLOW refuses a final-component symlink at open time, closing the
-                // check-then-write window left by resolveSafeToFileTarget's lstat check.
-                const fsp = await import("fs/promises")
-                const { constants } = await import("fs")
+                // O_NOFOLLOW refuses a final-component symlink swapped in between validation
+                // and open (POSIX only — win32 lacks the flag and relies on the lstat check).
                 const flags =
                     constants.O_WRONLY |
                     constants.O_CREAT |
@@ -380,7 +380,7 @@ export function createDecompressTool(factoryCtx: ToolFactoryContext): ReturnType
                     (process.platform === "win32" ? 0 : constants.O_NOFOLLOW)
                 const handle = await fsp.open(safe.filePath, flags, 0o600)
                 try {
-                    await handle.writeFile(fileContent, "utf-8")
+                    await handle.write(Buffer.from(fileContent, "utf-8"))
                 } finally {
                     await handle.close()
                 }

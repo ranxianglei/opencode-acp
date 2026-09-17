@@ -56,6 +56,45 @@ test("accepts a symlink chain that stays inside the allowed root", async () => {
     })
 })
 
+test("accepts targets under either of two disjoint allowed roots", async () => {
+    await withFixture(async ({ base }) => {
+        const rootA = path.join(base, "root-a")
+        const rootB = path.join(base, "root-b")
+        mkdirSync(rootA)
+        mkdirSync(rootB)
+        const twoRoots = { allowedDirs: [rootA, rootB] }
+        const inA = await resolveSafeToFileTarget(path.join(rootA, "a.txt"), twoRoots)
+        assert.equal(inA.ok, true)
+        const inB = await resolveSafeToFileTarget(path.join(rootB, "b.txt"), twoRoots)
+        assert.equal(inB.ok, true)
+    })
+})
+
+test("rejects an intermediate directory symlink escaping across multiple roots", async () => {
+    await withFixture(async ({ base }) => {
+        const rootA = path.join(base, "root-a")
+        const rootB = path.join(base, "root-b")
+        const escape = path.join(base, "escape")
+        mkdirSync(rootA)
+        mkdirSync(rootB)
+        mkdirSync(escape)
+        const link = path.join(rootA, "link-to-b")
+        symlinkSync(rootB, link, "dir")
+        // rootB is allowed, so a link into it stays legitimate...
+        const legit = await resolveSafeToFileTarget(path.join(link, "ok.txt"), {
+            allowedDirs: [rootA, rootB],
+        })
+        assert.equal(legit.ok, true)
+        // ...but a link into a third, non-allowed dir must be rejected.
+        const badLink = path.join(rootA, "link-to-escape")
+        symlinkSync(escape, badLink, "dir")
+        const bad = await resolveSafeToFileTarget(path.join(badLink, "evil.txt"), {
+            allowedDirs: [rootA, rootB],
+        })
+        assert.equal(bad.ok, false)
+    })
+})
+
 test("rejects lexical .. traversal outside the allowed root", async () => {
     await withFixture(async ({ allowed, outside, opts }) => {
         const result = await resolveSafeToFileTarget(
