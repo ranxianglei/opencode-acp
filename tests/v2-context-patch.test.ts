@@ -991,7 +991,9 @@ test("preserves per-text occurrence order for interleaved repeated system messag
 })
 
 test("keeps extra host-added system messages unclaimed without rejecting", () => {
-    const projected = [{ type: "system", id: "host-projected", time: { created: 1 }, text: "shared text" }]
+    const projected = [
+        { type: "system", id: "host-projected", time: { created: 1 }, text: "shared text" },
+    ]
     const outgoing = [
         Message.make({ role: "system", content: "shared text" }),
         Message.make({ role: "system", content: "shared text" }),
@@ -1008,6 +1010,13 @@ test("keeps extra host-added system messages unclaimed without rejecting", () =>
     const entry = projection.entries.find((e) => e.sourceMessageId === "host-projected")!
     assert.deepEqual(entry.outgoingMessageIndices, [0])
     assert.equal(entry.opaque, true)
+    // The unclaimed duplicate must land provider-owned: fully opaque, not attributed
+    // to any projected source, never editable by ACP patches.
+    const extra = projection.outgoing[1]!
+    assert.equal(extra.opaque, true)
+    assert.equal(extra.owned, false)
+    assert.equal(extra.sourceMessageId, undefined)
+    assert.equal(extra.opaqueMessage, outgoing[1])
 })
 
 test("leaves host-added foreign system messages unclaimed when projected text differs", () => {
@@ -1026,6 +1035,12 @@ test("leaves host-added foreign system messages unclaimed when projected text di
     assert.equal(projection.rejection, undefined)
     const entry = projection.entries.find((e) => e.sourceMessageId === "foreign-projected")!
     assert.deepEqual(entry.outgoingMessageIndices, [0])
+    // The foreign host message stays provider-owned and opaque, not attributed to
+    // the projected source.
+    const extra = projection.outgoing[1]!
+    assert.equal(extra.opaque, true)
+    assert.equal(extra.owned, false)
+    assert.equal(extra.sourceMessageId, undefined)
 })
 
 test("still rejects ambiguous patchable sources that lack an exact lowered correlation", () => {

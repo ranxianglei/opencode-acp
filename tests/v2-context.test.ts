@@ -490,6 +490,8 @@ test("fresh registry commits and accepts a direct compression when history repea
         )
         // A committed session must be reachable by the compress tool; before the fix the
         // rejected projection left no initialized state for this call to act on.
+        // The m99999 boundaries are deliberately bogus: only reachability of the committed
+        // state is under test, not compression itself. Do not "fix" them.
         const toolResult = await compressTool.execute(
             { content: [{ startId: "m99999", endId: "m99999", summary: "not executed" }] },
             {
