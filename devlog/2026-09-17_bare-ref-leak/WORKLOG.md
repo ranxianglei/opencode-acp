@@ -23,6 +23,9 @@
 
 ### Second-review follow-up (PR #432, agent review pass 2)
 
+- A parallel review-nit commit (`ff24575f`) landed on the branch first, adding two tests
+  (mixed below/future-bound sequence; non-integer bound guard). The pins below are
+  complementary — no overlap.
 - Independent second review verdict: APPROVE with 4 LOW findings. Two were missing
   regression pins in `tests/leaked-trailing-ref.test.ts`, fixed directly on the branch:
   - `b0` exclusion: block ids allocate from 1 (`allocateBlockId`, lib/compress/state.ts), so
@@ -68,7 +71,7 @@ npx tsc --noEmit
 ### Test Coverage
 
 - New/modified test files: `tests/leaked-trailing-ref.test.ts` (new), `tests/hooks-permission.test.ts`, `tests/message-priority.test.ts` (signature updates only)
-- Test count: 1290 total (1288 + 2 second-review pins), 1288 pass, 2 fail (both pre-existing sandbox artifacts, see Results)
+- Test count: 1292 total (1288 baseline + 2 review-nit tests from ff24575f + 2 second-review pins), 1290 pass, 2 fail (both pre-existing sandbox artifacts, see Results)
 - Key scenarios verified:
   - #431 repro shape truncated: `"Normal assistant progress message.\n\nm00057 <garbage>"` → `"Normal assistant progress message."` (nextRef=57)
   - Boundary: ref exactly equal to next-to-allocate IS stripped; one below is kept
