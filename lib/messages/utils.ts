@@ -216,12 +216,14 @@ export const stripHallucinationsFromString = (text: string): string => {
 // stripHallucinationsFromString cannot see this — the fragment carries no tag.
 //
 // Key invariant exploited here: message refs and block IDs are allocated
-// strictly monotonically (`messageIds.nextRef` / `prune.messages.nextBlockId`
-// are the next values to be allocated; nothing at or beyond them exists yet).
-// And the completing message does NOT have its ref assigned yet — assignment
-// happens on the next messages.transform. So a ref at or beyond the
-// next-to-allocate value cannot be a legitimate citation of anything the model
-// could have seen; it is by definition a hallucinated/future ID.
+// strictly monotonically within a compaction epoch (`messageIds.nextRef` /
+// `prune.messages.nextBlockId` are the next values to be allocated; nothing at
+// or beyond them exists yet). And the completing message does NOT have its ref
+// assigned yet — assignment happens on the next messages.transform. So a ref
+// at or beyond the next-to-allocate value cannot be a legitimate citation of
+// anything the model could have seen; it is by definition a hallucinated/future
+// ID. (Compaction resets the counters — see DESIGN.md §8 for the residual
+// stale-ref window that implies.)
 //
 // Conservative guards (legitimate prose must survive):
 // - LINE-LEADING only: the ref must start a line (string start or after \n,
@@ -242,11 +244,17 @@ export const stripLeakedTrailingRefs = (
         return text
     }
 
-    const hasMessageBound =
-        typeof bounds.nextMessageRef === "number" && Number.isInteger(bounds.nextMessageRef)
-    const hasBlockBound =
-        typeof bounds.nextBlockRef === "number" && Number.isInteger(bounds.nextBlockRef)
-    if (!hasMessageBound && !hasBlockBound) {
+    const rawMessageBound = bounds.nextMessageRef
+    const rawBlockBound = bounds.nextBlockRef
+    const messageBound =
+        typeof rawMessageBound === "number" && Number.isInteger(rawMessageBound)
+            ? rawMessageBound
+            : null
+    const blockBound =
+        typeof rawBlockBound === "number" && Number.isInteger(rawBlockBound)
+            ? rawBlockBound
+            : null
+    if (messageBound === null && blockBound === null) {
         return text
     }
 
@@ -255,11 +263,11 @@ export const stripLeakedTrailingRefs = (
     let match: RegExpExecArray | null
     while ((match = pattern.exec(text)) !== null) {
         if (match[1] !== undefined) {
-            if (hasMessageBound && Number(match[1]) >= bounds.nextMessageRef!) {
+            if (messageBound !== null && Number(match[1]) >= messageBound) {
                 return text.slice(0, match.index).replace(/[ \t\r\n]*$/, "")
             }
         } else if (match[2] !== undefined) {
-            if (hasBlockBound && Number(match[2]) >= bounds.nextBlockRef!) {
+            if (blockBound !== null && Number(match[2]) >= blockBound) {
                 return text.slice(0, match.index).replace(/[ \t\r\n]*$/, "")
             }
         }

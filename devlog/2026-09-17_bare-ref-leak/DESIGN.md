@@ -76,6 +76,7 @@ experimental.text.complete (per completed assistant part)
 - **Steps**: none required — ships as normal code; no flags, no data migration.
 - **Feature flags / gradual rollout**: intentionally none (the strip is conservative and self-contained); rollback = revert commit.
 
-## 8. Open Questions
+## 8. Open Questions & Known Limitations
 
 - [ ] If future reports show echoes of ALREADY-assigned refs (value < bound), consider a second, stricter pass (e.g., ref-on-last-line + non-prose tail heuristics). Not needed for the reported evidence.
+- [ ] **Residual post-compaction window** (found in review): `resetOnCompaction` (`lib/state/utils.ts`) rebuilds `messageIds` fresh (`nextRef → 1`) when OpenCode compacts the session, so the invariant holds only *within a compaction epoch*. After a `/compact`, a stale pre-compaction ref echoed line-leading could numerically be ≥ the freshly-reset counter and be truncated. The window is narrow (requires compaction plus degenerate end-of-output behavior) and the cut content is still a trailing ref-led fragment, but if this ever matters, track a per-session high-water mark of allocated refs and use `max(nextRef, highWater)` as the bound. Deliberately not implemented here: it would add a persisted state field (backward-compat migration surface) for a corner case with no reported evidence.

@@ -560,13 +560,12 @@ export function createTextCompleteHandler(registry: SessionStateRegistry, logger
         const state =
             typeof input.sessionID === "string" ? registry.get(input.sessionID) : undefined
         if (state) {
+            const nextBlockId = state.prune?.messages?.nextBlockId
             const stripped = stripLeakedTrailingRefs(text, {
                 nextMessageRef: Number.isInteger(state.messageIds.nextRef)
                     ? state.messageIds.nextRef
                     : null,
-                nextBlockRef: Number.isInteger(state.prune?.messages?.nextBlockId)
-                    ? (state.prune.messages.nextBlockId as number)
-                    : null,
+                nextBlockRef: Number.isInteger(nextBlockId) ? nextBlockId : null,
             })
             if (stripped !== text) {
                 logger.warn("Stripped leaked trailing ACP ref from assistant output", {
