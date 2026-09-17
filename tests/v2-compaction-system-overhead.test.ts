@@ -23,6 +23,7 @@ import { createSessionState, type SessionState, type WithParts } from "../lib/st
 import type { PluginConfig } from "../lib/config"
 import { createChatMessageTransformHandler } from "../lib/hooks"
 import { Logger } from "../lib/logger"
+import { estimateContextComposition } from "../lib/messages/inject/utils"
 import { createTestRegistry } from "./registry-stub"
 
 // ─── Factories ──────────────────────────────────────────────────────────────
@@ -363,5 +364,31 @@ test("runMessageTransform: mid-session model switch invalidates cached system ov
         state.systemPromptTokens,
         999_999,
         "stale pre-switch calibration must not survive a model switch",
+    )
+})
+
+// ─── estimateContextComposition live fallback (#421 sibling) ────────────────
+
+test("estimateContextComposition: live fallback honors compaction boundary when cache empty", () => {
+    // After resetOnCompaction invalidates the cache (and before the next
+    // transform re-caches it), estimateContextComposition falls back to a live
+    // estimate. That fallback must pass state.lastCompaction, otherwise a
+    // pre-compaction assistant (created before T, carrying the large pre-
+    // compaction request usage) becomes the calibration anchor and the stale
+    // overhead resurfaces in nudge/context-usage math.
+    const state = mkFreshState(T)
+    assert.equal(state.systemPromptTokens, undefined)
+    const WIRE = 17_000
+    const STALE = 300_000 // pre-compaction request usage carried by an old assistant
+    const staleAssistant = mkAssistant("a-stale", STALE, { created: T - 2 })
+    const user = mkUser("u-after", "continue", T + 1)
+    const prefix = countAllMessageTokens(staleAssistant) + countTokens("continue")
+    const response = mkAssistant("a-after", prefix + WIRE, { created: T + 2 })
+    const composition = estimateContextComposition([staleAssistant, user, response], state)
+    assert.equal(composition.systemTokens, WIRE)
+    assert.notEqual(
+        composition.systemTokens,
+        STALE,
+        "pre-compaction assistant usage must never calibrate the live fallback",
     )
 })

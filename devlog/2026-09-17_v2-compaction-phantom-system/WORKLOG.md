@@ -61,3 +61,13 @@ npx prettier --write tests/v2-compaction-system-overhead.test.ts   # new file fo
 - Full suite: **1425 tests, 1424 pass, 1 fail** — the single failure is `tests/soft-block.test.ts` crashing at module load on `mkdir '/tmp/opencode-dcp-dangerous-…'` (EACCES): this sandbox mounts `/tmp` read-only (AGENTS.md 临时文件铁律). Pre-existing environmental incompatibility, unrelated to this change; the file passes in CI where `/tmp` is writable.
 - **Bug-catch verification** (§5.7.3 discipline): with `lib/` stashed back to pre-fix code, a probe running the original `cacheSystemPromptTokens` on the exact #421 repro input (`[summary assistant input=653137 created=T, user "continue"]`) stored **653136** — the precise phantom reported in the issue — while the fixed code stores `undefined`. The regression tests fail against the buggy code by construction (they import the new guard functions and assert the non-phantom outcomes).
 - Typecheck clean; build passes.
+
+## 5. Review Fix (post-commit)
+
+**Gap found in independent review**: `estimateContextComposition` (`lib/messages/inject/utils.ts`) has a live fallback for when `state.systemPromptTokens` is not yet cached — it called `estimateSystemPromptTokens(messages)` **without** `lastCompaction`. After `resetOnCompaction` invalidates the cache, a pre-compaction assistant (created before `state.lastCompaction`, carrying the large pre-compaction request usage) could become the calibration anchor again, resurfacing the stale overhead in nudge/context-usage math. The PR already applied this guard to the `/acp context` fallback in `lib/compress/status.ts`; the sibling path was missed.
+
+**Fix**: pass `state?.lastCompaction ?? 0` through in `estimateContextComposition`.
+
+**Regression test added**: `tests/v2-compaction-system-overhead.test.ts` test 15 — "estimateContextComposition: live fallback honors compaction boundary when cache empty". Uses a non-summary pre-compaction assistant (created < T, input=300_000) plus a post-compaction response calibrated to a known wire overhead (17_000). Verified to fail against the unfixed code (only test 15 fails) and pass with the fix.
+
+**Re-verification after the fix**: new suite 15/15 pass; full suite 1426 tests, 1425 pass, 1 fail (same pre-existing environmental `tests/soft-block.test.ts` /tmp EACCES); typecheck clean; prettier clean on touched files.
