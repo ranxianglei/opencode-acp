@@ -134,7 +134,7 @@ const server: Plugin = (async (ctx) => {
                 hostPermissions,
             ),
         ) as any,
-        "experimental.text.complete": guard(createTextCompleteHandler()),
+        "experimental.text.complete": guard(createTextCompleteHandler(registry, logger)),
         "command.execute.before": guard(
             createCommandExecuteHandler(
                 ctx.client,

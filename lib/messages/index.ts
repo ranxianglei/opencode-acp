@@ -5,4 +5,11 @@ export { computeInputBudget } from "./inject/utils"
 export { injectMessageIds } from "./inject/inject"
 export { stripStaleMetadata, dropCompressReasoning } from "./reasoning-strip"
 export { buildPriorityMap } from "./priority"
-export { buildToolIdList, stripHallucinations, stripHallucinationsFromString, hasContent, dropEmptyMessages } from "./utils"
+export {
+    buildToolIdList,
+    stripHallucinations,
+    stripHallucinationsFromString,
+    stripLeakedTrailingRefs,
+    hasContent,
+    dropEmptyMessages,
+} from "./utils"
