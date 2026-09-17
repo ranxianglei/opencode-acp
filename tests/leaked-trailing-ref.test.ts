@@ -79,6 +79,11 @@ describe("stripLeakedTrailingRefs — #431 bare self-ref leak", () => {
         )
     })
 
+    test("non-integer bounds are treated as unknown (no strip)", () => {
+        const text = "Done.\n\nm00057 x"
+        assert.equal(stripLeakedTrailingRefs(text, { nextMessageRef: 57.5 }), text)
+    })
+
     test("still strips when only one bound is known", () => {
         const textM = "Done.\n\nm00057 x"
         assert.equal(
@@ -96,6 +101,12 @@ describe("stripLeakedTrailingRefs — #431 bare self-ref leak", () => {
         const text = "A\n\nm00060 one\nmore m00061 two"
         const result = stripLeakedTrailingRefs(text, { nextMessageRef: 57 })
         assert.equal(result, "A")
+    })
+
+    test("skips below-bound line-leading refs and cuts at the first future one", () => {
+        const text = "a\n\nm00050 ok\n\nm00060 bad"
+        const result = stripLeakedTrailingRefs(text, { nextMessageRef: 57 })
+        assert.equal(result, "a\n\nm00050 ok")
     })
 
     test("whole output being a leak yields empty string", () => {
