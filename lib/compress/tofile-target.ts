@@ -13,8 +13,11 @@ export type ToFileTargetResult = { ok: true; filePath: string } | { ok: false; e
  *    by realpath-ing the deepest existing ancestor, so a link inside an
  *    allowed root cannot point the write outside it.
  * 3. An existing symlink at the final component is refused outright; the
- *    caller must additionally open with O_NOFOLLOW (POSIX) to close the
- *    check-then-write window.
+ *    caller must additionally open with O_NOFOLLOW (POSIX) to refuse a
+ *    final-component link swapped in between validation and open.
+ *
+ * Hardlinks inside an allowed root are out of scope: a hardlinked inode
+ * still writes through to its target. This guard targets symlink redirection.
  */
 export async function resolveSafeToFileTarget(
     targetPath: string,
@@ -84,9 +87,9 @@ export async function resolveSafeToFileTarget(
             // Root missing — nothing to compare against.
         }
     }
-    const physicallyAllowed =
-        realAllowedDirs.every((dir) => !containsOrIs(join(dir), physicalPath) === false) &&
-        realAllowedDirs.some((dir) => containsOrIs(join(dir), physicalPath))
+    // Containment in at least one existing root suffices — the defaults are two
+    // disjoint roots, so requiring all of them would reject every legitimate path.
+    const physicallyAllowed = realAllowedDirs.some((dir) => containsOrIs(dir, physicalPath))
     if (!physicallyAllowed) {
         return {
             ok: false,

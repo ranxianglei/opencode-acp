@@ -63,7 +63,20 @@ Follow-up independent reviews on issue #415 were triaged item-by-item; eight of 
 - **Tests**: `tests/decompress-tofile-symlink.test.ts` — 8 tests importing from source; fixtures live under `$TMPDIR` with injected allowed dirs (sandbox `/tmp` is read-only; production defaults untouched). Covers: accept new file / existing file / inner-root symlink chain; reject lexical traversal / absolute outside / intermediate-dir symlink escape / final-component symlink / empty path.
 - **Verification**: full suite 1281 tests / 1279 pass / 2 fail — same 2 pre-existing master-baseline sandbox failures; typecheck + build pass.
 
+## Round 2b: review fixes for the `toFile` hardening (issue #415)
+
+Review of the round-2 commit (`7a0d154f`) surfaced three defects; all fixed here.
+
+- **CRITICAL — `physicallyAllowed` inverted logic** (`lib/compress/tofile-target.ts`): the committed expression `realAllowedDirs.every((dir) => !containsOrIs(join(dir), physicalPath) === false) && ...some(...)` requires containment in **all** allowed roots. The defaults are two disjoint roots (`os.tmpdir()`, `~/.cache/opencode`), so no legitimate path can sit under both — with default config, **every** `toFile` call would be rejected. Fixed to `realAllowedDirs.some((dir) => containsOrIs(dir, physicalPath))` (containment in at least one existing root suffices). Regression test added: "accepts targets under either of two disjoint allowed roots" (RED against the old expression — single-root fixtures made `every` and `some` agree, which is why round-2's 8 tests missed it).
+- **Node 22 compatibility** (`lib/compress/decompress.ts`): `FileHandle.writeFile()` only exists in Node ≥ 23; CI matrix is Node 22/24, so the round-2 write path would crash on Node 22. Replaced with `handle.write(Buffer.from(fileContent, "utf-8"))`.
+- **Coverage gap**: added "rejects an intermediate directory symlink escaping across multiple roots" — a link inside an allowed root pointing at a second _allowed_ root stays legitimate, while a link into a third non-allowed dir is rejected (single-root fixtures cannot express this distinction).
+- Docs/comments: O_NOFOLLOW noted as POSIX-only (win32 lacks the flag and relies on the lstat check); hardlinks explicitly out of scope in `tofile-target.ts` JSDoc (a hardlinked inode still writes through its target by design — the guard targets symlink redirection).
+- Formatting: an intermediate hand-reformat of `decompress.ts` had drifted from Prettier style; restored via `prettier --write` so the diff vs HEAD is functional-only. All three touched files pass `prettier --check`.
+
+**Verification (round 2b)**: typecheck pass; build pass; `tests/decompress-tofile-symlink.test.ts` 10/10; full suite **1283 tests, 1281 pass, 2 fail** — same 2 pre-existing sandbox failures as clean master baseline (`soft-block.test.ts` EACCES mkdir `/tmp`; `inactive-block-decompress.test.ts` hardcodes `/tmp/...` target rejected by the guard / read-only sandbox `/tmp`).
+
 ## Open items
 
 - [x] Dual-agent review (§5.3 code + §5.6 tests) — done, see above.
-- Issue #415: the other nine items were triaged as not applicable to this V1-only repo (see issue comment); owner asked to re-point them to ranxianglei/billion-context.
+- [ ] Dual-agent review of round-2 `toFile` hardening final state (incl. round-2b fixes) — pending before merge.
+- Issue #415: the other nine items were triaged as not applicable to this V1-only repo (see issue comment); owner pointed follow-up discussion to ranxianglei/billion-context#809.
