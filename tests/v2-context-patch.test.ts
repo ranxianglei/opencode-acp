@@ -942,3 +942,123 @@ test("rejects missing lowered correlation, duplicate transformed IDs, and duplic
     assert.equal(duplicateOrder.accepted, false)
     if (!duplicateOrder.accepted) assert.match(duplicateOrder.reason, /source order .* ambiguous/i)
 })
+
+test("maps repeated identical system text by ordered occurrence without rejecting", () => {
+    const projected = [
+        { type: "system", id: "repeated-a", time: { created: 1 }, text: "same instruction" },
+        { type: "system", id: "repeated-b", time: { created: 2 }, text: "same instruction" },
+    ]
+    const outgoing = [
+        Message.make({ role: "system", content: "same instruction" }),
+        Message.make({ role: "system", content: "same instruction" }),
+    ]
+    const projection = normalizeV2ProjectedHistory(projected, outgoing, {
+        sessionID: "repeated-system",
+        currentModel: model,
+    })
+    assert.equal(projection.valid, true)
+    assert.equal(projection.rejection, undefined)
+    const byId = (id: string) => projection.entries.find((entry) => entry.sourceMessageId === id)!
+    // The k-th projected record claims the k-th unclaimed lowered match in lowering order.
+    assert.deepEqual(byId("repeated-a").outgoingMessageIndices, [0])
+    assert.deepEqual(byId("repeated-b").outgoingMessageIndices, [1])
+    assert.equal(byId("repeated-a").opaque, true)
+    assert.equal(byId("repeated-b").opaque, true)
+})
+
+test("preserves per-text occurrence order for interleaved repeated system messages", () => {
+    const projected = [
+        { type: "system", id: "interleave-alpha-1", time: { created: 1 }, text: "alpha" },
+        { type: "system", id: "interleave-beta-1", time: { created: 2 }, text: "beta" },
+        { type: "system", id: "interleave-alpha-2", time: { created: 3 }, text: "alpha" },
+    ]
+    const outgoing = [
+        Message.make({ role: "system", content: "alpha" }),
+        Message.make({ role: "system", content: "beta" }),
+        Message.make({ role: "system", content: "alpha" }),
+    ]
+    const projection = normalizeV2ProjectedHistory(projected, outgoing, {
+        sessionID: "interleaved-system",
+        currentModel: model,
+    })
+    assert.equal(projection.valid, true)
+    assert.equal(projection.rejection, undefined)
+    const byId = (id: string) => projection.entries.find((entry) => entry.sourceMessageId === id)!
+    // The second "alpha" must map to the second lowered alpha, never the first.
+    assert.deepEqual(byId("interleave-alpha-1").outgoingMessageIndices, [0])
+    assert.deepEqual(byId("interleave-beta-1").outgoingMessageIndices, [1])
+    assert.deepEqual(byId("interleave-alpha-2").outgoingMessageIndices, [2])
+})
+
+test("keeps extra host-added system messages unclaimed without rejecting", () => {
+    const projected = [
+        { type: "system", id: "host-projected", time: { created: 1 }, text: "shared text" },
+    ]
+    const outgoing = [
+        Message.make({ role: "system", content: "shared text" }),
+        Message.make({ role: "system", content: "shared text" }),
+    ]
+    const projection = normalizeV2ProjectedHistory(projected, outgoing, {
+        sessionID: "host-extra-system",
+        currentModel: model,
+    })
+    // One projected record against two identical lowered messages previously rejected on
+    // multiple candidates; it must claim the first match and leave the host-added duplicate
+    // unclaimed rather than guess ownership.
+    assert.equal(projection.valid, true)
+    assert.equal(projection.rejection, undefined)
+    const entry = projection.entries.find((e) => e.sourceMessageId === "host-projected")!
+    assert.deepEqual(entry.outgoingMessageIndices, [0])
+    assert.equal(entry.opaque, true)
+    // The unclaimed duplicate must land provider-owned: fully opaque, not attributed
+    // to any projected source, never editable by ACP patches.
+    const extra = projection.outgoing[1]!
+    assert.equal(extra.opaque, true)
+    assert.equal(extra.owned, false)
+    assert.equal(extra.sourceMessageId, undefined)
+    assert.equal(extra.opaqueMessage, outgoing[1])
+})
+
+test("leaves host-added foreign system messages unclaimed when projected text differs", () => {
+    const projected = [
+        { type: "system", id: "foreign-projected", time: { created: 1 }, text: "projected text" },
+    ]
+    const outgoing = [
+        Message.make({ role: "system", content: "projected text" }),
+        Message.make({ role: "system", content: "host-added text" }),
+    ]
+    const projection = normalizeV2ProjectedHistory(projected, outgoing, {
+        sessionID: "host-foreign-system",
+        currentModel: model,
+    })
+    assert.equal(projection.valid, true)
+    assert.equal(projection.rejection, undefined)
+    const entry = projection.entries.find((e) => e.sourceMessageId === "foreign-projected")!
+    assert.deepEqual(entry.outgoingMessageIndices, [0])
+    // The foreign host message stays provider-owned and opaque, not attributed to
+    // the projected source.
+    const extra = projection.outgoing[1]!
+    assert.equal(extra.opaque, true)
+    assert.equal(extra.owned, false)
+    assert.equal(extra.sourceMessageId, undefined)
+})
+
+test("still rejects ambiguous patchable sources that lack an exact lowered correlation", () => {
+    const projected = [
+        { type: "system", id: "guard-system", time: { created: 1 }, text: "system" },
+        { type: "user", id: "guard-user", time: { created: 2 }, text: "user request" },
+    ]
+    const outgoing = [
+        Message.make({ role: "system", content: "system" }),
+        // No lowered counterpart exists for the patchable user source, so ACP must refuse
+        // to guess rather than silently drop or mis-edit it.
+    ]
+    const projection = normalizeV2ProjectedHistory(projected, outgoing, {
+        sessionID: "guard-reject",
+        currentModel: model,
+    })
+    assert.equal(projection.valid, false)
+    assert.ok(projection.rejection)
+    if (projection.rejection)
+        assert.match(projection.rejection.message, /no exact lowered outgoing match/i)
+})
