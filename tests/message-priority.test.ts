@@ -10,6 +10,7 @@ import { prune } from "../lib/messages/prune"
 import { buildPriorityMap } from "../lib/messages/priority"
 import { stripHallucinationsFromString } from "../lib/messages/utils"
 import { createSessionState, type WithParts } from "../lib/state"
+import { createTestRegistry } from "./registry-stub"
 
 function buildConfig(mode: "message" | "range" = "message"): PluginConfig {
     return {
@@ -464,7 +465,9 @@ test("hallucination stripping removes all dcp-prefixed XML tags including varian
 
     assert.equal(stripHallucinationsFromString(text), "alphaomega")
 
-    const handler = createTextCompleteHandler()
+    const state = createSessionState()
+    state.sessionId = "session"
+    const handler = createTextCompleteHandler(createTestRegistry(state), new Logger(false))
     const output = { text }
     await handler({ sessionID: "session", messageID: "message", partID: "part" }, output)
     assert.equal(output.text, "alphaomega")

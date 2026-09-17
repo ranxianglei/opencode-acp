@@ -244,12 +244,16 @@ test("command execute passes through non-acp commands without throwing", async (
 })
 
 test("text complete strips hallucinated metadata tags", async () => {
-    const output = { text: "alpha  omega" }
-    const handler = createTextCompleteHandler()
+    const state = createSessionState()
+    state.sessionId = "session-1"
+    const handler = createTextCompleteHandler(createTestRegistry(state), new Logger(false))
+    const output = {
+        text: 'alpha<dcp-message-id tokens="1" type="text">m00001</dcp-message-id>omega',
+    }
 
     await handler({ sessionID: "session-1", messageID: "message-1", partID: "part-1" }, output)
 
-    assert.equal(output.text, "alpha  omega")
+    assert.equal(output.text, "alphaomega")
 })
 
 test("event hook attaches durations to matching blocks by message and call id", async () => {
