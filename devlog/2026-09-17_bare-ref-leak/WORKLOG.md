@@ -19,6 +19,19 @@
 | Commit | Description |
 |--------|-------------|
 | `<sha>` | fix: strip leaked bare ACP refs from completed assistant text (#431) |
+| `<sha>` | test: pin b0-exclusion and 4-digit m-ref branches (second-review follow-up, PR #432) |
+
+### Second-review follow-up (PR #432, agent review pass 2)
+
+- Independent second review verdict: APPROVE with 4 LOW findings. Two were missing
+  regression pins in `tests/leaked-trailing-ref.test.ts`, fixed directly on the branch:
+  - `b0` exclusion: block ids allocate from 1 (`allocateBlockId`, lib/compress/state.ts), so
+    `b0` exists in no ID space; the regex's `b([1-9]\d*)` never matches it even at the
+    minimum bound — now pinned by a dedicated unit case.
+  - 4-digit `m` tokens: the regex accepts 4–5 digit widths (legacy tolerance); both
+    directions (above-bound stripped / below-bound kept) now pinned.
+- The other two findings (input-deref robustness note; cosmetic cast asymmetry in
+  lib/hooks.ts) required no change — no realistic throw path, style-only.
 
 ### Key Files
 
@@ -55,7 +68,7 @@ npx tsc --noEmit
 ### Test Coverage
 
 - New/modified test files: `tests/leaked-trailing-ref.test.ts` (new), `tests/hooks-permission.test.ts`, `tests/message-priority.test.ts` (signature updates only)
-- Test count: 1288 total, 1286 pass, 2 fail (both pre-existing sandbox artifacts, see Results)
+- Test count: 1290 total (1288 + 2 second-review pins), 1288 pass, 2 fail (both pre-existing sandbox artifacts, see Results)
 - Key scenarios verified:
   - #431 repro shape truncated: `"Normal assistant progress message.\n\nm00057 <garbage>"` → `"Normal assistant progress message."` (nextRef=57)
   - Boundary: ref exactly equal to next-to-allocate IS stripped; one below is kept

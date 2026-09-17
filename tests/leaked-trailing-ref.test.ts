@@ -138,6 +138,27 @@ describe("stripLeakedTrailingRefs — #431 bare self-ref leak", () => {
         assert.equal(result, text)
     })
 
+    test("'b0' is never matched — block ids allocate from 1, so b0 exists in no ID space", () => {
+        // Even at the minimum bound (nextBlockRef = 1), "b0" must survive: the
+        // allocator (allocateBlockId) starts at 1, so b0 can never be a real or
+        // future block ref — matching it could only create false positives.
+        const text = "Done.\n\nb0 junk"
+        const result = stripLeakedTrailingRefs(text, { nextBlockRef: 1 })
+        assert.equal(result, text)
+    })
+
+    test("4-digit 'm' tokens are still checked against the bound (lenient legacy width)", () => {
+        // Above bound → stripped even though 4-digit is not the exact injected width.
+        assert.equal(
+            stripLeakedTrailingRefs("Done.\nm0057 x", { nextMessageRef: 57 }),
+            "Done.",
+        )
+        assert.equal(
+            stripLeakedTrailingRefs("Done.\nm0042 x", { nextMessageRef: 57 }),
+            "Done.\nm0042 x",
+        )
+    })
+
     test("empty string passes through unchanged", () => {
         assert.equal(stripLeakedTrailingRefs("", { nextMessageRef: 1 }), "")
     })
