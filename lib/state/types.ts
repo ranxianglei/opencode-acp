@@ -173,6 +173,8 @@ export interface SessionState {
     modelProviderID: string | undefined
     modelID: string | undefined
     systemPromptTokens: number | undefined
+    /** [FIX #421] Provenance of `systemPromptTokens`: "heuristic" = anchor-derived residual, "measured" = current-wire system tokenization. Transient (NOT persisted), cleared alongside the value on compaction/model switch. */
+    systemPromptTokensSource: "heuristic" | "measured" | undefined
     /**
      * Resolved directory for this session's persisted state file (absolute path).
      * Transient (NOT persisted): resolved once per session from config.storagePath

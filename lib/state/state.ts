@@ -568,6 +568,7 @@ export function createSessionState(): SessionState {
         modelProviderID: undefined,
         modelID: undefined,
         systemPromptTokens: undefined,
+        systemPromptTokensSource: undefined,
         storageDir: undefined,
         qualityGateRetryPending: false,
         noContextLimitWarned: false,

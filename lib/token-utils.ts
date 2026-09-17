@@ -4,7 +4,8 @@ import { Logger } from "./logger"
 import * as _anthropicTokenizer from "@anthropic-ai/tokenizer"
 const anthropicCountTokens = (_anthropicTokenizer.countTokens ??
     (_anthropicTokenizer as any).default?.countTokens) as typeof _anthropicTokenizer.countTokens
-import { getLastUserMessage } from "./messages/query"
+import { getLastUserMessage, isIgnoredUserMessage } from "./messages/query"
+import { isAcpOwnedNoticeId } from "./synthetic-ids"
 
 export function getCurrentTokenUsage(state: SessionState, messages: WithParts[]): number {
     for (let i = messages.length - 1; i >= 0; i--) {
@@ -54,45 +55,86 @@ export function getCurrentTokenUsage(state: SessionState, messages: WithParts[])
 }
 
 /**
- * Estimate system prompt tokens by subtracting the first user message's tokens
- * from the first assistant message's total input prompt tokens.
+ * [FIX #421] Whether an assistant message may serve as the calibration anchor
+ * for system-overhead estimation. Two classes are NOT valid anchors:
  *
- * The first assistant turn's prompt = system_prompt + first_user_message (+
- * any injected suffixes). By subtracting the first user message's token count
- * (via countTokens for CJK/code accuracy), we isolate the system prompt estimate.
+ * - Compaction/checkpoint assistants (`info.summary === true`). In V2 these
+ *   carry the compaction REQUEST's own token usage verbatim
+ *   (lib/v2/projection/shared.ts makeAssistantInfo), not a conversational
+ *   prompt — calibrating from them stores the compaction request size as a
+ *   permanent phantom system overhead (issue #421).
+ * - Assistants created before `state.lastCompaction`. Their prompts describe a
+ *   context window that no longer exists after native compaction.
  *
- * Uses the real Anthropic tokenizer (countTokens) — NOT length/4 — for
- * consistency with /acp context and cacheSystemPromptTokens.
- *
- * Returns 0 if no assistant message with token data is found.
+ * Mirrors the guard already used by getCurrentTokenUsage above.
  */
-export function estimateSystemPromptTokens(messages: WithParts[]): number {
-    let firstInput: number | undefined
-    for (const msg of messages) {
-        if (msg.info.role !== "assistant") continue
-        const assistantInfo = msg.info as AssistantMessage
-        const t = assistantInfo.tokens
-        if (!t) continue
-        const input = (t.input || 0) + (t.cache?.read || 0) + (t.cache?.write || 0)
-        if (input > 0) {
-            firstInput = input
-            break
-        }
-    }
-    if (firstInput === undefined) return 0
+function isCalibrationAnchor(msg: WithParts, lastCompaction: number): boolean {
+    if (msg.info.role !== "assistant") return false
+    const assistantInfo = msg.info as AssistantMessage
+    const t = assistantInfo.tokens
+    if (!t) return false
+    if ((t.input || 0) + (t.cache?.read || 0) + (t.cache?.write || 0) <= 0) return false
+    if (assistantInfo.summary === true) return false
+    if (lastCompaction > 0 && (assistantInfo.time?.created ?? 0) < lastCompaction) return false
+    return true
+}
 
-    let firstUserText = ""
-    for (const msg of messages) {
-        if (msg.info.role !== "user") continue
-        const parts = Array.isArray(msg.parts) ? msg.parts : []
-        for (const part of parts) {
-            if (part.type === "text" && typeof part.text === "string") {
-                firstUserText += part.text
-            }
-        }
-        if (firstUserText) break
+/**
+ * [FIX #421] Estimate the non-message wire overhead (system prompt + tool
+ * schemas) from the first trustworthy assistant response.
+ *
+ * The anchor's input tokens = system + tools + every wire-visible message sent
+ * before it. Subtracting only the first user text underestimates whenever
+ * earlier conversation content is present (e.g. a post-compaction summary or
+ * prior turns), so we subtract the full prefix instead. Messages the host
+ * marks as ignored, and ACP-owned V2 notices that are stripped from outgoing
+ * requests, never reach the provider — they are excluded from the prefix.
+ *
+ * Uses the real Anthropic tokenizer via countAllMessageTokens — NOT length/4 —
+ * for consistency with /acp context and cacheSystemPromptTokens.
+ *
+ * Returns 0 when no trustworthy anchor exists (caller should fall back to a
+ * measured value or a whole-context estimate).
+ */
+export function calibrateSystemOverhead(
+    state: { lastCompaction?: number },
+    messages: WithParts[],
+): number {
+    const lastCompaction = state.lastCompaction ?? 0
+    let anchorIndex = -1
+    let anchorInput = 0
+    for (let i = 0; i < messages.length; i++) {
+        if (!isCalibrationAnchor(messages[i], lastCompaction)) continue
+        const t = (messages[i].info as AssistantMessage).tokens!
+        anchorIndex = i
+        anchorInput = (t.input || 0) + (t.cache?.read || 0) + (t.cache?.write || 0)
+        break
     }
-    return Math.max(0, firstInput - countTokens(firstUserText))
+    if (anchorIndex === -1) return 0
+
+    let prefixTokens = 0
+    for (let i = 0; i < anchorIndex; i++) {
+        const msg = messages[i]
+        if (isIgnoredUserMessage(msg)) continue
+        if (isAcpOwnedNoticeId(msg.info.id)) continue
+        prefixTokens += countAllMessageTokens(msg)
+    }
+    return Math.max(0, anchorInput - prefixTokens)
+}
+
+/**
+ * Estimate system prompt tokens by subtracting the pre-anchor conversation
+ * from the first trustworthy assistant's total input prompt tokens.
+ *
+ * Delegates to calibrateSystemOverhead ([FIX #421] guards against compaction
+ * summaries and stale pre-compaction usage). `lastCompaction` defaults to 0
+ * (no native compaction recorded) which preserves legacy behavior for callers
+ * without session state.
+ *
+ * Returns 0 if no trustworthy assistant message with token data is found.
+ */
+export function estimateSystemPromptTokens(messages: WithParts[], lastCompaction = 0): number {
+    return calibrateSystemOverhead({ lastCompaction }, messages)
 }
 
 export function getCurrentParams(

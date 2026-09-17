@@ -279,6 +279,7 @@ export function cloneSessionState(state: SessionState): SessionState {
         modelProviderID: state.modelProviderID,
         modelID: state.modelID,
         systemPromptTokens: state.systemPromptTokens,
+        systemPromptTokensSource: state.systemPromptTokensSource,
         storageDir: state.storageDir,
         qualityGateRetryPending: state.qualityGateRetryPending,
         noContextLimitWarned: state.noContextLimitWarned,
@@ -313,6 +314,7 @@ export function commitSessionState(target: SessionState, working: SessionState):
     target.modelProviderID = committed.modelProviderID
     target.modelID = committed.modelID
     target.systemPromptTokens = committed.systemPromptTokens
+    target.systemPromptTokensSource = committed.systemPromptTokensSource
     target.storageDir = committed.storageDir
     target.qualityGateRetryPending = committed.qualityGateRetryPending
     target.noContextLimitWarned = committed.noContextLimitWarned
