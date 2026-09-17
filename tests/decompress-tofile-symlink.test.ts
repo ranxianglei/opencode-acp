@@ -1,0 +1,116 @@
+import test from "node:test"
+import assert from "node:assert/strict"
+import { mkdtempSync, mkdirSync, symlinkSync, writeFileSync, rmSync } from "fs"
+import { tmpdir } from "os"
+import path from "path"
+import { resolveSafeToFileTarget } from "../lib/compress/tofile-target"
+
+// Fixtures live under $TMPDIR (workspace .tmp in daemon sandboxes where /tmp is
+// read-only; /tmp in CI). Allowed roots are injected so the tests never depend
+// on os.tmpdir()/~/.cache/opencode being writable.
+function makeFixture() {
+    const base = mkdtempSync(path.join(process.env.TMPDIR ?? tmpdir(), "acp-tofile-"))
+    const allowed = path.join(base, "allowed")
+    const outside = path.join(base, "outside")
+    mkdirSync(allowed, { recursive: true })
+    mkdirSync(outside, { recursive: true })
+    return { base, allowed, outside, opts: { allowedDirs: [allowed] } }
+}
+
+async function withFixture<T>(fn: (fx: ReturnType<typeof makeFixture>) => Promise<T>): Promise<T> {
+    const fx = makeFixture()
+    try {
+        return await fn(fx)
+    } finally {
+        rmSync(fx.base, { recursive: true, force: true })
+    }
+}
+
+test("accepts a new file under the allowed root (missing tail dirs ok)", async () => {
+    await withFixture(async ({ allowed, opts }) => {
+        const result = await resolveSafeToFileTarget(path.join(allowed, "new", "sub.txt"), opts)
+        assert.equal(result.ok, true)
+        if (result.ok) {
+            assert.equal(result.filePath, path.resolve(path.join(allowed, "new", "sub.txt")))
+        }
+    })
+})
+
+test("accepts an existing regular file for overwrite", async () => {
+    await withFixture(async ({ allowed, opts }) => {
+        const target = path.join(allowed, "existing.txt")
+        writeFileSync(target, "old", "utf-8")
+        const result = await resolveSafeToFileTarget(target, opts)
+        assert.equal(result.ok, true)
+    })
+})
+
+test("accepts a symlink chain that stays inside the allowed root", async () => {
+    await withFixture(async ({ allowed, opts }) => {
+        const realDir = path.join(allowed, "real")
+        mkdirSync(realDir)
+        const innerLink = path.join(allowed, "inner-link")
+        symlinkSync(realDir, innerLink, "dir")
+        const result = await resolveSafeToFileTarget(path.join(innerLink, "ok.txt"), opts)
+        assert.equal(result.ok, true)
+    })
+})
+
+test("rejects lexical .. traversal outside the allowed root", async () => {
+    await withFixture(async ({ allowed, outside, opts }) => {
+        const result = await resolveSafeToFileTarget(
+            path.join(allowed, "..", "outside", "x.txt"),
+            opts,
+        )
+        assert.equal(result.ok, false)
+        if (!result.ok) {
+            assert.match(result.error, /must be under/)
+        }
+    })
+})
+
+test("rejects an absolute path outside the allowed roots", async () => {
+    await withFixture(async ({ outside, opts }) => {
+        const result = await resolveSafeToFileTarget(path.join(outside, "x.txt"), opts)
+        assert.equal(result.ok, false)
+        if (!result.ok) {
+            assert.match(result.error, /must be under/)
+        }
+    })
+})
+
+test("rejects an intermediate directory symlink that escapes the allowed root", async () => {
+    await withFixture(async ({ allowed, outside, opts }) => {
+        const escapeLink = path.join(allowed, "escape-link")
+        symlinkSync(outside, escapeLink, "dir")
+        const result = await resolveSafeToFileTarget(path.join(escapeLink, "evil.txt"), opts)
+        assert.equal(result.ok, false)
+        if (!result.ok) {
+            assert.match(result.error, /symlink/)
+        }
+    })
+})
+
+test("rejects a final-component symlink pointing outside", async () => {
+    await withFixture(async ({ allowed, outside, opts }) => {
+        const secret = path.join(outside, "secret.txt")
+        writeFileSync(secret, "secret", "utf-8")
+        const finalLink = path.join(allowed, "final-link")
+        symlinkSync(secret, finalLink)
+        const result = await resolveSafeToFileTarget(finalLink, opts)
+        assert.equal(result.ok, false)
+        if (!result.ok) {
+            assert.match(result.error, /symlink/)
+        }
+    })
+})
+
+test("rejects an empty target path", async () => {
+    await withFixture(async ({ opts }) => {
+        const result = await resolveSafeToFileTarget("", opts)
+        assert.equal(result.ok, false)
+        if (!result.ok) {
+            assert.match(result.error, /must be under/)
+        }
+    })
+})

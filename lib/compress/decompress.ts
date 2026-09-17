@@ -28,6 +28,7 @@ import {
     buildRestoredContentPreview,
 } from "./decompress-logic"
 import { formatTokenCount } from "../ui/utils"
+import { resolveSafeToFileTarget } from "./tofile-target"
 
 interface RunContext {
     ask(input: {
@@ -73,9 +74,7 @@ async function finalizeDecompressSession(ctx: ToolContext): Promise<void> {
     await saveSessionState(ctx.state, ctx.logger)
 }
 
-type ResolveResult =
-    | { ok: true; targets: CompressionTarget[] }
-    | { ok: false; error: string }
+type ResolveResult = { ok: true; targets: CompressionTarget[] } | { ok: false; error: string }
 
 function resolveTargets(
     args: Record<string, unknown>,
@@ -94,7 +93,13 @@ function resolveTargets(
         return resolveSingleBlockTarget(messagesState, args.blockId as string)
     }
 
-    return resolveRangeTarget(state, rawMessages, args.startId as string, args.endId as string, logger)
+    return resolveRangeTarget(
+        state,
+        rawMessages,
+        args.startId as string,
+        args.endId as string,
+        logger,
+    )
 }
 
 function resolveSingleBlockTarget(
@@ -233,23 +238,33 @@ function buildSchema() {
         blockId: tool.schema
             .string()
             .optional()
-            .describe('Block reference to decompress (e.g., "b0", "b2"). Mutually exclusive with startId/endId.'),
+            .describe(
+                'Block reference to decompress (e.g., "b0", "b2"). Mutually exclusive with startId/endId.',
+            ),
         startId: tool.schema
             .string()
             .optional()
-            .describe('Range start: message ref (e.g., "m00150") or block ref (e.g., "b2"). Used with endId.'),
+            .describe(
+                'Range start: message ref (e.g., "m00150") or block ref (e.g., "b2"). Used with endId.',
+            ),
         endId: tool.schema
             .string()
             .optional()
-            .describe('Range end: message ref (e.g., "m00200") or block ref (e.g., "b5"). Used with startId.'),
+            .describe(
+                'Range end: message ref (e.g., "m00200") or block ref (e.g., "b5"). Used with startId.',
+            ),
         toFile: tool.schema
             .string()
             .optional()
-            .describe("If provided, writes restored content to this file path instead of inflating context. Block stays compressed. Path must be under /tmp or ~/.cache/opencode/. Example: '/tmp/block52.txt'"),
+            .describe(
+                "If provided, writes restored content to this file path instead of inflating context. Block stays compressed. Path must be under /tmp or ~/.cache/opencode/. Example: '/tmp/block52.txt'",
+            ),
         full: tool.schema
             .boolean()
             .optional()
-            .describe("If true, restores ALL content down to original messages (multi-level decompress). Default: false — restores one tier up (e.g., decompressing a T2 block restores T1 summaries, not raw messages). Use full:true only when you need the exact original content and have context budget for it."),
+            .describe(
+                "If true, restores ALL content down to original messages (multi-level decompress). Default: false — restores one tier up (e.g., decompressing a T2 block restores T1 summaries, not raw messages). Use full:true only when you need the exact original content and have context budget for it.",
+            ),
     }
 }
 
@@ -285,7 +300,12 @@ export function createDecompressTool(factoryCtx: ToolFactoryContext): ReturnType
                   )
                 : undefined
 
-            const resolved = resolveTargets(args as Record<string, unknown>, ctx.state, rawMessages, ctx.logger)
+            const resolved = resolveTargets(
+                args as Record<string, unknown>,
+                ctx.state,
+                rawMessages,
+                ctx.logger,
+            )
             if (!resolved.ok) {
                 return resolved.error
             }
@@ -303,19 +323,9 @@ export function createDecompressTool(factoryCtx: ToolFactoryContext): ReturnType
 
             if (args.toFile) {
                 const targetPath = args.toFile as string
-                const os = await import("os")
-                const path = await import("path")
-                const allowedDirs = [
-                    os.tmpdir() + "/",
-                    path.join(os.homedir(), ".cache", "opencode") + "/",
-                ]
-                const resolvedPath = path.resolve(targetPath)
-                const isAllowed = allowedDirs.some((dir) => {
-                    const rel = path.relative(dir, resolvedPath)
-                    return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel))
-                })
-                if (!isAllowed) {
-                    return `Error: toFile path must be under ${os.tmpdir()} or ~/.cache/opencode/. Got: ${targetPath}`
+                const safe = await resolveSafeToFileTarget(targetPath)
+                if (!safe.ok) {
+                    return safe.error
                 }
 
                 const msgIdSet = new Set<string>()
@@ -326,12 +336,25 @@ export function createDecompressTool(factoryCtx: ToolFactoryContext): ReturnType
                 }
                 const blockMessages = rawMessages.filter((m) => msgIdSet.has(extractMessageId(m)))
                 const lines = blockMessages.map(extractMessageText)
-                const { writeFile } = await import("fs/promises")
                 const fileContent =
                     lines.length > 0
                         ? lines.join("\n\n---\n\n")
                         : (targets[0]?.blocks[0]?.summary ?? "(no content available)")
-                await writeFile(targetPath, fileContent, "utf-8")
+                // O_NOFOLLOW refuses a final-component symlink at open time, closing the
+                // check-then-write window left by resolveSafeToFileTarget's lstat check.
+                const fsp = await import("fs/promises")
+                const { constants } = await import("fs")
+                const flags =
+                    constants.O_WRONLY |
+                    constants.O_CREAT |
+                    constants.O_TRUNC |
+                    (process.platform === "win32" ? 0 : constants.O_NOFOLLOW)
+                const handle = await fsp.open(safe.filePath, flags, 0o600)
+                try {
+                    await handle.writeFile(fileContent, "utf-8")
+                } finally {
+                    await handle.close()
+                }
 
                 const displayIds = targets.map((t) => `b${t.displayId}`).join(", ")
                 return `Block(s) ${displayIds} content (${blockMessages.length} messages, ${fileContent.length} chars) written to ${targetPath}. Block(s) stay compressed — context unchanged. Use read tool to access specific parts.`
