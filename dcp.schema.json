@@ -356,6 +356,10 @@
                                 "minimum": 0,
                                 "description": "Override for the minimum compressible range (chars)."
                             },
+                            "smartPlanRequired": {
+                                "type": "boolean",
+                                "description": "Override for requiring one fresh canonical plan armed by an ACP nudge or acp_status before compression."
+                            },
                             "maxVisibleSegments": {
                                 "type": "number",
                                 "minimum": 1,
@@ -503,6 +507,10 @@
                                             "minimum": 0,
                                             "description": "Override for the minimum compressible range (chars)."
                                         },
+                                        "smartPlanRequired": {
+                                            "type": "boolean",
+                                            "description": "Override for requiring one fresh canonical plan armed by an ACP nudge or acp_status before compression."
+                                        },
                                         "maxVisibleSegments": {
                                             "type": "number",
                                             "minimum": 1,
@@ -577,6 +585,11 @@
                     "default": 5000,
                     "minimum": 0,
                     "description": "Minimum compressible content (in characters) required for a compression to proceed. Below this threshold, the compress tool rejects the request to avoid overhead exceeding savings. Count excludes protected content."
+                },
+                "smartPlanRequired": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Require one canonical model-visible range, armed automatically by the latest ACP nudge or refreshed by acp_status, before each compression."
                 },
                 "minNudgeGrowthRatio": {
                     "type": "number",

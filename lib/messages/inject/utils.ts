@@ -1,7 +1,11 @@
 import type { SessionState, WithParts } from "../../state"
 import type { PluginConfig, CompressConfig, CompressModelOverrides } from "../../config"
 import { messageContainsProtectedTool } from "../../compress/protected-content"
-import { isToolNameProtected, getFilePathsFromParameters, isFilePathProtected } from "../../protected-patterns"
+import {
+    isToolNameProtected,
+    getFilePathsFromParameters,
+    isFilePathProtected,
+} from "../../protected-patterns"
 import {
     appendGuidanceToDcpTag,
     buildCompressedBlockGuidance,
@@ -176,10 +180,7 @@ export function isContextOverLimits(
     messages: WithParts[],
 ) {
     const summaryTokenExtension = config.compress.summaryBuffer
-        ? getActiveSummaryTokenUsage(
-              state,
-              new Set(messages.map((m) => m.info.id)),
-          )
+        ? getActiveSummaryTokenUsage(state, new Set(messages.map((m) => m.info.id)))
         : 0
     const resolvedMaxContextLimit = resolveContextTokenLimit(
         config,
@@ -235,10 +236,7 @@ export interface NudgeDecision {
     tipsVariant: TipsVariant | null
 }
 
-import {
-    ensureBuiltinTriggerPolicyRegistered,
-    getDefaultTriggerPolicy,
-} from "./policy"
+import { ensureBuiltinTriggerPolicyRegistered, getDefaultTriggerPolicy } from "./policy"
 ensureBuiltinTriggerPolicyRegistered()
 
 export function computeShouldNudge(params: {
@@ -318,7 +316,7 @@ export function resolveCompressOverrides(
 export function resolveMinNudgeContextPercent(
     config: PluginConfig,
     providerId?: string,
-    modelId?: string
+    modelId?: string,
 ): number | undefined {
     const overrides = resolveCompressOverrides(config, providerId, modelId)
     if (overrides.minNudgeContextPercent !== undefined) {
@@ -338,7 +336,7 @@ export function resolveMinNudgeFloorTokens(
     config: PluginConfig,
     modelContextLimit: number | undefined,
     providerId?: string,
-    modelId?: string
+    modelId?: string,
 ): number | undefined {
     if (modelContextLimit === undefined) {
         return undefined
@@ -866,7 +864,15 @@ export function buildCompressibleRanges(
             lastUserRefIdx.length = 0
             lastUserRefIdx.push(msgInfo.length)
         }
-        msgInfo.push({ ref, refNum: rn, tokens, effectiveTokens: 0, meaningful: hasMeaningfulPart, isTool, isUser: msg.info.role === "user" })
+        msgInfo.push({
+            ref,
+            refNum: rn,
+            tokens,
+            effectiveTokens: 0,
+            meaningful: hasMeaningfulPart,
+            isTool,
+            isUser: msg.info.role === "user",
+        })
     }
 
     const lastUserIdx = lastUserRefIdx.length > 0 ? lastUserRefIdx[0] : -1
@@ -891,9 +897,13 @@ export function buildCompressibleRanges(
             continue
         }
         const hasGap = info.refNum > prevRefNum + 1
-        if (cur && ((info.isUser && cur.count >= 3) || hasGap)) {
-            groups.push(cur)
-            cur = null
+        if (cur) {
+            const shouldSplitUser = info.isUser && (cur.tokens >= 10000 || cur.count >= 25)
+            const shouldSplitSize = cur.tokens >= 16000 || cur.count >= 40
+            if (hasGap || shouldSplitUser || shouldSplitSize) {
+                groups.push(cur)
+                cur = null
+            }
         }
         prevRefNum = info.refNum
         if (!cur) {
@@ -1027,9 +1037,7 @@ export function filterRecommendedRanges(
         return effective > 0 && effective >= floor
     })
 
-    const result = kept.map((r, i) =>
-        i === kept.length - 1 ? { ...r, dangerous: true } : r,
-    )
+    const result = kept.map((r, i) => (i === kept.length - 1 ? { ...r, dangerous: true } : r))
 
     log?.("filterRecommendedRanges: effective-token floor applied", {
         inputRanges: compressible.length,
@@ -1073,10 +1081,11 @@ export function formatCompressibleRanges(
         if (ranges.length === 0) return ""
         const lines = ranges.map((r) => {
             const eff = r.effectiveTokens ?? r.tokens
-            const size = eff < r.tokens
-                ? `${fmt(eff)} effective of ${fmt(r.tokens)}`
-                : fmt(r.tokens)
-            const suffix = r.dangerous ? "  ⚠️ NOT recommended unless you are certain. If you MUST compress this, pass `dangerous: true`." : ""
+            const size =
+                eff < r.tokens ? `${fmt(eff)} effective of ${fmt(r.tokens)}` : fmt(r.tokens)
+            const suffix = r.dangerous
+                ? "  ⚠️ NOT recommended unless you are certain. If you MUST compress this, pass `dangerous: true`."
+                : ""
             return `  ${r.startRef}–${r.endRef}  ${r.count} msgs  ${size} [tool ${r.toolPct}% | text ${r.textPct}%]${suffix}`
         })
         return `Compressible ranges (oldest first):\n${lines.join("\n")}`
@@ -1145,7 +1154,10 @@ export function formatCompressibleRanges(
     }
 
     const lines = merged.map((e) => {
-        const suffix = e.dangerous && e.compressibleTokens > 0 ? "  ⚠️ NOT recommended unless you are certain. If you MUST compress this, pass `dangerous: true`." : ""
+        const suffix =
+            e.dangerous && e.compressibleTokens > 0
+                ? "  ⚠️ NOT recommended unless you are certain. If you MUST compress this, pass `dangerous: true`."
+                : ""
 
         if (e.protectedTokens > 0 && e.compressibleTokens === 0) {
             return `  ${e.startRef}–${e.endRef}  ${e.count} msgs  ${fmt(e.tokens)} [PROTECTED: ${e.protectedTools.join(", ")} — not compressible]${suffix}`
@@ -1234,7 +1246,5 @@ export function excludeProtectedRanges(
     protectedRefs: Set<string>,
 ): CompressibleRange[] {
     if (protectedRefs.size === 0) return ranges
-    return ranges.filter(
-        (r) => !protectedRefs.has(r.startRef) && !protectedRefs.has(r.endRef),
-    )
+    return ranges.filter((r) => !protectedRefs.has(r.startRef) && !protectedRefs.has(r.endRef))
 }

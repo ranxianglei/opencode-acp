@@ -43,6 +43,7 @@ export const VALID_CONFIG_KEYS = new Set([
     "compress.protectUserMessages",
     "compress.maxSummaryLengthHard",
     "compress.minCompressRange",
+    "compress.smartPlanRequired",
     "compress.minNudgeGrowthRatio",
     "compress.minNudgeGrowthFloor",
     "compress.emergencyThresholdPercent",
@@ -369,6 +370,17 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
                     key: "compress.minCompressRange",
                     expected: "non-negative number (>= 0)",
                     actual: `${compress.minCompressRange}`,
+                })
+            }
+
+            if (
+                compress.smartPlanRequired !== undefined &&
+                typeof compress.smartPlanRequired !== "boolean"
+            ) {
+                errors.push({
+                    key: "compress.smartPlanRequired",
+                    expected: "boolean",
+                    actual: typeof compress.smartPlanRequired,
                 })
             }
 
@@ -741,6 +753,7 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
                 protectedTools: "stringArray",
                 maxSummaryLengthHard: "positiveNumber",
                 minCompressRange: "nonNegativeNumber",
+                smartPlanRequired: "boolean",
                 maxVisibleSegments: "positiveNumber",
                 keepEmbedMaxChars: "nonNegativeNumber",
                 preserveRecentMessages: "nonNegativeNumber",

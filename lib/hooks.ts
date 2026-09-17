@@ -50,6 +50,7 @@ import {
 import { cacheSystemPromptTokens } from "./ui/utils"
 import { runBatchCleanup } from "./gc/merge"
 import { getCurrentTokenUsage } from "./token-utils"
+import { clearSmartPlanSession, recordVisibleMessages } from "./compress/smart-plan"
 
 const INTERNAL_AGENT_SIGNATURES = [
     "You are a title generator",
@@ -414,6 +415,14 @@ export function createChatMessageTransformHandler(
         hideFailedCompressCalls(output.messages)
         stripStaleMetadata(output.messages)
         dropEmptyMessages(output.messages)
+        const smartPlanEnabled = applyCompressOverrides(
+            config,
+            state.modelProviderID,
+            state.modelID,
+        ).compress.smartPlanRequired
+        if (state.sessionId && smartPlanEnabled === true) {
+            recordVisibleMessages(state.sessionId, output.messages)
+        }
         const postTokens = getCurrentTokenUsage(state, output.messages)
         // [FIX #346] Hard guard: if the post-transform context still exceeds
         // the model's real request budget (window minus system prompt + tool
@@ -584,6 +593,12 @@ export function createTextCompleteHandler(registry: SessionStateRegistry, logger
 
 export function createEventHandler(registry: SessionStateRegistry, logger: Logger) {
     return async (input: { event: any }) => {
+        if (input.event?.type === "session.idle" || input.event?.type === "session.deleted") {
+            const sessionID =
+                input.event?.properties?.sessionID ?? input.event?.properties?.info?.id
+            if (typeof sessionID === "string") clearSmartPlanSession(sessionID)
+            return
+        }
         const eventTime =
             typeof input.event?.time === "number" && Number.isFinite(input.event.time)
                 ? input.event.time
