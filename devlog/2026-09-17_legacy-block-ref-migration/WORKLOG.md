@@ -75,8 +75,29 @@ Review of the round-2 commit (`7a0d154f`) surfaced three defects; all fixed here
 
 **Verification (round 2b)**: typecheck pass; build pass; `tests/decompress-tofile-symlink.test.ts` 10/10; full suite **1283 tests, 1281 pass, 2 fail** — same 2 pre-existing sandbox failures as clean master baseline (`soft-block.test.ts` EACCES mkdir `/tmp`; `inactive-block-decompress.test.ts` hardcodes `/tmp/...` target rejected by the guard / read-only sandbox `/tmp`).
 
+## Round 2c: dual-agent review of the `toFile` hardening (issue #415)
+
+Two independent agents reviewed the final state (`2f54a147`) per §5.3 (code) and §5.6 (tests). Both verdicts: **APPROVE WITH MINORS**. All actionable findings fixed here.
+
+**Code review findings → disposition:**
+
+- [MINOR] Success message reported raw `${targetPath}` instead of resolved `safe.filePath` — relative inputs would tell the model the wrong location. Fixed: message now emits `safe.filePath` (`lib/compress/decompress.ts`).
+- [MINOR] Residual TOCTOU: an intermediate dir swapped to a symlink _after_ validation is not covered (`O_NOFOLLOW` guards only the final component; Node has no public `openat`). Exploitable only by an actor with direct FS write access to an allowed root — outside the prompt-injection threat model. Disposition: documented as an explicit known limitation in the `resolveSafeToFileTarget` JSDoc rather than half-fixing it.
+- [NIT] `fsp.open`/`write`/`close` had no try/catch — runtime write failures (EACCES/ENOSPC) threw as rejected promises instead of the consistent `Error: …` string style. Fixed: wrapped, returns `` `Error: toFile write failed: ${msg}` ``.
+- No findings in performance (all async fs, ~5–7 syscalls), type safety (no `as any`/`@ts-ignore`), platform (win32 O_NOFOLLOW absence documented; case-insensitive FS fails closed), or state integrity (toFile branch mutates nothing before the write).
+
+**Test review findings → disposition:**
+
+- [MINOR] Missing-allowedDir fail-closed behavior untested → added "rejects a target under an allowed root that does not exist".
+- [MINOR] The decompress.ts WRITE path (early-return before open, O_NOFOLLOW, 0o600, confirmation text) had zero coverage — unit tests exercise only the pure validator. Added `tests/decompress-tofile-e2e.test.ts` (new, 2 tests) following the existing `inactive-block-decompress.test.ts` harness pattern, exercising the **real default roots** end to end: (a) intermediate-dir symlink pointing at `$HOME` (not an allowed root) → rejected, escaped file asserted absent; (b) non-canonical input (`base/./restore.txt`) → written to resolved path, confirmation string asserted to contain the resolved absolute path (RED against the pre-fix raw-input message).
+- [NIT] Two test names didn't match their discriminating assertions → renamed ("symlink chain" was one hop; multi-root test name foregrounded the reject clause that passes under both old and new semantics).
+- [NIT] Non-ENOENT realpath failures untested → added ELOOP symlink-cycle test (asserts fail-closed reject).
+- Reviewer empirically verified (scratch copy of the exact pre-fix expression from `7a0d154f`, repo untouched): both round-2b regression tests are genuinely RED against the buggy `every(containsOrIs)` semantics, and three tests would go RED against the original lexical-only validation.
+
+**Verification (round 2c)**: typecheck pass; prettier clean on all touched files; targeted suites **14/14** (`decompress-tofile-symlink` 12 + `decompress-tofile-e2e` 2); full suite **1287 tests, 1285 pass, 2 fail** — same 2 pre-existing sandbox failures as clean master (`soft-block.test.ts` EACCES mkdir `/tmp`; `inactive-block-decompress.test.ts` hardcoded `/tmp` target); build pass (dist/index.js 486 KB).
+
 ## Open items
 
 - [x] Dual-agent review (§5.3 code + §5.6 tests) — done, see above.
-- [ ] Dual-agent review of round-2 `toFile` hardening final state (incl. round-2b fixes) — pending before merge.
+- [x] Dual-agent review of round-2 `toFile` hardening final state (incl. round-2b fixes) — done, round 2c; all actionable findings fixed.
 - Issue #415: the other nine items were triaged as not applicable to this V1-only repo (see issue comment); owner pointed follow-up discussion to ranxianglei/billion-context#809.

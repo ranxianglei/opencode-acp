@@ -45,7 +45,7 @@ test("accepts an existing regular file for overwrite", async () => {
     })
 })
 
-test("accepts a symlink chain that stays inside the allowed root", async () => {
+test("accepts a symlinked directory that stays inside the allowed root", async () => {
     await withFixture(async ({ allowed, opts }) => {
         const realDir = path.join(allowed, "real")
         mkdirSync(realDir)
@@ -70,7 +70,7 @@ test("accepts targets under either of two disjoint allowed roots", async () => {
     })
 })
 
-test("rejects an intermediate directory symlink escaping across multiple roots", async () => {
+test("handles intermediate dir symlinks under multiple allowed roots (accepts link into an allowed root, rejects link out)", async () => {
     await withFixture(async ({ base }) => {
         const rootA = path.join(base, "root-a")
         const rootB = path.join(base, "root-b")
@@ -151,5 +151,26 @@ test("rejects an empty target path", async () => {
         if (!result.ok) {
             assert.match(result.error, /must be under/)
         }
+    })
+})
+
+test("rejects a target under an allowed root that does not exist (fail-closed)", async () => {
+    await withFixture(async ({ base }) => {
+        const missing = path.join(base, "missing-root")
+        const result = await resolveSafeToFileTarget(path.join(missing, "x.txt"), {
+            allowedDirs: [missing],
+        })
+        assert.equal(result.ok, false)
+    })
+})
+
+test("rejects a symlink cycle (ELOOP) as unvalidatable", async () => {
+    await withFixture(async ({ allowed, opts }) => {
+        const loopA = path.join(allowed, "loop-a")
+        const loopB = path.join(allowed, "loop-b")
+        symlinkSync(loopB, loopA, "dir")
+        symlinkSync(loopA, loopB, "dir")
+        const result = await resolveSafeToFileTarget(path.join(loopA, "x.txt"), opts)
+        assert.equal(result.ok, false)
     })
 })
