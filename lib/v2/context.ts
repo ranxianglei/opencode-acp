@@ -8,6 +8,7 @@ import { commitPreparedMessageTransformState, prepareMessageTransformTransaction
 import type { HostPermissionRule, HostPermissionSnapshot } from "../host-permissions"
 import type { SessionState, SessionStateRegistry } from "../state"
 import type { Logger } from "../logger"
+import { countTokens } from "../token-utils"
 import { saveSessionState } from "../state/persistence"
 import { DeferredMutationEffects } from "../state/transaction"
 import type { V2HostAdapter } from "./host"
@@ -155,6 +156,28 @@ export function createV2ContextHandler(
                 projection: Awaited<ReturnType<typeof loadProjection>>,
             ): Promise<PreparedV2ContextCommit | undefined> => {
                 if (!projection.valid || !isActive()) return undefined
+                // [FIX #421] Measure current-wire system overhead BEFORE the
+                // transform: host system parts plus ACP's rendered system
+                // prompt (pushed to event.system only at commit, below). The
+                // floor keeps the first request after native compaction/reload
+                // from calibrating against stale pre-compaction usage anchors.
+                // Flags are re-evaluated against workingState at commit; a
+                // mid-transform flip skews this estimate by at most one prompt
+                // render, which is acceptable for a budget floor.
+                let measuredSystemPrompt: string | undefined
+                if (
+                    !(state.isSubAgent && !config.allowSubAgents) &&
+                    compressPermission(state, config) !== "deny"
+                ) {
+                    measuredSystemPrompt = renderSystemPrompt(
+                        prompts.getRuntimePrompts(),
+                        buildProtectedToolsExtension(config.compress.protectedTools),
+                        state.isSubAgent && config.allowSubAgents,
+                    )
+                }
+                const measuredSystemTokens =
+                    event.system.reduce((sum, part) => sum + countTokens(part.text), 0) +
+                    (measuredSystemPrompt ? countTokens(measuredSystemPrompt) : 0)
                 const prepared = await prepareMessageTransformTransaction(
                     projection.messages,
                     state,
@@ -173,6 +196,7 @@ export function createV2ContextHandler(
                         }),
                     true,
                     effects,
+                    measuredSystemTokens,
                 )
                 // A non-resuming command notice remains in projected session
                 // history for the user, but must be removed from every later

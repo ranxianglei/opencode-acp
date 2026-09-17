@@ -730,7 +730,10 @@ export function estimateContextComposition(
     const systemTokens =
         state?.systemPromptTokens !== undefined && state.systemPromptTokens > 0
             ? state.systemPromptTokens
-            : estimateSystemPromptTokens(messages)
+            : // [FIX #421] Live fallback must honor the compaction boundary, matching
+              // cacheSystemPromptTokens, so a stale pre-compaction anchor can never
+              // resurface when the cache was invalidated by resetOnCompaction.
+              estimateSystemPromptTokens(messages, state?.lastCompaction ?? 0)
 
     return {
         toolTokens,

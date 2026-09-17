@@ -43,6 +43,8 @@ export interface MessageTransformOptions {
     debugNotify?: (text: string) => void | Promise<void>
     /** V2 has no post-generation hook; only historical assistant text is sanitized. */
     sanitizeAssistantTextOnly?: boolean
+    /** [FIX #421] Token count of the outgoing system prompt measured on the current wire (V2). Floor for overhead calibration before any post-compaction usage exists. */
+    measuredSystemTokens?: number
 }
 
 /**
@@ -90,6 +92,10 @@ export async function runMessageTransform(
             to: requestModel.modelID,
             contextLimit: state.modelContextLimit,
         })
+        // [FIX #421] Overhead was calibrated against the previous model's wire;
+        // recalibrate instead of reusing a stale estimate.
+        state.systemPromptTokens = undefined
+        state.systemPromptTokensSource = undefined
     }
 
     if (
@@ -161,7 +167,7 @@ export async function runMessageTransform(
         isSubAgent: state.isSubAgent,
         modelContextLimit: effectiveLimit?.limit,
     })
-    cacheSystemPromptTokens(state, messages)
+    cacheSystemPromptTokens(state, messages, options.measuredSystemTokens)
     assignMessageRefs(state, messages)
     const activeBlockCountBefore = state.prune.messages.activeBlockIds.size
     const compressionStateChanged = syncCompressionBlocks(state, logger, messages)

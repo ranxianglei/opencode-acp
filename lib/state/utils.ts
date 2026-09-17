@@ -434,6 +434,12 @@ export function resetOnCompaction(state: SessionState): void {
         byRef: new Map<string, string>(),
         nextRef: 1,
     }
+    // [FIX #421] The cached system overhead was calibrated against the
+    // pre-compaction wire; after native compaction the outgoing prompt shape
+    // changes, so recalibrate on the next transform instead of reusing a
+    // stale (possibly phantom-inflated) value.
+    state.systemPromptTokens = undefined
+    state.systemPromptTokensSource = undefined
 }
 
 /**

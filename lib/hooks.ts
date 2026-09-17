@@ -75,6 +75,7 @@ export async function prepareMessageTransformTransaction(
     debugNotify?: (text: string) => void | Promise<void>,
     sanitizeAssistantTextOnly = false,
     effects?: DeferredMutationEffects,
+    measuredSystemTokens?: number,
 ): Promise<PreparedMessageTransformTransaction> {
     const workingMessages = structuredClone(messages) as WithParts[]
     const workingState = cloneSessionState(state)
@@ -95,6 +96,7 @@ export async function prepareMessageTransformTransaction(
             effects: transactionEffects,
             debugNotify,
             sanitizeAssistantTextOnly,
+            measuredSystemTokens,
         },
     )
 

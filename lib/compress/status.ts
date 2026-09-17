@@ -142,7 +142,12 @@ export interface StatusRenderContext {
 function collectVisibleMessages(
     rawMessages: WithParts[],
     ctx: StatusRenderContext,
-): { messages: VisibleMessageInfo[]; summaryTokens: number; systemTokens: number } {
+): {
+    messages: VisibleMessageInfo[]
+    summaryTokens: number
+    systemTokens: number
+    systemTokensSource: "measured" | "estimated"
+} {
     const pruneMap = ctx.state.prune.messages.byMessageId
     const byRawId = ctx.state.messageIds.byRawId
     const result: VisibleMessageInfo[] = []
@@ -192,20 +197,28 @@ function collectVisibleMessages(
         }
     })
 
-    return {
-        messages: result,
-        summaryTokens,
-        systemTokens:
-            ctx.state.systemPromptTokens !== undefined && ctx.state.systemPromptTokens > 0
-                ? ctx.state.systemPromptTokens
-                : estimateSystemPromptTokens(rawMessages),
-    }
+    const cachedSystemTokens =
+        ctx.state.systemPromptTokens !== undefined && ctx.state.systemPromptTokens > 0
+            ? ctx.state.systemPromptTokens
+            : undefined
+    // [FIX #421] Live fallback must honor the compaction boundary, matching
+    // cacheSystemPromptTokens, so a stale pre-compaction anchor can never
+    // resurface in the breakdown after invalidation.
+    const systemTokens =
+        cachedSystemTokens ?? estimateSystemPromptTokens(rawMessages, ctx.state.lastCompaction)
+    const systemTokensSource: "measured" | "estimated" =
+        cachedSystemTokens !== undefined && ctx.state.systemPromptTokensSource === "measured"
+            ? "measured"
+            : "estimated"
+
+    return { messages: result, summaryTokens, systemTokens, systemTokensSource }
 }
 
 function renderOverview(
     visibleMessages: VisibleMessageInfo[],
     summaryTokens: number,
     systemTokens: number,
+    systemTokensSource: "measured" | "estimated",
     blocks: CompressionBlock[],
     fetchFailed: boolean,
     rawMessages: WithParts[],
@@ -240,7 +253,7 @@ function renderOverview(
 
         lines.push("CONTEXT BREAKDOWN")
         lines.push(
-            `  ${formatTokens(systemTokens)} system (${sysPct}%) | ${formatTokens(totalTool)} tool (${toolPct}%) | ${formatTokens(totalText)} text (${textPct}%) | ${formatTokens(summaryTokens)} summaries (${summaryPct}%) | ${formatTokens(totalReasoning)} reasoning (${reasoningPct}%)`,
+            `  ${formatTokens(systemTokens)} system [${systemTokensSource}] (${sysPct}%) | ${formatTokens(totalTool)} tool (${toolPct}%) | ${formatTokens(totalText)} text (${textPct}%) | ${formatTokens(summaryTokens)} summaries (${summaryPct}%) | ${formatTokens(totalReasoning)} reasoning (${reasoningPct}%)`,
         )
 
         const topTypes = Array.from(toolTypeMap.entries())
@@ -611,6 +624,7 @@ export function buildStatusReport(
     const visibleMsgs = result.messages
     const summaryTokens = result.summaryTokens
     const systemTokens = result.systemTokens
+    const systemTokensSource = result.systemTokensSource
 
     if (scope === "uncompressed") {
         if (view === "messages") {
@@ -626,6 +640,7 @@ export function buildStatusReport(
                 visibleMsgs,
                 summaryTokens,
                 systemTokens,
+                systemTokensSource,
                 activeBlocks,
                 false,
                 rawMessages,
