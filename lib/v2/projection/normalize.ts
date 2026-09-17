@@ -659,18 +659,17 @@ export function normalizeV2ProjectedHistory(
             continue
         }
         if (draft.source.type === "system") {
-            const systemText = stringValue(draft.source.text) ?? ""
-            const candidates = (outgoingSystemIndicesByText.get(systemText) ?? []).filter(
-                (index) => !claimedMessages.has(index),
+            // Repeated identical system text is a valid host sequence: OpenCode
+            // lowers each record in order without preserving its ID, so N identical
+            // records yield N identical ID-less messages. Correlate by ordered
+            // occurrence (k-th projected -> k-th unclaimed lowered match), never by
+            // rejecting on multiple candidates. An unmatched record stays opaque and
+            // unmapped; ownership is never guessed and no system message is dropped.
+            mapped = outgoingSystem(
+                stringValue(draft.source.text) ?? "",
+                outgoingSystemIndicesByText,
+                claimedMessages,
             )
-            if (candidates.length > 1) {
-                rejection ??= {
-                    code: "invalid-source",
-                    message: `System source ${draft.sourceMessageId ?? draft.sourceIndex} has multiple lowered origins`,
-                    sourceIndex: draft.sourceIndex,
-                }
-            }
-            mapped = outgoingSystem(systemText, outgoingSystemIndicesByText, claimedMessages)
         } else {
             mapped = outgoingById(id, outgoingIndicesById, claimedMessages)
         }

@@ -454,6 +454,59 @@ test("fresh V2 patch rejection removes the initialized placeholder and allows a 
     }
 })
 
+test("fresh registry commits and accepts a direct compression when history repeats identical system text", async () => {
+    const projected = [
+        { type: "system", id: "dup-system-1", time: { created: 1 }, text: "shared instruction" },
+        { type: "system", id: "dup-system-2", time: { created: 2 }, text: "shared instruction" },
+        { type: "user", id: "dup-user", time: { created: 3 }, text: "request" },
+    ]
+    const outgoing = [
+        Message.make({ role: "system", content: "shared instruction" }),
+        Message.make({ role: "system", content: "shared instruction" }),
+        Message.make({ id: "dup-user", role: "user", content: "request" }),
+    ]
+    const run = runHandler(projected, outgoing)
+    try {
+        await run.handler(run.event)
+
+        // Repeated identical system text used to reject the whole projection, so a fresh
+        // session never committed; now it must initialize, persist, and inject the ACP prompt.
+        assert.ok(run.registry.get("session"))
+        assert.equal(existsSync(join(run.storage, "session.json")), true)
+        assert.ok(run.event.system.length >= 1)
+
+        const factoryCtx = {
+            host: run.adapter,
+            registry: run.registry,
+            logger: run.logger,
+            config: run.config,
+            prompts: run.prompts,
+        }
+        const compressTool = createV2Tool(
+            createCompressRangeToolDefinition(factoryCtx),
+            factoryCtx,
+            run.adapter,
+            { global: undefined, agents: {} },
+        )
+        // A committed session must be reachable by the compress tool; before the fix the
+        // rejected projection left no initialized state for this call to act on.
+        const toolResult = await compressTool.execute(
+            { content: [{ startId: "m99999", endId: "m99999", summary: "not executed" }] },
+            {
+                sessionID: "session",
+                agent: "code",
+                messageID: "dup-tool-message",
+                id: "dup-tool-call",
+                progress: async () => {},
+            },
+        )
+        assert.doesNotMatch(String(toolResult.content), /no initialized state/i)
+        assert.ok(run.registry.get("session"))
+    } finally {
+        rmSync(run.storage, { recursive: true, force: true })
+    }
+})
+
 test("V2 auxiliary agents skip projection, catalog, state, and effects", async () => {
     for (const agent of ["title", "summary", "compaction"] as const) {
         const run = runHandler(
