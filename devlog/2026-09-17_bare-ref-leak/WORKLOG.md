@@ -3,7 +3,7 @@
 - Task ID: `2026-09-17_bare-ref-leak`
 - Home Repo: `opencode-acp`
 - Status: Done
-- Updated: 2026-09-17 18:55
+- Updated: 2026-09-17 19:45
 
 ## 1. Summary
 
@@ -18,8 +18,12 @@
 
 | Commit | Description |
 |--------|-------------|
-| `<sha>` | fix: strip leaked bare ACP refs from completed assistant text (#431) |
-| `<sha>` | test: pin b0-exclusion and 4-digit m-ref branches (second-review follow-up, PR #432) |
+| `f4096fc9` | fix: strip leaked bare ACP refs from completed assistant text (#431) |
+| `ff24575f` | test: cover mixed below/future-bound sequence and non-integer bound guard (review nits) |
+| `b3c673c3` | test: pin b0-exclusion and 4-digit m-ref branches (second-review follow-up, PR #432) |
+| `b4ef2ded` | docs: WORKLOG test count reflects both review-nit commits (1292) |
+| `d1d2067d` | refactor: clean bounds narrowing (no casts/assertions) + document compaction-epoch window |
+| `(this commit)` | docs: consolidate worklog across parallel review passes |
 
 ### Second-review follow-up (PR #432, agent review pass 2)
 
@@ -35,6 +39,22 @@
     directions (above-bound stripped / below-bound kept) now pinned.
 - The other two findings (input-deref robustness note; cosmetic cast asymmetry in
   lib/hooks.ts) required no change — no realistic throw path, style-only.
+
+### First-round dual-agent review (AGENTS.md §5.3 + §5.6, parallel to pass 2 above)
+
+- Two independent agent reviews ran in parallel with pass 2 above; verdicts:
+  code review APPROVE-WITH-NITS, test review APPROVE-WITH-NITS. No blockers or majors.
+- Findings addressed on this branch:
+  - Mixed below-bound + future-bound sequence pin and non-integer bound guard test
+    (`ff24575f`).
+  - Removed the `as number` cast in `lib/hooks.ts` and the `!` assertions in
+    `lib/messages/utils.ts` via clean local-const narrowing (`d1d2067d`) — supersedes
+    pass 2's "cosmetic cast asymmetry required no change" note.
+  - Documented the residual post-compaction stale-ref window in DESIGN.md §8 with a
+    high-water-mark follow-up option (`d1d2067d`; deliberately not implemented — it
+    would add a persisted state field).
+- Test reviewer ran mutation sanity checks: the `>=` boundary, the line-leading
+  requirement, and the registry-miss fallback each fail as predicted when mutated.
 
 ### Key Files
 
@@ -71,7 +91,7 @@ npx tsc --noEmit
 ### Test Coverage
 
 - New/modified test files: `tests/leaked-trailing-ref.test.ts` (new), `tests/hooks-permission.test.ts`, `tests/message-priority.test.ts` (signature updates only)
-- Test count: 1292 total (1288 baseline + 2 review-nit tests from ff24575f + 2 second-review pins), 1290 pass, 2 fail (both pre-existing sandbox artifacts, see Results)
+- Test count: 1292 total (master baseline 1267 + 21 new-suite tests + 2 review-nit tests from ff24575f + 2 second-review pins), 1290 pass, 2 fail (both pre-existing sandbox artifacts, see Results)
 - Key scenarios verified:
   - #431 repro shape truncated: `"Normal assistant progress message.\n\nm00057 <garbage>"` → `"Normal assistant progress message."` (nextRef=57)
   - Boundary: ref exactly equal to next-to-allocate IS stripped; one below is kept
@@ -84,8 +104,8 @@ npx tsc --noEmit
 
 ### Results
 
-- **PASS/FAIL**: PASS — typecheck clean, build clean, targeted files 71/71
-- **Key logs/data**: full suite 1288 tests / 1286 pass / 2 fail. Both failures are environment artifacts of this sandbox, not regressions:
+- **PASS/FAIL**: PASS — typecheck clean, build clean; full suite green except the two sandbox artifacts below
+- **Key logs/data**: full suite (final branch state) 1292 tests / 1290 pass / 2 fail. Both failures are environment artifacts of this sandbox, not regressions:
   - `tests/soft-block.test.ts` — crashes at import: `Error: EACCES: permission denied, mkdir '/tmp/opencode-dcp-dangerous-*'` (this sandbox mounts `/tmp` read-only; passes on CI/dev machines)
   - `tests/inactive-block-decompress.test.ts` "E2E: toFile on inactive block writes block summary" — `toFile path must be under <workspace>/.tmp or ~/.cache/opencode/. Got: /tmp/test-inactive-block-decompress.txt` (same `/tmp` cause)
 
@@ -95,7 +115,7 @@ npx tsc --noEmit
   - Known limitation (documented, deliberate): a model echo of an ALREADY-assigned ref (below the bound) is not stripped — that value could be a legitimate citation, and the issue's evidence points at the unassigned-self-ref case.
   - Registry soft-cap eviction (32 sessions) can make state unavailable → safe fallback to today's tag-only behavior, never a crash.
 - **Rollback method**:
-  - Revert commit(s): `<sha>`
+  - Revert commit(s): `f4096fc9` … `d1d2067d` (whole PR branch)
   - Rollback impact: none — no state/persistence/API changes; reverting restores exact previous behavior.
 - **Compatibility notes** (data format, config schema): No — no format or schema changes.
 
