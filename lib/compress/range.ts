@@ -119,6 +119,11 @@ export function createCompressRangeTool(factoryCtx: ToolFactoryContext): ReturnT
                     ? (toolCtx as unknown as { callID: string }).callID
                     : undefined
 
+            // [Issue #404] Serialize the full prepare→mutate→finalize transaction under the
+            // per-session guard so it cannot interleave with concurrent same-session work
+            // (message transforms, event-hook saves). The body intentionally keeps its
+            // original indentation inside `run` to keep this change additive-only in diff.
+            const run = async () => {
             const { rawMessages, searchContext } = await prepareSession(
                 ctx0,
                 toolCtx,
@@ -366,6 +371,8 @@ export function createCompressRangeTool(factoryCtx: ToolFactoryContext): ReturnT
                 ? `\n⚠️ acknowledgeRisk was ignored: no quality gate rejection was pending, so quality checks ran normally. Only pass it when retrying immediately after a quality gate rejection.\n`
                 : ""
             return `Compressed ${totalCompressedMessages} messages into ${COMPRESSED_BLOCK_HEADER}.${skippedNote}${ackNote}\nIMPORTANT: This was an automatic context compression. You MUST continue your previous task exactly where you left off. Do NOT ask the user what to do next.\n💡 Tip: Use search_context('keyword') to find compressed content when you need it later.`
+            }
+            return factoryCtx.registry.withSessionGuard(toolCtx.sessionID, () => run())
         },
     })
 }
