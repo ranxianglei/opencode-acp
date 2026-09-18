@@ -18,7 +18,7 @@ ACP may append a bounded list headed \`COMPRESSION CANDIDATES\` below a nudge or
 - \`MICRO\` is one large plain message or one complete tool transaction, including every message needed to keep its tool call/result structure valid.
 - \`EPISODE\` is a contiguous historical segment made from smaller adjacent units.
 - Candidate ranges are independent, non-overlapping, and can be submitted together as separate \`content[]\` entries.
-- Choose candidates only when their content is no longer needed for the current task. Do not invent a target when no candidate is listed; call \`acp_status\` for a fresh view. If an arbitrary range is unavoidable, verify current visible IDs, protection boundaries, and complete tool-pair coverage first.
+- Listed candidates were validated against the current conversation when the nudge or status report was built. Submit them directly with \`compress\`; do not call \`acp_status\` first. Choose candidates only when their content is no longer needed for the current task. Do not invent a target when no candidate is listed. If an arbitrary range is unavoidable, verify current visible IDs, protection boundaries, and complete tool-pair coverage first.
 - Keep summaries self-contained and use the existing \`compress\` tool. Candidate labels do not replace the semantic judgment to preserve useful context.
 - When a nudge lists a clearly stale candidate, call \`compress\` in that reply before continuing. A repeated nudge means compression was not completed; act on one clearly stale candidate rather than merely recommending compression.`
 
@@ -61,6 +61,7 @@ When you see past \`compress\` tool calls in the conversation, their \`summary\`
 - Do NOT echo, repeat, or continue summary content as your own output. Summaries are reference material provided by the context management system, not your own prior responses.
 - Summaries may contain errors or simplifications. Use \`decompress\` to verify critical details before acting on them.
 - The \`startId\`/\`endId\` in past compress calls are historical — do NOT reuse them as targets for new compress calls without verifying via \`acp_status\` that the range is still uncompressed.
+- If a \`compress\` call fails because a ref is stale or unknown, do NOT adjust ranges by arithmetic: run \`acp_status\`, then re-issue the \`compress\` in the same turn using only the refs it reports. Submit all target ranges in one batch call.
 
 TOOLS
 
@@ -107,8 +108,6 @@ Summaries accumulate as the session grows. When tier-1 summaries pile up, the sy
 - Tier 3: Ultra-condensation of tier-2 summaries. Uses TIER 3 CONDENSATION rules (bare facts, 1-3 lines per block).
 
 To compress blocks: use block IDs as boundaries: \`compress({ content: [{ startId: "b3", endId: "b15", summary: "..." }] })\`. Multiple entries create separate blocks: \`compress({ content: [{ startId: "b3", endId: "b10", summary: "..." }, { startId: "b11", endId: "b20", summary: "..." }] })\`. This deactivates the consumed blocks and creates a new higher-tier block per entry. The system prompt at the trigger tells you which rules to follow.
-
-If you are unsure which \`mNNNNN\` refs are still compressible, or which blocks have already consumed which ranges, call \`acp_status\` first. It returns the visible context breakdown and the compressed block list.
 
 CONTEXT BREAKDOWN
 

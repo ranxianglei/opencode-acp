@@ -3,6 +3,7 @@ import test from "node:test"
 import { TURN_NUDGE, TURN_CANDIDATE_GUIDANCE } from "../lib/prompts/turn-nudge"
 import { CONTEXT_LIMIT_NUDGE, CANDIDATE_GUIDANCE } from "../lib/prompts/context-limit-nudge"
 import { ITERATION_NUDGE, ITERATION_CANDIDATE_GUIDANCE } from "../lib/prompts/iteration-nudge"
+import { buildCompressRangePrompt } from "../lib/prompts/compress-range"
 import { buildCompressedBlockGuidance } from "../lib/prompts/extensions/nudge"
 import { createSessionState } from "../lib/state"
 
@@ -99,4 +100,24 @@ test("buildCompressedBlockGuidance aggregates summary tokens across blocks", () 
 
     assert.match(guidance, /6\.0K summary/)
     assert.match(guidance, /acp_status for details/)
+})
+
+test("CANDIDATE_GUIDANCE makes listed candidates directly actionable without an acp_status pre-check", () => {
+    assert.match(
+        CANDIDATE_GUIDANCE,
+        /validated against the current conversation when this nudge was built/i,
+    )
+    assert.match(CANDIDATE_GUIDANCE, /do not call `acp_status` before compressing/i)
+    assert.match(CANDIDATE_GUIDANCE, /re-issue using only the refs it reports/i)
+    assert.doesNotMatch(CANDIDATE_GUIDANCE, /fresh candidate view/i)
+})
+
+test("range-mode compress prompt keeps candidate guidance free of pre-check hedging", () => {
+    const withCandidates = buildCompressRangePrompt(true)
+    assert.match(withCandidates, /Do not call `acp_status` before compressing listed candidates/i)
+    assert.doesNotMatch(withCandidates, /use `acp_status` when the candidate list is stale/i)
+
+    const legacy = buildCompressRangePrompt(false)
+    assert.doesNotMatch(legacy, /CANDIDATE GUIDANCE/i)
+    assert.doesNotMatch(legacy, /acp_status/i)
 })

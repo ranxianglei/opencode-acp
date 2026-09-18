@@ -168,3 +168,40 @@ test("bundled system prompt explains advisory compression candidates", () => {
     assert.match(SYSTEM_PROMPT, /call `compress` in that reply/i)
     assert.match(SYSTEM_PROMPT, /repeated nudge/i)
 })
+
+test("system prompt (candidates on) makes listed candidates directly actionable without an acp_status pre-check", () => {
+    assert.match(
+        SYSTEM_PROMPT,
+        /validated against the current conversation when the nudge or status report was built/,
+    )
+    assert.match(
+        SYSTEM_PROMPT,
+        /Submit them directly with `compress`; do not call `acp_status` first/,
+    )
+    assert.doesNotMatch(SYSTEM_PROMPT, /unsure which .*refs are still compressible/)
+    assert.doesNotMatch(
+        SYSTEM_PROMPT,
+        /It returns the visible context breakdown and the compressed block list/,
+    )
+    assert.doesNotMatch(SYSTEM_PROMPT, /for a fresh view/)
+})
+
+test("system prompt carries same-turn failure recovery for stale refs in both modes", () => {
+    const recovery =
+        /If a `compress` call fails because a ref is stale or unknown, do NOT adjust ranges by arithmetic/
+    assert.match(SYSTEM_PROMPT, recovery)
+    assert.match(
+        SYSTEM_PROMPT,
+        /re-issue the `compress` in the same turn using only the refs it reports/,
+    )
+    const systemOff = buildSystemPrompt(false)
+    assert.match(systemOff, recovery)
+    assert.match(
+        systemOff,
+        /re-issue the `compress` in the same turn using only the refs it reports/,
+    )
+    assert.doesNotMatch(
+        systemOff,
+        /It returns the visible context breakdown and the compressed block list/,
+    )
+})
