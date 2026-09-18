@@ -167,7 +167,10 @@ export function assignMessageRefs(state: SessionState, messages: WithParts[]): n
             continue
         }
         // [FIX Bug 29] Skip synthetic messages created by DCP
-        if (rawMessageId.startsWith("msg_dcp_summary_") || rawMessageId.startsWith("msg_dcp_text_")) {
+        if (
+            rawMessageId.startsWith("msg_dcp_summary_") ||
+            rawMessageId.startsWith("msg_dcp_text_")
+        ) {
             continue
         }
 
@@ -186,6 +189,73 @@ export function assignMessageRefs(state: SessionState, messages: WithParts[]): n
     }
 
     return assigned
+}
+
+/**
+ * Repair alias epochs created by ACP versions that reset message IDs during
+ * native compaction. The caller must supply a freshly fetched full session
+ * history, then persist state after repair. A pruned/model-visible projection
+ * is not sufficient to reconstruct global chronology safely.
+ */
+export function repairNonMonotonicMessageRefs(state: SessionState, messages: WithParts[]): boolean {
+    const eligible = messages.filter((message) => {
+        if (isIgnoredUserMessage(message)) return false
+        const id = message.info.id
+        return (
+            typeof id === "string" &&
+            id.length > 0 &&
+            !id.startsWith("msg_dcp_summary_") &&
+            !id.startsWith("msg_dcp_text_")
+        )
+    })
+    let previous = 0
+    let corrupted = false
+    for (const message of eligible) {
+        const ref = state.messageIds.byRawId.get(message.info.id)
+        const parsed = ref ? parseMessageRef(ref) : null
+        if (parsed === null) continue
+        if (parsed <= previous) {
+            corrupted = true
+            break
+        }
+        previous = parsed
+    }
+    if (!corrupted) return false
+
+    const oldRawIds = [...state.messageIds.byRawId.keys()]
+    state.messageIds.byRawId.clear()
+    state.messageIds.byRef.clear()
+    state.messageIds.nextRef = 1
+    for (const message of eligible) {
+        const rawId = message.info.id
+        const ref = allocateNextMessageRef(state)
+        state.messageIds.byRawId.set(rawId, ref)
+        state.messageIds.byRef.set(ref, rawId)
+    }
+
+    // Retain any legacy alias keys absent from the fetched history, appending
+    // them after the reconstructed epoch so they cannot collide.
+    for (const rawId of oldRawIds) {
+        if (state.messageIds.byRawId.has(rawId)) continue
+        const ref = allocateNextMessageRef(state)
+        state.messageIds.byRawId.set(rawId, ref)
+        state.messageIds.byRef.set(ref, rawId)
+    }
+
+    for (const block of state.prune.messages.blocksById.values()) {
+        const ids = [...new Set([...block.effectiveMessageIds, ...block.directMessageIds])]
+            .filter((id) => state.messageIds.byRawId.has(id))
+            .sort(
+                (left, right) =>
+                    (parseMessageRef(state.messageIds.byRawId.get(left)!) ?? 0) -
+                    (parseMessageRef(state.messageIds.byRawId.get(right)!) ?? 0),
+            )
+        if (ids.length === 0) continue
+        block.startId = state.messageIds.byRawId.get(ids[0]!)!
+        block.endId = state.messageIds.byRawId.get(ids[ids.length - 1]!)!
+    }
+    state.prune.messages.structureVersion = (state.prune.messages.structureVersion ?? 0) + 1
+    return true
 }
 
 function allocateNextMessageRef(state: SessionState): string {

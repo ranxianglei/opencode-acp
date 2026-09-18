@@ -44,6 +44,7 @@ import {
     DEFAULT_MIN_NUDGE_CONTEXT_PERCENT,
     resolveMinNudgeContextPercent,
     resolveMinNudgeFloorTokens,
+    resolveContextTokenLimit,
     applyCompressOverrides,
 } from "./utils"
 import type { ContextComposition, ContextRanges } from "./utils"
@@ -59,6 +60,8 @@ import {
 } from "context-compress-algorithms/prompts"
 import { getTierTokenUsage } from "../../state/utils"
 import { formatCompressionCandidates, planCompressionCandidates } from "./candidates"
+import { buildSearchContext } from "../../compress/search"
+import { armBestSmartPlan, type SmartCompressionPlan } from "../../compress/smart-plan"
 
 /**
  * Stable seed for the ACP dynamic guidance suffix message.
@@ -489,9 +492,50 @@ export const injectCompressNudges = (
     const noticeCadenceMet =
         state.nudges.lastNudgeShownTokens === undefined ||
         (growthSinceBaseline !== undefined && growthSinceBaseline >= growthFloor)
-    const shouldInjectNudge = nudgeAllowed && !nothingToCompress
-    const shouldInjectNotice = emergencyNoTargets && noticeCadenceMet
+    let shouldInjectNudge = nudgeAllowed && !nothingToCompress
+    let shouldInjectNotice = emergencyNoTargets && noticeCadenceMet
     let shouldInject = shouldInjectNudge || shouldInjectNotice
+    let armedSmartPlan: SmartCompressionPlan | undefined
+
+    // Arm the exact, model-visible range in the same pass that emits the
+    // nudge. This removes an otherwise redundant acp_status inference round
+    // trip while keeping execution-side structure and visibility checks.
+    if (shouldInjectNudge && config.compress.smartPlanRequired === true && state.sessionId) {
+        const planningRanges = candidatesEnabled
+            ? candidatePlan.candidates.map((candidate) => ({
+                  startRef: candidate.startRef,
+                  endRef: candidate.endRef,
+                  count: candidate.messageCount,
+                  tokens: candidate.estimatedTokens,
+                  effectiveTokens: candidate.estimatedTokens,
+                  toolPct: candidate.toolPct,
+                  textPct: candidate.textPct,
+              }))
+            : recommendedRanges
+        const maxLimit = resolveContextTokenLimit(config, state, providerId, modelId, "max")
+        const reclaimTargetChars = Math.max(
+            config.compress.minCompressRange,
+            maxLimit === undefined || currentTokens === undefined
+                ? 0
+                : Math.max(0, currentTokens - maxLimit + 8192) * 4,
+        )
+        armedSmartPlan = armBestSmartPlan(
+            state.sessionId,
+            planningRanges,
+            buildSearchContext(state, messages),
+            { state, config, logger },
+            new Set(messages.map((message) => message.info.id)),
+            Date.now(),
+            reclaimTargetChars,
+        )
+        if (!armedSmartPlan) {
+            // Mandatory-plan mode must never advertise an impossible call.
+            // Only a genuine emergency gets the terminal no-target notice.
+            shouldInjectNudge = false
+            shouldInjectNotice = emergencyOverride && noticeCadenceMet
+            shouldInject = shouldInjectNotice
+        }
+    }
 
     // Keep lastNudgeShownTokens when nothingToCompress — resetting it
     // reintroduces the nudge loop (baseline wiped → stale growthReference
@@ -785,17 +829,24 @@ export const injectCompressNudges = (
 
             if (candidateText) {
                 breakdown += `\n\n${HOW_TO_COMPRESS_RULES}\n\n${candidateText}`
-                breakdown += candidatesEnabled
-                    ? "\n💡 You may batch selected independent candidates in one call (pass multiple content entries: `content: [{...}, {...}]`); omit any candidate whose content is still needed."
-                    : "\n💡 Compress all ranges in one call (pass multiple content entries: `content: [{...}, {...}]`)."
+                if (armedSmartPlan) {
+                    breakdown += `\n\nSMART PLAN ARMED: ${armedSmartPlan.startId}-${armedSmartPlan.endId} | ${armedSmartPlan.exactChars} effective chars`
+                    breakdown += `\nNext: compress exactly this one range now. acp_status is optional; use it only to inspect or refresh a stale plan.`
+                } else {
+                    breakdown += candidatesEnabled
+                        ? "\n💡 You may batch selected independent candidates in one call (pass multiple content entries: `content: [{...}, {...}]`); omit any candidate whose content is still needed."
+                        : "\n💡 Compress all ranges in one call (pass multiple content entries: `content: [{...}, {...}]`)."
+                }
             }
-            breakdown += `\nUse \`acp_status({scope:"uncompressed"})\` to re-fetch compressible ranges after compressing, or \`acp_status\` for compressed block details.`
+            breakdown += armedSmartPlan
+                ? `\nUse \`acp_status({scope:"uncompressed"})\` only to inspect or refresh a stale plan, or \`acp_status\` for compressed block details.`
+                : `\nUse \`acp_status({scope:"uncompressed"})\` to re-fetch compressible ranges after compressing, or \`acp_status\` for compressed block details.`
 
             appendToLastTextPart(suffixMessage, breakdown)
         }
 
         // maxLimit strong alert + lastNudgeShownTokens + block aging guidance
-        if (effectiveTipsVariant === "maxLimit" && !emergencyNoTargets) {
+        if (effectiveTipsVariant === "maxLimit" && shouldInjectNudge) {
             tipsText = candidatesEnabled
                 ? "\n\n⚠️ Context limit reached — compress now. Select at least one listed candidate whose content is no longer needed and call the `compress` tool in your next reply. Do not merely recommend compression. Candidates are advisory about selection: preserve current intent and active work, and never compress content still needed for the current task.\n\n" +
                   HOW_TO_COMPRESS_RULES +

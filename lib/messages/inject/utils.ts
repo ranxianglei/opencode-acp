@@ -896,14 +896,13 @@ export function buildCompressibleRanges(
             prevRefNum = info.refNum
             continue
         }
-        const hasGap = info.refNum > prevRefNum + 1
-        if (cur) {
-            const shouldSplitUser = info.isUser && (cur.tokens >= 10000 || cur.count >= 25)
-            const shouldSplitSize = cur.tokens >= 16000 || cur.count >= 40
-            if (hasGap || shouldSplitUser || shouldSplitSize) {
-                groups.push(cur)
-                cur = null
-            }
+        // Treat backwards aliases as a hard boundary. Older ACP builds reset
+        // aliases during native compaction, which could otherwise display an
+        // impossible range such as m01621-m00008.
+        const hasGap = info.refNum !== prevRefNum + 1
+        if (cur && ((info.isUser && cur.count >= 3) || hasGap)) {
+            groups.push(cur)
+            cur = null
         }
         prevRefNum = info.refNum
         if (!cur) {

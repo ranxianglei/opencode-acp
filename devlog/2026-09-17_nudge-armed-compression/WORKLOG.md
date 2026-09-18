@@ -42,3 +42,12 @@ Measured live tool-part durations and separated ACP execution from model orchest
 - Provider/model overrides are resolved before status and execution policy checks.
 - Visible snapshots are recorded only when enabled and cleared on idle/deleted lifecycle events.
 - Oldest safe spans are selected first for better prefix-cache locality.
+
+## Post-compaction hardening
+
+- Preserved message aliases and their high-water mark across native compaction.
+- Added automatic repair for persisted mixed alias epochs and block boundaries.
+- Prevented range grouping from crossing a backwards/non-contiguous alias boundary.
+- Sized canonical plans toward the amount needed to return below the native-compaction watermark.
+- Kept mandatory single-plan policy scoped to raw messages; tier block compression remains available.
+- Hardened the local native-compaction validator against serialized `[Assistant tool call]` / `[Tool result]` text and plain (non-Markdown) canonical headings.

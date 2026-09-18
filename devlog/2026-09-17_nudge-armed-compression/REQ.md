@@ -3,7 +3,7 @@
 - Task ID: `2026-09-17_nudge-armed-compression`
 - Home Repo: `opencode-acp`
 - Created: 2026-09-17
-- Status: InProgress
+- Status: Complete
 - Priority: P1
 - Owner: Codex
 - References: issue #436
@@ -22,8 +22,8 @@ Expected behavior: a nudge arms the same validated canonical range directly; `ac
 
 ## Acceptance criteria
 
-- [ ] A valid nudge arms exactly one model-visible smart plan.
-- [ ] Nudge text contains its exact range and says status is optional.
-- [ ] Stale or altered plans remain rejected.
-- [ ] Multi-turn protected-tail regression passes.
-- [ ] Typecheck, tests, build, and two independent reviews pass.
+- [x] A valid nudge arms exactly one model-visible smart plan.
+- [x] Nudge text contains its exact range and says status is optional.
+- [x] Stale or altered plans remain rejected.
+- [x] Multi-turn protected-tail regression passes.
+- [x] Typecheck, tests, build, and two independent reviews pass.

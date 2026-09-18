@@ -116,6 +116,7 @@ export function armBestSmartPlan(
     ctx: SmartPlanContext,
     visibleMessageIds?: ReadonlySet<string>,
     now = Date.now(),
+    targetChars = ctx.config.compress.minCompressRange,
 ): SmartCompressionPlan | undefined {
     const candidates: Array<SmartCompressionPlan & { rawStart: number }> = []
     for (const range of mergeAdjacentSafeRanges(ranges)) {
@@ -146,10 +147,17 @@ export function armBestSmartPlan(
         })
     }
 
-    // Reclaim the oldest prefix first. This preserves prompt-prefix cache reuse
-    // better than punching a hole into newer history and matches ACP guidance.
-    candidates.sort((a, b) => a.rawStart - b.rawStart || b.exactChars - a.exactChars)
-    const best = candidates[0]
+    // Prefer the oldest span that reaches the requested reclaim target. If no
+    // span can reach it, take the largest available span so a late nudge makes
+    // maximum progress toward the next native-compaction watermark.
+    const sufficient = candidates.filter((candidate) => candidate.exactChars >= targetChars)
+    const pool = sufficient.length > 0 ? sufficient : candidates
+    pool.sort((a, b) =>
+        sufficient.length > 0
+            ? a.rawStart - b.rawStart || b.exactChars - a.exactChars
+            : b.exactChars - a.exactChars || a.rawStart - b.rawStart,
+    )
+    const best = pool[0]
     if (!best) {
         clearSmartPlan(sessionID)
         return undefined

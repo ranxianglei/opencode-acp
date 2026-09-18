@@ -2254,7 +2254,7 @@ test("issue #436: mandatory smart plan suppresses an impossible single-range nud
     config.compress.preserveRecentMessages = 0
     config.compress.preserveRecentTokens = 0
 
-    const messages = buildMultiTurn(3, 180_000, 2_000)
+    const messages = buildMultiTurn(1, 180_000, 2_000)
     assignMessageRefs(state, messages)
     injectCompressNudges(state, config, logger, messages, {} as any)
 

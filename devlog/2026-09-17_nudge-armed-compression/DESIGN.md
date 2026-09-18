@@ -15,4 +15,4 @@ Local policy raises `minCompressRange` to 80,000 characters and lowers growth th
 
 ## Compatibility and rollback
 
-Behavior remains gated by existing `smartPlanRequired`; its upstream default remains false. No persisted schema change. Roll back the source commit and restore the local thresholds.
+Behavior is gated by the newly introduced `smartPlanRequired`; its default is false. No persisted schema change. Roll back the source commit and restore the local thresholds.
