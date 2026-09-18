@@ -40,7 +40,7 @@ COMPRESSION CANDIDATES:
 - EPISODE identifies a contiguous historical segment made from smaller units.
 - Candidate entries are independent and non-overlapping, so they can be batched in one \`content[]\` array.
 - Candidates are suggestions, not mandatory targets. Choose only content no longer needed for the current task and do not invent a target when none is listed.
-- Use \`acp_status\` for a fresh candidate view if the list is stale or missing.
+- Listed candidates were validated against the current conversation when this nudge was built. Compress them directly; do not call \`acp_status\` before compressing. If a \`compress\` call fails on a stale ID, run \`acp_status\` once and re-issue using only the refs it reports.
 - When the context limit is reached and candidates are listed, select at least one clearly stale candidate and call the \`compress\` tool in your next reply. Batch only additional candidates that are also clearly stale. Do not merely recommend compression.
 </system-reminder>
 `

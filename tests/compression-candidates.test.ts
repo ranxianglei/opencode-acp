@@ -662,3 +662,85 @@ test("production candidate nudge trusts executable planner candidates over legac
 
     assert.equal(state.nudges.shouldInjectThisTurn, true)
 })
+
+function renderedNudgeText(messages: WithParts[]): string {
+    return messages[messages.length - 1]!.parts.filter((part) => part.type === "text")
+        .map((part) => (part as any).text)
+        .join("\n")
+}
+
+test("multi-turn candidate nudges carry direct-action guidance under production-style recent protection", () => {
+    const state = createSessionState()
+    state.sessionId = SID
+    state.modelContextLimit = 100_000
+    const cfg = config({
+        minContextLimit: 100,
+        // 1399 must stay between turn-1 usage (100) and turn-2 usage (1400): only crossing maxContextLimit arms contextLimitAnchors, which renders CANDIDATE_GUIDANCE into the nudge.
+        maxContextLimit: 1399,
+        minCompressRange: 100,
+        nudgeGrowthTokens: 1000,
+        minNudgeGrowthFloor: 100,
+        minNudgeGrowthRatio: 0.1,
+        preserveRecentMessages: 20,
+    })
+
+    const turn1: WithParts[] = []
+    for (let i = 0; i < 11; i++) {
+        turn1.push(textMessage(`u${i}`, "user", `user ${i}`))
+        turn1.push(
+            toolMessage(
+                `a${i}`,
+                "assistant",
+                `call-${i}`,
+                "bash",
+                i === 1 ? "x".repeat(800) : "ok",
+            ),
+        )
+    }
+    for (const message of turn1) setTokens(message, 100, 0)
+    setTokens(turn1[3]!, 2000, 0)
+    assignMessageRefs(state, turn1)
+    injectCompressNudges(
+        state,
+        cfg,
+        new Logger(false),
+        turn1,
+        {} as any,
+        undefined,
+        undefined,
+        undefined,
+        turn1,
+    )
+    assert.equal(state.nudges.shouldInjectThisTurn, false)
+    assert.equal(state.nudges.lastPerMessageNudgeTokens, 100)
+
+    const turn2: WithParts[] = [
+        ...turn1,
+        textMessage("u11", "user", "more"),
+        toolMessage("a11", "assistant", "call-11", "bash", "done"),
+    ]
+    for (const message of [turn2[turn2.length - 2]!, turn2[turn2.length - 1]!])
+        setTokens(message, 100, 0)
+    setTokens(turn2[turn2.length - 1]!, 1400, 0)
+    assignMessageRefs(state, turn2)
+    injectCompressNudges(
+        state,
+        cfg,
+        new Logger(false),
+        turn2,
+        {} as any,
+        undefined,
+        undefined,
+        undefined,
+        turn2,
+    )
+
+    const nudgeText = renderedNudgeText(turn2)
+    assert.equal(state.nudges.shouldInjectThisTurn, true)
+    assert.equal(state.nudges.lastPerMessageNudgeTokens, 100)
+    assert.equal(state.nudges.lastNudgeShownTokens, 1400)
+    assert.match(nudgeText, /do not call `acp_status` before compressing/i)
+    assert.match(nudgeText, /re-issue using only the refs it reports/i)
+    assert.doesNotMatch(nudgeText, /fresh candidate view/i)
+    assert.doesNotMatch(nudgeText, /for a fresh view/i)
+})
