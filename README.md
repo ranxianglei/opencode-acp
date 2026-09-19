@@ -10,6 +10,13 @@ The model decides <em>when</em> and <em>what</em> to compress — not a hard lim
 
 ---
 
+> ⚠️ **Using OpenCode 2.x?** This extension uses the OpenCode **V1** plugin
+> API and does **not** load on OpenCode 2.x. For OpenCode 2.x the recommended
+> context manager is [billion-context](https://github.com/ranxianglei/billion-context):
+> `bili opencode` (launcher) or `bili plugin install opencode` (native plugin,
+> no launcher). This extension remains fully supported on OpenCode **1.x**.
+
+---
 
 ## 📄 Paper / Preprint
 
@@ -67,7 +74,8 @@ Pick by your client:
 | Client | Use |
 |---|---|
 | **pi** | [`billion-context-pi`](https://github.com/ranxianglei/billion-context-pi) (in-process extension) |
-| **opencode** | [`opencode-acp`](https://github.com/ranxianglei/opencode-acp) (in-process extension) |
+| **opencode 1.x** | [`opencode-acp`](https://github.com/ranxianglei/opencode-acp) (in-process extension) |
+| **opencode 2.0+** | [`billion-context`](https://github.com/ranxianglei/billion-context) — `bili opencode` (built-in V2 plugin) or `bili plugin install opencode` (self-spawning native plugin, no launcher); `opencode-acp` does not load on 2.x |
 | **omp** | [`billion-context`](https://github.com/ranxianglei/billion-context) via `bili omp` (built-in plugin) |
 | **everything else** (no context hook) | [`billion-context`](https://github.com/ranxianglei/billion-context) — `bili <client>` (launcher, preferred) or `/bili/` prefix |
 
@@ -100,6 +108,11 @@ across all other sessions.
 ---
 
 ## Installation
+
+> ⚠️ This installs the **V1** plugin — it targets OpenCode **1.x**. On
+> OpenCode **2.x** the plugin will not load; use
+> [billion-context](https://github.com/ranxianglei/billion-context) instead
+> (`bili opencode` or `bili plugin install opencode`).
 
 ```bash
 opencode plugin opencode-acp@stable --global
