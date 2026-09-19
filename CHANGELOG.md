@@ -1,5 +1,22 @@
 # Changelog
 
+### v1.18.2 — strip leaked bare ACP refs from assistant text tail + fix silent no-op in Windows path protection
+
+**PR #432 + PR #403.** Two bug fixes bundled — no config or state-format changes.
+
+**1. Leaked bare-ref stripping** (#432, fixes #431):
+Models occasionally degenerate at end-of-generation and echo the `<dcp-message-id>` annotation pattern they saw on the last visible message, leaving a **bare ref + garbage** fragment at the end of completed text (e.g., `m00057 <random multilingual text>`). The previous sanitizer only removed complete/incomplete *tags*, so tag-less fragments leaked through, persisted into OpenCode's DB, and re-entered later context and compression summaries.
+- New pure function `stripLeakedTrailingRefs(text, { nextMessageRef, nextBlockRef })` (`lib/messages/utils.ts`): single-pass regex scan for **line-leading** bare refs (`m\d{4,5}`, `b[1-9]\d*`); truncates from the first match whose numeric value is ≥ the next-to-allocate bound (`messageIds.nextRef` / `prune.messages.nextBlockId`), trimming trailing whitespace.
+- Why "future refs only" is safe: refs are strictly monotonic — output produced before value V existed cannot legitimately cite V, so stripping V+ at the tail has zero false positives against real citations ("see m00042" survives; mid-line future refs like "between m00056 and m00999" also survive).
+- The `text.complete` handler (`lib/hooks.ts`) applies this after the existing tag stripping via a synchronous registry lookup; when session state is unavailable (eviction, internal sessions) it falls back to today's tag-only behavior. O(text) per completion.
+- Known limitation (documented): echoes of **already-assigned** refs are not covered — deliberate, since those may be legitimate citations.
+- +222-line regression suite (`tests/leaked-trailing-ref.test.ts`), plus review-nit coverage (mixed below/future-bound sequences, non-integer bound guards, b0 exclusion, 4-digit m-refs) and a cast-free bounds-narrowing refactor.
+
+**2. Windows path protection actually works now** (#403, fixes #402):
+`normalizePath()` searched for a **two**-character string (source literal `"\\\\"`) instead of a single backslash, so real Windows paths were never normalized and `protectedFilePatterns` silently failed to protect them — a no-op on the one platform that needs it. Now `replaceAll("\\", "/")`. Ported from upstream DCP commit 5f8f33b; +104 tests (5 of 8 fail against pre-fix code).
+
+**Install**: `opencode plugin opencode-acp@latest --global`
+
 ### v1.18.1 — paper preprint v0.2 into the repo (docs only)
 
 **PR #394.** No runtime code changes — this release ships ACP's research preprint and its figures into the repository, linked from both READMEs.
