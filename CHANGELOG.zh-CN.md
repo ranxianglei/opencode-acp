@@ -1,5 +1,22 @@
 # 更新日志
 
+### v1.18.2 — 剥离助手文本尾部泄漏的裸 ACP 引用 + 修复 Windows 路径保护静默失效
+
+**PR #432 + PR #403。** 捆绑两个 bug 修复 —— 无配置或状态格式变更。
+
+**1. 泄漏裸引用剥离**（#432，修复 #431）：
+模型偶尔在生成末尾退化，回显最后一条可见消息上看到的 `<dcp-message-id>` 标注模式，在完成文本尾部留下**裸引用 + 垃圾**片段（如 `m00057 <随机多语言文本>`）。旧 sanitizer 只剥离完整/不完整的 *标签*，这些无标签片段因此漏过、被持久化进 OpenCode DB，并重新进入后续上下文与压缩摘要。
+- 新纯函数 `stripLeakedTrailingRefs(text, { nextMessageRef, nextBlockRef })`（`lib/messages/utils.ts`）：单次正则扫描**行首**裸引用（`m\d{4,5}`、`b[1-9]\d*`）；首个数值 ≥ 待分配边界（`messageIds.nextRef` / `prune.messages.nextBlockId`）的匹配触发从该处到文末的截断（尾随空白修剪）。
+- 为何只剥"未来引用"是安全的：引用严格单调递增 —— 在数值 V 存在之前产生的输出不可能合法引用 V，对真实引用零误伤（"see m00042" 保留；行中未来引用如 "between m00056 and m00999" 也保留）。
+- `text.complete` handler（`lib/hooks.ts`）在既有标签剥离之后经同步 registry 查找应用；会话状态不可用时（驱逐、内部会话）→ 回退到纯标签行为。每次完成 O(text)。
+- 已知限制（已文档化）：**已分配**引用的回显不在覆盖范围 —— 有意为之，那些可能是合法引用。
+- +222 行回归测试（`tests/leaked-trailing-ref.test.ts`），另加评审补测（混合 below/future 边界序列、非整数边界守卫、b0 排除、4 位 m 引用）与无 cast 边界收窄重构。
+
+**2. Windows 路径保护真正生效**（#403，修复 #402）：
+`normalizePath()` 搜索的是**两字符**字符串（源码字面量 `"\\\\"`）而非单个反斜杠，真实 Windows 路径从未被归一化，`protectedFilePatterns` 在其唯一需要的平台上静默失效（no-op）。现改为 `replaceAll("\\", "/")`。移植自上游 DCP 提交 5f8f33b；+104 行测试（其中 5 个在修复前代码上失败）。
+
+**安装**：`opencode plugin opencode-acp@latest --global`
+
 ### v1.18.1 — 论文预印本 v0.2 入库（纯文档）
 
 **PR #394。** 无运行时代码变更 —— 本次发布将 ACP 的研究预印本及其配图收入仓库，并在两个 README 中加链接。
