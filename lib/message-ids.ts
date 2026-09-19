@@ -57,6 +57,18 @@ export function parseMessageRef(ref: string): number | null {
     return index
 }
 
+/**
+ * Migrate a legacy 4-digit message ref (m0001) to canonical 5-digit form
+ * (m00001). Matching trims whitespace and lowercases (inherited from
+ * parseMessageRef). Non-message values (empty strings, bN block refs, free
+ * text, out-of-range indices) are returned unchanged so callers can safely
+ * apply this to arbitrary stored boundary strings without pre-validation.
+ */
+export function migrateMessageRef(ref: string): string {
+    const index = parseMessageRef(ref)
+    return index === null ? ref : formatMessageRef(index)
+}
+
 export function parseBlockRef(ref: string): number | null {
     const normalized = ref.trim().toLowerCase()
     const match = normalized.match(BLOCK_REF_REGEX)

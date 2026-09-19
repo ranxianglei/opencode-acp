@@ -1,5 +1,6 @@
 import type { Part } from "@opencode-ai/sdk/v2"
 import type { CompressionBlock, SessionState, WithParts } from "../state"
+import { migrateMessageRef } from "../message-ids"
 import { hasMeaningfulContent } from "./parts"
 
 const KEEP_LAST_ORPHANED = 2
@@ -12,9 +13,16 @@ function isLiveBlock(block: CompressionBlock): boolean {
  * Blocks record the same `startId`/`endId` refs as the `content[]` entry that
  * created them (see `lib/compress/range.ts`), so this pair maps an entry to its
  * block within a batched call.
+ *
+ * [Issue #415] Keys are width-normalized: migrated block boundaries are
+ * canonical 5-digit while legacy (pre-1.1.0) tool inputs keep 4-digit refs.
+ * Non-string values (legacy records may omit boundaries) interpolate as-is,
+ * preserving the pre-fix "never matches" behavior instead of throwing.
  */
 function rangeKey(startId: string, endId: string): string {
-    return `${startId}::${endId}`
+    const s = typeof startId === "string" ? migrateMessageRef(startId) : startId
+    const e = typeof endId === "string" ? migrateMessageRef(endId) : endId
+    return `${s}::${e}`
 }
 
 /**
