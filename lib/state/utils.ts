@@ -418,14 +418,10 @@ export function resetOnCompaction(state: SessionState): void {
         compressBaselineSet: false,
         lastProcessedCompressMessageId: undefined,
     }
-    // [FIX] Reset message IDs on compaction — old mappings are stale after
-    // compaction replaces messages with a summary. Keeping them causes
-    // assignMessageRefs to allocate from stale nextRef positions.
-    state.messageIds = {
-        byRawId: new Map<string, string>(),
-        byRef: new Map<string, string>(),
-        nextRef: 1,
-    }
+    // Raw OpenCode message IDs remain stable in session history across native
+    // compaction. Preserve aliases and their high-water mark: resetting to 1
+    // lets a compacted tail reuse low refs, and a later full-history fetch then
+    // interleaves old high refs with new low refs (reversed ACP ranges).
 }
 
 /**

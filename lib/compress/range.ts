@@ -35,10 +35,18 @@ import {
 import type { CompressRangeToolArgs } from "./types"
 import { resolveKeepMarkers } from "./keep-markers"
 import { getModelInfo, applyCompressOverrides } from "../messages/inject/utils"
-import {
-    buildQualityRejectionError,
-    evaluatePreCommitQuality,
-} from "./quality-gate"
+import { buildQualityRejectionError, evaluatePreCommitQuality } from "./quality-gate"
+import { consumeSmartPlan, validateSmartPlan } from "./smart-plan"
+
+export function requiresSmartPlan(
+    smartPlanRequired: boolean,
+    content: Array<{ startId: string; endId: string }>,
+): boolean {
+    const isBlockCompression = content.every(
+        (entry) => entry.startId.startsWith("b") && entry.endId.startsWith("b"),
+    )
+    return smartPlanRequired && !isBlockCompression
+}
 
 function buildSchema(maxSummaryLengthHard: number) {
     return {
@@ -133,16 +141,35 @@ export function createCompressRangeTool(factoryCtx: ToolFactoryContext): ReturnT
                 ...ctx0,
                 config: applyCompressOverrides(ctx0.config, providerId, modelId),
             }
+            const needsSmartPlan = requiresSmartPlan(
+                ctx.config.compress.smartPlanRequired === true,
+                input.content,
+            )
+            if (needsSmartPlan && input.content.length !== 1) {
+                throw new Error(
+                    'Raw-message compression accepts exactly one canonical SMART PLAN range per call. Use the latest ACP nudge, or call acp_status({scope:"uncompressed"}) to refresh it.',
+                )
+            }
             // Intentionally runs after prepareSession: resolution and char accounting
             // require the prepared search context, and no state is persisted on error.
             // Use the effective provider/model config so planning and execution agree.
-            const { plans: filteredPlans } = prepareExecutableRangePlans(
+            const { plans: filteredPlans, totalChars } = prepareExecutableRangePlans(
                 input,
                 searchContext,
                 ctx.state,
                 ctx.config,
                 ctx.logger,
             )
+            if (needsSmartPlan) {
+                validateSmartPlan(
+                    toolCtx.sessionID,
+                    filteredPlans[0]!.entry.startId,
+                    filteredPlans[0]!.entry.endId,
+                    filteredPlans[0]!.selection.messageIds,
+                    totalChars,
+                    ctx.state.prune.messages.structureVersion ?? 0,
+                )
+            }
 
             const notifications: NotificationEntry[] = []
             let preparedPlans: Array<{
@@ -355,6 +382,7 @@ export function createCompressRangeTool(factoryCtx: ToolFactoryContext): ReturnT
                 }
 
                 await finalizeSession(ctx, toolCtx, rawMessages, notifications, input.topic)
+                if (needsSmartPlan) consumeSmartPlan(toolCtx.sessionID)
             } catch (error) {
                 restoreCompressionState(ctx.state, snapshot)
                 ctx.state.qualityGateRetryPending = qualityGateRetryPendingBefore

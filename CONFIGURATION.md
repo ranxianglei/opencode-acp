@@ -337,6 +337,13 @@ In this example, for `anthropic/claude-sonnet-4-6`: the floor is 30%, the over-m
 - **Status:** ACTIVE
 - **Description:** Minimum estimated tokens in a compression range. Ranges smaller than this are filtered out from recommendations (not worth compressing).
 
+#### `compress.smartPlanRequired`
+
+- **Type:** `boolean`
+- **Default:** `false`
+- **Status:** ACTIVE
+- **Description:** Require raw-message compression calls to match the single canonical range armed by the latest ACP nudge or `acp_status` report. Tier-2/3 block compression is unaffected. This fail-closed mode prevents stale, reversed, batched, or no-longer-visible message ranges from being submitted.
+
 #### `compress.minNudgeGrowthRatio`
 
 - **Type:** `number`

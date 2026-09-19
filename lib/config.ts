@@ -99,6 +99,8 @@ export interface CompressConfig {
     protectUserMessages: boolean
     maxSummaryLengthHard: number
     minCompressRange: number
+    /** Require one fresh canonical range armed by a nudge or acp_status per compress call. */
+    smartPlanRequired?: boolean
     minNudgeGrowthRatio: number
     minNudgeGrowthFloor: number
     emergencyThresholdPercent: number | `${number}%`
@@ -338,6 +340,7 @@ const defaultConfig: PluginConfig = {
         protectUserMessages: false,
         maxSummaryLengthHard: 20000,
         minCompressRange: 5000,
+        smartPlanRequired: false,
         minNudgeGrowthRatio: 0.45,
         minNudgeGrowthFloor: 5000,
         nudgeGrowthTokens: 50000,
@@ -573,6 +576,7 @@ export function mergeCompress(
         protectUserMessages: override.protectUserMessages ?? base.protectUserMessages,
         maxSummaryLengthHard: override.maxSummaryLengthHard ?? base.maxSummaryLengthHard,
         minCompressRange: override.minCompressRange ?? base.minCompressRange,
+        smartPlanRequired: override.smartPlanRequired ?? base.smartPlanRequired,
         minNudgeGrowthRatio: override.minNudgeGrowthRatio ?? base.minNudgeGrowthRatio,
         minNudgeGrowthFloor: override.minNudgeGrowthFloor ?? base.minNudgeGrowthFloor,
         emergencyThresholdPercent:

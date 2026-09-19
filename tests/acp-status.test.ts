@@ -4,6 +4,7 @@ import { createAcpStatusTool } from "../lib/compress/status"
 import type { ToolFactoryContext } from "../lib/compress/types"
 import type { CompressionBlock, PrunedMessageEntry, SessionState } from "../lib/state/types"
 import { singletonRegistry } from "./registry-stub"
+import { recordVisibleMessages } from "../lib/compress/smart-plan"
 
 const SID = "session-acp-status-test"
 
@@ -289,6 +290,56 @@ test("acp_status: scope=uncompressed without config retains diagnostic range fal
     assert.match(result, /ranges/)
 })
 
+test("acp_status: provider/model overrides govern both report and SMART PLAN", async () => {
+    const mockMsgs = [
+        {
+            info: { id: "raw-1", role: "assistant", sessionID: SID, time: { created: 1 } },
+            parts: [{ type: "text", text: "x".repeat(100) }],
+        },
+        {
+            info: {
+                id: "raw-2",
+                role: "user",
+                sessionID: SID,
+                time: { created: 2 },
+                model: { providerID: "anthropic", modelID: "claude-test" },
+            },
+            parts: [{ type: "text", text: "continue" }],
+        },
+    ]
+    const state = makeState([], new Map())
+    recordVisibleMessages(SID, mockMsgs)
+    const ctx = makeToolContext([], new Map(), makeMockClient(mockMsgs))
+    ctx.registry = singletonRegistry(state)
+    ctx.logger = { debug() {}, warn() {} } as any
+    ctx.config = {
+        protectedFilePatterns: [],
+        compress: {
+            smartPlanRequired: false,
+            minCompressRange: 1,
+            protectedTools: [],
+            protectUserMessages: false,
+            preserveRecentMessages: 0,
+            preserveRecentTokens: 0,
+            preserveLastUserMessage: true,
+            providers: {
+                anthropic: {
+                    models: {
+                        "claude-test": { smartPlanRequired: true, minCompressRange: 10_000 },
+                    },
+                },
+            },
+        },
+    } as any
+    const result = await createAcpStatusTool(ctx).execute(
+        { scope: "uncompressed" } as any,
+        { sessionID: SID } as any,
+    )
+
+    assert.match(result, /SMART PLAN: none/)
+    assert.doesNotMatch(result, /m00001-m00001/)
+})
+
 test("acp_status: scope=uncompressed view=messages shows per-message listing", async () => {
     const mockMsgs = [
         {
@@ -314,7 +365,11 @@ test("acp_status: scope=uncompressed view=messages shows per-message listing", a
 
     assert.match(result, /UNCOMPRESSED/)
     assert.match(result, /Sorted by/)
-    assert.match(result, /m00001 \(\d+\) text/, "per-message listing must include the visible message")
+    assert.match(
+        result,
+        /m00001 \(\d+\) text/,
+        "per-message listing must include the visible message",
+    )
 })
 
 test("acp_status: scope=uncompressed view=messages with tool filter shows filter in header", async () => {
