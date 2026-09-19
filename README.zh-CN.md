@@ -10,6 +10,9 @@
 
 ---
 
+> ⚠️ **你用的是 OpenCode 2.x?** 本扩展使用 OpenCode **V1** 插件 API,在 OpenCode 2.x 上**不会加载**。OpenCode 2.x 推荐的上下文管理方案是 [billion-context](https://github.com/ranxianglei/billion-context):`bili opencode`(启动器)或 `bili plugin install opencode`(原生插件,免启动器)。本扩展在 OpenCode **1.x** 上继续完整可用。
+
+---
 
 ## 📄 论文 / 预印本
 
@@ -59,7 +62,8 @@ ACP 将上下文管理的所有权限全部交给模型自己，而不依靠外�
 | 客户端 | 用这个 |
 |---|---|
 | **pi** | [`billion-context-pi`](https://github.com/ranxianglei/billion-context-pi)(进程内扩展) |
-| **opencode** | [`opencode-acp`](https://github.com/ranxianglei/opencode-acp)(进程内扩展) |
+| **opencode 1.x** | [`opencode-acp`](https://github.com/ranxianglei/opencode-acp)(进程内扩展) |
+| **opencode 2.0+** | [`billion-context`](https://github.com/ranxianglei/billion-context) —— `bili opencode`(内置 V2 插件)或 `bili plugin install opencode`(自拉起原生插件,免启动器);`opencode-acp` 在 2.x 上不加载 |
 | **omp** | [`billion-context`](https://github.com/ranxianglei/billion-context),`bili omp`(内置插件) |
 | **其余所有**(没有上下文 hook) | [`billion-context`](https://github.com/ranxianglei/billion-context) —— `bili <client>`(启动器,优先)或 `/bili/` 前缀 |
 
@@ -87,6 +91,8 @@ ACP 将上下文管理的所有权限全部交给模型自己，而不依靠外�
 ---
 
 ## 安装
+
+> ⚠️ 这里安装的是 **V1** 插件 —— 面向 OpenCode **1.x**。在 OpenCode **2.x** 上该插件不会加载;请改用 [billion-context](https://github.com/ranxianglei/billion-context)(`bili opencode` 或 `bili plugin install opencode`)。
 
 ```bash
 opencode plugin opencode-acp@stable --global
