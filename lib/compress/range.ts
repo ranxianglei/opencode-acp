@@ -329,6 +329,7 @@ export function createCompressRangeTool(factoryCtx: ToolFactoryContext): ReturnT
                                 messageTokenById: plan.selection.messageTokenById,
                             },
                             result,
+                            ctx.logger,
                         )
                     }
                 }
