@@ -7,7 +7,7 @@ import { ensureSessionInitialized } from "../state"
 import { saveSessionState } from "../state/persistence"
 import { assignMessageRefs } from "../message-ids"
 import { syncCompressionBlocks } from "../messages"
-import { getCurrentTokenUsage } from "../token-utils"
+import { getCurrentTokenUsage, extractToolContent } from "../token-utils"
 import { resolveEffectiveContextLimit } from "../state/utils"
 import {
     fetchSessionMessages,
@@ -254,19 +254,40 @@ function buildSchema() {
 }
 
 function extractMessageId(m: WithParts): string {
-    return (m as { id?: string }).id ?? (m as { messageId?: string }).messageId ?? ""
+    return m?.info?.id ?? ""
+}
+
+type MessagePart = WithParts["parts"][number]
+
+// Only text and completed tool parts carry user-facing content; other structural
+// parts (reasoning, step markers) are skipped. Tool output reuses extractToolContent
+// so exported text matches what token-utils counts.
+function serializeMessagePart(part: MessagePart): string | null {
+    if (!part || typeof part !== "object") return null
+    if (part.type === "text") {
+        return typeof part.text === "string" && part.text.length > 0 ? part.text : null
+    }
+    if (part.type === "tool") {
+        const contents = extractToolContent(part)
+        if (contents.length === 0) return null
+        const toolName =
+            "tool" in part && typeof part.tool === "string" && part.tool.length > 0
+                ? part.tool
+                : "tool"
+        return `[${toolName}] ${contents.join("\n")}`
+    }
+    return null
 }
 
 function extractMessageText(m: WithParts): string {
-    const msg = m as { role?: string; type?: string; content?: unknown; text?: string }
-    const role = msg.role || msg.type || "unknown"
-    const content =
-        typeof msg.content === "string"
-            ? msg.content
-            : typeof msg.text === "string"
-              ? msg.text
-              : JSON.stringify(msg.content || msg.text || "")
-    return `[${role}]\n${content}`
+    const role = m?.info?.role ?? "unknown"
+    const parts = Array.isArray(m.parts) ? m.parts : []
+    const segments: string[] = []
+    for (const part of parts) {
+        const serialized = serializeMessagePart(part)
+        if (serialized !== null) segments.push(serialized)
+    }
+    return `[${role}]\n${segments.join("\n\n")}`
 }
 
 export function createDecompressTool(factoryCtx: ToolFactoryContext): ReturnType<typeof tool> {
@@ -327,14 +348,22 @@ export function createDecompressTool(factoryCtx: ToolFactoryContext): ReturnType
                 const blockMessages = rawMessages.filter((m) => msgIdSet.has(extractMessageId(m)))
                 const lines = blockMessages.map(extractMessageText)
                 const { writeFile } = await import("fs/promises")
-                const fileContent =
-                    lines.length > 0
-                        ? lines.join("\n\n---\n\n")
-                        : (targets[0]?.blocks[0]?.summary ?? "(no content available)")
+
+                let fileContent: string
+                let sourceNote: string
+                if (lines.length > 0) {
+                    fileContent = lines.join("\n\n---\n\n")
+                    sourceNote = `${blockMessages.length} original message${blockMessages.length === 1 ? "" : "s"}`
+                } else {
+                    // Originals are absent when the block's history is gone (inactive /
+                    // consumed block) — fall back to the stored summary.
+                    fileContent = targets[0]?.blocks[0]?.summary ?? "(no content available)"
+                    sourceNote = `no original messages found; wrote block summary (${targets.length} block${targets.length === 1 ? "" : "s"})`
+                }
                 await writeFile(targetPath, fileContent, "utf-8")
 
                 const displayIds = targets.map((t) => `b${t.displayId}`).join(", ")
-                return `Block(s) ${displayIds} content (${blockMessages.length} messages, ${fileContent.length} chars) written to ${targetPath}. Block(s) stay compressed — context unchanged. Use read tool to access specific parts.`
+                return `Block(s) ${displayIds} content (${sourceNote}, ${fileContent.length} chars) written to ${targetPath}. Block(s) stay compressed — context unchanged. Use read tool to access specific parts.`
             }
 
             const activeMessagesBefore = snapshotActiveMessages(messagesState)
