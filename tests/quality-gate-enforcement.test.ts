@@ -283,6 +283,102 @@ test("buildQualityRejectionError computes ratio and retention from plan data", (
     assert.ok(error.message.includes("100 chars"), "should show summary chars")
 })
 
+// === Issue #444: rejection must not leak internal details into model context ===
+
+function buildLeakFixture() {
+    const messageIds = ["msg-1"]
+    const plan = {
+        startId: "m00006",
+        endId: "m00010",
+        summary: "x".repeat(670),
+        messageIds,
+        messageTokenById: buildTokenMap(messageIds, 36234),
+    }
+    const result: QualityGateResult = {
+        passed: false,
+        layer: "L1-length",
+        // Mirrors the real algorithm-package reason shape (core + values + threshold config).
+        reason:
+            "Summary too short: 670 chars, 0.46% retention (threshold: 200 chars OR 0.5% retention)",
+        metrics: [
+            { name: "rougeF1", value: 0.01, format: "ratio" },
+            { name: "top20Recall", value: 0.05, format: "ratio" },
+        ],
+    }
+    return { plan, result }
+}
+
+test("rejection keeps actionable info but drops internal details (#444)", () => {
+    const { plan, result } = buildLeakFixture()
+    const msg = buildQualityRejectionError(plan, result).message
+
+    assert.ok(msg.includes("COMPRESSION REJECTED"), "E2E detection marker present")
+    assert.ok(msg.includes("QUALITY GATE FAILURE"), "E2E detection marker present")
+    assert.ok(msg.includes("m00006–m00010"), "range preserved")
+    assert.ok(msg.includes("Summary too short"), "core failure reason preserved")
+    assert.ok(msg.includes("Retry:"), "retry directive preserved")
+    assert.ok(msg.includes("acknowledgeRisk"), "escape hatch discoverable")
+
+    // Internal implementation detail must NOT reach the model context (#444).
+    assert.ok(!msg.includes("system prompt"), "no system-prompt architecture reference")
+    assert.ok(!msg.includes("bypass"), "no internal-bypass framing")
+    assert.ok(!msg.includes("Gate layer"), "no gate-layer metric")
+    assert.ok(!msg.includes("rougeF1"), "no rougeF1 metric")
+    assert.ok(!msg.includes("top20Recall"), "no top20Recall metric")
+    assert.ok(!msg.includes("(threshold:"), "no threshold config leak")
+})
+
+test("coreReason strips colon- and parenthetical-carried threshold detail (#444)", () => {
+    const base = {
+        startId: "m00001",
+        endId: "m00002",
+        summary: "s",
+        messageIds: ["m1"],
+        messageTokenById: buildTokenMap(["m1"], 1000),
+    }
+    const cases: Array<[string, string]> = [
+        [
+            "Summary too short: 670 chars, 0.46% retention (threshold: 200 chars OR 0.5% retention)",
+            "Summary too short",
+        ],
+        ["Content coverage too low (threshold: F1 < 0.05 AND recall < 0.20)", "Content coverage too low"],
+        ["Content coverage too low: rougeF1 below floor", "Content coverage too low"],
+        ["Summary too short", "Summary too short"],
+    ]
+    for (const [reason, expected] of cases) {
+        const msg = buildQualityRejectionError(base, { passed: false, reason, metrics: [] }).message
+        assert.ok(msg.includes(`Reason: ${expected}`), `expected "${expected}" for reason "${reason}"`)
+        assert.ok(!msg.includes("(threshold"), `must not leak threshold for "${reason}"`)
+    }
+})
+
+test("full rejection diagnostics are written to the logger, not the message (#444)", () => {
+    const { plan, result } = buildLeakFixture()
+    const calls: Array<{ message: string; data?: Record<string, unknown> }> = []
+    const mockLogger = { warn: (message: string, data?: Record<string, unknown>) => calls.push({ message, data }) }
+
+    const msg = buildQualityRejectionError(plan, result, mockLogger).message
+
+    // Exactly one diagnostic record emitted with the full detail.
+    assert.equal(calls.length, 1, "one diagnostic log entry")
+    const data = calls[0].data ?? {}
+    assert.equal(data.reason, result.reason, "full reason (incl. thresholds) logged")
+    assert.equal(data.layer, "L1-length", "gate layer logged")
+    assert.equal(String(data.rougeF1), "0.0100", "rougeF1 logged")
+    assert.equal(String(data.top20Recall), "0.0500", "top20Recall logged")
+
+    // ...and none of it appears in the model-facing message.
+    assert.ok(!msg.includes("0.0100"), "rougeF1 value absent from message")
+    assert.ok(!msg.includes("L1-length"), "gate layer absent from message")
+})
+
+test("buildQualityRejectionError works without a logger (optional param)", () => {
+    const { plan, result } = buildLeakFixture()
+    // Must not throw when no logger is supplied.
+    const msg = buildQualityRejectionError(plan, result).message
+    assert.ok(msg.includes("COMPRESSION REJECTED"), "header present without logger")
+})
+
 test("qualityGateRetryPending defaults to false", () => {
     const state = createSessionState()
     assert.equal(state.qualityGateRetryPending, false)
