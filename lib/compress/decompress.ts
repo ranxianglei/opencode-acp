@@ -26,6 +26,7 @@ import {
     computeRestoredMessages,
     computeReactivatedBlockIds,
     buildRestoredContentPreview,
+    checkDecompressSourceAvailability,
 } from "./decompress-logic"
 import { formatTokenCount } from "../ui/utils"
 
@@ -335,6 +336,42 @@ export function createDecompressTool(factoryCtx: ToolFactoryContext): ReturnType
 
                 const displayIds = targets.map((t) => `b${t.displayId}`).join(", ")
                 return `Block(s) ${displayIds} content (${blockMessages.length} messages, ${fileContent.length} chars) written to ${targetPath}. Block(s) stay compressed — context unchanged. Use read tool to access specific parts.`
+            }
+
+            // [Issue #446] Fail closed when host history no longer contains the
+            // originals this decompression would restore. A transient fetch failure
+            // already threw in prepareDecompressSession; reaching here with IDs
+            // missing means they were deleted/compacted away — deactivating anyway
+            // would report phantom restorations and discard summary coverage
+            // irreversibly. No state is mutated before this check.
+            const availability = checkDecompressSourceAvailability(
+                messagesState,
+                targets,
+                { full: args.full === true },
+                new Set(rawMessages.map((m) => m.info.id)),
+            )
+            if (availability.missingMessageIds.length > 0) {
+                const displayIds = targets.map((t) => `b${t.displayId}`).join(", ")
+                const missingRefs = availability.missingMessageIds.map(
+                    (id) => ctx.state.messageIds.byRawId.get(id) ?? id,
+                )
+                const shownRefs = missingRefs.slice(0, 10).join(", ")
+                const extraCount = missingRefs.length - Math.min(missingRefs.length, 10)
+                ctx.logger.warn("Decompress aborted: source messages missing from host history", {
+                    targetDisplayIds: displayIds,
+                    full: args.full === true,
+                    requiredCount: availability.requiredMessageIds.length,
+                    missingCount: availability.missingMessageIds.length,
+                    missingRefs,
+                })
+                return (
+                    `Error: Cannot decompress ${displayIds}: ${availability.missingMessageIds.length} of ` +
+                    `${availability.requiredMessageIds.length} source message(s) are no longer present in session ` +
+                    `history (removed by native compaction or external deletion). Missing: ${shownRefs}` +
+                    (extraCount > 0 ? ` (+${extraCount} more)` : "") +
+                    `. Block(s) stay compressed — the summary remains available and nothing was changed. ` +
+                    `This is a missing-source condition, not a transient fetch failure.`
+                )
             }
 
             const activeMessagesBefore = snapshotActiveMessages(messagesState)

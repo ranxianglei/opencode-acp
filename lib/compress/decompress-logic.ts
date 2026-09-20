@@ -176,6 +176,128 @@ export function computeRestoredMessages(
     return { restoredMessageCount, restoredTokens }
 }
 
+export interface DecompressAvailabilityResult {
+    /** Message IDs whose visibility this decompression would restore (membership-wise). */
+    requiredMessageIds: string[]
+    /** Subset of requiredMessageIds present in the fetched host history. */
+    availableMessageIds: string[]
+    /** Subset of requiredMessageIds absent from the fetched host history.
+     * Non-empty ⇒ committing would claim restored content that does not exist. */
+    missingMessageIds: string[]
+}
+
+/**
+ * Compute the message IDs whose visibility changes if `targets` are deactivated.
+ *
+ * A message becomes visible iff every block currently covering it belongs to the
+ * deactivation set AND (one-tier only) it is not re-covered by a consumed block
+ * that syncCompressionBlocks will reactivate. One-tier decompression leaves
+ * non-user-deactivated consumed blocks alive, so their covered messages stay
+ * hidden and are not required sources; full decompression deep-deactivates them,
+ * so everything under the targets must be present in history.
+ *
+ * The result is conservative by design: over-requiring an ID can only cause a
+ * safe-direction abort, never a false "restored" claim.
+ */
+export function collectRequiredDecompressMessageIds(
+    messagesState: PruneMessagesState,
+    targets: CompressionTarget[],
+    options: { full?: boolean } = {},
+): string[] {
+    const targetBlockIds = new Set<number>()
+    for (const target of targets) {
+        for (const block of target.blocks) {
+            targetBlockIds.add(block.blockId)
+        }
+    }
+    if (targetBlockIds.size === 0) {
+        return []
+    }
+
+    // Transitive consumed closure of the target blocks.
+    const consumedClosure = new Set<number>()
+    const queue: number[] = []
+    for (const target of targets) {
+        for (const block of target.blocks) {
+            for (const id of block.consumedBlockIds ?? []) {
+                if (!consumedClosure.has(id)) {
+                    queue.push(id)
+                }
+            }
+        }
+    }
+    while (queue.length > 0) {
+        const id = queue.shift()!
+        if (consumedClosure.has(id)) continue
+        consumedClosure.add(id)
+        const consumed = messagesState.blocksById.get(id)
+        if (consumed) {
+            for (const nested of consumed.consumedBlockIds ?? []) {
+                if (!consumedClosure.has(nested)) {
+                    queue.push(nested)
+                }
+            }
+        }
+    }
+
+    // One-tier: consumed blocks that sync will reactivate keep their messages hidden.
+    let shieldedMessageIds: Set<string> | null = null
+    if (!options.full) {
+        shieldedMessageIds = new Set<string>()
+        for (const id of consumedClosure) {
+            const block = messagesState.blocksById.get(id)
+            if (!block || block.deactivatedByUser || block.deactivatedByUserDeep) continue
+            for (const messageId of block.effectiveMessageIds ?? []) {
+                shieldedMessageIds.add(messageId)
+            }
+        }
+    }
+
+    const required: string[] = []
+    for (const [messageId, entry] of messagesState.byMessageId) {
+        if (entry.activeBlockIds.length === 0) continue
+        let exclusivelyCoveredByTargets = true
+        for (const blockId of entry.activeBlockIds) {
+            if (!targetBlockIds.has(blockId)) {
+                exclusivelyCoveredByTargets = false
+                break
+            }
+        }
+        if (!exclusivelyCoveredByTargets) continue
+        if (shieldedMessageIds?.has(messageId)) continue
+        required.push(messageId)
+    }
+    required.sort()
+    return required
+}
+
+/**
+ * [Issue #446] Verify that every source message a decompression would restore is
+ * actually present in the fetched host history. Membership transitions alone prove
+ * nothing about content: if the host removed the originals (native compaction,
+ * external deletion), deactivating the target still reports "Restored N" while
+ * nothing returns to context, stats are decremented by phantom tokens, and the
+ * terminal user-deactivation discards the summary coverage.
+ */
+export function checkDecompressSourceAvailability(
+    messagesState: PruneMessagesState,
+    targets: CompressionTarget[],
+    options: { full?: boolean },
+    presentInHistory: Set<string>,
+): DecompressAvailabilityResult {
+    const requiredMessageIds = collectRequiredDecompressMessageIds(messagesState, targets, options)
+    const available: string[] = []
+    const missing: string[] = []
+    for (const messageId of requiredMessageIds) {
+        if (presentInHistory.has(messageId)) {
+            available.push(messageId)
+        } else {
+            missing.push(messageId)
+        }
+    }
+    return { requiredMessageIds, availableMessageIds: available, missingMessageIds: missing }
+}
+
 export function computeReactivatedBlockIds(
     messagesState: PruneMessagesState,
     activeBlockIdsBefore: Set<number>,
