@@ -303,7 +303,43 @@ export async function ensureSessionInitialized(
     if (state.sessionId === sessionId) {
         return
     }
+    try {
+        await runSessionInitialization(
+            client,
+            state,
+            sessionId,
+            logger,
+            messages,
+            config,
+            projectDir,
+        )
+    } catch (error) {
+        // [Issue #411] A failed initialization must not mark this state as
+        // initialized: clear the fast-path condition so the next request
+        // retries full initialization once the underlying condition (FS
+        // permissions, disk, host API) recovers. Partial mutations made before
+        // the failure are wiped by resetSessionState() at the top of the retry.
+        state.sessionId = null
+        throw error
+    }
+}
 
+/**
+ * Full session initialization body. `state.sessionId` is assigned synchronously
+ * before any await — that assignment is the concurrency guard preventing a
+ * racing caller from resetting state mid-initialization. It must therefore be
+ * kept here; recoverability on failure comes from ensureSessionInitialized
+ * clearing it again when this function rejects ([Issue #411]).
+ */
+async function runSessionInitialization(
+    client: any,
+    state: SessionState,
+    sessionId: string,
+    logger: Logger,
+    messages: WithParts[],
+    config?: PluginConfig,
+    projectDir?: string,
+): Promise<void> {
     resetSessionState(state)
     state.sessionId = sessionId
     // Resolve the configured storage location once per session (transient).

@@ -271,25 +271,41 @@ export async function loadSessionState(
     logger: Logger,
     storageDir?: string,
 ): Promise<PersistedSessionState | null> {
-    try {
-        const filePath = getSessionFilePath(sessionId, storageDir)
+    const filePath = getSessionFilePath(sessionId, storageDir)
 
-        if (!existsSync(filePath)) {
+    // [Issue #411] Read is isolated from parsing so errors can be classified
+    // (an existsSync pre-check would hide this: it reports false for an
+    // UNSEARCHABLE directory too, routing permission loss into "file absent"):
+    // - ENOENT → file absent (or raced away): fresh session, silent null.
+    // - EISDIR/ENOTDIR → locally corrupted layout: unrecoverable here, warn + null.
+    // - anything else (EACCES/EIO/EMFILE/...) → transient I/O failure: must
+    //   propagate so session initialization fails loudly and is retried on the
+    //   next request. Swallowing these resolved "null" (indistinguishable from
+    //   "file absent"), which pinned the session on a fresh empty state for
+    //   the process lifetime.
+    let content: string
+    try {
+        content = await fs.readFile(filePath, "utf-8")
+    } catch (error: any) {
+        if (error?.code === "ENOENT") {
             return null
         }
+        if (error?.code === "EISDIR" || error?.code === "ENOTDIR") {
+            logger.warn("Invalid session state file location, ignoring", {
+                sessionId: sessionId,
+                error: error?.message,
+            })
+            return null
+        }
+        throw error
+    }
 
-        const content = await fs.readFile(filePath, "utf-8")
+    try {
         const state = JSON.parse(content) as PersistedSessionState
 
         const hasPruneMessages = state?.prune?.messages && typeof state.prune.messages === "object"
         const hasNudgeFormat = state?.nudges && typeof state.nudges === "object"
-        if (
-            !state ||
-            !state.prune ||
-            !hasPruneMessages ||
-            !state.stats ||
-            !hasNudgeFormat
-        ) {
+        if (!state || !state.prune || !hasPruneMessages || !state.stats || !hasNudgeFormat) {
             logger.warn("Invalid session state file, ignoring", {
                 sessionId: sessionId,
             })
