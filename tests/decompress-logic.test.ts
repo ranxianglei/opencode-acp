@@ -11,6 +11,8 @@ import {
     computeRestoredMessages,
     computeReactivatedBlockIds,
     buildRestoredContentPreview,
+    collectRequiredDecompressMessageIds,
+    checkDecompressSourceAvailability,
 } from "../lib/compress/decompress-logic"
 import type { CompressionBlock, PruneMessagesState, WithParts } from "../lib/state/types"
 import type { CompressionTarget } from "../lib/commands/compression-targets"
@@ -616,4 +618,250 @@ test("findActiveAncestorBlockId returns active ancestor for consumed inactive bl
     })
     const target = makeTarget({ blocks: [consumedBlock] })
     assert.equal(findActiveAncestorBlockId(ms, target), 10)
+})
+
+// --- collectRequiredDecompressMessageIds ([Issue #446]) ---
+
+function nestedMessagesState(): PruneMessagesState {
+    const t1 = makeBlock({
+        blockId: 2,
+        active: false,
+        effectiveMessageIds: ["msg-a", "msg-b"],
+    })
+    const t2 = makeBlock({
+        blockId: 5,
+        active: true,
+        consumedBlockIds: [2],
+        effectiveMessageIds: ["msg-a", "msg-b", "msg-c", "msg-d", "msg-e"],
+    })
+    return makeMessagesState({
+        blocksById: new Map([
+            [2, t1],
+            [5, t2],
+        ]),
+        activeBlockIds: new Set([5]),
+        byMessageId: new Map([
+            ["msg-a", { tokenCount: 10, allBlockIds: [2, 5], activeBlockIds: [5] }],
+            ["msg-b", { tokenCount: 10, allBlockIds: [2, 5], activeBlockIds: [5] }],
+            ["msg-c", { tokenCount: 10, allBlockIds: [5], activeBlockIds: [5] }],
+            ["msg-d", { tokenCount: 10, allBlockIds: [5], activeBlockIds: [5] }],
+            ["msg-e", { tokenCount: 10, allBlockIds: [5], activeBlockIds: [5] }],
+        ]),
+    })
+}
+
+test("collectRequiredDecompressMessageIds returns all covered messages for a single active block", () => {
+    const block = makeBlock({ blockId: 5, effectiveMessageIds: ["msg-a", "msg-b"] })
+    const ms = makeMessagesState({
+        blocksById: new Map([[5, block]]),
+        activeBlockIds: new Set([5]),
+        byMessageId: new Map([
+            ["msg-a", { tokenCount: 10, allBlockIds: [5], activeBlockIds: [5] }],
+            ["msg-b", { tokenCount: 20, allBlockIds: [5], activeBlockIds: [5] }],
+        ]),
+    })
+    const target = makeTarget({ displayId: 5, blocks: [block] })
+    assert.deepEqual(collectRequiredDecompressMessageIds(ms, [target]), ["msg-a", "msg-b"])
+})
+
+test("collectRequiredDecompressMessageIds excludes already-visible messages", () => {
+    const block = makeBlock({ blockId: 5, effectiveMessageIds: ["msg-a", "msg-c"] })
+    const ms = makeMessagesState({
+        blocksById: new Map([[5, block]]),
+        activeBlockIds: new Set([5]),
+        byMessageId: new Map([
+            ["msg-a", { tokenCount: 10, allBlockIds: [5], activeBlockIds: [5] }],
+            // e.g. preserved first user message — not hidden by any active block
+            ["msg-c", { tokenCount: 20, allBlockIds: [5], activeBlockIds: [] }],
+        ]),
+    })
+    const target = makeTarget({ displayId: 5, blocks: [block] })
+    assert.deepEqual(collectRequiredDecompressMessageIds(ms, [target]), ["msg-a"])
+})
+
+test("collectRequiredDecompressMessageIds excludes messages also covered by non-target active blocks", () => {
+    const targetBlock = makeBlock({ blockId: 5, effectiveMessageIds: ["msg-a", "msg-b"] })
+    const otherBlock = makeBlock({ blockId: 7, effectiveMessageIds: ["msg-b"] })
+    const ms = makeMessagesState({
+        blocksById: new Map([
+            [5, targetBlock],
+            [7, otherBlock],
+        ]),
+        activeBlockIds: new Set([5, 7]),
+        byMessageId: new Map([
+            ["msg-a", { tokenCount: 10, allBlockIds: [5], activeBlockIds: [5] }],
+            ["msg-b", { tokenCount: 20, allBlockIds: [5, 7], activeBlockIds: [5, 7] }],
+        ]),
+    })
+    const target = makeTarget({ displayId: 5, blocks: [targetBlock] })
+    assert.deepEqual(collectRequiredDecompressMessageIds(ms, [target]), ["msg-a"])
+})
+
+test("collectRequiredDecompressMessageIds one-tier shields messages re-covered by reactivated consumed block", () => {
+    const ms = nestedMessagesState()
+    const t2 = ms.blocksById.get(5)!
+    const target = makeTarget({ displayId: 5, blocks: [t2] })
+    // msg-a/msg-b stay hidden under reactivated b2 → not required sources
+    assert.deepEqual(collectRequiredDecompressMessageIds(ms, [target]), ["msg-c", "msg-d", "msg-e"])
+})
+
+test("collectRequiredDecompressMessageIds full:true requires everything under the target", () => {
+    const ms = nestedMessagesState()
+    const t2 = ms.blocksById.get(5)!
+    const target = makeTarget({ displayId: 5, blocks: [t2] })
+    assert.deepEqual(collectRequiredDecompressMessageIds(ms, [target], { full: true }), [
+        "msg-a",
+        "msg-b",
+        "msg-c",
+        "msg-d",
+        "msg-e",
+    ])
+})
+
+test("collectRequiredDecompressMessageIds one-tier shields across transitive consumed closure", () => {
+    const inner = makeBlock({
+        blockId: 1,
+        active: false,
+        effectiveMessageIds: ["msg-a"],
+    })
+    const mid = makeBlock({
+        blockId: 2,
+        active: false,
+        consumedBlockIds: [1],
+        effectiveMessageIds: ["msg-a", "msg-b"],
+    })
+    const top = makeBlock({
+        blockId: 5,
+        active: true,
+        consumedBlockIds: [2],
+        effectiveMessageIds: ["msg-a", "msg-b", "msg-c"],
+    })
+    const ms = makeMessagesState({
+        blocksById: new Map([
+            [1, inner],
+            [2, mid],
+            [5, top],
+        ]),
+        activeBlockIds: new Set([5]),
+        byMessageId: new Map([
+            ["msg-a", { tokenCount: 10, allBlockIds: [1, 2, 5], activeBlockIds: [5] }],
+            ["msg-b", { tokenCount: 10, allBlockIds: [2, 5], activeBlockIds: [5] }],
+            ["msg-c", { tokenCount: 10, allBlockIds: [5], activeBlockIds: [5] }],
+        ]),
+    })
+    const target = makeTarget({ displayId: 5, blocks: [top] })
+    assert.deepEqual(collectRequiredDecompressMessageIds(ms, [target]), ["msg-c"])
+})
+
+test("collectRequiredDecompressMessageIds does not shield under user-deactivated consumed blocks", () => {
+    const ms = nestedMessagesState()
+    // b2 was previously user-decompressed → terminal, sync will NOT reactivate it
+    ms.blocksById.get(2)!.deactivatedByUser = true
+    const t2 = ms.blocksById.get(5)!
+    const target = makeTarget({ displayId: 5, blocks: [t2] })
+    assert.deepEqual(collectRequiredDecompressMessageIds(ms, [target]), [
+        "msg-a",
+        "msg-b",
+        "msg-c",
+        "msg-d",
+        "msg-e",
+    ])
+})
+
+test("collectRequiredDecompressMessageIds unions required IDs across multiple targets", () => {
+    const blockA = makeBlock({ blockId: 5, effectiveMessageIds: ["msg-a"] })
+    const blockB = makeBlock({ blockId: 6, effectiveMessageIds: ["msg-b"] })
+    const ms = makeMessagesState({
+        blocksById: new Map([
+            [5, blockA],
+            [6, blockB],
+        ]),
+        activeBlockIds: new Set([5, 6]),
+        byMessageId: new Map([
+            ["msg-a", { tokenCount: 10, allBlockIds: [5], activeBlockIds: [5] }],
+            ["msg-b", { tokenCount: 20, allBlockIds: [6], activeBlockIds: [6] }],
+        ]),
+    })
+    const targets = [
+        makeTarget({ displayId: 5, blocks: [blockA] }),
+        makeTarget({ displayId: 6, blocks: [blockB] }),
+    ]
+    assert.deepEqual(collectRequiredDecompressMessageIds(ms, targets), ["msg-a", "msg-b"])
+})
+
+test("collectRequiredDecompressMessageIds returns empty when membership is empty", () => {
+    const block = makeBlock({ blockId: 5, effectiveMessageIds: ["msg-a"] })
+    const ms = makeMessagesState({
+        blocksById: new Map([[5, block]]),
+        activeBlockIds: new Set([5]),
+        byMessageId: new Map(),
+    })
+    const target = makeTarget({ displayId: 5, blocks: [block] })
+    assert.deepEqual(collectRequiredDecompressMessageIds(ms, [target]), [])
+})
+
+// --- checkDecompressSourceAvailability ([Issue #446]) ---
+
+test("checkDecompressSourceAvailability reports complete availability", () => {
+    const block = makeBlock({ blockId: 5, effectiveMessageIds: ["msg-a", "msg-b"] })
+    const ms = makeMessagesState({
+        blocksById: new Map([[5, block]]),
+        activeBlockIds: new Set([5]),
+        byMessageId: new Map([
+            ["msg-a", { tokenCount: 10, allBlockIds: [5], activeBlockIds: [5] }],
+            ["msg-b", { tokenCount: 20, allBlockIds: [5], activeBlockIds: [5] }],
+        ]),
+    })
+    const target = makeTarget({ displayId: 5, blocks: [block] })
+    const result = checkDecompressSourceAvailability(
+        ms,
+        [target],
+        {},
+        new Set(["msg-a", "msg-b"]),
+    )
+    assert.deepEqual(result.requiredMessageIds, ["msg-a", "msg-b"])
+    assert.deepEqual(result.availableMessageIds, ["msg-a", "msg-b"])
+    assert.deepEqual(result.missingMessageIds, [])
+})
+
+test("checkDecompressSourceAvailability splits partial availability", () => {
+    const block = makeBlock({ blockId: 5, effectiveMessageIds: ["msg-a", "msg-b"] })
+    const ms = makeMessagesState({
+        blocksById: new Map([[5, block]]),
+        activeBlockIds: new Set([5]),
+        byMessageId: new Map([
+            ["msg-a", { tokenCount: 10, allBlockIds: [5], activeBlockIds: [5] }],
+            ["msg-b", { tokenCount: 20, allBlockIds: [5], activeBlockIds: [5] }],
+        ]),
+    })
+    const target = makeTarget({ displayId: 5, blocks: [block] })
+    const result = checkDecompressSourceAvailability(ms, [target], {}, new Set(["msg-a"]))
+    assert.deepEqual(result.availableMessageIds, ["msg-a"])
+    assert.deepEqual(result.missingMessageIds, ["msg-b"])
+})
+
+test("checkDecompressSourceAvailability reports all missing when history has none of them", () => {
+    const block = makeBlock({ blockId: 5, effectiveMessageIds: ["msg-a", "msg-b"] })
+    const ms = makeMessagesState({
+        blocksById: new Map([[5, block]]),
+        activeBlockIds: new Set([5]),
+        byMessageId: new Map([
+            ["msg-a", { tokenCount: 10, allBlockIds: [5], activeBlockIds: [5] }],
+            ["msg-b", { tokenCount: 20, allBlockIds: [5], activeBlockIds: [5] }],
+        ]),
+    })
+    const target = makeTarget({ displayId: 5, blocks: [block] })
+    const result = checkDecompressSourceAvailability(ms, [target], {}, new Set(["msg-other"]))
+    assert.deepEqual(result.availableMessageIds, [])
+    assert.deepEqual(result.missingMessageIds, ["msg-a", "msg-b"])
+})
+
+test("checkDecompressSourceAvailability honors one-tier vs full semantics on nested targets", () => {
+    const ms = nestedMessagesState()
+    const t2 = ms.blocksById.get(5)!
+    const target = makeTarget({ displayId: 5, blocks: [t2] })
+    const oneTier = checkDecompressSourceAvailability(ms, [target], {}, new Set())
+    assert.deepEqual(oneTier.missingMessageIds, ["msg-c", "msg-d", "msg-e"])
+    const full = checkDecompressSourceAvailability(ms, [target], { full: true }, new Set())
+    assert.deepEqual(full.missingMessageIds, ["msg-a", "msg-b", "msg-c", "msg-d", "msg-e"])
 })
