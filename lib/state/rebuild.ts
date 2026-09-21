@@ -20,7 +20,7 @@
  */
 import type { GCConfig, PluginConfig } from "../config"
 import type { Logger } from "../logger"
-import { assignMessageRefs } from "../message-ids"
+import { assignMessageRefs, formatMessageRef, parseMessageRef } from "../message-ids"
 import {
     buildSearchContext,
     resolveAnchorMessageId,
@@ -37,7 +37,7 @@ import {
 } from "../compress/state"
 import { countTokens } from "../token-utils"
 import { createHash } from "node:crypto"
-import type { PersistedSessionState } from "./persistence"
+import type { PersistedMessageIds, PersistedSessionState } from "./persistence"
 import { createPruneMessagesState } from "./utils"
 import type {
     BoundaryReference,
@@ -152,13 +152,46 @@ interface ForkIdMap {
     tools: Map<string, string>
 }
 
+/**
+ * [Issue #407] Normalize legacy 4-digit parent refs (m0001) to the current
+ * 5-digit format (m00001). Fork-assigned refs are always 5-digit
+ * (formatMessageRef), so unnormalized pre-1.1.0 parent aliases would never
+ * match during parent-to-fork translation and inherited compression blocks
+ * would be silently lost. Mirrors the own-session migration applied in
+ * state.ts on state load. byRef is rebuilt from byRawId (the authoritative
+ * direction); any byRef-only entries are carried over defensively.
+ */
+function normalizeParentMessageIds(
+    messageIds?: PersistedMessageIds,
+): PersistedMessageIds | undefined {
+    if (!messageIds) return undefined
+    const migrate = (ref: string): string => {
+        const parsed = parseMessageRef(ref)
+        return parsed !== null ? formatMessageRef(parsed) : ref
+    }
+    const byRawId: Record<string, string> = {}
+    const byRef: Record<string, string> = {}
+    for (const [rawId, ref] of Object.entries(messageIds.byRawId || {})) {
+        const normalized = migrate(ref)
+        byRawId[rawId] = normalized
+        byRef[normalized] = rawId
+    }
+    for (const [ref, rawId] of Object.entries(messageIds.byRef || {})) {
+        const normalized = migrate(ref)
+        if (byRef[normalized] === undefined) {
+            byRef[normalized] = rawId
+        }
+    }
+    return { byRef, byRawId, nextRef: messageIds.nextRef || 1 }
+}
+
 function mapForkIds(
     state: SessionState,
     parent: PersistedSessionState,
     parentMessages: WithParts[],
     forkMessages: WithParts[],
 ): ForkIdMap | null {
-    const parentRefs = parent.messageIds?.byRef
+    const parentRefs = normalizeParentMessageIds(parent.messageIds)?.byRef
     if (!parentRefs) return null
 
     const parentById = new Map(parentMessages.map((message) => [message.info.id, message]))
