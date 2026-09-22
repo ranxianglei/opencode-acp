@@ -48,8 +48,6 @@ A production-scale longitudinal study: 4.5 months, three hosts, 174,327 model ca
 
 ---
 
----
-
 ## Why ACP
 
 ACP hands all context-management authority to the model itself — not relying on
