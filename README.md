@@ -42,9 +42,11 @@ A production-scale longitudinal study: 4.5 months, three hosts, 174,327 model ca
 
 ## Community
 
-Discussion, help, and updates on QQ — one group covers all three projects (`billion-context`, `billion-context-pi`, `opencode-acp`):
+Discussion, help, and updates on QQ — one group covers all three projects (`billion-context`, `billion-context-pi`, `opencode-acp`). Please join the new group:
 
-**QQ Group: 1056132097**
+**QQ Group: 1108730198**
+
+> The original group **1056132097** is now full and no longer accepts new members.
 
 ---
 
