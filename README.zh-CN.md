@@ -38,9 +38,11 @@
 
 ## 社区
 
-交流、求助与更新都在 QQ——同一个群覆盖三个项目(`billion-context`、`billion-context-pi`、`opencode-acp`):
+交流、求助与更新都在 QQ——同一个群覆盖三个项目(`billion-context`、`billion-context-pi`、`opencode-acp`)。请加入新群:
 
-**QQ 群:1056132097**
+**QQ 群:1108730198**
+
+> 原群 **1056132097** 已满,不再接受新成员。
 
 ---
 
