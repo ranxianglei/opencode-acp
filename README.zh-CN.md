@@ -10,6 +10,14 @@
 
 ---
 
+## 社区
+
+QQ群:
+1056132097(已满)
+1108730198(未满)
+
+---
+
 > ⚠️ **你用的是 OpenCode 2.x?** 本扩展使用 OpenCode **V1** 插件 API,在 OpenCode 2.x 上**不会加载**。OpenCode 2.x 推荐的上下文管理方案是 [billion-context](https://github.com/ranxianglei/billion-context):`bili opencode`(启动器)或 `bili plugin install opencode`(原生插件,免启动器)。本扩展在 OpenCode **1.x** 上继续完整可用。
 
 ---
@@ -35,14 +43,6 @@
 </p>
 
 ---
-
-## 社区
-
-交流、求助与更新都在 QQ——同一个群覆盖三个项目(`billion-context`、`billion-context-pi`、`opencode-acp`)。请加入新群:
-
-**QQ 群:1108730198**
-
-> 原群 **1056132097** 已满,不再接受新成员。
 
 ---
 
