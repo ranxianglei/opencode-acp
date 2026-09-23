@@ -18,8 +18,11 @@
 
 | Commit | Description |
 |--------|-------------|
-| `b4f0cd54` | Phase 1: trim redundant prompt surfaces by ~21% (issue #452 phase 1) |
-| `ecf6f489` | Phase 2: `compress.promptPack` lean pack + pack-aware tool descriptions + tests + devlog |
+| `8b15e60d` | Phase 1: trim redundant prompt surfaces by ~21% (issue #452 phase 1) |
+| `e3590987` | Phase 2: `compress.promptPack` lean pack + pack-aware tool descriptions + tests + devlog |
+| `6870ee9b` | Test compat: adapt master's new decompress E2E mocks to the pack-aware factory (post-rebase) |
+
+Note: branch was rebased twice onto moving master (PR #448/#449 landed new E2E suites whose minimal prompt mocks predated the pack-aware factories); SHAs above are the final post-rebase ones.
 
 ### Key Files
 
@@ -32,7 +35,7 @@
 - `lib/compress/{decompress,search,status,recap}.ts` — factories now read their description from `factoryCtx.prompts.getRuntimePrompts()` after `reload()` (pack-aware); local hard-coded description constants deleted (moved to packs.ts). `range.ts` unchanged (already store-driven; `RANGE_FORMAT_EXTENSION` shared by both packs).
 - `tests/prompt-packs.test.ts` (NEW) — 16 tests covering packs API, load-bearing fragments, candidates toggle, size ratios, validation, merge, and PromptStore integration incl. override-beats-lean precedence.
 - `tests/{acp-status,recap,search-context,inactive-block-decompress}.test.ts` — minimal `{ reload() {} }` prompt mocks replaced with `makeDefaultPromptsMock()` (real default-pack descriptions from packs.ts) because factories now call `getRuntimePrompts()` at creation time.
-- Phase 1 files (commit `b4f0cd54`): `lib/prompts/system.ts`, `lib/prompts/compress-range.ts`, `lib/prompts/extensions/tool.ts`, `lib/prompts/context-limit-nudge.ts`, `lib/prompts/turn-nudge.ts`, `lib/prompts/iteration-nudge.ts`, `lib/compress/{decompress,search,status,recap}.ts`.
+- Phase 1 files (commit `8b15e60d`): `lib/prompts/system.ts`, `lib/prompts/compress-range.ts`, `lib/prompts/extensions/tool.ts`, `lib/prompts/context-limit-nudge.ts`, `lib/prompts/turn-nudge.ts`, `lib/prompts/iteration-nudge.ts`, `lib/compress/{decompress,search,status,recap}.ts`.
 
 ## 3. Design & Implementation Notes
 
