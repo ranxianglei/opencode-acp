@@ -10,6 +10,14 @@ The model decides <em>when</em> and <em>what</em> to compress — not a hard lim
 
 ---
 
+## Community
+
+QQ Group:
+1056132097 (full)
+1108730198 (open)
+
+---
+
 > ⚠️ **Using OpenCode 2.x?** This extension uses the OpenCode **V1** plugin
 > API and does **not** load on OpenCode 2.x. For OpenCode 2.x the recommended
 > context manager is [billion-context](https://github.com/ranxianglei/billion-context):
@@ -37,16 +45,6 @@ A production-scale longitudinal study: 4.5 months, three hosts, 174,327 model ca
 <p align="center">
 <code>opencode plugin opencode-acp@stable --global</code>
 </p>
-
----
-
-## Community
-
-Discussion, help, and updates on QQ — one group covers all three projects (`billion-context`, `billion-context-pi`, `opencode-acp`). Please join the new group:
-
-**QQ Group: 1108730198**
-
-> The original group **1056132097** is now full and no longer accepts new members.
 
 ---
 
