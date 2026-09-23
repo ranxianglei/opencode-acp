@@ -9,6 +9,24 @@ import type {
     SessionState,
     WithParts,
 } from "../lib/state/types"
+import { getToolDescriptions } from "../lib/prompts/packs"
+
+// Factories read their tool description from the prompt store at creation time; pin the
+// mock to the default pack so description assertions test the shipped default surface.
+function makeDefaultPromptsMock() {
+    const descriptions = getToolDescriptions("default")
+    return {
+        reload() {},
+        getRuntimePrompts() {
+            return {
+                decompressDescription: descriptions.decompress,
+                searchContextDescription: descriptions.searchContext,
+                acpStatusDescription: descriptions.acpStatus,
+                acpContextRecapDescription: descriptions.acpContextRecap,
+            }
+        },
+    }
+}
 
 // [Issue #446] E2E regressions for the decompress source-availability gate.
 // The host history (client.session.messages response) is controllable per test,
@@ -139,7 +157,7 @@ function makeToolContext(state: SessionState, history: WithParts[], options: Run
         registry: singletonRegistry(state),
         logger: { enabled: false, info: noop, warn: noop, error: noop, debug: noop } as any,
         config: {} as any,
-        prompts: { reload: () => {} } as any,
+        prompts: makeDefaultPromptsMock() as any,
     }
 }
 
