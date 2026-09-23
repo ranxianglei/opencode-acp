@@ -194,40 +194,15 @@ function resolveRangeTarget(
     return { ok: true, targets }
 }
 
-const TOOL_DESCRIPTION = `Restores previously compressed content.
+const TOOL_DESCRIPTION = `Restores previously compressed content — use when you need exact details that a compressed summary cannot provide. Returns a condensed preview so you can reason about it immediately.
 
-Use this tool when you need exact details from compressed content that the summary cannot provide.
-The tool returns a condensed preview of the restored content so you can reason about it immediately.
+Modes (mutually exclusive):
+- Block mode: blockId (e.g., "b5") restores one block. By default restores one tier up (T2→T1 summaries, not raw messages); use full:true to restore all the way to original messages (expensive for T2/T3). Message-mode blocks from the same batch (same runId) restore together; nested blocks are handled automatically.
+- Range mode: startId+endId (message or block refs) restore ALL active blocks overlapping the range; partial overlap restores the whole block.
 
-TWO MODES:
+toFile?: writes restored content to this path (must be under /tmp or ~/.cache/opencode/) instead of inflating context; block(s) stay compressed. Restored content appears in full in your next context window.
 
-1. Block mode (default): decompress a single block by ID.
-   - blockId: block reference to decompress (e.g., "b0", "b2")
-
-2. Range mode: decompress ALL blocks overlapping a message range. Use this to restore
-   content across multiple blocks without calling acp_status + decompress repeatedly.
-   - startId: starting message or block ref (e.g., "m00150")
-   - endId: ending message or block ref (e.g., "m00200")
-
-   Range mode finds every active block whose effectiveMessageIds touch the range and
-   batch-restores them. Partial overlap decompresses the whole block (content cannot be
-   partially restored). Nested blocks are handled automatically.
-
-ARGUMENTS:
-- blockId?: string — use this OR startId+endId (mutually exclusive)
-- startId?: string — range start (message or block ref)
-- endId?: string — range end (message or block ref)
-- toFile?: string — if provided, writes restored content to this file path (must be under
-  /tmp or ~/.cache/opencode/) instead of inflating context. Block(s) stay compressed.
-
-IMPORTANT:
-- Decompressing inflates context. Check context usage before decompressing.
-- Message-mode blocks from the same batch (same runId) are restored together.
-- TIER-AWARE: by default, decompressing a multi-tier block restores the PREVIOUS tier's
-  summaries (e.g., decompress T2 → T1 summaries visible, not raw messages). Use full:true
-  to restore all the way to original messages (can be very expensive for T2/T3 blocks).
-- After decompression, the restored content will appear in full in your next context window.
-- Do NOT call this tool in parallel with compress — their state mutations may conflict.`
+Do NOT call this tool in parallel with compress — their state mutations may conflict. Check context usage before decompressing.`
 
 function buildSchema() {
     return {

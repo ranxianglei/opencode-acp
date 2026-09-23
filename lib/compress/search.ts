@@ -463,10 +463,7 @@ function buildBoundaryLookup(
 
 const SEARCH_CONTEXT_TOOL_DESCRIPTION = `Search through active compressed block summaries to find relevant content. Use this BEFORE decompressing to find the right block. Returns a hit list with block IDs, relevance scores, and previews.
 
-Examples:
-- search_context({ query: "decoder accuracy" }) — find compressed blocks about decoder accuracy
-- search_context({ query: "training loss PPL" }) — find training results
-- search_context({ query: "architecture design", limit: 5 }) — top 5 results`
+Example: search_context({ query: "decoder accuracy", limit: 5 })`
 
 interface SearchResult {
     type: "block" | "message"

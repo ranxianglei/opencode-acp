@@ -29,15 +29,7 @@ import { saveSessionState } from "../state"
 
 const ACP_STATUS_TOOL_DESCRIPTION = `Show context status — overview includes compressible ranges (compression candidates when compress.candidates is enabled).
 
-No args: Overview with totals, compressed blocks, and compressible ranges (or candidates when enabled).
-scope:"uncompressed": Compressible ranges by default (view:"candidates" when compress.candidates is enabled). Use view:"ranges" for raw grouped ranges or view:"messages" for per-message listing.
-scope:"compressed": Drill into compressed blocks — list each with full details (age, generation, consumed lineage).
-
-Use this tool to:
-- See what's consuming context + compressible targets in one call (no args)
-- Focus on ranges only (scope:"uncompressed")
-- Find all messages of a specific tool type (scope:"uncompressed", view:"messages", tool:"bash")
-- Check block details before decompressing (scope:"compressed")`
+No args: totals, compressed blocks, and ranges/candidates in one call. scope:"uncompressed": ranges only (view:"candidates" when compress.candidates is enabled; view:"ranges" for raw grouped ranges; view:"messages" for per-message listing with tool/sort filters). scope:"compressed": drill into blocks with full details (age, generation, consumed lineage).`
 
 function formatTokens(n: number): string {
     if (!Number.isFinite(n) || n <= 0) return "0"

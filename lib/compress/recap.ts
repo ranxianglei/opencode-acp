@@ -7,12 +7,7 @@ function formatCoverage(block: CompressionBlock): string {
     return count > 0 ? `${count} message${count !== 1 ? "s" : ""}` : "—"
 }
 
-const RECAP_TOOL_DESCRIPTION = `Read-only retrieval of compression block summaries.
-
-Call this tool to re-fetch a specific block's summary without decompressing the full original content. Useful when a past compress tool call's summary has scrolled out of context or was truncated by the provider.
-
-Args:
-- blockId: optional block number (e.g., 5). If omitted, lists all active blocks with brief info.`
+const RECAP_TOOL_DESCRIPTION = `Read-only retrieval of compression block summaries — re-fetch a block's summary without decompressing the full original content (useful when it scrolled out of context or was truncated). Args: blockId optional (e.g., 5); if omitted, lists all active blocks with brief info.`
 
 export function createAcpContextRecapTool(factoryCtx: ToolFactoryContext): ReturnType<typeof tool> {
     return tool({
