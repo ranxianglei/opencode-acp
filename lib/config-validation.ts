@@ -26,6 +26,7 @@ export const VALID_CONFIG_KEYS = new Set([
     "compress.showCompression",
     "compress.summaryBuffer",
     "compress.candidates",
+    "compress.promptPack",
     "compress.maxContextLimit",
     "compress.minContextLimit",
     "compress.modelMaxLimits",
@@ -302,6 +303,18 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
                     key: "compress.nudgeForce",
                     expected: '"strong" | "soft"',
                     actual: JSON.stringify(compress.nudgeForce),
+                })
+            }
+
+            if (
+                compress.promptPack !== undefined &&
+                compress.promptPack !== "default" &&
+                compress.promptPack !== "lean"
+            ) {
+                errors.push({
+                    key: "compress.promptPack",
+                    expected: '"default" | "lean"',
+                    actual: JSON.stringify(compress.promptPack),
                 })
             }
 

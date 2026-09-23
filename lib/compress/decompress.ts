@@ -74,9 +74,7 @@ async function finalizeDecompressSession(ctx: ToolContext): Promise<void> {
     await saveSessionState(ctx.state, ctx.logger)
 }
 
-type ResolveResult =
-    | { ok: true; targets: CompressionTarget[] }
-    | { ok: false; error: string }
+type ResolveResult = { ok: true; targets: CompressionTarget[] } | { ok: false; error: string }
 
 function resolveTargets(
     args: Record<string, unknown>,
@@ -95,7 +93,13 @@ function resolveTargets(
         return resolveSingleBlockTarget(messagesState, args.blockId as string)
     }
 
-    return resolveRangeTarget(state, rawMessages, args.startId as string, args.endId as string, logger)
+    return resolveRangeTarget(
+        state,
+        rawMessages,
+        args.startId as string,
+        args.endId as string,
+        logger,
+    )
 }
 
 function resolveSingleBlockTarget(
@@ -194,38 +198,38 @@ function resolveRangeTarget(
     return { ok: true, targets }
 }
 
-const TOOL_DESCRIPTION = `Restores previously compressed content — use when you need exact details that a compressed summary cannot provide. Returns a condensed preview so you can reason about it immediately.
-
-Modes (mutually exclusive):
-- Block mode: blockId (e.g., "b5") restores one block. By default restores one tier up (T2→T1 summaries, not raw messages); use full:true to restore all the way to original messages (expensive for T2/T3). Message-mode blocks from the same batch (same runId) restore together; nested blocks are handled automatically.
-- Range mode: startId+endId (message or block refs) restore ALL active blocks overlapping the range; partial overlap restores the whole block.
-
-toFile?: writes restored content to this path (must be under /tmp or ~/.cache/opencode/) instead of inflating context; block(s) stay compressed. Restored content appears in full in your next context window.
-
-Do NOT call this tool in parallel with compress — their state mutations may conflict. Check context usage before decompressing.`
-
 function buildSchema() {
     return {
         blockId: tool.schema
             .string()
             .optional()
-            .describe('Block reference to decompress (e.g., "b0", "b2"). Mutually exclusive with startId/endId.'),
+            .describe(
+                'Block reference to decompress (e.g., "b0", "b2"). Mutually exclusive with startId/endId.',
+            ),
         startId: tool.schema
             .string()
             .optional()
-            .describe('Range start: message ref (e.g., "m00150") or block ref (e.g., "b2"). Used with endId.'),
+            .describe(
+                'Range start: message ref (e.g., "m00150") or block ref (e.g., "b2"). Used with endId.',
+            ),
         endId: tool.schema
             .string()
             .optional()
-            .describe('Range end: message ref (e.g., "m00200") or block ref (e.g., "b5"). Used with startId.'),
+            .describe(
+                'Range end: message ref (e.g., "m00200") or block ref (e.g., "b5"). Used with startId.',
+            ),
         toFile: tool.schema
             .string()
             .optional()
-            .describe("If provided, writes restored content to this file path instead of inflating context. Block stays compressed. Path must be under /tmp or ~/.cache/opencode/. Example: '/tmp/block52.txt'"),
+            .describe(
+                "If provided, writes restored content to this file path instead of inflating context. Block stays compressed. Path must be under /tmp or ~/.cache/opencode/. Example: '/tmp/block52.txt'",
+            ),
         full: tool.schema
             .boolean()
             .optional()
-            .describe("If true, restores ALL content down to original messages (multi-level decompress). Default: false — restores one tier up (e.g., decompressing a T2 block restores T1 summaries, not raw messages). Use full:true only when you need the exact original content and have context budget for it."),
+            .describe(
+                "If true, restores ALL content down to original messages (multi-level decompress). Default: false — restores one tier up (e.g., decompressing a T2 block restores T1 summaries, not raw messages). Use full:true only when you need the exact original content and have context budget for it.",
+            ),
     }
 }
 
@@ -267,8 +271,11 @@ function extractMessageText(m: WithParts): string {
 }
 
 export function createDecompressTool(factoryCtx: ToolFactoryContext): ReturnType<typeof tool> {
+    factoryCtx.prompts.reload()
+    const runtimePrompts = factoryCtx.prompts.getRuntimePrompts()
+
     return tool({
-        description: TOOL_DESCRIPTION,
+        description: runtimePrompts.decompressDescription,
         args: buildSchema(),
         async execute(args, toolCtx) {
             const ctx = resolveToolContext(factoryCtx, toolCtx.sessionID)
@@ -282,7 +289,12 @@ export function createDecompressTool(factoryCtx: ToolFactoryContext): ReturnType
                   )
                 : undefined
 
-            const resolved = resolveTargets(args as Record<string, unknown>, ctx.state, rawMessages, ctx.logger)
+            const resolved = resolveTargets(
+                args as Record<string, unknown>,
+                ctx.state,
+                rawMessages,
+                ctx.logger,
+            )
             if (!resolved.ok) {
                 return resolved.error
             }

@@ -4,6 +4,24 @@ import { createAcpContextRecapTool } from "../lib/compress/recap"
 import type { ToolFactoryContext } from "../lib/compress/types"
 import type { CompressionBlock, PrunedMessageEntry, SessionState } from "../lib/state/types"
 import { singletonRegistry } from "./registry-stub"
+import { getToolDescriptions } from "../lib/prompts/packs"
+
+// Factories read their tool description from the prompt store at creation time; pin the
+// mock to the default pack so description assertions test the shipped default surface.
+function makeDefaultPromptsMock() {
+    const descriptions = getToolDescriptions("default")
+    return {
+        reload() {},
+        getRuntimePrompts() {
+            return {
+                decompressDescription: descriptions.decompress,
+                searchContextDescription: descriptions.searchContext,
+                acpStatusDescription: descriptions.acpStatus,
+                acpContextRecapDescription: descriptions.acpContextRecap,
+            }
+        },
+    }
+}
 
 const SID = "session-recap-test"
 
@@ -66,7 +84,7 @@ function makeState(activeIds: number[], blocks: Map<number, CompressionBlock>): 
         stats: { pruneTokenCounter: 0, totalPruneTokens: 0 },
         compressionTiming: {} as any,
         toolParameters: new Map(),
-            toolIdList: [],
+        toolIdList: [],
         messageIds: { byRawId: new Map(), byRef: new Map(), nextRef: 1 },
         lastCompaction: 0,
         currentTurn: 0,
@@ -84,7 +102,7 @@ function makeToolContext(
         registry: singletonRegistry(makeState(activeIds, blocks)),
         logger: { enabled: false } as any,
         config: {} as any,
-        prompts: { reload: () => {} } as any,
+        prompts: makeDefaultPromptsMock() as any,
     }
 }
 
@@ -134,7 +152,11 @@ test("recap: list view singular form for single message", async () => {
 
 test("recap: single block view shows message count in footer", async () => {
     const blocks = blocksMap(
-        makeBlock({ blockId: 1, effectiveMessageIds: ["a", "b", "c", "d"], summary: "Block content" }),
+        makeBlock({
+            blockId: 1,
+            effectiveMessageIds: ["a", "b", "c", "d"],
+            summary: "Block content",
+        }),
     )
     const result = await runRecap([1], blocks, { blockId: 1 })
 
@@ -144,9 +166,7 @@ test("recap: single block view shows message count in footer", async () => {
 })
 
 test("recap: single block view singular form", async () => {
-    const blocks = blocksMap(
-        makeBlock({ blockId: 1, effectiveMessageIds: ["x"], summary: "Solo" }),
-    )
+    const blocks = blocksMap(makeBlock({ blockId: 1, effectiveMessageIds: ["x"], summary: "Solo" }))
     const result = await runRecap([1], blocks, { blockId: 1 })
 
     assert.match(result, /1 message\b/)
@@ -171,10 +191,7 @@ test("recap: nonexistent blockId returns error with active block list", async ()
 })
 
 test("recap: inactive block returns deactivation message", async () => {
-    const blocks = blocksMap(
-        makeBlock({ blockId: 1 }),
-        makeBlock({ blockId: 2, active: false }),
-    )
+    const blocks = blocksMap(makeBlock({ blockId: 1 }), makeBlock({ blockId: 2, active: false }))
     const result = await runRecap([1], blocks, { blockId: 2 })
 
     assert.match(result, /inactive/)
@@ -188,8 +205,5 @@ test("recap: list view truncates long summaries to 200 chars", async () => {
     const result = await runRecap([1], blocks)
 
     assert.ok(result.includes("..."), "truncated summary should end with ellipsis")
-    assert.ok(
-        result.includes("x".repeat(200)),
-        "should contain first 200 chars of summary",
-    )
+    assert.ok(result.includes("x".repeat(200)), "should contain first 200 chars of summary")
 })

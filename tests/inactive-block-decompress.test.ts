@@ -11,6 +11,24 @@ import type {
 } from "../lib/state/types"
 import { resolveCompressionTarget } from "../lib/commands/compression-targets"
 import { findActiveAncestorBlockId } from "../lib/compress/decompress-logic"
+import { getToolDescriptions } from "../lib/prompts/packs"
+
+// Factories read their tool description from the prompt store at creation time; pin the
+// mock to the default pack so description assertions test the shipped default surface.
+function makeDefaultPromptsMock() {
+    const descriptions = getToolDescriptions("default")
+    return {
+        reload() {},
+        getRuntimePrompts() {
+            return {
+                decompressDescription: descriptions.decompress,
+                searchContextDescription: descriptions.searchContext,
+                acpStatusDescription: descriptions.acpStatus,
+                acpContextRecapDescription: descriptions.acpContextRecap,
+            }
+        },
+    }
+}
 
 const SID = "session-inactive-decompress-e2e"
 
@@ -107,7 +125,7 @@ function makeToolContext(state: SessionState): ToolFactoryContext {
             debug: noop,
         } as any,
         config: {} as any,
-        prompts: { reload: () => {} } as any,
+        prompts: makeDefaultPromptsMock() as any,
     }
 }
 
@@ -119,10 +137,7 @@ function makeRunContext(): { ask: any; metadata: any; sessionID: string } {
     }
 }
 
-async function runDecompress(
-    state: SessionState,
-    args: Record<string, unknown>,
-): Promise<string> {
+async function runDecompress(state: SessionState, args: Record<string, unknown>): Promise<string> {
     const ctx = makeToolContext(state)
     const tool = createDecompressTool(ctx)
     return tool.execute(args as any, makeRunContext() as any)
@@ -205,10 +220,7 @@ test("E2E: toFile on inactive block writes block summary", async () => {
 
     assert.ok(!result.includes("Error"), `should not error: ${result}`)
     assert.match(result, /written to/)
-    assert.ok(
-        !result.includes("(no content available)"),
-        `should not write placeholder: ${result}`,
-    )
+    assert.ok(!result.includes("(no content available)"), `should not write placeholder: ${result}`)
 
     const { readFileSync } = await import("fs")
     const fileContent = readFileSync("/tmp/test-inactive-block-decompress.txt", "utf-8")

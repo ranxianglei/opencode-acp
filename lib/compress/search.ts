@@ -63,7 +63,8 @@ export function resolveBoundaryIds(
     endId: string,
     logger?: { warn(message: string, data?: any): void },
 ): { startReference: BoundaryReference; endReference: BoundaryReference } {
-    const lookup = context.boundaryLookup ?? (context.boundaryLookup = buildBoundaryLookup(context, state))
+    const lookup =
+        context.boundaryLookup ?? (context.boundaryLookup = buildBoundaryLookup(context, state))
     const issues: string[] = []
     const parsedStartId = parseBoundaryId(startId)
     const parsedEndId = parseBoundaryId(endId)
@@ -461,10 +462,6 @@ function buildBoundaryLookup(
     return lookup
 }
 
-const SEARCH_CONTEXT_TOOL_DESCRIPTION = `Search through active compressed block summaries to find relevant content. Use this BEFORE decompressing to find the right block. Returns a hit list with block IDs, relevance scores, and previews.
-
-Example: search_context({ query: "decoder accuracy", limit: 5 })`
-
 interface SearchResult {
     type: "block" | "message"
     id: string
@@ -500,9 +497,10 @@ function buildSearchPreview(text: string, firstTerm: string): string {
 
 export function createSearchContextTool(factoryCtx: ToolFactoryContext): ReturnType<typeof tool> {
     factoryCtx.prompts.reload()
+    const runtimePrompts = factoryCtx.prompts.getRuntimePrompts()
 
     return tool({
-        description: SEARCH_CONTEXT_TOOL_DESCRIPTION,
+        description: runtimePrompts.searchContextDescription,
         args: {
             query: tool.schema.string().describe("Search query — keywords or phrase to find"),
             limit: tool.schema

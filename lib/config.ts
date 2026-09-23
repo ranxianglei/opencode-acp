@@ -20,6 +20,7 @@ type Permission = "ask" | "allow" | "deny"
  *
  * Excluded:
  * - `permission` — resolved at tool registration time, before any model info exists
+ * - `candidates` / `promptPack` — session-wide prompt-surface switches, global scope only
  * - `minContextLimit` / `modelMinLimits` — deprecated (see CONFIGURATION.md)
  * - `modelMaxLimits`, `modelMinLimits`, `providers` — structural (maps themselves)
  * - `reasoning` — an object; cascade merges it field-wise (see
@@ -30,6 +31,7 @@ export type CompressOverridableConfig = Omit<
     CompressConfig,
     | "permission"
     | "candidates"
+    | "promptPack"
     | "minContextLimit"
     | "modelMaxLimits"
     | "modelMinLimits"
@@ -62,6 +64,13 @@ export interface CompressConfig {
      * nudge lists pre-validated, batchable candidates instead of raw ranges.
      */
     candidates: boolean
+    /**
+     * Prompt surface pack (issue #452 phase 2). `"lean"` selects the condensed
+     * system prompt and one-line tool descriptions (billion-context-pi style);
+     * `"default"` keeps the full surfaces. Global scope only — not part of the
+     * per-provider/per-model override surface.
+     */
+    promptPack: "default" | "lean"
     maxContextLimit: number | `${number}%`
     /**
      * @deprecated Soft lower bound for turn/iteration reminder nudges. Scheduled
@@ -328,6 +337,7 @@ const defaultConfig: PluginConfig = {
         showCompression: true,
         summaryBuffer: true,
         candidates: false,
+        promptPack: "default",
         maxContextLimit: "80%",
         minContextLimit: "80%",
         contextLimitFallback: 128000,
@@ -557,6 +567,7 @@ export function mergeCompress(
         showCompression: override.showCompression ?? base.showCompression,
         summaryBuffer: override.summaryBuffer ?? base.summaryBuffer,
         candidates: override.candidates ?? base.candidates,
+        promptPack: override.promptPack ?? base.promptPack,
         maxContextLimit: override.maxContextLimit ?? base.maxContextLimit,
         minContextLimit: override.minContextLimit ?? base.minContextLimit,
         modelMaxLimits: override.modelMaxLimits ?? base.modelMaxLimits,

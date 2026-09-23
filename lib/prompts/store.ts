@@ -2,12 +2,16 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync, statSync } from "fs
 import { join, dirname } from "path"
 import { homedir } from "os"
 import type { Logger } from "../logger"
-import { buildSystemPrompt } from "./system"
-import { buildCompressRangePrompt } from "./compress-range"
 import { CONTEXT_LIMIT_NUDGE } from "./context-limit-nudge"
 import { TURN_NUDGE } from "./turn-nudge"
 import { ITERATION_NUDGE } from "./iteration-nudge"
 import { SUBAGENT_SYSTEM_EXTENSION, DECOMPRESS_SYSTEM_EXTENSION } from "./extensions/system"
+import {
+    buildPackSystemPrompt,
+    buildPackCompressRangePrompt,
+    getToolDescriptions,
+    type PromptPackId,
+} from "./packs"
 
 export type PromptKey =
     "system" | "compress-range" | "context-limit-nudge" | "turn-nudge" | "iteration-nudge"
@@ -43,6 +47,11 @@ export interface RuntimePrompts {
     iterationNudge: string
     subagentExtension: string
     decompressExtension: string
+    /** Standing tool descriptions selected by `compress.promptPack`. */
+    decompressDescription: string
+    searchContextDescription: string
+    acpStatusDescription: string
+    acpContextRecapDescription: string
 }
 
 const PROMPT_DEFINITIONS: PromptDefinition[] = [
@@ -104,10 +113,11 @@ const DEFAULTS_README_FILE = "README.md"
 
 function getBundledEditablePrompts(
     candidatesEnabled: boolean,
+    pack: PromptPackId,
 ): Record<EditablePromptField, string> {
     return {
-        system: buildSystemPrompt(candidatesEnabled),
-        compressRange: buildCompressRangePrompt(candidatesEnabled),
+        system: buildPackSystemPrompt(pack, candidatesEnabled),
+        compressRange: buildPackCompressRangePrompt(pack, candidatesEnabled),
         contextLimitNudge: CONTEXT_LIMIT_NUDGE,
         turnNudge: TURN_NUDGE,
         iterationNudge: ITERATION_NUDGE,
@@ -119,8 +129,12 @@ const INTERNAL_PROMPT_EXTENSIONS = {
     decompressExtension: DECOMPRESS_SYSTEM_EXTENSION,
 }
 
-function createBundledRuntimePrompts(candidatesEnabled: boolean): RuntimePrompts {
-    const bundled = getBundledEditablePrompts(candidatesEnabled)
+function createBundledRuntimePrompts(
+    candidatesEnabled: boolean,
+    pack: PromptPackId,
+): RuntimePrompts {
+    const bundled = getBundledEditablePrompts(candidatesEnabled, pack)
+    const toolDescriptions = getToolDescriptions(pack)
     return {
         system: bundled.system,
         compressRange: bundled.compressRange,
@@ -129,6 +143,10 @@ function createBundledRuntimePrompts(candidatesEnabled: boolean): RuntimePrompts
         iterationNudge: bundled.iterationNudge,
         subagentExtension: INTERNAL_PROMPT_EXTENSIONS.subagentExtension,
         decompressExtension: INTERNAL_PROMPT_EXTENSIONS.decompressExtension,
+        decompressDescription: toolDescriptions.decompress,
+        searchContextDescription: toolDescriptions.searchContext,
+        acpStatusDescription: toolDescriptions.acpStatus,
+        acpContextRecapDescription: toolDescriptions.acpContextRecap,
     }
 }
 
@@ -308,6 +326,7 @@ export class PromptStore {
     private readonly paths: PromptPaths
     private readonly customPromptsEnabled: boolean
     private readonly candidatesEnabled: boolean
+    private readonly promptPack: PromptPackId
     private runtimePrompts: RuntimePrompts
 
     constructor(
@@ -315,12 +334,14 @@ export class PromptStore {
         workingDirectory: string,
         customPromptsEnabled = false,
         candidatesEnabled = false,
+        promptPack: PromptPackId = "default",
     ) {
         this.logger = logger
         this.paths = resolvePromptPaths(workingDirectory)
         this.customPromptsEnabled = customPromptsEnabled
         this.candidatesEnabled = candidatesEnabled
-        this.runtimePrompts = createBundledRuntimePrompts(this.candidatesEnabled)
+        this.promptPack = promptPack
+        this.runtimePrompts = createBundledRuntimePrompts(this.candidatesEnabled, this.promptPack)
 
         if (this.customPromptsEnabled) {
             this.ensureDefaultFiles()
@@ -333,7 +354,7 @@ export class PromptStore {
     }
 
     reload(): void {
-        const nextPrompts = createBundledRuntimePrompts(this.candidatesEnabled)
+        const nextPrompts = createBundledRuntimePrompts(this.candidatesEnabled, this.promptPack)
 
         if (!this.customPromptsEnabled) {
             this.runtimePrompts = nextPrompts
@@ -341,9 +362,10 @@ export class PromptStore {
         }
 
         for (const definition of PROMPT_DEFINITIONS) {
-            const bundledSource = getBundledEditablePrompts(this.candidatesEnabled)[
-                definition.runtimeField
-            ]
+            const bundledSource = getBundledEditablePrompts(
+                this.candidatesEnabled,
+                this.promptPack,
+            )[definition.runtimeField]
             const bundledEditable = toEditablePromptText(definition, bundledSource)
             const bundledRuntime = wrapRuntimePromptContent(definition, bundledEditable)
             const fallbackValue = bundledRuntime || bundledSource.trim()
@@ -417,7 +439,9 @@ export class PromptStore {
             return
         }
 
-        const bundledPrompts = getBundledEditablePrompts(this.candidatesEnabled)
+        // Managed default files always show the standard (default-pack) text,
+        // regardless of the active pack — they are the reference surface.
+        const bundledPrompts = getBundledEditablePrompts(this.candidatesEnabled, "default")
         for (const definition of PROMPT_DEFINITIONS) {
             const bundledEditable = toEditablePromptText(
                 definition,

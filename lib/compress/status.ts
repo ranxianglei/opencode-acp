@@ -27,10 +27,6 @@ import { armBestSmartPlan, clearSmartPlan, getVisibleMessageIds } from "./smart-
 import { assignMessageRefs, repairNonMonotonicMessageRefs } from "../message-ids"
 import { saveSessionState } from "../state"
 
-const ACP_STATUS_TOOL_DESCRIPTION = `Show context status — overview includes compressible ranges (compression candidates when compress.candidates is enabled).
-
-No args: totals, compressed blocks, and ranges/candidates in one call. scope:"uncompressed": ranges only (view:"candidates" when compress.candidates is enabled; view:"ranges" for raw grouped ranges; view:"messages" for per-message listing with tool/sort filters). scope:"compressed": drill into blocks with full details (age, generation, consumed lineage).`
-
 function formatTokens(n: number): string {
     if (!Number.isFinite(n) || n <= 0) return "0"
     return n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n)
@@ -632,9 +628,10 @@ export function buildStatusReport(
 
 export function createAcpStatusTool(factoryCtx: ToolFactoryContext): ReturnType<typeof tool> {
     factoryCtx.prompts.reload()
+    const runtimePrompts = factoryCtx.prompts.getRuntimePrompts()
 
     return tool({
-        description: ACP_STATUS_TOOL_DESCRIPTION,
+        description: runtimePrompts.acpStatusDescription,
         args: {
             scope: tool.schema
                 .string()

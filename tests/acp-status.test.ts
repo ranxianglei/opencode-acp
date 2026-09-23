@@ -5,6 +5,24 @@ import type { ToolFactoryContext } from "../lib/compress/types"
 import type { CompressionBlock, PrunedMessageEntry, SessionState } from "../lib/state/types"
 import { singletonRegistry } from "./registry-stub"
 import { recordVisibleMessages } from "../lib/compress/smart-plan"
+import { getToolDescriptions } from "../lib/prompts/packs"
+
+// Factories read their tool description from the prompt store at creation time; pin the
+// mock to the default pack so description assertions test the shipped default surface.
+function makeDefaultPromptsMock() {
+    const descriptions = getToolDescriptions("default")
+    return {
+        reload() {},
+        getRuntimePrompts() {
+            return {
+                decompressDescription: descriptions.decompress,
+                searchContextDescription: descriptions.searchContext,
+                acpStatusDescription: descriptions.acpStatus,
+                acpContextRecapDescription: descriptions.acpContextRecap,
+            }
+        },
+    }
+}
 
 const SID = "session-acp-status-test"
 
@@ -94,7 +112,7 @@ function makeToolContext(
         registry: singletonRegistry(makeState(activeIds, blocks)),
         logger: { enabled: false } as any,
         config: {} as any,
-        prompts: { reload: () => {} } as any,
+        prompts: makeDefaultPromptsMock() as any,
     }
 }
 
@@ -278,7 +296,7 @@ test("acp_status: scope=uncompressed without config retains diagnostic range fal
         registry: singletonRegistry(state),
         logger: { enabled: false } as any,
         config: {} as any,
-        prompts: { reload: () => {} } as any,
+        prompts: makeDefaultPromptsMock() as any,
     }
     const statusTool = createAcpStatusTool(ctx)
     const result = await statusTool.execute(
@@ -355,7 +373,7 @@ test("acp_status: scope=uncompressed view=messages shows per-message listing", a
         registry: singletonRegistry(state),
         logger: { enabled: false } as any,
         config: {} as any,
-        prompts: { reload: () => {} } as any,
+        prompts: makeDefaultPromptsMock() as any,
     }
     const statusTool = createAcpStatusTool(ctx)
     const result = await statusTool.execute(
@@ -387,7 +405,7 @@ test("acp_status: scope=uncompressed view=messages with tool filter shows filter
         registry: singletonRegistry(state),
         logger: { enabled: false } as any,
         config: {} as any,
-        prompts: { reload: () => {} } as any,
+        prompts: makeDefaultPromptsMock() as any,
     }
     const statusTool = createAcpStatusTool(ctx)
     const result = await statusTool.execute(
@@ -501,7 +519,7 @@ test("acp_status: overview prefers cached systemPromptTokens over degraded visib
         registry: singletonRegistry(state),
         logger: { enabled: false } as any,
         config: {} as any,
-        prompts: { reload: () => {} } as any,
+        prompts: makeDefaultPromptsMock() as any,
     }
     const statusTool = createAcpStatusTool(ctx)
     const result = await statusTool.execute({} as any, { sessionID: SID } as any)
@@ -529,7 +547,7 @@ test("acp_status: overview counts reasoning as its own category (#371)", async (
         registry: singletonRegistry(state),
         logger: { enabled: false } as any,
         config: {} as any,
-        prompts: { reload: () => {} } as any,
+        prompts: makeDefaultPromptsMock() as any,
     }
     const statusTool = createAcpStatusTool(ctx)
     const result = await statusTool.execute({} as any, { sessionID: SID } as any)
@@ -555,7 +573,7 @@ test("acp_status: reasoning-only message appears in visible listing (#371)", asy
         registry: singletonRegistry(state),
         logger: { enabled: false } as any,
         config: {} as any,
-        prompts: { reload: () => {} } as any,
+        prompts: makeDefaultPromptsMock() as any,
     }
     const statusTool = createAcpStatusTool(ctx)
     const overview = await statusTool.execute({} as any, { sessionID: SID } as any)
@@ -586,7 +604,7 @@ test("acp_status: per-message drilldown includes reasoning tokens (#371)", async
         registry: singletonRegistry(state),
         logger: { enabled: false } as any,
         config: {} as any,
-        prompts: { reload: () => {} } as any,
+        prompts: makeDefaultPromptsMock() as any,
     }
     const statusTool = createAcpStatusTool(ctx)
     const result = await statusTool.execute(
