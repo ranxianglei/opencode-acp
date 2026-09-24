@@ -27,18 +27,6 @@ import { armBestSmartPlan, clearSmartPlan, getVisibleMessageIds } from "./smart-
 import { assignMessageRefs, repairNonMonotonicMessageRefs } from "../message-ids"
 import { saveSessionState } from "../state"
 
-const ACP_STATUS_TOOL_DESCRIPTION = `Show context status — overview includes compressible ranges (compression candidates when compress.candidates is enabled).
-
-No args: Overview with totals, compressed blocks, and compressible ranges (or candidates when enabled).
-scope:"uncompressed": Compressible ranges by default (view:"candidates" when compress.candidates is enabled). Use view:"ranges" for raw grouped ranges or view:"messages" for per-message listing.
-scope:"compressed": Drill into compressed blocks — list each with full details (age, generation, consumed lineage).
-
-Use this tool to:
-- See what's consuming context + compressible targets in one call (no args)
-- Focus on ranges only (scope:"uncompressed")
-- Find all messages of a specific tool type (scope:"uncompressed", view:"messages", tool:"bash")
-- Check block details before decompressing (scope:"compressed")`
-
 function formatTokens(n: number): string {
     if (!Number.isFinite(n) || n <= 0) return "0"
     return n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n)
@@ -640,9 +628,10 @@ export function buildStatusReport(
 
 export function createAcpStatusTool(factoryCtx: ToolFactoryContext): ReturnType<typeof tool> {
     factoryCtx.prompts.reload()
+    const runtimePrompts = factoryCtx.prompts.getRuntimePrompts()
 
     return tool({
-        description: ACP_STATUS_TOOL_DESCRIPTION,
+        description: runtimePrompts.acpStatusDescription,
         args: {
             scope: tool.schema
                 .string()

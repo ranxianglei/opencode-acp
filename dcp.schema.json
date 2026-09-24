@@ -661,6 +661,15 @@
                     "type": "boolean",
                     "default": false,
                     "description": "Opt-in MICRO/EPISODE compression candidates in nudges and acp_status (default false = legacy range lists)"
+                },
+                "promptPack": {
+                    "type": "string",
+                    "enum": [
+                        "default",
+                        "lean"
+                    ],
+                    "default": "default",
+                    "description": "Prompt surface pack. 'lean' selects the condensed system prompt and one-line tool descriptions (billion-context-pi style); 'default' keeps the full surfaces. Global scope only."
                 }
             },
             "default": {
@@ -694,7 +703,8 @@
                     "threshold": 2048
                 },
                 "completionReserveTokens": 32768,
-                "candidates": false
+                "candidates": false,
+                "promptPack": "default"
             }
         },
         "gc": {

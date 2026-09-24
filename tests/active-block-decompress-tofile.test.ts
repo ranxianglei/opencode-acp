@@ -12,6 +12,24 @@ import type {
     SessionState,
     WithParts,
 } from "../lib/state/types"
+import { getToolDescriptions } from "../lib/prompts/packs"
+
+// Factories read their tool description from the prompt store at creation time; pin the
+// mock to the default pack so description assertions test the shipped default surface.
+function makeDefaultPromptsMock() {
+    const descriptions = getToolDescriptions("default")
+    return {
+        reload() {},
+        getRuntimePrompts() {
+            return {
+                decompressDescription: descriptions.decompress,
+                searchContextDescription: descriptions.searchContext,
+                acpStatusDescription: descriptions.acpStatus,
+                acpContextRecapDescription: descriptions.acpContextRecap,
+            }
+        },
+    }
+}
 
 const SID = "session-active-decompress-tofile"
 
@@ -161,7 +179,7 @@ function makeToolContext(state: SessionState, history: WithParts[]): ToolFactory
             debug: noop,
         } as any,
         config: {} as any,
-        prompts: { reload: () => {} } as any,
+        prompts: makeDefaultPromptsMock() as any,
     }
 }
 
