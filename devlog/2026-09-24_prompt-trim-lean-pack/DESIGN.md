@@ -20,6 +20,7 @@
   - Per-provider/per-model pack scoping (bcp has it; deferred to v2 if demanded).
   - User-defined packs from directories (`<dir>/<name>.json` like bcp's pack sources).
   - Changing nudge thresholds, GC, or compression semantics.
+  - Message-mode compress prompts (`lib/prompts/compress-message.ts`) are intentionally pack-independent: `mode:"message"` + `promptPack:"lean"` combines the lean system prompt and lean tool descriptions with the full default message-mode compress prompt.
 
 ## 3. Current Architecture
 
