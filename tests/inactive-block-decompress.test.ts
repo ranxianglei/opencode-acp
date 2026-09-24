@@ -1,4 +1,5 @@
 import assert from "node:assert/strict"
+import { tmpdir } from "node:os"
 import test from "node:test"
 import { createDecompressTool } from "../lib/compress/decompress"
 import type { ToolFactoryContext } from "../lib/compress/types"
@@ -215,7 +216,7 @@ test("E2E: toFile on inactive block writes block summary", async () => {
 
     const result = await runDecompress(state, {
         blockId: "b5",
-        toFile: "/tmp/test-inactive-block-decompress.txt",
+        toFile: `${tmpdir()}/test-inactive-block-decompress.txt`,
     })
 
     assert.ok(!result.includes("Error"), `should not error: ${result}`)
@@ -223,7 +224,7 @@ test("E2E: toFile on inactive block writes block summary", async () => {
     assert.ok(!result.includes("(no content available)"), `should not write placeholder: ${result}`)
 
     const { readFileSync } = await import("fs")
-    const fileContent = readFileSync("/tmp/test-inactive-block-decompress.txt", "utf-8")
+    const fileContent = readFileSync(`${tmpdir()}/test-inactive-block-decompress.txt`, "utf-8")
     assert.equal(fileContent, "Important compressed content about feature X.")
 })
 
