@@ -22,7 +22,7 @@
 | `e3590987` | Phase 2: `compress.promptPack` lean pack + pack-aware tool descriptions + tests + devlog     |
 | `6870ee9b` | Test compat: adapt master's new decompress E2E mocks to the pack-aware factory (post-rebase) |
 | `5ba03aa3` | Test portability: decompress toFile path via os.tmpdir() instead of hard-coded /tmp      |
-| `1667e33c` | Review follow-up: pin factory→store description wiring + apply dual-review findings        |
+| `eff1fdb0` | Review follow-up: pin factory→store description wiring + apply dual-review findings        |
 
 Note: branch was rebased twice onto moving master (PR #448/#449 landed new E2E suites whose minimal prompt mocks predated the pack-aware factories); SHAs above are the final post-rebase ones.
 
