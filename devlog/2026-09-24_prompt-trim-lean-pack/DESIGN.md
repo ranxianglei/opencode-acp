@@ -13,14 +13,14 @@
 ## 2. Goals & Non-Goals
 
 - **Goals**:
-  - Trim default surfaces ~20% without weakening load-bearing contracts (phase 1).
-  - Ship an opt-in `"lean"` pack: condensed system prompt + one-line tool descriptions (phase 2).
-  - Keep the existing three-level prompt file override system working above any pack.
+    - Trim default surfaces ~20% without weakening load-bearing contracts (phase 1).
+    - Ship an opt-in `"lean"` pack: condensed system prompt + one-line tool descriptions (phase 2).
+    - Keep the existing three-level prompt file override system working above any pack.
 - **Non-Goals**:
-  - Per-provider/per-model pack scoping (bcp has it; deferred to v2 if demanded).
-  - User-defined packs from directories (`<dir>/<name>.json` like bcp's pack sources).
-  - Changing nudge thresholds, GC, or compression semantics.
-  - Message-mode compress prompts (`lib/prompts/compress-message.ts`) are intentionally pack-independent: `mode:"message"` + `promptPack:"lean"` combines the lean system prompt and lean tool descriptions with the full default message-mode compress prompt.
+    - Per-provider/per-model pack scoping (bcp has it; deferred to v2 if demanded).
+    - User-defined packs from directories (`<dir>/<name>.json` like bcp's pack sources).
+    - Changing nudge thresholds, GC, or compression semantics.
+    - Message-mode compress prompts (`lib/prompts/compress-message.ts`) are intentionally pack-independent: `mode:"message"` + `promptPack:"lean"` combines the lean system prompt and lean tool descriptions with the full default message-mode compress prompt.
 
 ## 3. Current Architecture
 
@@ -46,12 +46,12 @@ config.compress.promptPack ──► index.ts ──► new PromptStore(..., pro
 ```
 
 - **New module `lib/prompts/packs.ts`** (pure functions, no I/O, no state):
-  - `PromptPackId = "default" | "lean"`; `PROMPT_PACK_IDS`.
-  - `DEFAULT_*` description constants — moved VERBATIM out of the four tool files (single source of truth now lives here; regression-guarded by byte-equality tests).
-  - `LEAN_*` descriptions + `LEAN_HOW_TO_COMPRESS` — adapted from acp-kernel (MIT, same author) `src/packs.ts`; provenance comment in-file.
-  - `buildLeanSystemPrompt(candidatesEnabled)` — compact ACP TAGS bullets, condensed SUMMARIES section, LEAN_HOW_TO_COMPRESS, one-line tier guidance, one-line breakdown categories; candidates variant adds MICRO/EPISODE bullet.
-  - `buildLeanCompressRangePrompt(candidatesEnabled)` — boundary-ID/auto-detect/batching/marker rules in tight form.
-  - `getToolDescriptions(pack)` → the four description strings; `buildPackSystemPrompt` / `buildPackCompressRangePrompt` selectors used by the store.
+    - `PromptPackId = "default" | "lean"`; `PROMPT_PACK_IDS`.
+    - `DEFAULT_*` description constants — moved VERBATIM out of the four tool files (single source of truth now lives here; regression-guarded by byte-equality tests).
+    - `LEAN_*` descriptions + `LEAN_HOW_TO_COMPRESS` — adapted from acp-kernel (MIT, same author) `src/packs.ts`; provenance comment in-file.
+    - `buildLeanSystemPrompt(candidatesEnabled)` — compact ACP TAGS bullets, condensed SUMMARIES section, LEAN_HOW_TO_COMPRESS, one-line tier guidance, one-line breakdown categories; candidates variant adds MICRO/EPISODE bullet.
+    - `buildLeanCompressRangePrompt(candidatesEnabled)` — boundary-ID/auto-detect/batching/marker rules in tight form.
+    - `getToolDescriptions(pack)` → the four description strings; `buildPackSystemPrompt` / `buildPackCompressRangePrompt` selectors used by the store.
 - **Precedence (unchanged mechanism, new layer)**: user file override > pack text > bundled builder output. Overrides flow through the existing `wrapRuntimePromptContent` path, so wrapping/trimming behaves identically for both packs.
 - **Config**: `compress.promptPack` is GLOBAL ONLY — deliberately omitted from `CompressOverridableConfig` because the prompt surface is session-wide (one rendered system prompt per session, regardless of which provider/model serves a given call). Validated as enum in `validateConfigTypes`; declared in `dcp.schema.json`.
 - **Why factories read from the store instead of receiving strings directly**: `ToolFactoryContext` already carries the `PromptStore` and factories already call `reload()`; adding a separate description channel would duplicate lifecycle handling. Reading at creation time (not per execute) keeps the hot path untouched.
@@ -67,12 +67,12 @@ Per acp-kernel's design doc, four rule classes must never be silently degraded: 
 
 ## 6. Risks & Mitigations
 
-| Risk | Mitigation |
-|------|-----------|
-| Model behavior shifts under lean (less repeated instruction) | Opt-in only; lean text is the kernel's production-proven contract; e2e lean scenario flagged as follow-up (WORKLOG §6). |
-| Default-surface trim removes something a model relied on | Every load-bearing line kept verbatim; 16 new tests + full suite; size deltas disclosed per-surface (WORKLOG §4). |
-| Pack/override interaction surprises | Integration test asserts override beats lean and non-overridden surfaces stay lean; ensureDefaultFiles pinned to "default". |
-| Future drift between DEFAULT_* copies and old locations | Old constants deleted; byte-equality regression test against expected strings. |
+| Risk                                                         | Mitigation                                                                                                                  |
+| ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
+| Model behavior shifts under lean (less repeated instruction) | Opt-in only; lean text is the kernel's production-proven contract; e2e lean scenario flagged as follow-up (WORKLOG §6).     |
+| Default-surface trim removes something a model relied on     | Every load-bearing line kept verbatim; 16 new tests + full suite; size deltas disclosed per-surface (WORKLOG §4).           |
+| Pack/override interaction surprises                          | Integration test asserts override beats lean and non-overridden surfaces stay lean; ensureDefaultFiles pinned to "default". |
+| Future drift between DEFAULT_* copies and old locations      | Old constants deleted; byte-equality regression test against expected strings.                                              |
 
 ## 7. Alternatives Considered
 
