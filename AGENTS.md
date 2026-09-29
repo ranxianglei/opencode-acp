@@ -32,7 +32,7 @@ ACP is a hardened fork of [DCP](https://github.com/Tarquinen/opencode-dynamic-co
 | Field           | Value                                       |
 | --------------- | ------------------------------------------- |
 | npm package     | `opencode-acp`                              |
-| Current version | 1.10.0                                      |
+| Current version | 1.18.2                                      |
 | GitHub          | https://github.com/ranxianglei/opencode-acp |
 | License         | AGPL-3.0-or-later                           |
 | Author          | ranxianglei                                 |
