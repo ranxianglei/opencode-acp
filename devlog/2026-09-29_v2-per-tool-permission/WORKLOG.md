@@ -38,7 +38,7 @@
 
 | Commit | Description |
 |--------|-------------|
-| `ab42c8ed` | fix(v2): resolve host permission rules per real tool name |
+| `d719eefb` | fix(v2): resolve host permission rules per real tool name |
 
 ### Key Files
 
