@@ -795,6 +795,196 @@ test("renders the provider checkpoint from source data when the direct view has 
     assert.equal(projection.messages.length, 2)
 })
 
+function providerCheckpointSource(id: string): Record<string, unknown> {
+    return {
+        type: "compaction",
+        id,
+        time: { created: 3 },
+        status: "completed",
+        reason: "auto",
+        summary: "summary",
+        recent: "recent",
+        providerContext: {
+            version: 1,
+            provenance: {
+                providerID: "provider-a",
+                provider: "provider-a",
+                modelID: "model-a",
+                route: "responses",
+                protocol: "openai-responses",
+                endpoint: "https://provider.example/v1/responses",
+            },
+            messages: [],
+        },
+    }
+}
+
+function hostToolSource(id: string, callID: string): Record<string, unknown>[] {
+    return [
+        {
+            type: "tool",
+            id: callID,
+            name: "host_tool",
+            executed: false,
+            state: {
+                status: "completed",
+                input: { value: 1 },
+                content: [{ type: "text", text: "tool output" }],
+                time: { start: 2, end: 3 },
+                metadata: { source: "host" },
+            },
+            time: { created: 2 },
+        },
+    ]
+}
+
+test("keeps correlated tool results out of provider-checkpoint claims", () => {
+    const projectedBase = [
+        userSource("msg_u-456", "run it"),
+        assistantSource("msg_a-456", hostToolSource("msg_a-456", "call-456")),
+    ]
+    const outgoing = [
+        Message.make({ id: "msg_u-456", role: "user", content: "run it" }),
+        Message.make({
+            id: "msg_a-456",
+            role: "assistant",
+            content: [
+                {
+                    type: "tool-call" as const,
+                    id: "call-456",
+                    name: "host_tool",
+                    input: { value: 1 },
+                },
+            ],
+        }),
+        Message.make({
+            role: "tool",
+            content: [
+                {
+                    type: "tool-result" as const,
+                    id: "call-456",
+                    name: "host_tool",
+                    result: { type: "text" as const, value: "tool output" },
+                },
+            ],
+        }),
+    ]
+
+    // Control: without providerContext the compaction is a plain source and
+    // the role=tool result correlates to the assistant call directly.
+    const plain = normalize(
+        validatePublicMessages([
+            ...projectedBase,
+            { ...providerCheckpointSource("msg_c-plain"), providerContext: undefined },
+        ]),
+        outgoing,
+    )
+    assert.equal(plain.valid, true)
+    const plainOrigin = plain.entries
+        .find((entry) => entry.sourceMessageId === "msg_a-456")
+        ?.origins.find((origin) => origin.callId === "call-456")
+    assert.deepEqual(plainOrigin?.result, { messageIndex: 2, contentIndex: 0 })
+    assert.equal(plainOrigin?.originalContent.length, 2)
+
+    // With providerContext the checkpoint must not swallow the correlated
+    // role=tool result; exact correlation stays valid for the session.
+    const projection = normalize(
+        validatePublicMessages([...projectedBase, providerCheckpointSource("msg_c-456")]),
+        outgoing,
+    )
+    assert.equal(projection.valid, true)
+    const assistantEntry = projection.entries.find((entry) => entry.sourceMessageId === "msg_a-456")
+    assert.ok(assistantEntry)
+    assert.deepEqual(assistantEntry.outgoingMessageIndices, [1, 2])
+    const origin = assistantEntry.origins.find((candidate) => candidate.callId === "call-456")
+    assert.ok(origin)
+    assert.deepEqual(origin.result, { messageIndex: 2, contentIndex: 0 })
+    assert.equal(origin.originalContent.length, 2)
+
+    // The checkpoint window consisted solely of the reserved result, so the
+    // checkpoint decoded nothing: disclosed structurally, no normalized turn.
+    const checkpointEntry = projection.entries.find(
+        (entry) => entry.sourceMessageId === "msg_c-456",
+    )
+    assert.ok(checkpointEntry)
+    assert.equal(checkpointEntry.sourceType, "provider-checkpoint")
+    assert.equal(checkpointEntry.providerCheckpoint, true)
+    assert.deepEqual(checkpointEntry.outgoingMessageIndices, [])
+    assert.equal(checkpointEntry.normalizedMessageId, undefined)
+    assert.deepEqual(checkpointEntry.origins, [])
+    assert.equal(projection.messages.length, 2)
+
+    // ACP stays alive: the patch accepts and keeps every outgoing message,
+    // including the tool result, object-identical.
+    const result = applyV2ContextPatch(projection, structuredClone(projection.messages))
+    assert.equal(result.accepted, true)
+    if (!result.accepted) return
+    assert.equal(result.messages.length, 3)
+    for (let index = 0; index < outgoing.length; index++) {
+        assert.equal(result.messages[index], outgoing[index])
+    }
+})
+
+test("lets a provider checkpoint claim its tool-free remainder beside a reserved result", () => {
+    const projected = [
+        userSource("msg_u-457", "run it"),
+        assistantSource("msg_a-457", hostToolSource("msg_a-457", "call-457")),
+        providerCheckpointSource("msg_c-457"),
+    ]
+    const outgoing = [
+        Message.make({ id: "msg_u-457", role: "user", content: "run it" }),
+        Message.make({
+            id: "msg_a-457",
+            role: "assistant",
+            content: [
+                {
+                    type: "tool-call" as const,
+                    id: "call-457",
+                    name: "host_tool",
+                    input: { value: 1 },
+                },
+            ],
+        }),
+        Message.make({
+            role: "tool",
+            content: [
+                {
+                    type: "tool-result" as const,
+                    id: "call-457",
+                    name: "host_tool",
+                    result: { type: "text" as const, value: "tool output" },
+                },
+            ],
+        }),
+        Message.make({
+            id: "msg_decoded-457",
+            role: "assistant",
+            content: [{ type: "text", text: "decoded provider checkpoint" }],
+        }),
+    ]
+    const projection = normalize(validatePublicMessages(projected), outgoing)
+    assert.equal(projection.valid, true)
+    const assistantEntry = projection.entries.find((entry) => entry.sourceMessageId === "msg_a-457")
+    assert.ok(assistantEntry)
+    assert.deepEqual(assistantEntry.outgoingMessageIndices, [1, 2])
+    const origin = assistantEntry.origins.find((candidate) => candidate.callId === "call-457")
+    assert.ok(origin)
+    assert.deepEqual(origin.result, { messageIndex: 2, contentIndex: 0 })
+    assert.equal(origin.originalContent.length, 2)
+    // The reserved result stays with the assistant; the checkpoint keeps the
+    // tool-free remainder of its window.
+    const checkpointEntry = projection.entries.find(
+        (entry) => entry.sourceMessageId === "msg_c-457",
+    )
+    assert.ok(checkpointEntry)
+    assert.deepEqual(checkpointEntry.outgoingMessageIndices, [3])
+    const rendered = projection.messages
+        .flatMap((message) => message.parts ?? [])
+        .filter((part) => stringValue(part.__acpOrigin)?.startsWith("source:2:checkpoint:"))
+    assert.equal(rendered.length, 1)
+    assert.equal(stringValue(rendered[0]?.text), "decoded provider checkpoint")
+})
+
 function stringValue(value: unknown): string | undefined {
     return typeof value === "string" ? value : undefined
 }

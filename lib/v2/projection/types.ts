@@ -203,6 +203,10 @@ export interface Draft {
     protected: boolean
     allowSourceRemoval: boolean
     providerCheckpoint?: boolean
+    /** Set on provider-checkpoint drafts whose entire outgoing window was
+     *  reserved to correlated sources: the checkpoint decoded nothing into
+     *  this view and must not emit a normalized message (issue #456). */
+    whollyReserved?: boolean
     normalized?: WithParts
     owned: boolean
 }
