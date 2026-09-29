@@ -743,7 +743,7 @@ export function validateAcpAuthoredParts(message: AiMessageValue): V2PatchReject
 
 // Exported for focused unit tests of the protective invariants that survive the
 // #455 fix (duplicate-message-id, duplicate-call-id, invalid-tool-pair); the
-// curated ../lib/v2/projection barrel deliberately does not re-export it.
+// curated lib/v2/projection.ts barrel deliberately does not re-export it.
 export function validateFinalMessages(
     messages: readonly AiMessageValue[],
     mappedCallIds: ReadonlySet<string>,
@@ -1290,10 +1290,7 @@ export function applyV2ContextPatch(
                 if (
                     part.type !== "text" ||
                     !stringValue(part.text) ||
-                    !(
-                        stringValue(part.id)?.startsWith("prt_dcp_text_") ||
-                        stringValue(part.id)?.startsWith("prt_dcp_summary_")
-                    )
+                    !isAcpAuthoredPartId(stringValue(part.id))
                 ) {
                     return reject(
                         "unknown-origin",
