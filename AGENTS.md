@@ -44,7 +44,7 @@ ACP is a hardened fork of [DCP](https://github.com/Tarquinen/opencode-dynamic-co
 **Agent behavior rule (MANDATORY):** When a new issue/PR/request asks for **OpenCode 2.x / V2 plugin API support in this repo**, do NOT implement it here. Instead:
 
 1. Politely decline and explain that OpenCode 2.x is served by billion-context (link + the two install commands above).
-2. Point any still-valid V2 findings to https://github.com/ranxianglei/billion-context/issues .
+2. Point any still-valid V2 findings to https://github.com/ranxianglei/billion-context/issues.
 3. Close the issue with a brief note referencing this policy and #442.
 
 **Exception — do not over-apply:** A report may *mention* OpenCode 2.x but actually be a genuine **OpenCode 1.x** bug against live `master` code (e.g., permission handling in `index.ts` / `lib/host-permissions.ts`, or shared code under `lib/messages/`). Verify which tree the reported path lives on before redirecting. Genuine 1.x bugs stay in opencode-acp and are handled normally — never dismiss them just because the thread references V2.
