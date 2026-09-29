@@ -137,7 +137,10 @@ V1 和 V2 使用相同的 ACP 功能面：五个工具 `compress`、`decompress`
 OpenCode V2.0.3 不向 server plugin 暴露创建原生权限请求的能力。有效权限为
 `allow` 时工具正常执行；为 `deny` 时工具不会提供给模型且会阻止执行；为 `ask`
 时，ACP 会在修改状态前安全失败，并返回可操作的结果，要求选择 `allow` 或
-`deny`。V2 不会为 `ask` 打开交互式提示；V1 的权限行为不变。
+`deny`。V2 不会为 `ask` 打开交互式提示。在 V2 中，agent 权限规则按真实工具名
+（`compress`、`decompress`、`search_context`、`acp_status`、
+`acp_context_recap`）解析，采用 OpenCode 的有序 last-match 语义，因此针对
+某个 ACP 工具的规则不会影响其他工具。V1 的权限行为不变。
 
 OpenCode V2.0.3 没有在 assistant 完成文本持久化或显示前重写它的能力。因此，
 ACP 只会在历史 assistant 文本重新组装到发往模型的上下文时，清理模型臆造的

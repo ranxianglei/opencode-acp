@@ -162,9 +162,9 @@ test("V2 registers the five exact tools as direct tools with complete schemas", 
         ["compress", "decompress", "search_context", "acp_status", "acp_context_recap"],
     )
     for (const value of added) {
-        const tool = value as { input: unknown; options?: Record<string, unknown> }
+        const tool = value as { name: string; input: unknown; options?: Record<string, unknown> }
         assert.ok(tool.input)
-        assert.deepEqual(tool.options, { codemode: false, permission: "compress" })
+        assert.deepEqual(tool.options, { codemode: false, permission: tool.name })
     }
 })
 
@@ -337,7 +337,7 @@ test("V2 deny and ask return safe results before state acquisition or mutation",
 
     for (const [permission, rules, expected] of [
         ["deny", [], /disabled/i],
-        ["allow", [{ action: "compress", resource: "*", effect: "deny" }], /disabled/i],
+        ["allow", [{ action: "test", resource: "*", effect: "deny" }], /disabled/i],
         ["ask", [], /allow.*deny/i],
     ] as const) {
         const run = factory(state, rules, permission)
@@ -430,7 +430,7 @@ test("V2 ordered agent rules let a later allow override only a matching deny", a
     }
     const run = factory(state, [
         { action: "*", resource: "*", effect: "deny" },
-        { action: "compress", resource: "*", effect: "allow" },
+        { action: "test", resource: "*", effect: "allow" },
     ])
     const result = await createV2Tool(
         definition,
@@ -459,7 +459,7 @@ test("V2 agent allow overrides ACP ask, while ACP deny remains authoritative", a
         },
     }
 
-    const askRun = factory(state, [{ action: "compress", resource: "*", effect: "allow" }], "ask")
+    const askRun = factory(state, [{ action: "test", resource: "*", effect: "allow" }], "ask")
     const allowed = await createV2Tool(
         definition,
         askRun.context,
@@ -468,7 +468,7 @@ test("V2 agent allow overrides ACP ask, while ACP deny remains authoritative", a
     ).execute({}, v2Context())
     assert.equal(allowed.content, "allowed")
 
-    const denyRun = factory(state, [{ action: "compress", resource: "*", effect: "allow" }], "deny")
+    const denyRun = factory(state, [{ action: "test", resource: "*", effect: "allow" }], "deny")
     const denied = await createV2Tool(
         definition,
         denyRun.context,
@@ -477,6 +477,99 @@ test("V2 agent allow overrides ACP ask, while ACP deny remains authoritative", a
     ).execute({}, v2Context())
     assert.match(String(denied.content), /disabled/i)
     assert.equal(executed, 1)
+})
+
+test("V2 resolves host rules per real tool name so one tool's rule never leaks (issue #459)", async () => {
+    const names = ["compress", "decompress", "search_context", "acp_status", "acp_context_recap"]
+    const schema = z.object({})
+
+    const makeTool = (toolName: string) => {
+        const definition: SharedToolDefinition<typeof schema> = {
+            name: toolName,
+            description: toolName,
+            schema,
+            inputSchema: schema,
+            async execute() {
+                return `executed:${toolName}`
+            },
+        }
+        return async (rules: readonly HostPermissionRule[]) => {
+            const state = createSessionState()
+            state.sessionId = sessionID
+            const run = factory(state, rules)
+            return await createV2Tool(
+                definition,
+                run.context,
+                run.adapter,
+                run.hostPermissions,
+            ).execute({}, v2Context())
+        }
+    }
+
+    // A deny targeting `compress` must not silence any other ACP tool.
+    for (const toolName of names) {
+        const result = await makeTool(toolName)([
+            { action: "compress", resource: "*", effect: "deny" },
+        ])
+        if (toolName === "compress") {
+            assert.match(String(result.content), /disabled/i)
+            assert.deepEqual(result.metadata, {
+                acpPermission: "deny",
+                permission: "compress",
+                actionable: "choose allow or deny",
+            })
+        } else {
+            assert.equal(result.content, `executed:${toolName}`)
+        }
+    }
+
+    // Conversely, a deny targeting any other tool must not block compress.
+    for (const toolName of names.filter((value) => value !== "compress")) {
+        const blocked = await makeTool(toolName)([
+            { action: toolName, resource: "*", effect: "deny" },
+        ])
+        assert.match(String(blocked.content), /disabled/i)
+        assert.equal(blocked.metadata?.permission, toolName)
+        const compressResult = await makeTool("compress")([
+            { action: toolName, resource: "*", effect: "deny" },
+        ])
+        assert.equal(compressResult.content, "executed:compress")
+    }
+
+    // Granular `ask` fails closed for the targeted tool only; the other
+    // read-only tools keep executing instead of inheriting the refusal.
+    for (const toolName of names) {
+        const result = await makeTool(toolName)([
+            { action: "compress", resource: "*", effect: "ask" },
+        ])
+        if (toolName === "compress") {
+            assert.match(String(result.content), /interactive permission/i)
+            assert.match(String(result.content), /`compress` permission/i)
+            assert.equal(result.metadata?.acpPermission, "ask")
+        } else {
+            assert.equal(result.content, `executed:${toolName}`)
+        }
+    }
+    const askStatusRules = [{ action: "acp_status", resource: "*", effect: "ask" }]
+    assert.match(
+        String((await makeTool("acp_status")(askStatusRules)).content),
+        /`acp_status` permission/i,
+    )
+    assert.equal((await makeTool("compress")(askStatusRules)).content, "executed:compress")
+
+    // Reverse granularity: denying only compress leaves the four read-only
+    // tools allowed (ordered last-match: the specific rule comes last).
+    for (const toolName of names) {
+        const result = await makeTool(toolName)([
+            { action: "*", resource: "*", effect: "allow" },
+            { action: "compress", resource: "*", effect: "deny" },
+        ])
+        if (toolName === "compress") {
+            assert.match(String(result.content), /disabled/i)
+        } else {
+            assert.equal(result.content, `executed:${toolName}`)
+        }
+    }
 })
 
 test("actual ACP definitions retain their exact V2 names", () => {

@@ -103,10 +103,21 @@ export const compressDisabledByOpencode = (...permissionConfigs: PermissionConfi
     return match?.pattern === "*" && match.action === "deny"
 }
 
+/**
+ * Resolve the effective ACP permission for one tool.
+ *
+ * `toolName` is only consulted on the V2 branch, where ordered agent rules
+ * match by real tool name (`compress`, `decompress`, `search_context`,
+ * `acp_status`, `acp_context_recap`). It defaults to `"compress"` for the
+ * compress-specific callers (nudge gating); the legacy V1 branch stays keyed
+ * to the `compress` permission entry because V1 host configs have no
+ * per-tool entries for ACP tools.
+ */
 export const resolveEffectiveCompressPermission = (
     basePermission: PermissionAction,
     hostPermissions: HostPermissionSnapshot,
     agentName?: string,
+    toolName: string = "compress",
 ): PermissionAction => {
     if (basePermission === "deny") {
         return "deny"
@@ -114,7 +125,7 @@ export const resolveEffectiveCompressPermission = (
 
     const v2Rules = agentName ? hostPermissions.v2Agents?.[agentName] : undefined
     if (v2Rules) {
-        const permission = resolveV2Permission(v2Rules, "compress")
+        const permission = resolveV2Permission(v2Rules, toolName)
         return permission ?? basePermission
     }
 

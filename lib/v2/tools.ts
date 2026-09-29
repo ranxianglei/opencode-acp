@@ -37,10 +37,10 @@ export const V2_ACP_TOOL_NAMES = [
 
 type V2ToolContent = Exclude<NonNullable<V2ToolResult["content"]>, string>[number]
 
-const PERMISSION_ASK_MESSAGE =
-    "ACP cannot request an interactive permission on OpenCode V2.0.3. Set the active agent's `compress` permission to `allow` or `deny`, then retry."
-const PERMISSION_DENY_MESSAGE =
-    "ACP tool execution is disabled by the active agent or ACP configuration. Choose `allow` for the `compress` permission to enable it."
+const permissionAskMessage = (toolName: string) =>
+    `ACP cannot request an interactive permission on OpenCode V2.0.3. Set the active agent's \`${toolName}\` permission to \`allow\` or \`deny\`, then retry.`
+const permissionDenyMessage = (toolName: string) =>
+    `ACP tool execution is disabled by the active agent or ACP configuration. Choose \`allow\` for the \`${toolName}\` permission to enable it.`
 const SUBAGENT_DENY_MESSAGE =
     "ACP direct tools are disabled for child sessions when `allowSubAgents` is false."
 const LIFECYCLE_DENY_MESSAGE = "ACP is shutting down; this operation was not executed."
@@ -95,6 +95,7 @@ async function resolveToolPermission(
     host: V2HostAdapter,
     hostPermissions: HostPermissionSnapshot,
     context: V2ToolContext,
+    toolName: string,
     isActive: () => boolean = () => true,
 ): Promise<"ask" | "allow" | "deny"> {
     const basePermission = factoryCtx.config.compress.permission
@@ -103,7 +104,12 @@ async function resolveToolPermission(
     }
 
     if (!host.agentPermissions) {
-        return resolveEffectiveCompressPermission(basePermission, hostPermissions, context.agent)
+        return resolveEffectiveCompressPermission(
+            basePermission,
+            hostPermissions,
+            context.agent,
+            toolName,
+        )
     }
 
     try {
@@ -113,7 +119,12 @@ async function resolveToolPermission(
             ...(hostPermissions.v2Agents ?? {}),
             [context.agent]: rules,
         }
-        return resolveEffectiveCompressPermission(basePermission, hostPermissions, context.agent)
+        return resolveEffectiveCompressPermission(
+            basePermission,
+            hostPermissions,
+            context.agent,
+            toolName,
+        )
     } catch {
         // V2 has no supported permission-request fallback. Unknown policy is
         // therefore denied before the shared definition or session guard runs.
@@ -202,7 +213,7 @@ export function createV2Tool<Schema extends AnyToolSchema>(
         name: definition.name,
         description: definition.description,
         input: definition.schema,
-        options: { codemode: false, permission: "compress" },
+        options: { codemode: false, permission: definition.name },
         execute: async (rawInput, context) => {
             const executeBody = async (isActive: () => boolean = () => true) => {
                 if (!isActive())
@@ -238,6 +249,7 @@ export function createV2Tool<Schema extends AnyToolSchema>(
                         host,
                         hostPermissions,
                         context,
+                        definition.name,
                         isActive,
                     )
                 } catch (error) {
@@ -245,7 +257,7 @@ export function createV2Tool<Schema extends AnyToolSchema>(
                         "ACP could not resolve the active agent permission; execution was blocked.",
                         {
                             acpPermission: "deny",
-                            permission: "compress",
+                            permission: definition.name,
                             actionable: "choose allow or deny",
                             error: errorMessage(error),
                         },
@@ -254,16 +266,16 @@ export function createV2Tool<Schema extends AnyToolSchema>(
                 if (!isActive())
                     return errorResult(LIFECYCLE_DENY_MESSAGE, { acpError: "inactive" })
                 if (permissionResult === "deny") {
-                    return errorResult(PERMISSION_DENY_MESSAGE, {
+                    return errorResult(permissionDenyMessage(definition.name), {
                         acpPermission: "deny",
-                        permission: "compress",
+                        permission: definition.name,
                         actionable: "choose allow or deny",
                     })
                 }
                 if (permissionResult === "ask") {
-                    return errorResult(PERMISSION_ASK_MESSAGE, {
+                    return errorResult(permissionAskMessage(definition.name), {
                         acpPermission: "ask",
-                        permission: "compress",
+                        permission: definition.name,
                         actionable: "choose allow or deny",
                     })
                 }
