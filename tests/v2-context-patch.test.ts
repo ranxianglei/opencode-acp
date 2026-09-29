@@ -966,7 +966,12 @@ test("keeps patches alive when an uncorrelated provider checkpoint is compressed
                 messages: [],
             },
         },
-        { type: "user", id: "after-switch", time: { created: 2 }, text: "continue after the switch" },
+        {
+            type: "user",
+            id: "after-switch",
+            time: { created: 2 },
+            text: "continue after the switch",
+        },
     ]
     const originalUser = Message.make({
         id: "original-user",
@@ -983,10 +988,14 @@ test("keeps patches alive when an uncorrelated provider checkpoint is compressed
         role: "user",
         content: [{ type: "text", text: "continue after the switch" }],
     })
-    const projection = normalizeV2ProjectedHistory(projected, [originalUser, originalAssistant, nextUser], {
-        sessionID: "switch-restore",
-        currentModel: model,
-    })
+    const projection = normalizeV2ProjectedHistory(
+        projected,
+        [originalUser, originalAssistant, nextUser],
+        {
+            sessionID: "switch-restore",
+            currentModel: model,
+        },
+    )
     assert.equal(projection.valid, true)
     const entry = projection.entries.find(
         (candidate) => candidate.sourceMessageId === "switch-compaction",
