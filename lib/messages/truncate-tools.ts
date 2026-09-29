@@ -18,9 +18,26 @@ const PROTECT_RECENT_MESSAGES = 3
 // ~229k conversation + ~17k system + 16k max_tokens > 262144).
 export const OUTPUT_RESERVE_TOKENS = 16384
 
-// Sessions that already received the "window too small" ERROR (logged once
-// per session — the condition is stable for the process's lifetime).
+// Sessions that already received the "window too small" ERROR (#461). The
+// condition (window < system prompt + output reserve) is stable for the life
+// of a session, so each session normally logs once. The set is bounded: past
+// MAX_OVERHEAD_ERROR_SESSIONS entries the oldest key is evicted, so a
+// long-lived server never accumulates one key per session forever. Evicting a
+// still-active session costs at most one duplicate ERROR line — the next hit
+// re-inserts the key as newest and dedup resumes.
+export const MAX_OVERHEAD_ERROR_SESSIONS = 1024
 const overheadErrorLogged = new Set<string>()
+
+function recordOverheadError(sessionKey: string): boolean {
+    if (overheadErrorLogged.has(sessionKey)) return false
+    if (overheadErrorLogged.size >= MAX_OVERHEAD_ERROR_SESSIONS) {
+        // Set iteration order is insertion order → first value is the oldest.
+        const oldest = overheadErrorLogged.values().next().value
+        if (oldest !== undefined) overheadErrorLogged.delete(oldest)
+    }
+    overheadErrorLogged.add(sessionKey)
+    return true
+}
 
 function parseGcThreshold(
     threshold: number | `${number}%` | undefined,
@@ -63,11 +80,11 @@ export function truncateLargeToolOutputs(
     const overhead = (state.systemPromptTokens ?? 0) + OUTPUT_RESERVE_TOKENS
     const threshold = Math.min(configuredThreshold, effective.limit - overhead)
     if (threshold <= 0) {
-        // The condition is stable for the life of the process (limit and the
-        // system-prompt estimate do not flip back), so log once per session.
+        // The condition is stable for the life of the session (limit and the
+        // system-prompt estimate do not flip back), so log once per session —
+        // subject to the bounded-set eviction above (#461).
         const sessionKey = state.sessionId ?? "unknown"
-        if (!overheadErrorLogged.has(sessionKey)) {
-            overheadErrorLogged.add(sessionKey)
+        if (recordOverheadError(sessionKey)) {
             logger.error("ACP: model context window too small to fit overhead", {
                 session: state.sessionId,
                 limit: effective.limit,
