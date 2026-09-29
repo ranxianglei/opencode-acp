@@ -9,6 +9,11 @@ import {
     restoreMissingV2OpaqueSources,
     type V2Projection,
 } from "../lib/v2/projection"
+import {
+    isAcpAuthoredPartId,
+    validateAcpAuthoredParts,
+    validateFinalMessages,
+} from "../lib/v2/projection/patch"
 
 const model = { id: "model-a", providerID: "provider-a" }
 
@@ -991,7 +996,9 @@ test("preserves per-text occurrence order for interleaved repeated system messag
 })
 
 test("keeps extra host-added system messages unclaimed without rejecting", () => {
-    const projected = [{ type: "system", id: "host-projected", time: { created: 1 }, text: "shared text" }]
+    const projected = [
+        { type: "system", id: "host-projected", time: { created: 1 }, text: "shared text" },
+    ]
     const outgoing = [
         Message.make({ role: "system", content: "shared text" }),
         Message.make({ role: "system", content: "shared text" }),
@@ -1046,4 +1053,254 @@ test("still rejects ambiguous patchable sources that lack an exact lowered corre
     assert.ok(projection.rejection)
     if (projection.rejection)
         assert.match(projection.rejection.message, /no exact lowered outgoing match/i)
+})
+
+// --- issue #455: blanket AiMessage.make validation rejects live attachment messages ---
+
+function buildAttachmentFixture(): {
+    projection: V2Projection
+    outgoing: AiMessage[]
+    attachment: ContentPart
+} {
+    const projected = [
+        {
+            type: "system",
+            id: "system-1",
+            time: { created: 1 },
+            text: "do not rewrite this system message",
+        },
+        {
+            type: "user",
+            id: "user-with-file",
+            time: { created: 2 },
+            text: "safe text",
+            files: [
+                {
+                    data: "image-bytes",
+                    mime: "image/png",
+                    source: { type: "inline" },
+                    name: "image.png",
+                },
+            ],
+        },
+    ]
+    const outgoing: AiMessage[] = [
+        Message.make({ role: "system", content: "do not rewrite this system message" }),
+        Message.make({
+            id: "user-with-file",
+            role: "user",
+            content: [
+                { type: "text", text: "safe text" },
+                {
+                    type: "media",
+                    mediaType: "image/png",
+                    data: "image-bytes",
+                    filename: "image.png",
+                },
+            ],
+        }),
+        Message.make({ id: "uncorrelated", role: "user", content: "survive me" }),
+    ]
+    const projection = normalizeV2ProjectedHistory(projected, outgoing, {
+        sessionID: "opaque-session",
+        currentModel: model,
+    })
+    // Return the STORED media part (outgoing[1].content[1]), not the literal fed to Message.make:
+    // make normalizes content parts, so only the stored object flows through the patch. It is both
+    // the object that must survive by identity and the target of a 2.0.18-style schema rejection.
+    return { projection, outgoing, attachment: outgoing[1].content[1] as ContentPart }
+}
+
+// Simulates @opencode/ai >= 2.0.18, where MediaPart.media is an Asset-instance nominal
+// type only the host's own module copy satisfies: ACP's copy of AiMessage.make rejects any
+// message carrying such a host-owned part. Version-independent because the same make binding
+// patch.ts imports is intercepted; pre-fix this throws on the host media message (rolling the
+// patch back), post-fix ACP never hands that message to make so it never fires.
+function withHostSchemaRejection<T>(
+    foreignParts: readonly unknown[],
+    body: () => T,
+): { result: T; makeCalls: readonly unknown[] } {
+    const carrier = Message as unknown as { make: (input: unknown) => unknown }
+    const originalMake = carrier.make
+    const makeCalls: unknown[] = []
+    carrier.make = (input: unknown) => {
+        makeCalls.push(input)
+        const content = (input as { content?: unknown })?.content
+        if (Array.isArray(content) && content.some((part) => foreignParts.includes(part))) {
+            throw new Error("Asset instanceof check failed (simulated @opencode/ai 2.0.18)")
+        }
+        return originalMake(input)
+    }
+    try {
+        return { result: body(), makeCalls }
+    } finally {
+        carrier.make = originalMake
+    }
+}
+
+function assertNoHostMediaPassedToMake(makeCalls: readonly unknown[]): void {
+    for (const call of makeCalls) {
+        const content = (call as { content?: unknown })?.content
+        assert.ok(
+            !(Array.isArray(content) && content.some((part) => part.type === "media")),
+            "AiMessage.make was invoked on a host-owned media message",
+        )
+    }
+}
+
+test("T1.1 accepts a live attachment-bearing message under host schema rejection (#455)", () => {
+    const { projection, attachment } = buildAttachmentFixture()
+    const transformed = clonedMessages(projection)
+    transformed
+        .find((message) => message.info.id === "user-with-file")!
+        .parts.find((part) => part.type === "text")!.text = "safe text edited"
+    const { result, makeCalls } = withHostSchemaRejection([attachment], () =>
+        applyV2ContextPatch(projection, transformed),
+    )
+    assert.equal(result.accepted, true)
+    assertNoHostMediaPassedToMake(makeCalls)
+})
+
+test("T1.2 preserves the host attachment by object identity through the fixed patch (#455)", () => {
+    const { projection, attachment } = buildAttachmentFixture()
+    const transformed = clonedMessages(projection)
+    transformed
+        .find((message) => message.info.id === "user-with-file")!
+        .parts.find((part) => part.type === "text")!.text = "safe text edited"
+    const { result } = withHostSchemaRejection([attachment], () =>
+        applyV2ContextPatch(projection, transformed),
+    )
+    assert.equal(result.accepted, true)
+    if (!result.accepted) return
+    const userMessage = result.messages.find((message) => message.id === "user-with-file")!
+    assert.ok(
+        userMessage.content.some((part) => part === attachment),
+        "host attachment lost or deep-cloned",
+    )
+    assert.equal(userMessage.content.find((part) => part.type === "text")!.text, "safe text edited")
+})
+
+test("T1.3 accepts an ACP prune of a text part on an attachment-bearing message (#455)", () => {
+    const { projection, attachment } = buildAttachmentFixture()
+    const transformed = clonedMessages(projection)
+    const userMessage = transformed.find((message) => message.info.id === "user-with-file")!
+    // Prune the text down to nothing while keeping the part (and its opaque media sibling); a full
+    // part removal is refused by the orthogonal opaque-origin guard, not the #455 schema path.
+    userMessage.parts.find((part) => part.type === "text")!.text = ""
+    const { result, makeCalls } = withHostSchemaRejection([attachment], () =>
+        applyV2ContextPatch(projection, transformed),
+    )
+    assert.equal(result.accepted, true)
+    if (!result.accepted) return
+    const outUser = result.messages.find((message) => message.id === "user-with-file")!
+    assert.ok(
+        outUser.content.some((part) => part === attachment),
+        "host attachment lost after prune",
+    )
+    assertNoHostMediaPassedToMake(makeCalls)
+})
+
+test("T1.4 delta check validates only ACP-authored parts and ignores provider parts (#455)", () => {
+    // Provider media ignored + well-formed ACP text part -> accepted.
+    assert.equal(
+        validateAcpAuthoredParts({
+            id: "host-msg",
+            role: "assistant",
+            content: [
+                { type: "media", mediaType: "image/png", data: "bytes", filename: "x.png" },
+                { type: "text", id: "prt_dcp_text_0123456789abcdef", text: "acp note" },
+            ],
+        } as unknown as Parameters<typeof validateAcpAuthoredParts>[0]),
+        undefined,
+    )
+    // ACP part id but non-string text -> rejected invalid-schema.
+    const badText = validateAcpAuthoredParts({
+        id: "host-msg",
+        role: "assistant",
+        content: [{ type: "text", id: "prt_dcp_summary_0123456789abcdef", text: 123 }],
+    } as unknown as Parameters<typeof validateAcpAuthoredParts>[0])
+    assert.notEqual(badText, undefined)
+    if (badText) assert.equal(badText.rejection.code, "invalid-schema")
+    // ACP part id but wrong content type -> rejected.
+    const badType = validateAcpAuthoredParts({
+        id: "host-msg",
+        role: "assistant",
+        content: [
+            { type: "tool-call", id: "prt_dcp_text_0123456789abcdef", name: "read", input: {} },
+        ],
+    } as unknown as Parameters<typeof validateAcpAuthoredParts>[0])
+    assert.notEqual(badType, undefined)
+    if (badType) assert.equal(badType.rejection.code, "invalid-schema")
+    // Provider-only malformed part -> ignored (not ACP-authored).
+    assert.equal(
+        validateAcpAuthoredParts({
+            id: "host-msg",
+            role: "user",
+            content: [{ type: "media", mediaType: "image/png", data: "bytes" }],
+        } as unknown as Parameters<typeof validateAcpAuthoredParts>[0]),
+        undefined,
+    )
+    assert.equal(isAcpAuthoredPartId("prt_dcp_text_abc"), true)
+    assert.equal(isAcpAuthoredPartId("prt_dcp_summary_abc"), true)
+    assert.equal(isAcpAuthoredPartId("prt_other_abc"), false)
+    assert.equal(isAcpAuthoredPartId(undefined), false)
+})
+
+test("T1.5 protective invariants still reject malformed final patches (#455)", () => {
+    const dup = validateFinalMessages(
+        [
+            { id: "dup", role: "user", content: "a" } as unknown as Parameters<
+                typeof validateFinalMessages
+            >[0][number],
+            { id: "dup", role: "user", content: "b" } as unknown as Parameters<
+                typeof validateFinalMessages
+            >[0][number],
+        ],
+        new Set<string>(),
+        new Set<string>(),
+        new Set<object>(),
+    )
+    assert.notEqual(dup, undefined)
+    if (dup) assert.equal(dup.rejection.code, "duplicate-message-id")
+
+    const orphanResult = validateFinalMessages(
+        [
+            {
+                id: "t",
+                role: "tool",
+                content: [{ type: "tool-result", id: "call-x", output: {} }],
+            } as unknown as Parameters<typeof validateFinalMessages>[0][number],
+        ],
+        new Set<string>(["call-x"]),
+        new Set<string>(),
+        new Set<object>(),
+    )
+    assert.notEqual(orphanResult, undefined)
+    if (orphanResult) assert.equal(orphanResult.rejection.code, "invalid-tool-pair")
+
+    const removedStillPresent = validateFinalMessages(
+        [
+            {
+                id: "a",
+                role: "assistant",
+                content: [{ type: "tool-call", id: "call-y", name: "read", input: {} }],
+            } as unknown as Parameters<typeof validateFinalMessages>[0][number],
+        ],
+        new Set<string>(["call-y"]),
+        new Set<string>(["call-y"]),
+        new Set<object>(),
+    )
+    assert.notEqual(removedStillPresent, undefined)
+    if (removedStillPresent) assert.equal(removedStillPresent.rejection.code, "invalid-tool-pair")
+})
+
+test("T1.5b order shift of retained sources is rejected as invalid-order (#455)", () => {
+    const { projection } = buildProjection()
+    const transformed = clonedMessages(projection)
+    const i = transformed.findIndex((message) => message.info.id === "u-1")
+    const j = transformed.findIndex((message) => message.info.id === "u-2")
+    ;[transformed[i], transformed[j]] = [transformed[j], transformed[i]]
+    const result = applyV2ContextPatch(projection, transformed)
+    assert.equal(result.accepted, false)
+    if (!result.accepted) assert.equal(result.rejection.code, "invalid-order")
 })

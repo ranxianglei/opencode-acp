@@ -702,10 +702,53 @@ function outputResultIds(messages: readonly AiMessageValue[]): Set<string> {
     return ids
 }
 
-function validateFinalMessages(
+/**
+ * ACP-authored content parts always carry a deterministic part id
+ * (`prt_dcp_text_*` / `prt_dcp_summary_*`, minted in lib/messages/utils.ts).
+ * Provider-owned parts never use these prefixes, so this reliably separates
+ * "a part ACP wrote" from "a provider part ACP merely carried through".
+ */
+export function isAcpAuthoredPartId(id: string | undefined): boolean {
+    if (!id) return false
+    return id.startsWith("prt_dcp_text_") || id.startsWith("prt_dcp_summary_")
+}
+
+/**
+ * Delta validation for an ACP-cloned host message.
+ *
+ * A clone mixes provider-owned parts (media, provider metadata, tool results)
+ * with text parts ACP authored. Public `AiMessage.make` cannot validate such a
+ * clone: @opencode/ai >= 2.0.18 models media as an Asset-instance nominal type
+ * only the host's own module copy satisfies, so ACP's copy rejects valid host
+ * data and rolls the whole patch back (issue #455). Validate only ACP-authored
+ * parts: every ACP part id must carry a well-formed text payload. Provider
+ * parts are trusted-valid and left untouched.
+ *
+ * Exported for a focused unit test (T1.4); also the defense-in-depth backstop
+ * for the assembled outgoing message.
+ */
+export function validateAcpAuthoredParts(message: AiMessageValue): V2PatchRejected | undefined {
+    for (const part of aiContent(message)) {
+        const partId = contentId(part)
+        if (!isAcpAuthoredPartId(partId)) continue
+        if (contentType(part) !== "text" || contentText(part) === undefined) {
+            return reject(
+                "invalid-schema",
+                `ACP-authored part ${partId} is not a well-formed text part`,
+            )
+        }
+    }
+    return undefined
+}
+
+// Exported for focused unit tests of the protective invariants that survive the
+// #455 fix (duplicate-message-id, duplicate-call-id, invalid-tool-pair); the
+// curated ../lib/v2/projection barrel deliberately does not re-export it.
+export function validateFinalMessages(
     messages: readonly AiMessageValue[],
     mappedCallIds: ReadonlySet<string>,
     removedCallIds: ReadonlySet<string>,
+    authored: ReadonlySet<object>,
 ): V2PatchRejected | undefined {
     const ids = new Set<string>()
     const calls = outputCallIds(messages)
@@ -718,16 +761,30 @@ function validateFinalMessages(
                 return reject("duplicate-message-id", `Final message ID ${id} is duplicated`)
             ids.add(id)
         }
-        try {
-            // Message.make is the public @opencode/ai 2.0.3 schema/runtime
-            // validator. The returned class is not used, so provider-owned
-            // objects retain their original identity and unknown extensions.
-            AiMessage.make(message)
-        } catch (error) {
-            return reject(
-                "invalid-schema",
-                `Final V2 message schema is invalid: ${error instanceof Error ? error.message : String(error)}`,
-            )
+        // Only ACP-authored outgoing messages are validated here. Provider-owned
+        // messages ACP never touched are passed through untouched; running
+        // AiMessage.make over them validates host-owned data (e.g. @opencode/ai
+        // 2.0.18 Media.Asset instances) against a nominal identity ACP's own
+        // module copy cannot satisfy, which rejects valid live messages and rolls
+        // the whole patch back (issue #455).
+        if (authored.has(message)) {
+            if (isAcpOwnedId(id)) {
+                // Fully ACP-composed insertion (see makeInsertedMessage): every
+                // part is ACP-authored text, so the public schema validator applies.
+                try {
+                    AiMessage.make(message)
+                } catch (error) {
+                    return reject(
+                        "invalid-schema",
+                        `Final V2 message schema is invalid: ${error instanceof Error ? error.message : String(error)}`,
+                    )
+                }
+            } else {
+                // ACP-cloned host message: nominal validation would trip over the
+                // provider parts ACP did not author. Validate only ACP's own parts.
+                const deltaError = validateAcpAuthoredParts(message)
+                if (deltaError) return deltaError
+            }
         }
         for (const part of aiContent(message)) {
             if (contentType(part) !== "tool-result") continue
@@ -1462,10 +1519,20 @@ export function applyV2ContextPatch(
             appendAt(index + 1)
         }
 
+        // Every ACP-authored outgoing message is either a replacement (an ACP edit
+        // of a host message, or an insertion occupying an existing slot) or a fresh
+        // insertion. Provider messages ACP never touched stay put and are excluded
+        // on purpose so validateFinalMessages skips their nominal re-validation
+        // (see issue #455).
+        const authoredMessages = new Set<object>([
+            ...replacements.values(),
+            ...insertions.map((entry) => entry.message),
+        ])
         const finalError = validateFinalMessages(
             finalMessages,
             mappedCallIds,
             new Set(removedCallIds),
+            authoredMessages,
         )
         if (finalError) return finalError
         const previousApplied = appliedPatchStates.get(projection)
