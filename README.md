@@ -154,7 +154,11 @@ OpenCode V2.0.3 does not expose native permission-request creation to server
 plugins. Effective `allow` executes ACP tools; `deny` does not advertise them
 and blocks execution; `ask` fails closed before state mutation and returns an
 actionable result telling you to choose `allow` or `deny`. `ask` does not open
-an interactive prompt on V2. The V1 permission behavior is unchanged.
+an interactive prompt on V2. On V2, agent permission rules resolve per real
+tool name (`compress`, `decompress`, `search_context`, `acp_status`,
+`acp_context_recap`) using OpenCode's ordered last-match semantics, so a rule
+targeting one ACP tool does not affect the others. The V1 permission behavior
+is unchanged.
 
 OpenCode V2.0.3 cannot rewrite completed assistant text before persistence or
 display. ACP instead sanitizes hallucinated ACP/DCP tags when historical
