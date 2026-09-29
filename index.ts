@@ -10,8 +10,8 @@ import {
     createSearchContextTool,
 } from "./lib/compress"
 import {
+    applyAcpToolPermissions,
     compressDisabledByOpencode,
-    hasExplicitToolPermission,
     type HostPermissionSnapshot,
 } from "./lib/host-permissions"
 import { Logger } from "./lib/logger"
@@ -249,14 +249,12 @@ const server: Plugin = (async (ctx) => {
                 }
             }
 
-            if (!hasExplicitToolPermission(opencodeConfig.permission, "compress")) {
-                const permission = opencodeConfig.permission ?? {}
-                opencodeConfig.permission = {
-                    ...permission,
-                    compress: config.compress.permission,
-                    acp_status: "allow",
-                } as typeof permission
-            }
+            // [#457] Explicit user decisions in the host permission map are
+            // never overridden — ACP's defaults apply only to absent keys.
+            opencodeConfig.permission = applyAcpToolPermissions(
+                opencodeConfig.permission,
+                config.compress.permission,
+            ) as typeof opencodeConfig.permission
 
             hostPermissions.global = opencodeConfig.permission
             hostPermissions.agents = Object.fromEntries(

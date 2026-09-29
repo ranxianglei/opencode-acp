@@ -1,6 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 import {
+    applyAcpToolPermissions,
     compressDisabledByOpencode,
     hasExplicitToolPermission,
     resolveEffectiveCompressPermission,
@@ -101,4 +102,44 @@ test("explicit permission detection works without Object.hasOwn", () => {
     } finally {
         Object.hasOwn = originalHasOwn
     }
+})
+
+test("applyAcpToolPermissions defaults compress and acp_status when no host map", () => {
+    assert.deepEqual(applyAcpToolPermissions(undefined, "allow"), {
+        compress: "allow",
+        acp_status: "allow",
+    })
+})
+
+test("applyAcpToolPermissions preserves unrelated host rules", () => {
+    assert.deepEqual(applyAcpToolPermissions({ bash: "ask" }, "ask"), {
+        bash: "ask",
+        compress: "ask",
+        acp_status: "allow",
+    })
+})
+
+test("#457 explicit acp_status deny survives the config write", () => {
+    assert.deepEqual(applyAcpToolPermissions({ acp_status: "deny" }, "allow"), {
+        acp_status: "deny",
+        compress: "allow",
+    })
+})
+
+test("#457 explicit acp_status ask survives the config write", () => {
+    assert.deepEqual(applyAcpToolPermissions({ acp_status: "ask" }, "allow"), {
+        acp_status: "ask",
+        compress: "allow",
+    })
+})
+
+test("explicit compress rule defers fully — map returned unchanged", () => {
+    const original = { compress: "deny", acp_status: "allow" }
+    assert.equal(applyAcpToolPermissions(original, "allow"), original)
+})
+
+test("explicit compress rule defers fully — no acp_status injected", () => {
+    assert.deepEqual(applyAcpToolPermissions({ compress: "deny" }, "allow"), {
+        compress: "deny",
+    })
 })

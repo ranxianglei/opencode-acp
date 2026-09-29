@@ -99,3 +99,30 @@ export const hasExplicitToolPermission = (
 ): boolean => {
     return permissionConfig ? Object.prototype.hasOwnProperty.call(permissionConfig, tool) : false
 }
+
+/**
+ * Merge ACP's tool permissions into the host map. An explicit user `compress`
+ * rule means the user owns the map (returned unchanged). Otherwise write
+ * `compress` + default `acp_status: "allow"` — but never override an explicit
+ * user `acp_status` ([#457]: it used to be silently rewritten to `"allow"`,
+ * inverting the decision; the host reads its own permissions from this same map).
+ */
+export const applyAcpToolPermissions = (
+    permissionConfig: PermissionConfig,
+    compressPermission: PermissionAction,
+): Record<string, PermissionValue> => {
+    if (permissionConfig && hasExplicitToolPermission(permissionConfig, "compress")) {
+        return permissionConfig
+    }
+
+    const next: Record<string, PermissionValue> = {
+        ...(permissionConfig ?? {}),
+        compress: compressPermission,
+    }
+
+    if (!hasExplicitToolPermission(permissionConfig, "acp_status")) {
+        next.acp_status = "allow"
+    }
+
+    return next
+}
