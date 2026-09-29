@@ -99,7 +99,13 @@ export interface V2ProvenanceEntry {
      * outgoing message as its own opaque host entry instead of inferring
      * ownership from array position. Residual limitation: when exactly one
      * candidate sits in the window ACP claims it as the decoded checkpoint, so
-     * a single re-expanded original is indistinguishable from it positionally.
+     * a single re-expanded original is indistinguishable from it positionally;
+     * with multiple checkpoints in the same region a later checkpoint may claim
+     * an index reserved by an earlier assistant's tool call (benign: the index
+     * renders as opaque text either way). A third empty-indices shape exists
+     * when the whole window was reserved to correlated sources (issue #456):
+     * the checkpoint emits no normalized message at all (`normalizedMessageId`
+     * stays undefined), so there is nothing to restore or drop.
      */
     providerCheckpoint?: boolean
 }

@@ -55,3 +55,8 @@ buildProviderCheckpoint
 - **Move result correlation before checkpoint claiming** — rejected: inverts the deliberate ordering from #425 ("Claiming is done after checkpoint regions so decoded provider messages are kept opaque rather than accidentally attributed to an assistant call"); a decoded provider message containing a tool-result part would be misattributed.
 - **Let the checkpoint keep the stolen index but also share it with the assistant** — rejected: one outgoing index cannot carry two provenances; the patcher's opaque/owned accounting assumes exclusive ownership.
 - **Reject the checkpoint (fail the session) when its window is reserved** — rejected: fail-closed on benign shapes is exactly what made #456 severe; structural disclosure keeps ACP alive.
+
+## 6. Restore-Layer Consequence (found in code review)
+
+- The wholly-reserved shape is the first provider-checkpoint entry with no `normalizedMessageId`. `restoreMissingV2OpaqueSources` (`lib/v2/projection/restore.ts`) runs on every transform from `lib/v2/context.ts` and rejects any protected entry lacking a normalized message — which would have re-created the same session-wide ACP outage one layer downstream, with a different log line.
+- **Chosen**: exempt `entry.providerCheckpoint` in `rejectsMissingNormalizedSource`. Rationale: such an entry has no normalized message by construction, so nothing can be "missing" from the transformed sequence; there is also nothing to clone in `appendRestored` (the #425 skip for empty-index checkpoints already handles that path). Alternatives — synthesizing a placeholder message (fabricates content the host never sent) or special-casing in context.ts (scatters the invariant) — both worse.

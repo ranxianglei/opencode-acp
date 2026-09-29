@@ -45,7 +45,8 @@
 - **Correctness**:
   - [x] Under `providerContext`, the repro shape yields `valid=true`, tool origin `result = {messageIndex: 2, contentIndex: 0}`, `originalContent.length === 2`.
   - [x] The wholly-reserved checkpoint emits no normalized message: entry has `providerCheckpoint: true`, `outgoingMessageIndices: []`, no `normalizedMessageId`, no origins; no contentless assistant turn enters `projection.messages`.
-  - [x] The patcher accepts the projection and keeps every outgoing message object-identical (ACP stays alive).
+   - [x] The patcher accepts the projection and keeps every outgoing message object-identical (ACP stays alive).
+   - [x] Restore layer: with the wholly-reserved checkpoint absent from the transformed sequence, `restoreMissingV2OpaqueSources` accepts the patch instead of rejecting with "has no normalized source message" (found in code review; without this exemption the same session-wide ACP outage reappears one layer downstream in `lib/v2/context.ts`).
   - [x] Partial-window guard: a checkpoint whose window mixes one reserved result index and one free index keeps the tool-free remainder (`outgoingMessageIndices` = free index) and renders it opaque.
   - [x] Control without `providerContext` unchanged: same result pointer as before.
   - [x] New tests fail when the fix is reverted (verified via temporary revert of `lib/v2/projection`).

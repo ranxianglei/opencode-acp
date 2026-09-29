@@ -1014,3 +1014,103 @@ test("keeps patches alive when an uncorrelated provider checkpoint is compressed
     const patch = applyV2ContextPatch(projection, structuredClone(result.messages))
     assert.equal(patch.accepted, true)
 })
+
+test("keeps patches alive when a wholly-reserved provider checkpoint emits no normalized message", () => {
+    const projected = [
+        { type: "user", id: "reserved-user", time: { created: 1 }, text: "run it" },
+        {
+            type: "assistant",
+            id: "reserved-assistant",
+            time: { created: 2 },
+            agent: "code",
+            model,
+            content: [
+                {
+                    type: "tool",
+                    id: "call-456",
+                    name: "host_tool",
+                    executed: false,
+                    state: {
+                        status: "completed",
+                        input: { value: 1 },
+                        content: [{ type: "text", text: "tool output" }],
+                        time: { start: 2, end: 3 },
+                        metadata: { source: "host" },
+                    },
+                },
+            ],
+        },
+        {
+            type: "compaction",
+            id: "reserved-checkpoint",
+            time: { created: 3 },
+            status: "completed",
+            reason: "auto",
+            summary: "earlier work summary",
+            recent: "recent context tail",
+            providerContext: {
+                version: 1,
+                provenance: {
+                    providerID: "provider-a",
+                    provider: "provider-a",
+                    modelID: "model-a",
+                    route: "responses",
+                    protocol: "openai-responses",
+                    endpoint: "https://provider.example/v1/responses",
+                },
+                messages: [],
+            },
+        },
+    ]
+    const outgoing = [
+        Message.make({ id: "reserved-user", role: "user", content: "run it" }),
+        Message.make({
+            id: "reserved-assistant",
+            role: "assistant",
+            content: [
+                {
+                    type: "tool-call" as const,
+                    id: "call-456",
+                    name: "host_tool",
+                    input: { value: 1 },
+                },
+            ],
+        }),
+        Message.make({
+            role: "tool",
+            content: [
+                {
+                    type: "tool-result" as const,
+                    id: "call-456",
+                    name: "host_tool",
+                    result: { type: "text" as const, value: "tool output" },
+                },
+            ],
+        }),
+    ]
+    const projection = normalizeV2ProjectedHistory(projected, outgoing, {
+        sessionID: "reserved-restore",
+        currentModel: model,
+    })
+    assert.equal(projection.valid, true)
+    const entry = projection.entries.find(
+        (candidate) => candidate.sourceMessageId === "reserved-checkpoint",
+    )!
+    // The checkpoint's entire window was reserved to the correlated tool
+    // result, so it decoded nothing and emitted no normalized message.
+    assert.equal(entry.providerCheckpoint, true)
+    assert.deepEqual(entry.outgoingMessageIndices, [])
+    assert.equal(entry.normalizedMessageId, undefined)
+
+    // Pre-fix, restore rejected the whole patch here ("has no normalized
+    // source message"), discarding every ACP edit for the rest of the session.
+    const result = restoreMissingV2OpaqueSources(projection, projection.messages)
+    assert.equal(result.accepted, true)
+    if (!result.accepted) return
+    assert.deepEqual(result.restoredMessageIds, [])
+    assert.equal(result.messages.length, projection.messages.length)
+
+    // The full production pipeline stays green after the skip.
+    const patch = applyV2ContextPatch(projection, structuredClone(result.messages))
+    assert.equal(patch.accepted, true)
+})
