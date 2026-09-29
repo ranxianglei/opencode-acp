@@ -6,7 +6,10 @@
 - Status: InProgress
 - Priority: P0 (BLOCKER per issue)
 - Owner: ework-daemon
-- References: https://github.com/ranxianglei/opencode-acp/issues/457
+- References:
+    - https://github.com/ranxianglei/opencode-acp/issues/457 (BLOCKER — exact own-key case)
+    - https://github.com/ranxianglei/opencode-acp/issues/465 (MINOR — wildcard case; owner grouped it
+      with #457 for a proper fix)
 
 ## 1. Background & Problem Statement
 
@@ -19,11 +22,15 @@
   `hostPermissions.global`, and since the V1 host reads its own permissions from the same
   object, the deny is not honoured by anyone. No log, no error. Recovery requires editing
   the config and restarting.
-- **Expected behavior**: An explicit user `permission.acp_status` value must survive the
-  config write untouched. The `"allow"` default applies only when the key is absent.
+- **Expected behavior**: A user decision on `permission.acp_status` must survive the config
+  write untouched — whether expressed as an exact key (`"acp_status": "deny"`) or a wildcard
+  key resolving it (`"*": "deny"`, `"acp*": "deny"`; #465). The `"allow"` default applies only
+  when NO rule in the map resolves `acp_status`.
 - **Impact**: Silent inversion of an explicit access decision, shipped in the published
   package; any user who denies only `acp_status` (without also declaring a `compress` rule)
-  gets the opposite of what they configured.
+  gets the opposite of what they configured. #465 extends this to wildcard decisions: since
+  ACP appends its keys last and resolution is last-match, an appended `acp_status: "allow"`
+  erases a user wildcard deny/ask even though no own key exists.
 
 ## 2. Reproduction
 
@@ -42,9 +49,14 @@
 ## 3. Constraints & Non-Goals
 
 - **Constraints**:
-    - Backward compatibility: users with NO explicit `acp_status` keep getting the `"allow"`
-      default (unchanged). Users with an explicit `compress` rule keep full defer behavior
-      (unchanged). Bili-proxy denial path (`denyAcpTools`) is intentional and untouched.
+    - Backward compatibility: users with NO decision on `acp_status` (no exact key AND no
+      resolving wildcard) keep getting the `"allow"` default (unchanged). Users with an
+      explicit `compress` rule keep full defer behavior (unchanged) — including when other
+      wildcard keys are present. Bili-proxy denial path (`denyAcpTools`) is intentional and
+      untouched.
+    - The default write is strictly additive over the #457 fix: it only stops writing where a
+      user rule already resolves `acp_status`; no case that wrote before stops writing for any
+      other reason.
     - Performance: pure function, O(map size) — negligible.
     - The SDK `Config.permission` type is narrow (no arbitrary tool keys); keep the existing
       `as typeof permission` cast pattern at the assignment site.
@@ -63,6 +75,11 @@
     - [ ] Absent `acp_status` still gets the `"allow"` default (with `compress` written from ACP config).
     - [ ] Unrelated host permission keys (e.g. `bash`) are preserved.
     - [ ] Explicit `compress` rule → user owns the map, returned unchanged (identity preserved).
+    - [#465] Wildcard `"*"` deny/ask on the map → no `acp_status` default injected (user rule
+      wins last-match).
+    - [#465] Wildcard `"acp*"` deny → no `acp_status` default injected.
+    - [#465] Non-matching wildcards (e.g. `"bash*"`) still get the default injected.
+    - [#465] Nested pattern form `{ "acp_status": { "*": "deny" } }` counts as a user decision.
 - **Performance / Stability**:
     - [ ] Full test suite + typecheck + build pass.
 - **Regression**:
