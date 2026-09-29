@@ -88,6 +88,25 @@ export interface V2ProvenanceEntry {
     protectedFields?: string[]
     /** Source removal is safe only when the origin is exact and unambiguous. */
     allowSourceRemoval: boolean
+    /**
+     * Native provider compaction checkpoint. When `outgoingMessageIndices` is
+     * empty this entry discloses an unsupported window: the checkpoint is
+     * visible in the public context but absent from the outgoing (model-aware)
+     * request — for example an incompatible model switch excluded it and
+     * re-expanded the original transcript, or the direct-tool view has no
+     * outgoing history at all. ACP then renders the entry from source
+     * compaction data (summary + recent context) and keeps every uncorrelated
+     * outgoing message as its own opaque host entry instead of inferring
+     * ownership from array position. Residual limitation: when exactly one
+     * candidate sits in the window ACP claims it as the decoded checkpoint, so
+     * a single re-expanded original is indistinguishable from it positionally;
+     * with multiple checkpoints in the same region a later checkpoint may claim
+     * an index reserved by an earlier assistant's tool call (benign: the index
+     * renders as opaque text either way). A third empty-indices shape exists
+     * when the whole window was reserved to correlated sources (issue #456):
+     * the checkpoint emits no normalized message at all (`normalizedMessageId`
+     * stays undefined), so there is nothing to restore or drop.
+     */
     providerCheckpoint?: boolean
 }
 
@@ -190,6 +209,10 @@ export interface Draft {
     protected: boolean
     allowSourceRemoval: boolean
     providerCheckpoint?: boolean
+    /** Set on provider-checkpoint drafts whose entire outgoing window was
+     *  reserved to correlated sources: the checkpoint decoded nothing into
+     *  this view and must not emit a normalized message (issue #456). */
+    whollyReserved?: boolean
     normalized?: WithParts
     owned: boolean
 }

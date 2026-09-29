@@ -159,31 +159,50 @@ function buildProviderCheckpoint(
     messages: readonly AiMessageValue[],
 ): void {
     if (!draft.normalizedMessageId) return
+    // The checkpoint's whole window belonged to correlated sources, so it
+    // decoded nothing into this view. Emitting a normalized message would put
+    // a contentless assistant turn into the algorithm projection; the sidecar
+    // entry still discloses the checkpoint structurally (issue #456).
+    if (draft.whollyReserved) return
     const parts: Part[] = []
-    let sequence = 0
-    for (const messageIndex of draft.outgoingMessageIndices) {
-        const message = messages[messageIndex]
-        const rendered = aiContent(message)
-            .map((part) => {
-                if (contentType(part) === "text") return contentText(part) ?? ""
-                if (contentType(part) === "reasoning") return contentText(part) ?? ""
-                if (contentType(part) === "tool-call") {
-                    return `[tool call ${contentCallId(part) ?? "unknown"}]`
-                }
-                if (contentType(part) === "tool-result")
-                    return `[tool result ${contentResultId(part) ?? "unknown"}]`
-                if (contentType(part) === "media") return "[media attachment]"
-                return `[${contentType(part) ?? "provider content"}]`
-            })
-            .join("\n")
-        const key = `source:${draft.sourceIndex}:checkpoint:${sequence++}`
-        const origin = newOrigin(draft, key, "text", true)
-        origin.normalizedText = rendered
-        for (let contentIndex = 0; contentIndex < aiContent(message).length; contentIndex++) {
-            addPointer(origin, { messageIndex, contentIndex }, messages)
+    if (draft.outgoingMessageIndices.length > 0) {
+        let sequence = 0
+        for (const messageIndex of draft.outgoingMessageIndices) {
+            const message = messages[messageIndex]
+            const rendered = aiContent(message)
+                .map((part) => {
+                    if (contentType(part) === "text") return contentText(part) ?? ""
+                    if (contentType(part) === "reasoning") return contentText(part) ?? ""
+                    if (contentType(part) === "tool-call") {
+                        return `[tool call ${contentCallId(part) ?? "unknown"}]`
+                    }
+                    if (contentType(part) === "tool-result")
+                        return `[tool result ${contentResultId(part) ?? "unknown"}]`
+                    if (contentType(part) === "media") return "[media attachment]"
+                    return `[${contentType(part) ?? "provider content"}]`
+                })
+                .join("\n")
+            const key = `source:${draft.sourceIndex}:checkpoint:${sequence++}`
+            const origin = newOrigin(draft, key, "text", true)
+            origin.normalizedText = rendered
+            for (let contentIndex = 0; contentIndex < aiContent(message).length; contentIndex++) {
+                addPointer(origin, { messageIndex, contentIndex }, messages)
+            }
+            draft.origins.push(origin)
+            parts.push(internalTextPart(sessionID, draft.normalizedMessageId, key, rendered, true))
         }
+    } else {
+        // No correlated outgoing message: the checkpoint is absent from the
+        // outgoing view (incompatible model switch excluded it and re-expanded
+        // the originals, or this is the direct-tool path with no outgoing).
+        // Render from the source compaction data so the model still sees the
+        // checkpoint's summary and recent context.
+        const text = lowerCompactionText(draft.source)
+        const key = `source:${draft.sourceIndex}:checkpoint:source`
+        const origin = newOrigin(draft, key, "text", true)
+        origin.normalizedText = text
         draft.origins.push(origin)
-        parts.push(internalTextPart(sessionID, draft.normalizedMessageId, key, rendered, true))
+        parts.push(internalTextPart(sessionID, draft.normalizedMessageId, key, text, true))
     }
     draft.normalized = {
         info: messageInfoForSource(draft, sessionID, options),
@@ -481,6 +500,7 @@ function claimCheckpointRanges(
     drafts: Draft[],
     messages: readonly AiMessageValue[],
     claimed: Set<number>,
+    reserved: ReadonlySet<number>,
 ): void {
     const checkpoints = drafts.filter((draft) => draft.providerCheckpoint)
     for (const checkpoint of checkpoints) {
@@ -496,11 +516,26 @@ function claimCheckpointRanges(
             .sort((left, right) => left - right)[0]
         const start = previous === undefined ? 0 : previous + 1
         const end = next === undefined ? messages.length : next
+        // Claim only when exactly one unambiguous candidate exists. >1 means
+        // re-expanded originals from an incompatible model switch; 0 means the
+        // checkpoint is absent from the outgoing view. Both must stay
+        // uncorrelated so originals remain individually addressable.
+        // Source-reserved indices (a tool call or its role=tool result already
+        // owned by a correlated assistant source) never count as candidates:
+        // claiming one strips the result from its call and makes exact
+        // correlation reject the whole session (issue #456).
+        const candidates: number[] = []
         for (let index = start; index < end; index++) {
-            if (!claimed.has(index)) {
-                claimed.add(index)
-                checkpoint.outgoingMessageIndices.push(index)
-            }
+            if (!claimed.has(index) && !reserved.has(index)) candidates.push(index)
+        }
+        if (candidates.length === 1) {
+            const index = candidates[0]!
+            claimed.add(index)
+            checkpoint.outgoingMessageIndices.push(index)
+        } else if (candidates.length === 0 && end > start) {
+            // The window exists but every index in it belongs to a correlated
+            // source, so the checkpoint decoded nothing into this view.
+            checkpoint.whollyReserved = true
         }
     }
 }
@@ -677,7 +712,28 @@ export function normalizeV2ProjectedHistory(
         if (mapped !== undefined) draft.outgoingMessageIndices.push(mapped)
     }
 
-    claimCheckpointRanges(drafts, outgoing, claimedMessages)
+    // Source-reserved indices: an assistant that already correlates to its
+    // lowered message owns the tool calls inside it and the role=tool results
+    // answering them. Provider checkpoints must never claim those indices, or
+    // the result is stripped from its call and exact correlation rejects the
+    // whole session (issue #456).
+    const reservedForCorrelatedTools = new Set<number>()
+    for (const draft of drafts) {
+        if (draft.source.type !== "assistant") continue
+        if (draft.outgoingMessageIndices.length === 0) continue
+        for (const index of draft.outgoingMessageIndices) reservedForCorrelatedTools.add(index)
+        const content = Array.isArray(draft.source.content) ? draft.source.content : []
+        for (const itemValue of content) {
+            if (!isRecord(itemValue) || itemValue.type !== "tool") continue
+            const callID = stringValue(itemValue.id)
+            if (!callID) continue
+            for (const index of outgoingRoleToolResultIndicesByCallId.get(callID) ?? []) {
+                reservedForCorrelatedTools.add(index)
+            }
+        }
+    }
+
+    claimCheckpointRanges(drafts, outgoing, claimedMessages, reservedForCorrelatedTools)
 
     // Unexecuted V2 tool entries lower to a separate role=tool Message without a
     // top-level ID. It must be correlated by result ID, never by array position.

@@ -30,6 +30,11 @@ function rejectsMissingNormalizedSource(entry: V2ProvenanceEntry): boolean {
     // Running and failed compactions intentionally have no algorithm projection;
     // they cannot have been dropped from the transformed projection.
     if (entry.sourceType === "compaction" && entry.status !== "completed") return false
+    // A wholly-reserved provider checkpoint intentionally emits no algorithm
+    // projection: its entire outgoing window was reserved to correlated sources
+    // (issue #456), so there is no message that could have been dropped and
+    // nothing to restore.
+    if (entry.providerCheckpoint) return false
     return (
         entry.sourceType !== "control" &&
         entry.sourceType !== "agent-switched" &&
@@ -137,6 +142,13 @@ export function restoreMissingV2OpaqueSources(
         const source = normalizedById.get(id)
         if (!source) return reject(`Opaque source ${id} has no normalized source message`)
         if (entry.outgoingMessageIndices.length === 0) {
+            // A provider checkpoint with no outgoing correlation is absent from
+            // this request by definition (incompatible model switch or direct
+            // view): the outgoing history already carries its information as
+            // re-expanded host-owned originals, and the patcher accepts an
+            // absent uncorrelated entry. Restoring it would fabricate a message
+            // the host never sent, so skip instead of rejecting the whole patch.
+            if (entry.providerCheckpoint) return undefined
             return reject(`Opaque source ${id} has no exact lowered correlation`)
         }
 
