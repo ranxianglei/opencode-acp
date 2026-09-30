@@ -64,21 +64,30 @@ jobs:
             echo "::error::$NPM_V is already published; pick a newer version"
             exit 1
           fi
+          LOCK_V="$(node -p "require('./package-lock.json').version" 2>/dev/null || echo "")"
+          if [ -n "$LOCK_V" ] && [ "$LOCK_V" != "$MASTER_V" ]; then
+            echo "::warning::$PKG: package-lock.json version ($LOCK_V) != package.json ($MASTER_V) — the Bump step will resync it."
+          fi
 
       - name: Bump version
         run: |
           node -e '
             const fs = require("fs");
-            const [oldV, newV] = process.argv.slice(1);
+            const newV = process.argv[1];
             for (const f of ["package.json", "package-lock.json"]) {
-              const s = fs.readFileSync(f, "utf8");
-              const needle = `"version": "${oldV}"`;
-              const n = s.split(needle).length - 1;
-              if (!n) { console.error(`version field not found in ${f}`); process.exit(1); }
-              fs.writeFileSync(f, s.split(needle).join(`"version": "${newV}"`));
-              console.log(`${f}: replaced ${n} occurrence(s)`);
+              const raw = fs.readFileSync(f, "utf8");
+              const obj = JSON.parse(raw);
+              if (typeof obj.version !== "string") { console.error(`no top-level version field in ${f}`); process.exit(1); }
+              obj.version = newV;
+              if (obj.packages && typeof obj.packages === "object" && obj.packages[""]) obj.packages[""].version = newV;
+              // Re-serialize with the existing indent of the file (round-trip verified byte-identical on both files),
+              // so the diff stays limited to the changed version line(s) even when the lockfile
+              // version had drifted from package.json.
+              const m = raw.match(/^\{?\r?\n(\s+)"/m);
+              fs.writeFileSync(f, JSON.stringify(obj, null, m ? m[1].length : 2) + "\n");
+              console.log(`${f}: version -> ${newV}`);
             }
-          ' "$(node -p "require('./package.json').version")" "${{ steps.version.outputs.version }}"
+          ' "${{ steps.version.outputs.version }}"
 
       - name: Verify bump diff
         run: |
