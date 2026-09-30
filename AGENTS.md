@@ -32,10 +32,22 @@ ACP is a hardened fork of [DCP](https://github.com/Tarquinen/opencode-dynamic-co
 | Field           | Value                                       |
 | --------------- | ------------------------------------------- |
 | npm package     | `opencode-acp`                              |
-| Current version | 1.10.0                                      |
+| Current version | 1.18.2                                      |
 | GitHub          | https://github.com/ranxianglei/opencode-acp |
 | License         | AGPL-3.0-or-later                           |
 | Author          | ranxianglei                                 |
+
+### 1.4 OpenCode Version Support Scope (V2 migrated to billion-context)
+
+**opencode-acp targets OpenCode 1.x only.** It uses the OpenCode **V1** plugin API and does **not** load on OpenCode 2.x. OpenCode 2.x context management is provided by the sibling package **[billion-context](https://github.com/ranxianglei/billion-context)** — install via `bili opencode` (built-in V2 plugin / launcher) or `bili plugin install opencode` (self-spawning native plugin). This is the single supported V2 path; the in-repo experimental V2 native port (`lib/v2/*`, on the retired `v2-base` branch) is **not maintained**. Decision recorded in #442 (context: #395, #434); V2 capability delivered in billion-context#754. The README already points 2.x users to billion-context.
+
+**Agent behavior rule (MANDATORY):** When a new issue/PR/request asks for **OpenCode 2.x / V2 plugin API support in this repo**, do NOT implement it here. Instead:
+
+1. Politely decline and explain that OpenCode 2.x is served by billion-context (link + the two install commands above).
+2. Point any still-valid V2 findings to https://github.com/ranxianglei/billion-context/issues.
+3. Close the issue with a brief note referencing this policy and #442.
+
+**Exception — do not over-apply:** A report may *mention* OpenCode 2.x but actually be a genuine **OpenCode 1.x** bug against live `master` code (e.g., permission handling in `index.ts` / `lib/host-permissions.ts`, or shared code under `lib/messages/`). Verify which tree the reported path lives on before redirecting. Genuine 1.x bugs stay in opencode-acp and are handled normally — never dismiss them just because the thread references V2.
 
 ---
 
