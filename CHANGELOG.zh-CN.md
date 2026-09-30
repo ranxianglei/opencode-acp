@@ -1,5 +1,30 @@
 # 更新日志
 
+### v1.18.3 — decompress 正确性加固 + 宿主权限尊重 + 一键发布 workflow
+
+**自 v1.18.2 以来捆绑六个运行时修复、一个 CI 特性与文档更新**（issue #405、#444、#446、#447、#457、#461、#465；CI #443/#474；文档 #441/#442/#450/#471）。无配置或状态格式变更。
+
+**1. Decompress 正确性（#446、#447）：**
+- **源消息可用性校验**（#446）：提交解压前，ACP 现在校验所有可见性将发生变化的消息仍存在于拉取的宿主历史中。若原始消息已被外部移除（原生压缩、手动删除），调用以显式错误中止且**不改动任何状态** —— 此前会报告幻影恢复、按幻影 token 扣减统计，并不可逆地丢弃摘要覆盖。该检查 fail-closed 且保守：多要求某个 ID 只可能导致安全方向的中止，绝不会产生虚假的"已恢复"声明。
+- **`decompress.toFile` 导出原始文本**（#447）：旧导出器读取 SDK 消息上不存在的 `content`/`text` 字段并退化为 `JSON.stringify` 垃圾。现改为序列化消息 parts（文本原样、工具输出经 `extractToolContent`）；原始消息缺失时写入带明确标注的块摘要而非空文件。
+
+**2. 质量门拒绝信息精简（#444）：** 面向模型的拒绝错误不再倾倒内部指标（gate 层、rougeF1、top20Recall、阈值细节）—— 现在只含核心原因、一行 Original/Summary/Retention 统计与重试指引。完整诊断经 `logger.warn` 写入 ACP 日志。`acknowledgeRisk` 旁路提示保留。
+
+**3. 宿主权限尊重（#457、#465）：** ACP 的配置写入不再覆盖用户对 `acp_status` 的权限决定：
+- 精确键（#457）：显式的 `acp_status: "deny"`/`"ask"` 过去会被静默改写为 `"allow"`（反转决定）；现在得以保留。
+- 通配符（#465）：用户规则如 `"*": "deny"` 或 `"acp*": "deny"` 过去会被追加的默认值以 last-match 胜出而抹掉；现在得以保留。
+- 保持的行为：用户显式 `compress` 规则仍然完全让位（map 原样返回），无关宿主规则不受影响。
+
+**4. truncate-tools 开销错误集合设界（#461）：** 每会话一次的 "window too small" ERROR 去重集合原先无界（长驻服务器每会话永久累积一个 key）。现上限 1024 个会话、最旧优先驱逐；驱逐仍活跃会话的最坏代价是多一条重复 ERROR 行。
+
+**5. 向 billion-context 原生模式让位（#405）：** ACP 现在识别 billion-context 的两个所有权标记 —— `BILLION_CONTEXT_PROXY`（launcher）与 `BILLION_CONTEXT_NATIVE`（native 插件）—— 并在动作时（hook 调用、config 运行、每次工具调用经 `resolveToolContext`）重新采样 env，而不是信任 setup 时的快照。这消除了原生模式标记晚于 ACP setup 落盘、导致两个插件同时运行的竞态。交接后，全部五个 ACP 工具抛出指明接管模式的清晰错误。
+
+**6. CI：一键发布 workflow（#443、#474）：** 新增 `Release (one-click)` workflow（`workflow_dispatch`）—— 解析版本（留空 = 自动取 npm latest 的下一 patch）、master 与 npm 漂移守卫、bump `package.json` + `package-lock.json`、校验 bump diff、跑完整 pre-flight 门，然后推 master 或回退到 release 分支 + PR。后续修复使 package-lock.json 版本漂移被修复而非失败。
+
+**文档：** OpenCode 2.x 用户引导至 [billion-context](https://github.com/ranxianglei/billion-context)（README callout + AGENTS.md 迁移/triage 规则固化，#442）；新增 QQ 群 1108730198，原群 1056132097 标记为满员；AGENTS.md 版本表修正（1.10.0 → 1.18.2）。
+
+**安装**：`opencode plugin opencode-acp@latest --global`
+
 ### v1.18.2 — 剥离助手文本尾部泄漏的裸 ACP 引用 + 修复 Windows 路径保护静默失效
 
 **PR #432 + PR #403。** 捆绑两个 bug 修复 —— 无配置或状态格式变更。

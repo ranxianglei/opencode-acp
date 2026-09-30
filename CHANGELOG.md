@@ -1,5 +1,30 @@
 # Changelog
 
+### v1.18.3 — decompress correctness hardening + host permission respect + one-click release workflow
+
+**Bundles six runtime fixes, one CI feature, and doc updates since v1.18.2** (issues #405, #444, #446, #447, #457, #461, #465; CI #443/#474; docs #441/#442/#450/#471). No config or state-format changes.
+
+**1. Decompress correctness (#446, #447):**
+- **Source availability verification** (#446): before committing a decompression, ACP now verifies that every message whose visibility would change is still present in the fetched host history. If originals were removed externally (native compaction, manual deletion), the call aborts with an explicit error and **no state is mutated** — previously it reported phantom restorations, decremented stats by phantom tokens, and irreversibly discarded summary coverage. The check is fail-closed and conservative: over-requiring an ID can only cause a safe-direction abort, never a false "restored" claim.
+- **`decompress.toFile` exports original text** (#447): the exporter previously read non-existent `content`/`text` fields off SDK messages and fell back to `JSON.stringify` garbage. It now serializes message parts (text verbatim, tool outputs via `extractToolContent`); when originals are gone it writes the block summary with an explicit note instead of empty files.
+
+**2. Quality-gate rejection conciseness (#444):** the model-facing rejection error no longer dumps internal metrics (gate layer, rougeF1, top20Recall, threshold details) — it now carries the core reason, one Original/Summary/Retention stats line, and retry guidance. Full diagnostics go to the ACP log via `logger.warn`. The `acknowledgeRisk` bypass hint is retained.
+
+**3. Host permission respect (#457, #465):** ACP's config write no longer overrides user permission decisions on `acp_status`:
+- Exact keys (#457): an explicit `acp_status: "deny"`/`"ask"` used to be silently rewritten to `"allow"` (inverting the decision); it now survives.
+- Wildcards (#465): user rules like `"*": "deny"` or `"acp*": "deny"` used to be erased because the appended default won last-match resolution; they now survive.
+- Behavior preserved: an explicit user `compress` rule still defers fully (the map is returned unchanged), and unrelated host rules are untouched.
+
+**4. truncate-tools overhead-error set bound (#461):** the once-per-session "window too small" ERROR dedup set was unbounded (one key per session forever on long-lived servers). It is now capped at 1024 sessions with oldest-first eviction; the worst cost of evicting a still-active session is one duplicate ERROR line.
+
+**5. Yield to billion-context native mode (#405):** ACP now recognizes both billion-context ownership markers — `BILLION_CONTEXT_PROXY` (launcher) and `BILLION_CONTEXT_NATIVE` (native plugin) — and re-samples env at action time (hook calls, config runs, every tool call via `resolveToolContext`) instead of trusting the setup-time snapshot. This closes the race where native mode's marker landed after ACP setup, letting both plugins run simultaneously. After handoff, all five ACP tools throw a clear error naming the owning mode.
+
+**6. CI: one-click release workflow (#443, #474):** new `Release (one-click)` workflow (`workflow_dispatch`) — resolves the version (blank = auto next-patch over npm latest), drift-guards master vs npm, bumps `package.json` + `package-lock.json`, verifies the bump diff, runs the full pre-flight gate, then pushes to master or falls back to a release branch + PR. Follow-up fix heals package-lock.json version drift instead of failing.
+
+**Docs:** OpenCode 2.x users pointed to [billion-context](https://github.com/ranxianglei/billion-context) (README callout + AGENTS.md migration/triage rule codified, #442); new QQ group 1108730198 added with original 1056132097 marked full; AGENTS.md version table corrected (1.10.0 → 1.18.2).
+
+**Install**: `opencode plugin opencode-acp@latest --global`
+
 ### v1.18.2 — strip leaked bare ACP refs from assistant text tail + fix silent no-op in Windows path protection
 
 **PR #432 + PR #403.** Two bug fixes bundled — no config or state-format changes.
