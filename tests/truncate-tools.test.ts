@@ -4,7 +4,10 @@ import test from "node:test"
 import type { SessionState, WithParts } from "../lib/state/types"
 import type { PluginConfig } from "../lib/config"
 import type { Logger } from "../lib/logger"
-import { truncateLargeToolOutputs } from "../lib/messages/truncate-tools"
+import {
+    MAX_OVERHEAD_ERROR_SESSIONS,
+    truncateLargeToolOutputs,
+} from "../lib/messages/truncate-tools"
 
 const noopLogger: Logger = {
     debug: () => {},
@@ -489,4 +492,72 @@ test("fallback limit drives truncation when model limit unknown (#346)", () => {
         }
     }
     assert.ok(truncatedCount > 0, "fallback limit must drive in-flight truncation")
+})
+
+// ─── Issue #461: overheadErrorLogged must stay bounded ────────────────────────
+
+function makeOverheadErrorLogger(errors: string[]): Logger {
+    const logger = {
+        debug: () => {},
+        info: () => {},
+        warn: () => {},
+        error: (msg: string) => {
+            errors.push(msg)
+        },
+        saveContext: () => {},
+        child: () => logger,
+    } as unknown as Logger
+    return logger
+}
+
+// Tiny window (< OUTPUT_RESERVE_TOKENS) + any token usage → threshold <= 0 →
+// the once-per-session overhead ERROR branch.
+function makeOverheadState(sessionId: string): SessionState {
+    const state = makeState(10_000)
+    state.sessionId = sessionId
+    return state
+}
+
+function makeOverheadMessages(): WithParts[] {
+    return [makeAssistantWithTokens("a1", 1_000)]
+}
+
+test("overhead error: logged exactly once per session (dedup held)", () => {
+    const state = makeOverheadState("bounds-dedup-1")
+    const config = makeConfig({ majorGcThresholdPercent: "100%" })
+    const errors: string[] = []
+    const logger = makeOverheadErrorLogger(errors)
+    const messages = makeOverheadMessages()
+
+    truncateLargeToolOutputs(state, config, logger, messages)
+    truncateLargeToolOutputs(state, config, logger, messages)
+
+    assert.equal(errors.length, 1, "must log exactly once per session")
+})
+
+test("overhead error: set stays bounded — oldest key evicted past the cap (#461)", () => {
+    const config = makeConfig({ majorGcThresholdPercent: "100%" })
+    const errors: string[] = []
+    const logger = makeOverheadErrorLogger(errors)
+    const messages = makeOverheadMessages()
+
+    // Fill past the cap with distinct sessions: every call must log.
+    for (let i = 0; i <= MAX_OVERHEAD_ERROR_SESSIONS; i++) {
+        truncateLargeToolOutputs(makeOverheadState(`bounds-evict-${i}`), config, logger, messages)
+    }
+    assert.equal(
+        errors.length,
+        MAX_OVERHEAD_ERROR_SESSIONS + 1,
+        "every distinct session logs exactly once while filling past the cap",
+    )
+
+    // The oldest key (bounds-evict-0) was evicted → next hit logs again...
+    errors.length = 0
+    truncateLargeToolOutputs(makeOverheadState("bounds-evict-0"), config, logger, messages)
+    assert.equal(errors.length, 1, "evicted session must log again after eviction")
+
+    // ...and dedup resumes immediately (key re-inserted as newest).
+    errors.length = 0
+    truncateLargeToolOutputs(makeOverheadState("bounds-evict-0"), config, logger, messages)
+    assert.equal(errors.length, 0, "dedup must resume after re-insertion")
 })
