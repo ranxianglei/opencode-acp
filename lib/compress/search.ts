@@ -256,20 +256,39 @@ function adjustBoundariesForToolPairs(
     return { startIndex: newStartIdx, endIndex: newEndIdx }
 }
 
+// [Issue #476] Enumerate the actual contiguous FREE spans instead of a
+// first–last range: consumed blocks leave gaps, and "first–last" implied
+// continuity that did not exist, sending the model back to guess IDs.
 function buildBoundaryRecoveryHint(context: SearchContext, state: SessionState): string {
-    const visibleRefs: string[] = []
+    const visibleIndexes: number[] = []
     for (const [messageRef, messageId] of state.messageIds.byRef) {
-        if (context.rawMessagesById.has(messageId)) {
-            visibleRefs.push(messageRef)
-        }
+        if (!context.rawMessagesById.has(messageId)) continue
+        const idx = parseMessageRef(messageRef)
+        if (idx !== null) visibleIndexes.push(idx)
     }
+    visibleIndexes.sort((a, b) => a - b)
+
+    const renderSpan = (start: number, end: number): string =>
+        start === end ? formatMessageRef(start) : `${formatMessageRef(start)}–${formatMessageRef(end)}`
 
     const parts: string[] = []
-    if (visibleRefs.length > 0) {
-        visibleRefs.sort()
-        const first = visibleRefs[0]
-        const last = visibleRefs[visibleRefs.length - 1]
-        parts.push(`Current visible: ${first}–${last} (${visibleRefs.length} msgs).`)
+    if (visibleIndexes.length > 0) {
+        const spans: string[] = []
+        let spanStart = visibleIndexes[0]
+        let spanPrev = visibleIndexes[0]
+        for (let i = 1; i < visibleIndexes.length; i++) {
+            const idx = visibleIndexes[i]
+            if (idx !== spanPrev + 1) {
+                spans.push(renderSpan(spanStart, spanPrev))
+                spanStart = idx
+            }
+            spanPrev = idx
+        }
+        spans.push(renderSpan(spanStart, spanPrev))
+        const MAX_SPANS = 8
+        const shown = spans.slice(0, MAX_SPANS)
+        const overflow = spans.length - shown.length
+        parts.push(`Free ranges: ${shown.join(", ")}${overflow > 0 ? ` (+${overflow} more)` : ""}.`)
     }
 
     const blockCount = context.summaryByBlockId.size
@@ -281,7 +300,7 @@ function buildBoundaryRecoveryHint(context: SearchContext, state: SessionState):
         return ""
     }
 
-    return `${parts.join(" ")} Call acp_status() to see which blocks consumed which IDs, then retry with valid IDs.`
+    return `${parts.join(" ")} Retry with IDs inside the free ranges.`
 }
 
 function clampMessageRef(

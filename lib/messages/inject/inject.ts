@@ -481,10 +481,16 @@ export const injectCompressNudges = (
         nudgeAllowed &&
         candidateMessages !== undefined &&
         candidatePlan.candidates.length === 0
+    // [Issue #476] Case (a): zero compressible AND zero protected messages with an
+    // empty protected-ref zone — e.g. the visible window holds only compressed-block
+    // summaries. No flag above fires here, so a growth nudge was injected with no
+    // actionable ranges; the model then guessed consumed IDs and thrashed.
+    const noRangesAtAll =
+        contextRanges.compressible.length === 0 && contextRanges.protected.length === 0
     const nothingToCompress =
-        candidatesEnabled && candidateMessages !== undefined
+        (candidatesEnabled && candidateMessages !== undefined
             ? noExecutableCandidates
-            : allProtected || allInProtectedZone || allBelowMin
+            : allProtected || allInProtectedZone || allBelowMin) || noRangesAtAll
     // Issue #216 residual: emergency + nothing-to-compress must not demand
     // compression (no valid targets → phantom-retry loop, incident
     // ses_7fb5cbc8). Emit a cadence-gated /compact notice instead.
@@ -764,7 +770,9 @@ export const injectCompressNudges = (
                   ? "in_protected_zone"
                   : allBelowMin
                     ? "below_effective_floor"
-                    : "no_executable_candidates",
+                    : noRangesAtAll
+                      ? "no_compressible_ranges"
+                      : "no_executable_candidates",
             currentTokens,
             usagePct,
             compressibleRanges: contextRanges.compressible.length,

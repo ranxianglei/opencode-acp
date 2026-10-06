@@ -173,6 +173,8 @@ export interface SessionState {
     modelProviderID: string | undefined
     modelID: string | undefined
     systemPromptTokens: number | undefined
+    /** [Issue #476] Last turn's {reported usage, local payload estimate} pair — cross-turn relay-inflation detection baseline (see lib/usage-sanity.ts). */
+    usageSanity?: { reported: number; estimated: number }
     /**
      * Resolved directory for this session's persisted state file (absolute path).
      * Transient (NOT persisted): resolved once per session from config.storagePath

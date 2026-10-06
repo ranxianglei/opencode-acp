@@ -61,6 +61,8 @@ export interface PersistedSessionState {
     modelContextLimit?: number
     modelProviderID?: string
     modelID?: string
+    /** [Issue #476] Cross-turn relay-inflation baseline (lib/usage-sanity.ts). */
+    usageSanity?: { reported: number; estimated: number }
 }
 
 /** Default storage directory: $XDG_DATA_HOME/opencode/storage/plugin/acp */
@@ -203,6 +205,7 @@ export function saveSessionState(
         modelContextLimit: sessionState.modelContextLimit,
         modelProviderID: sessionState.modelProviderID,
         modelID: sessionState.modelID,
+        usageSanity: sessionState.usageSanity,
     }
 
     const key = saveQueueKey(sessionState.sessionId, sessionState.storageDir)
