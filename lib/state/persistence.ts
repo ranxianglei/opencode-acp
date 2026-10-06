@@ -71,6 +71,8 @@ export interface PersistedSessionState {
     imageArchive?: Record<string, ArchivedImageEntry[]>
     /** [Issue #485] Sticky emergency truncations (tool call ID → frozen truncated output) */
     stickyTruncations?: Record<string, string>
+    /** [Issue #476] Cross-turn relay-inflation baseline (lib/usage-sanity.ts). */
+    usageSanity?: { reported: number; estimated: number }
 }
 
 /** Default storage directory: $XDG_DATA_HOME/opencode/storage/plugin/acp */
@@ -215,6 +217,7 @@ export function saveSessionState(
         modelID: sessionState.modelID,
         imageArchive: sessionState.imageArchive,
         stickyTruncations: sessionState.stickyTruncations,
+        usageSanity: sessionState.usageSanity,
     }
 
     const key = saveQueueKey(sessionState.sessionId, sessionState.storageDir)
