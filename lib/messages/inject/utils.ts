@@ -21,8 +21,8 @@ import {
 import {
     countMessageCharacters,
     estimateSystemPromptTokens,
-    getCurrentTokenUsage,
 } from "../../token-utils"
+import { resolveCurrentUsage } from "../../usage-sanity"
 import {
     appendToTextPart,
     appendToLastTextPart,
@@ -194,7 +194,7 @@ export function isContextOverLimits(
             ? undefined
             : resolvedMaxContextLimit + summaryTokenExtension
     const minContextLimit = resolveContextTokenLimit(config, state, providerId, modelId, "min")
-    const currentTokens = getCurrentTokenUsage(state, messages)
+    const currentTokens = resolveCurrentUsage(state, messages).tokens
 
     let overMaxLimit = maxContextLimit === undefined ? false : currentTokens > maxContextLimit
     const overMinLimit = minContextLimit === undefined ? false : currentTokens >= minContextLimit

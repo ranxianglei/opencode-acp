@@ -450,6 +450,16 @@ export async function ensureSessionInitialized(
         state.modelProviderID = persisted.modelProviderID
         state.modelID = persisted.modelID
     }
+    // [Issue #476] Restore the relay-inflation baseline; drop corrupted records
+    // so detection simply skips one turn instead of poisoning comparisons.
+    if (persisted.usageSanity) {
+        const { reported, estimated } = persisted.usageSanity
+        if (Number.isFinite(reported) && Number.isFinite(estimated) && reported >= 0 && estimated >= 0) {
+            state.usageSanity = { reported, estimated }
+        } else {
+            state.usageSanity = undefined
+        }
+    }
 
     const applied = applyPendingCompressionDurations(state)
     if (applied > 0) {

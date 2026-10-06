@@ -49,7 +49,7 @@ import {
 } from "./state"
 import { cacheSystemPromptTokens } from "./ui/utils"
 import { runBatchCleanup } from "./gc/merge"
-import { getCurrentTokenUsage } from "./token-utils"
+import { resolveCurrentUsage } from "./usage-sanity"
 import { clearSmartPlanSession, recordVisibleMessages } from "./compress/smart-plan"
 
 const INTERNAL_AGENT_SIGNATURES = [
@@ -358,7 +358,7 @@ export function createChatMessageTransformHandler(
         if (batchResult.mergedCount > 0) {
             saveSessionState(state, logger).catch(() => {})
         }
-        const prePruneTokens = getCurrentTokenUsage(state, output.messages)
+        const prePruneTokens = resolveCurrentUsage(state, output.messages, logger).tokens
         // Keep the full post-filter projection for candidate planning. The
         // nudge receives a pruned view, while range validation still needs the
         // original ordering to prove tool-pair and protection parity.
@@ -423,7 +423,7 @@ export function createChatMessageTransformHandler(
         if (state.sessionId && smartPlanEnabled === true) {
             recordVisibleMessages(state.sessionId, output.messages)
         }
-        const postTokens = getCurrentTokenUsage(state, output.messages)
+        const postTokens = resolveCurrentUsage(state, output.messages, logger).tokens
         // [FIX #346] Hard guard: if the post-transform context still exceeds
         // the model's real request budget (window minus system prompt + tool
         // schemas + output-token reserve), the backend will reject the
