@@ -1,5 +1,21 @@
 # 更新日志
 
+### v1.18.4 — 图片归档：折叠区间的图片落盘并注入重读指针
+
+**PR #479（关闭 #478）。一个特性加其评审加固修复。仅新增状态字段；下方为新配置项。
+
+**1. 图片归档（#478）：** 以 data-URL 文件 part 附加的图片在其区间被折叠时会被静默丢弃，且 OpenCode 存储丢失原始数据后无任何恢复路径。本版本移植 billion-context #1995/#2640 的原理——*图片不进入压缩，而是 dump 到文件、由模型自行重读*：
+- `archiveSessionImages()`：在 `assignMessageRefs` 之后的逐轮 pass，将符合条件的图片（data URL、二进制 mime、≥ `minBytes`）以 0600 权限写入 `<storageDir>/images/<dirName(sessionId)>/`，文件名 `<sha8(rawId)>-p<i>-<sha8(content)>.<ext>`；元数据索引持久化在 `SessionState.imageArchive`（按 raw message ID 键控，ref 重发后仍有效）；永不抛错。
+- `appendArchivedImagePointers()`：range 模式摘要链的最后一步为被折叠区间覆盖的已归档图片追加绝对路径指针行，模型可用自己的文件工具重读像素。
+- `pruneImageArchive()`：尽力而为的 TTL 清理（每进程每会话一次）。
+- 新配置：`compress.images { enabled=true, minBytes=16384, ttlDays=7 }`。**默认开启**；设 `enabled:false` 完全回到发布前行为。排除在 per-model 覆盖级联之外。Schema + 校验 + 文档同步更新。
+
+**2. 级联 blanket-apply 防护（#478）：** 上述特性的评审加固——「排除在 per-model 覆盖级联之外」的约定此前仅在类型层面成立：`resolveCompressOverrides` 会把用户写在 `compress.providers/<p>` 或 `.models/<m>` 下的 JSON 原样展开，其中的 `images` 条目会进入 `applyCompressOverrides` 并被当作 PARTIAL 对象整体套用到全局 images 配置上（`minBytes` undefined 使尺寸过滤失效、`ttlDays` undefined 使 TTL 截止值变 NaN）。现将 `'images'` 加入 `OVERRIDE_BLANKET_APPLY_EXCLUDE`（元素类型相应加宽——`CompressModelOverrides` 本身 Omits 了它），并附回归测试同时覆盖运行时不泄漏行为与既有的误置校验拒绝。对合法配置无行为变化。
+
+**行为变更（有意）**：默认 `compress.images.enabled=true` 时，每个会话轮次都会将 ≥ 16 KB 的 data-URL 图片复制到本地磁盘，且折叠摘要中会出现指针行——新增磁盘写入 + 摘要略长。此前这些图片在折叠时被静默丢弃。可用 `compress.images.enabled=false` 关闭。
+
+**安装**：`opencode plugin opencode-acp@latest --global`
+
 ### v1.18.3 — decompress 正确性加固 + 宿主权限尊重 + 一键发布 workflow
 
 **自 v1.18.2 以来捆绑六个运行时修复、一个 CI 特性与文档更新**（issue #405、#444、#446、#447、#457、#461、#465；CI #443/#474；文档 #441/#442/#450/#471）。无配置或状态格式变更。

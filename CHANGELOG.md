@@ -1,5 +1,21 @@
 # Changelog
 
+### v1.18.4 — image archive: spilled folded-range images with re-read pointers
+
+**PR #479 (closes #478).** One feature plus its review-hardening fix. Additive state only; new config below.
+
+**1. Image archive (#478):** Images attached as data-URL file parts were silently dropped when their range was folded, with no recovery path once OpenCode storage lost the originals. This release ports the billion-context #1995/#2640 principle — *images don't enter compression; they are spilled to a file and the model re-reads them*:
+- `archiveSessionImages()`: per-turn pass after `assignMessageRefs` spills qualifying images (data URL, binary mime, ≥ `minBytes`) to `<storageDir>/images/<dirName(sessionId)>/` as 0600 files named `<sha8(rawId)>-p<i>-<sha8(content)>.<ext>`; metadata index persisted on `SessionState.imageArchive` keyed by raw message ID (survives ref re-issue); never throws.
+- `appendArchivedImagePointers()`: last step of the range-mode summary chain appends absolute-path pointer lines for archived images covered by the folded range, so the model can re-read pixels with its own file tools.
+- `pruneImageArchive()`: best-effort TTL sweep (once per process per session).
+- New config: `compress.images { enabled=true, minBytes=16384, ttlDays=7 }`. **Enabled by default**; set `enabled:false` for exact pre-release status quo. Excluded from the per-model override cascade. Schema + validation + docs updated.
+
+**2. Cascade blanket-apply guard (#478):** review hardening for the feature above — the "excluded from the per-model override cascade" contract previously held only at the type level: `resolveCompressOverrides` spreads whatever user JSON sits under `compress.providers/<p>` or `.models/<m>`, so an `images` entry there reached `applyCompressOverrides` and was blanket-applied as a PARTIAL object, replacing the global images config wholesale (`minBytes` undefined disables the size filter, `ttlDays` undefined makes the TTL cutoff NaN). `'images'` is now added to `OVERRIDE_BLANKET_APPLY_EXCLUDE` (element type widened, since `CompressModelOverrides` Omits it) with a regression test covering both the runtime no-leak behavior and the existing validation rejection of the misplacement. No behavior change for valid configs.
+
+**Behavior change (intentional):** with `compress.images.enabled=true` (default), data-URL images ≥ 16 KB are copied to local disk each session turn and pointer lines appear in folded summaries — new disk writes + slightly longer summaries. Previously those images were silently dropped when folded. Opt out via `compress.images.enabled=false`.
+
+**Install**: `opencode plugin opencode-acp@latest --global`
+
 ### v1.18.3 — decompress correctness hardening + host permission respect + one-click release workflow
 
 **Bundles six runtime fixes, one CI feature, and doc updates since v1.18.2** (issues #405, #444, #446, #447, #457, #461, #465; CI #443/#474; docs #441/#442/#450/#471). No config or state-format changes.
