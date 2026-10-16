@@ -971,10 +971,19 @@ test("reasoning drop: drop:false kill-switch keeps oversized reasoning", async (
     await handler({}, output)
 
     const a1 = output.messages.find((m) => m.info.id === "a1")!
+    // [#482] Kept reasoning no longer rides as a separate wire part — the
+    // canonicalize pass folds it into the tagged text form. The kill-switch
+    // claim is proven by the content surviving inside that text.
     assert.deepEqual(
         a1.parts.map((p) => p.type),
-        ["text", "reasoning", "tool"],
-        "kill-switch keeps reasoning",
+        ["text", "tool"],
+        "kill-switch: reasoning survives the drop gate (folded into canonical text by #482)",
+    )
+    const a1Text = a1.parts.find((p) => p.type === "text") as { type: "text"; text: string }
+    assert.equal(
+        a1Text.text,
+        `<thinking>\n${"x".repeat(3000)}\n</thinking>\nsummary`,
+        "kept oversized reasoning present verbatim in the canonical tagged text",
     )
 })
 
@@ -987,9 +996,13 @@ test("reasoning drop: small thinking survives the threshold gate; threshold 0 dr
     ] }
     await setupPipeline().handler({}, kept)
     const keptA1 = kept.messages.find((m) => m.info.id === "a1")!
-    assert.deepEqual(keptA1.parts.map((p) => p.type), ["text", "reasoning", "tool"])
+    // [#482] Surviving small thinking is folded into the canonical tagged text.
+    assert.deepEqual(keptA1.parts.map((p) => p.type), ["text", "tool"])
+    const keptText = keptA1.parts.find((p) => p.type === "text") as { type: "text"; text: string }
+    assert.equal(keptText.text, `<thinking>\nshort thinking\n</thinking>\nsummary`)
 
-    // threshold 0 → unconditional drop.
+    // threshold 0 → unconditional drop; dropped reasoning must NOT reappear
+    // via the canonicalize merge ("dropped stays dropped").
     const dropped = { messages: [
         makeUserMessage("u1", "Hello"),
         makeAssistantMessage("a1", "summary", [smallReasoningPart("r1"), compressToolPart("t1")]),
@@ -1024,10 +1037,18 @@ test("reasoning drop: provider-level drop:false disables for matching provider",
     await handler({}, output)
 
     const a1 = output.messages.find((m) => m.info.id === "a1")!
+    // [#482] Provider-level keep means the reasoning survives the drop gate;
+    // the canonicalize pass then folds it into the tagged text form.
     assert.deepEqual(
         a1.parts.map((p) => p.type),
-        ["text", "reasoning", "tool"],
-        "provider-level drop:false wins for the active provider",
+        ["text", "tool"],
+        "provider-level drop:false keeps reasoning (folded into canonical text by #482)",
+    )
+    const a1Text = a1.parts.find((p) => p.type === "text") as { type: "text"; text: string }
+    assert.equal(
+        a1Text.text,
+        `<thinking>\n${"x".repeat(3000)}\n</thinking>\nsummary`,
+        "provider-level keep: reasoning present verbatim in the canonical tagged text",
     )
 })
 
@@ -1090,7 +1111,7 @@ test("reasoning drop: model-level override beats provider-level", async () => {
     )
 })
 
-test("reasoning drop: active round reasoning is never touched", async () => {
+test("reasoning drop: active round reasoning survives the drop gate (#482 folds it like any other)", async () => {
     const { handler } = setupPipeline()
 
     const output = { messages: [
@@ -1107,11 +1128,23 @@ test("reasoning drop: active round reasoning is never touched", async () => {
     assert.deepEqual(
         a1.parts.map((p) => p.type),
         ["text", "tool"],
-        "closed round dropped",
+        "closed round oversized reasoning dropped",
     )
+    // Dropped reasoning must not reappear through the canonicalize merge.
+    const a1Text = a1.parts.find((p) => p.type === "text") as { type: "text"; text: string }
+    assert.equal(a1Text.text, "old round", "dropped closed-round reasoning absent from text")
+    // [#482] The drop gate still exempts the active round; the canonicalize
+    // pass intentionally has no such exemption — an active turn that later
+    // becomes history must already carry its stable wire id.
     assert.deepEqual(
         a2.parts.map((p) => p.type),
-        ["text", "reasoning", "tool"],
-        "active round untouched (text + reasoning + tool)",
+        ["text", "tool"],
+        "active round folded into canonical text by #482",
+    )
+    const a2Text = a2.parts.find((p) => p.type === "text") as { type: "text"; text: string }
+    assert.equal(
+        a2Text.text,
+        `<thinking>\n${"x".repeat(3000)}\n</thinking>\nactive`,
+        "active round oversized reasoning survives the drop gate, verbatim in canonical text",
     )
 })
