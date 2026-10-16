@@ -31,8 +31,8 @@ import test from "node:test"
 import { mkdtempSync, rmSync } from "node:fs"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
-import type { PluginConfig, PluginInput } from "../lib/config"
-import { getConfig } from "../lib/config"
+import type { PluginConfig } from "../lib/config"
+import { getDefaultConfig } from "../lib/config"
 import { createChatMessageTransformHandler } from "../lib/hooks"
 import { Logger } from "../lib/logger"
 import { createSessionState, type SessionState, type WithParts } from "../lib/state"
@@ -52,6 +52,7 @@ function buildConfig(overrides: Partial<PluginConfig> = {}): PluginConfig {
         enabled: true,
         autoUpdate: true,
         debug: false,
+        logLevel: "silent",
         pruneNotification: "off",
         pruneNotificationType: "chat",
         commands: { enabled: true, protectedTools: [] },
@@ -81,6 +82,12 @@ function buildConfig(overrides: Partial<PluginConfig> = {}): PluginConfig {
             majorGcThresholdPercent: "100%",
             batchCleanup: { lowThreshold: "60%", highThreshold: "75%", forceThreshold: "90%" },
         },
+        qualityGate: {
+            enabled: false,
+            algorithm: "rouge-recall-v1",
+            algorithms: {},
+        },
+        messageFilters: { enabled: false, filters: {} },
     }
     return { ...base, ...overrides }
 }
@@ -237,27 +244,14 @@ test("config validation: provider-level emergencyTruncation override rejects non
 })
 
 test("shipped default: emergencyTruncation is false with no user config", () => {
-    // Pin the SHIPPED constant (lib/config.ts defaultConfig): every other test
-    // hand-builds configs, so flipping the shipped default would otherwise
-    // break nothing in this file (#485 review finding).
-    const configHome = mkdtempSync(join(tmpdir(), "acp-default-pin-cfg-"))
-    const projectDir = mkdtempSync(join(tmpdir(), "acp-default-pin-proj-"))
-    const savedConfigHome = process.env.XDG_CONFIG_HOME
-    process.env.XDG_CONFIG_HOME = configHome
-    try {
-        delete process.env.OPENCODE_CONFIG_DIR
-        const fakeCtx = {
-            directory: projectDir,
-            client: { tui: { showToast: () => {} } },
-        } as unknown as PluginInput
-        const config = getConfig(fakeCtx)
-        assert.equal(config.compress.emergencyTruncation, false)
-    } finally {
-        if (savedConfigHome === undefined) delete process.env.XDG_CONFIG_HOME
-        else process.env.XDG_CONFIG_HOME = savedConfigHome
-        rmSync(configHome, { recursive: true, force: true })
-        rmSync(projectDir, { recursive: true, force: true })
-    }
+    // Pin the SHIPPED constant (lib/config.ts defaultConfig) via the pure
+    // accessor: every other test hand-builds configs, so flipping the shipped
+    // default would otherwise break nothing in this file (#485 review
+    // finding). [#485 review 2] Never probe getConfig() here — it bakes
+    // GLOBAL_CONFIG_DIR at module load (a runtime XDG_CONFIG_HOME assignment
+    // is inert) and writes config files into the real home when absent.
+    const config = getDefaultConfig()
+    assert.equal(config.compress.emergencyTruncation, false)
 })
 
 test("persistence: stickyTruncations survives a save→load→restore roundtrip, dropping malformed entries", async () => {
@@ -604,7 +598,14 @@ test("sticky: freezing a truncation persists state in the same request (quiet se
         assert.equal(Object.keys(state.stickyTruncations).length, 1, "one entry frozen")
 
         let persisted = null
-        for (let i = 0; i < 100 && persisted === null; i++) {
+        // Poll for the frozen ENTRY, not the file: the state file already
+        // exists after turn 1's init save, so a file-existence loop would
+        // race the fire-and-forget sticky save instead of waiting for it.
+        for (
+            let i = 0;
+            i < 100 && persisted?.stickyTruncations?.["call-big-read"] === undefined;
+            i++
+        ) {
             await new Promise((resolve) => setTimeout(resolve, 20))
             persisted = await loadSessionState(SID, new Logger(false))
         }
@@ -617,7 +618,33 @@ test("sticky: freezing a truncation persists state in the same request (quiet se
 
 test("switch honors the provider/model override cascade", async () => {
     // [#485 review Major 2] compress.providers.<provider>.emergencyTruncation
-    // must actually gate the guards, not just validate.
+    // must actually gate the guards, not just validate. The models.<m> level
+    // must work too (review 2 F3).
+    const withModelOverride = buildConfig()
+    withModelOverride.compress.emergencyTruncation = false // global OFF
+    ;(withModelOverride.compress as any).providers = {
+        "test-provider": {
+            models: { "test-model": { emergencyTruncation: true } },
+        },
+    }
+
+    const { state: stateM, handler: handlerM, tempDir: tempDirM } =
+        setupPipeline(withModelOverride)
+    try {
+        const output = { messages: buildScenarioMessages() }
+        await handlerM({}, output)
+        const toolPart = (output.messages[1] as WithParts).parts.find(
+            (p: any) => p.type === "tool",
+        ) as any
+        assert.ok(
+            toolPart.state.output.includes(TRUNCATION_MARKER),
+            "model-level override must enable the guards",
+        )
+        assert.ok(stateM.stickyTruncations["call-big-read"], "model-level truncation is frozen")
+    } finally {
+        rmSync(tempDirM, { recursive: true, force: true })
+    }
+
     const withOverride = buildConfig()
     withOverride.compress.emergencyTruncation = false // global OFF
     ;(withOverride.compress as any).providers = {

@@ -63,3 +63,26 @@ Findings fixed (1 MAJOR + 2 MINOR + NITs):
 Tests: +1 unit test "compacted parts are never frozen nor replayed" (snapshot
 skips; replay leaves full output, keeps entry; record on empty prior never
 freezes). Suite: 17/17 in this file, 1391/1391 full (`env -u BILLION_CONTEXT_PROXY npm test`), `tsc --noEmit` clean.
+
+## 2026-10-17 — Second review round (PR #488, reviewer #2 — tests)
+
+Verdict: sound, all 5 fail-when-broken probes green (reviewer ran them).
+Findings fixed (1 MODERATE + 3 MINOR):
+
+1. **F1 — pin test environment-leaky.** `process.env.XDG_CONFIG_HOME` set at
+   runtime is inert (GLOBAL_CONFIG_DIR baked at module load, lib/config.ts:445)
+   and `getConfig()` writes real config files when absent. Fix: added pure
+   accessor `getDefaultConfig()` (deep-clone of defaultConfig) to lib/config.ts;
+   pin test now uses it — zero filesystem/env contact.
+2. **F2 — quiet-session poll raced fire-and-forget save.** Poll condition now
+   waits for the frozen ENTRY (`persisted?.stickyTruncations?.["call-big-read"]`),
+   not file existence (file already exists after turn-1 init save).
+3. **F3 — cascade test lacked model-level leg.** Added
+   `providers["test-provider"].models["test-model"].emergencyTruncation=true`
+   leg (guards fire + entry frozen). Verified non-vacuous: retargeting to
+   "other-model" → test fails.
+4. **F4 — buildConfig missing PluginConfig fields** (pre-existing §5.6
+   anti-pattern): added `logLevel`, `qualityGate`, `messageFilters` (mirrors
+   tests/compression-candidates.test.ts:24,69,74).
+
+Suite: 17/17 file, 1391/1391 full, `tsc --noEmit` clean.

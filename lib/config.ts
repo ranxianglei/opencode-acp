@@ -508,6 +508,16 @@ function getConfigPaths(ctx?: PluginInput): {
     return { global, configDir, project }
 }
 
+/**
+ * [#485 review] Pure accessor for the shipped default config. Lets tests
+ * pin shipped defaults without touching the real config directories —
+ * `getConfig()` both bakes `GLOBAL_CONFIG_DIR` at module load and creates
+ * files in the real home when they are absent.
+ */
+export function getDefaultConfig(): PluginConfig {
+    return deepCloneConfig(defaultConfig)
+}
+
 function createDefaultConfig(): void {
     if (!existsSync(GLOBAL_CONFIG_DIR)) {
         mkdirSync(GLOBAL_CONFIG_DIR, { recursive: true })
