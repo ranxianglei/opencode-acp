@@ -441,10 +441,17 @@ Each level overrides the previous, so project settings take priority over global
         // <storageDir>/images/<dirName(sessionId)>/ (mode 0600); block
         // summaries covering them append absolute paths for the model to
         // re-read with its own file tools. Not part of the per-model cascade.
+        // [#478] Image archive + [#489] large-image context guard: data-URL
+        // images are metered (vision-token estimate), spilled to disk when they
+        // enter the session so folded ranges keep re-readable pointers, and a
+        // one-time nudge fires for images >= largeBytes telling the model to
+        // compress older ranges before/after working with the image.
         "images": {
             "enabled": true,
             "minBytes": 16384,
             "ttlDays": 7,
+            "largeBytes": 524288,
+            "nudge": true,
         },
     },
     // Garbage collection — hardcoded 100% fallback only

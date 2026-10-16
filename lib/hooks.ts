@@ -19,7 +19,7 @@ import {
 } from "./messages"
 import { applyCompressOverrides } from "./messages/inject/utils"
 import { renderSystemPrompt, type PromptStore } from "./prompts"
-import { buildProtectedToolsExtension } from "./prompts/extensions/system"
+import { buildProtectedToolsExtension, IMAGE_GUARD_SYSTEM_EXTENSION } from "./prompts/extensions/system"
 import { DEFAULT_COMPRESS_IMAGES, DEFAULT_COMPRESS_REASONING } from "./config"
 import { archiveSessionImages, pruneImageArchive } from "./compress/image-archive"
 import {
@@ -169,6 +169,9 @@ export function createSystemPromptHandler(
             runtimePrompts,
             buildProtectedToolsExtension(config.compress.protectedTools),
             state.isSubAgent && config.allowSubAgents,
+            (config.compress.images ?? DEFAULT_COMPRESS_IMAGES).nudge !== false
+                ? IMAGE_GUARD_SYSTEM_EXTENSION
+                : undefined,
         )
         if (output.system.length > 0) {
             output.system[output.system.length - 1] += "\n\n" + newPrompt

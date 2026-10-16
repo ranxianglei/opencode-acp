@@ -5,6 +5,7 @@ export function renderSystemPrompt(
     prompts: RuntimePrompts,
     protectedToolsExtension?: string,
     subagent?: boolean,
+    imageGuardExtension?: string,
 ): string {
     const extensions: string[] = []
 
@@ -14,6 +15,12 @@ export function renderSystemPrompt(
 
     if (subagent) {
         extensions.push(prompts.subagentExtension.trim())
+    }
+
+    // [Issue #489] Standing "make room before reading images" rule; static
+    // text so it is prompt-cache safe. Caller passes undefined to disable.
+    if (imageGuardExtension) {
+        extensions.push(imageGuardExtension.trim())
     }
 
     // decompress extension is always included when compress is not denied

@@ -42,3 +42,11 @@ NOTE: Message-mode blocks created in the same batch (same runId) are restored to
 Decompressing one block from a batch restores all blocks in that batch.
 </dcp-system-reminder>
 `
+
+/**
+ * [Issue #489] Standing image-handling rule for the system prompt. Static
+ * text (no per-turn interpolation) so it never busts the prompt cache; the
+ * caller omits it when compress.images.nudge is disabled.
+ */
+export const IMAGE_GUARD_SYSTEM_EXTENSION = `
+IMAGE HANDLING: Before reading an image file into context, make sure there is room: if context usage is high, compress older conversation ranges first. A large image consumes significant context for as long as it stays uncompressed. Once you are done analyzing an image, prefer compressing the range that contains it — archived images remain re-readable through their disk pointers.`

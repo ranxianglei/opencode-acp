@@ -32,7 +32,8 @@ const IMAGE_EXTENSIONS: Record<string, string> = {
     "image/bmp": "bmp",
 }
 
-function sha8(input: string | Buffer): string {
+/** [Issue #478/#489] Short content fingerprint; shared with the image nudge dedup keys. */
+export function sha8(input: string | Buffer): string {
     return createHash("sha256").update(input).digest("hex").slice(0, 8)
 }
 

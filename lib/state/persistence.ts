@@ -69,6 +69,8 @@ export interface PersistedSessionState {
     modelID?: string
     /** [Issue #478] Archived image metadata index (raw message ID → entries) */
     imageArchive?: Record<string, ArchivedImageEntry[]>
+    /** [Issue #489] Large-image surge-nudge dedup index (dedup key → first-emission ts) */
+    imageSurgeNudged?: Record<string, number>
     /** [Issue #485] Sticky emergency truncations (tool call ID → frozen truncated output) */
     stickyTruncations?: Record<string, string>
 }
@@ -214,6 +216,7 @@ export function saveSessionState(
         modelProviderID: sessionState.modelProviderID,
         modelID: sessionState.modelID,
         imageArchive: sessionState.imageArchive,
+        imageSurgeNudged: sessionState.imageSurgeNudged,
         stickyTruncations: sessionState.stickyTruncations,
     }
 

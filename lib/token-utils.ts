@@ -5,6 +5,25 @@ import * as _anthropicTokenizer from "@anthropic-ai/tokenizer"
 const anthropicCountTokens = (_anthropicTokenizer.countTokens ??
     (_anthropicTokenizer as any).default?.countTokens) as typeof _anthropicTokenizer.countTokens
 import { getLastUserMessage } from "./messages/query"
+import { estimateImagePartTokens } from "./compress/image-tokens"
+
+/**
+ * [Issue #489] Sum the estimated cost of inline image parts in messages at or
+ * after `startIndex`. Used to close the one-round-trip blind window where a
+ * freshly-read image is not yet reflected in API-reported usage.
+ */
+export function countPendingImageTokens(messages: WithParts[], startIndex: number): number {
+    let total = 0
+    for (let i = Math.max(0, startIndex); i < messages.length; i++) {
+        const parts = Array.isArray(messages[i].parts) ? messages[i].parts : []
+        for (const part of parts) {
+            if (part.type === "file") {
+                total += estimateImagePartTokens(part)
+            }
+        }
+    }
+    return total
+}
 
 export function getCurrentTokenUsage(state: SessionState, messages: WithParts[]): number {
     for (let i = messages.length - 1; i >= 0; i--) {
@@ -41,7 +60,17 @@ export function getCurrentTokenUsage(state: SessionState, messages: WithParts[])
         // opencode session.ts: adjustedInputTokens = inputTokens - cacheRead - cacheWrite
         // So: input + cacheRead + cacheWrite = prompt_tokens (total input)
         // Total context usage = prompt_tokens + output + reasoning
-        return input + cacheRead + cacheWrite + output + reasoning
+        // [Issue #489] Inline images arriving AFTER this response are not yet
+        // in the reported number — add their estimate so thresholds react on
+        // the very next request instead of one round-trip late.
+        return (
+            input +
+            cacheRead +
+            cacheWrite +
+            output +
+            reasoning +
+            countPendingImageTokens(messages, i + 1)
+        )
     }
 
     // [FIX Bug 5] fallback: estimate from all content (text + tool outputs)
@@ -210,23 +239,37 @@ export function countMessageTextTokens(msg: WithParts): number {
 export function countAllMessageTokens(msg: WithParts): number {
     const parts = Array.isArray(msg.parts) ? msg.parts : []
     const texts: string[] = []
+    let imageTokens = 0
     for (const part of parts) {
         if (part.type === "text") {
             texts.push(part.text)
+        } else if (part.type === "file") {
+            // [Issue #489] Inline images were invisible to this counter before.
+            imageTokens += estimateImagePartTokens(part)
         } else {
             texts.push(...extractToolContent(part))
         }
     }
-    if (texts.length === 0) return 0
-    return estimateTokensBatch(texts)
+    if (texts.length === 0 && imageTokens === 0) return 0
+    return imageTokens + (texts.length > 0 ? estimateTokensBatch(texts) : 0)
 }
 
+/**
+ * Character-size of a message under the chars/4 token convention. [Issue
+ * #489] Inline image parts contribute their estimated-token cost × 4
+ * ("equivalent chars") so every consumer of this single counter — range
+ * display, the executor min-size check (#359 parity), smart-plan sizing,
+ * candidate retained-chars and per-message tags — agrees with what folding
+ * the message would actually free.
+ */
 export function countMessageCharacters(msg: WithParts): number {
     const parts = Array.isArray(msg.parts) ? msg.parts : []
     let total = 0
     for (const part of parts) {
         if (part.type === "text" && typeof part.text === "string") {
             total += part.text.length
+        } else if (part.type === "file") {
+            total += estimateImagePartTokens(part) * 4
         } else {
             for (const content of extractToolContent(part)) {
                 total += content.length

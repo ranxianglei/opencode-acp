@@ -224,6 +224,13 @@ export interface SessionState {
      */
     imagePruneDone: boolean
     /**
+     * [Issue #489] Dedup index for large-image surge nudges: one entry per
+     * (message, part, content-hash) that has already received a "large image
+     * entered context" notice. Values are timestamps (first-emission time).
+     * Persisted so a restart does not re-announce the same image.
+     */
+    imageSurgeNudged: Record<string, number>
+    /**
      * [Issue #485] Sticky emergency truncations: tool call ID → the truncated
      * output the guards last produced. Written when
      * `compress.emergencyTruncation` is on and a guard truncates/clears a tool

@@ -415,3 +415,26 @@ test("getInvalidConfigKeys flags unknown fields nested inside compress.reasoning
     })
     assert.deepEqual(result, ["compress.reasoning.dropp"])
 })
+
+test("getInvalidConfigKeys accepts compress.images keys (#478/#489)", () => {
+    const result = getInvalidConfigKeys({
+        compress: {
+            images: { enabled: true, minBytes: 16384, ttlDays: 7, largeBytes: 524288, nudge: true },
+        },
+    })
+    assert.deepEqual(result, [])
+})
+
+test("validateConfigTypes rejects bad compress.images.largeBytes / .nudge types (#489)", () => {
+    const good = validateConfigTypes({
+        compress: { images: { enabled: true, minBytes: 0, ttlDays: 7, largeBytes: 524288, nudge: false } },
+    })
+    assert.deepEqual(good, [])
+
+    const badLargeBytes = validateConfigTypes({ compress: { images: { largeBytes: -1 } } })
+    assert.ok(badLargeBytes.some((e) => e.key === "compress.images.largeBytes"))
+    const nonIntegral = validateConfigTypes({ compress: { images: { largeBytes: 1.5 } } })
+    assert.ok(nonIntegral.some((e) => e.key === "compress.images.largeBytes"))
+    const badNudge = validateConfigTypes({ compress: { images: { nudge: "yes" } } })
+    assert.ok(badNudge.some((e) => e.key === "compress.images.nudge"))
+})
