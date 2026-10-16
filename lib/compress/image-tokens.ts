@@ -145,9 +145,19 @@ export function parseImageDimensions(
                 const size = dv.getUint32(i + 4, true)
                 const payload = i + 8
                 if (id === "VP8 ") {
-                    // Frame tag (3) + start code (3), then width/height LE u16
-                    // masked to 14 bits.
+                    // cwebp layout: the frame tag 9D 01 2A sits at chunk-payload
+                    // offset 3; width/height follow as little-endian u16 masked
+                    // to 14 bits at offsets 6/8. Verify the tag so corrupt
+                    // chunks fall back to the size-based estimate instead of
+                    // yielding plausible-looking garbage dims.
                     if (payload + 10 > len) return undefined
+                    if (
+                        bytes[payload + 3] !== 0x9d ||
+                        bytes[payload + 4] !== 0x01 ||
+                        bytes[payload + 5] !== 0x2a
+                    ) {
+                        return undefined
+                    }
                     return validDimensions(
                         dv.getUint16(payload + 6, true) & 0x3fff,
                         dv.getUint16(payload + 8, true) & 0x3fff,

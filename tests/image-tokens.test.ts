@@ -81,7 +81,7 @@ function webpVP8Header(width: number, height: number): Buffer {
     b.write("WEBP", 8, "ascii")
     b.write("VP8 ", 12, "ascii")
     b.writeUInt32LE(10, 16)
-    b[23] = 0x9d // start code
+    b[23] = 0x9d // frame tag
     b[24] = 0x01
     b[25] = 0x2a
     b.writeUInt16LE(width & 0x3fff, 26)
@@ -155,6 +155,12 @@ test("parseImageDimensions handles PNG, JPEG, GIF, WebP (VP8/VP8L/VP8X) and BMP"
         width: 640,
         height: 480,
     })
+})
+
+test("parseImageDimensions rejects a VP8 chunk with a corrupt frame tag", () => {
+    const buf = webpVP8Header(1280, 720)
+    buf[23] = 0x00 // corrupt the frame tag at chunk-payload offset 3
+    assert.equal(parseImageDimensions(buf, "image/webp"), undefined)
 })
 
 test("parseImageDimensions returns undefined for garbage, truncation and wrong format", () => {

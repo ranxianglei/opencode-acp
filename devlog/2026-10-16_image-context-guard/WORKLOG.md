@@ -156,3 +156,19 @@ restore, PersistedSessionState interface, toPersistedState). No behavior change
 beyond adding master's features to this branch. Verified: typecheck clean,
 targeted tests (image-*, emergency-truncation-switch, truncate-tools,
 persistence, compress-state) 97/97 pass.
+
+## 9. Review hardening (independent review of PR #490)
+
+- `parseImageDimensions` VP8 branch read width/height without verifying the
+  frame tag (every other format checks its magic). A corrupt `VP8 ` chunk
+  could yield plausible-looking garbage dims. Added the 9D 01 2A check at
+  chunk-payload offset 3 — the real cwebp layout, cross-checked against
+  probe-image-size / fumadocs image-size parsers and cwebp sample output —
+  so corrupt chunks now fall back to the size-based estimate. The old
+  comment ("Frame tag (3) + start code (3)") mislaid the tag at offset 0;
+  corrected.
+- `tests/image-nudge.test.ts`: added `lastPerMessageNudgeTokens` assertions
+  after every turn of the multi-turn cycle (AGENTS.md §5.7.1 side-effect
+  requirement) — pins that the image notice never touches the per-message
+  nudge baseline.
+- New test: corrupt VP8 frame tag → `parseImageDimensions` returns undefined.
