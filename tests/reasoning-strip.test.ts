@@ -1,6 +1,10 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { dropCompressReasoning, stripStaleMetadata } from "../lib/messages/reasoning-strip"
+import {
+    dropCompressReasoning,
+    normalizeThinkingForm,
+    stripStaleMetadata,
+} from "../lib/messages/reasoning-strip"
 import type { WithParts } from "../lib/state"
 
 const SID = "ses-reasoning-strip"
@@ -352,4 +356,118 @@ test("dropCompressReasoning handles a user message at index 0 (single closed rou
         userMsg("u2", "m", "p"),
     ]
     assert.equal(dropCompressReasoning(messages, 2048), 1)
+})
+
+// ── normalizeThinkingForm (#482): pin the historical-thinking wire form by
+// collapsing every assistant message's reasoning parts into a single
+// <thinking>-marked text part. Pure function — mutates in place, returns the
+// number of messages whose parts were rewritten. ──
+
+const textOf = (part: unknown): string | undefined => (part as { text?: string }).text
+
+test("normalizeThinkingForm merges reasoning + text into one <thinking> text part (exact bytes)", () => {
+    const messages: WithParts[] = [
+        assistantMsg("a1", undefined, undefined, [
+            reasoningPart("r1", "think"),
+            { id: "t1", messageID: "a1", sessionID: SID, type: "text", text: "answer" },
+        ]),
+    ]
+    assert.equal(normalizeThinkingForm(messages), 1)
+    const parts = messages[0]!.parts
+    assert.equal(parts.length, 1)
+    assert.equal(parts[0]!.type, "text")
+    assert.equal(textOf(parts[0]), "<thinking>\nthink\n</thinking>\nanswer")
+})
+
+test("normalizeThinkingForm emits no dangling trailing newline when there is no text", () => {
+    const messages: WithParts[] = [
+        assistantMsg("a1", undefined, undefined, [reasoningPart("r1", "think")]),
+    ]
+    assert.equal(normalizeThinkingForm(messages), 1)
+    const parts = messages[0]!.parts
+    assert.equal(parts.length, 1)
+    assert.equal(parts[0]!.type, "text")
+    assert.equal(textOf(parts[0]), "<thinking>\nthink\n</thinking>")
+})
+
+test("normalizeThinkingForm joins multiple reasoning and text parts with \"\" (host lowerAssistantMessage semantics)", () => {
+    const messages: WithParts[] = [
+        assistantMsg("a1", undefined, undefined, [
+            reasoningPart("r1", "a"),
+            reasoningPart("r2", "b"),
+            { id: "t1", messageID: "a1", sessionID: SID, type: "text", text: "x" },
+            { id: "t2", messageID: "a1", sessionID: SID, type: "text", text: "y" },
+        ]),
+    ]
+    assert.equal(normalizeThinkingForm(messages), 1)
+    const parts = messages[0]!.parts
+    assert.equal(parts.length, 1)
+    assert.equal(textOf(parts[0]), "<thinking>\nab\n</thinking>\nxy")
+})
+
+test("normalizeThinkingForm is idempotent — second run is a no-op", () => {
+    const messages: WithParts[] = [
+        assistantMsg("a1", undefined, undefined, [
+            reasoningPart("r1", "think"),
+            { id: "t1", messageID: "a1", sessionID: SID, type: "text", text: "answer" },
+        ]),
+    ]
+    assert.equal(normalizeThinkingForm(messages), 1)
+    const before = JSON.stringify(messages[0]!.parts)
+    assert.equal(normalizeThinkingForm(messages), 0)
+    assert.equal(JSON.stringify(messages[0]!.parts), before)
+})
+
+test("normalizeThinkingForm leaves assistant messages without reasoning untouched", () => {
+    const messages: WithParts[] = [
+        assistantMsg("a1", undefined, undefined, [
+            { id: "t1", messageID: "a1", sessionID: SID, type: "text", text: "plain" },
+        ]),
+    ]
+    assert.equal(normalizeThinkingForm(messages), 0)
+    assert.equal(messages[0]!.parts.length, 1)
+    assert.equal(textOf(messages[0]!.parts[0]), "plain")
+})
+
+test("normalizeThinkingForm ignores non-assistant messages", () => {
+    const messages: WithParts[] = [userMsg("u1", "m", "p")]
+    assert.equal(normalizeThinkingForm(messages), 0)
+    assert.equal(messages[0]!.parts.length, 1)
+    assert.equal(textOf(messages[0]!.parts[0]), "user text")
+})
+
+test("normalizeThinkingForm preserves non-text/non-reasoning parts in their original positions", () => {
+    const messages: WithParts[] = [
+        assistantMsg("a1", undefined, undefined, [
+            reasoningPart("r1", "think"),
+            {
+                id: "tp",
+                messageID: "a1",
+                sessionID: SID,
+                type: "tool",
+                tool: "bash",
+                callID: "c1",
+                state: { status: "completed", output: "out" },
+            },
+            { id: "t1", messageID: "a1", sessionID: SID, type: "text", text: "answer" },
+        ]),
+    ]
+    assert.equal(normalizeThinkingForm(messages), 1)
+    const parts = messages[0]!.parts
+    assert.deepEqual(
+        parts.map((p) => p.type),
+        ["text", "tool"],
+    )
+    assert.equal(textOf(parts[0]), "<thinking>\nthink\n</thinking>\nanswer")
+})
+
+test("normalizeThinkingForm counts every normalized assistant message", () => {
+    const messages: WithParts[] = [
+        assistantMsg("a1", undefined, undefined, [reasoningPart("r1", "one")]),
+        assistantMsg("a2", undefined, undefined, [reasoningPart("r2", "two")]),
+        assistantMsg("a3", undefined, undefined, [
+            { id: "t3", messageID: "a3", sessionID: SID, type: "text", text: "no thinking" },
+        ]),
+    ]
+    assert.equal(normalizeThinkingForm(messages), 2)
 })

@@ -431,9 +431,15 @@ Each level overrides the previous, so project settings take priority over global
         // compression, so their thinking rides along every request as an
         // unreclaimable floor. Closed turns only; the active round is never
         // touched. Small thinkings under the threshold are kept.
+        // [#482] Pin the wire form of historical thinking: fold each assistant
+        // message's reasoning parts into one <thinking>-marked text part at
+        // request time, so serialized bytes stay deterministic across host
+        // metadata-table refreshes. On by default; set normalize:false for
+        // direct providers needing structured thinking replay.
         "reasoning": {
             "drop": true,
             "threshold": 2048,
+            "normalize": true
         },
         // [#478] Image archive: spill data-URL images to disk when they enter
         // the session so folded ranges keep re-readable pointers instead of

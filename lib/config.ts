@@ -159,6 +159,17 @@ export interface CompressReasoningConfig {
      * (only zero-length reasoning survives). Default: 2048.
      */
     threshold: number
+    /**
+     * [#482] Master switch for pinning the wire form of historical thinking:
+     * merge every assistant message's reasoning parts into one `<thinking>`-
+     * marked text part so serialization stops depending on the host's
+     * per-request metadata-table choice (v1 `capabilities.interleaved`).
+     * Opt-out kill-switch — enabled unless explicitly set to `false` (the
+     * consumer gates on `normalize !== false`). Set `false` to keep reasoning
+     * as separate structured parts, e.g. for direct providers that require
+     * structured thinking replay (Anthropic native / Gemini thoughtSignature).
+     */
+    normalize?: boolean
 }
 
 /**
@@ -595,6 +606,12 @@ export function mergeCompress(
         return base
     }
 
+    // [#482] `normalize` is an opt-out kill-switch (default-on via the
+    // consumer's `!== false` gate). Forward it only when a layer explicitly
+    // sets it, so a config that never mentions it keeps the resolved reasoning
+    // object byte-identical to pre-#482 (no spurious key → stable deep-equals).
+    const normalizeResolved = override.reasoning?.normalize ?? base.reasoning?.normalize
+
     return {
         permission: override.permission ?? base.permission,
         showCompression: override.showCompression ?? base.showCompression,
@@ -637,6 +654,7 @@ export function mergeCompress(
                 override.reasoning?.threshold ??
                 base.reasoning?.threshold ??
                 DEFAULT_COMPRESS_REASONING.threshold,
+            ...(normalizeResolved !== undefined ? { normalize: normalizeResolved } : {}),
         },
         images: {
             enabled:

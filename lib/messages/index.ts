@@ -3,7 +3,7 @@ export { syncCompressionBlocks } from "./sync"
 export { injectCompressNudges } from "./inject/inject"
 export { computeInputBudget } from "./inject/utils"
 export { injectMessageIds } from "./inject/inject"
-export { stripStaleMetadata, dropCompressReasoning } from "./reasoning-strip"
+export { stripStaleMetadata, dropCompressReasoning, normalizeThinkingForm } from "./reasoning-strip"
 export { buildPriorityMap } from "./priority"
 export {
     buildToolIdList,
