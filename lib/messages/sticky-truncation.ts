@@ -26,7 +26,7 @@ import type { SessionState, WithParts } from "../state"
 type ToolPartLike = {
     type: string
     callID?: unknown
-    state?: { output?: unknown }
+    state?: { output?: unknown; time?: { compacted?: boolean } }
 }
 
 function collectToolParts(messages: WithParts[]): ToolPartLike[] {
@@ -46,7 +46,15 @@ function collectToolParts(messages: WithParts[]): ToolPartLike[] {
 
 /**
  * Replay frozen truncations onto the request copy, and prune entries whose
- * call no longer exists in the projected view.
+ * call no longer exists in the projected view. Returns the number of map
+ * entries deleted this call (prunes) so the caller can persist deletions —
+ * every other save trigger in the transform hook fires earlier.
+ *
+ * [#485 review] Compacted parts (`state.time.compacted`, opencode native
+ * compaction) are never replayed onto: the guards cannot legitimately
+ * truncate them, so any frozen entry predating a compaction must not
+ * re-inflate old content over the compacted placeholder. They still count
+ * as `seen` so genuinely vanished calls get pruned.
  *
  * [#485 review] Prune-on-vanish is intentionally coarse: a call absent from
  * ONE request's projected view (content-based filter, mid-abort partial
@@ -64,11 +72,12 @@ export function applyStickyTruncations(
     state: SessionState,
     messages: WithParts[],
     logger: Logger,
-): void {
+): number {
     const frozen = state.stickyTruncations
-    if (Object.keys(frozen).length === 0) return
+    if (Object.keys(frozen).length === 0) return 0
 
     let replayed = 0
+    let pruned = 0
     const seen = new Set<string>()
     for (const part of collectToolParts(messages)) {
         const callID = typeof part.callID === "string" ? part.callID : undefined
@@ -77,6 +86,7 @@ export function applyStickyTruncations(
         const recorded = frozen[callID]
         if (recorded === undefined) continue
         if (!part.state) continue // stateless part — cannot be a guard candidate
+        if (part.state.time?.compacted) continue // native compaction wins
         // [#485 review] Overwrite non-string outputs too: the guards
         // stringify before truncating, so the frozen form is a string while
         // the pristine per-request copy is whatever the store holds. Skipping
@@ -87,7 +97,10 @@ export function applyStickyTruncations(
     }
 
     for (const callID of Object.keys(frozen)) {
-        if (!seen.has(callID)) delete frozen[callID]
+        if (!seen.has(callID)) {
+            delete frozen[callID]
+            pruned++
+        }
     }
 
     if (replayed > 0) {
@@ -96,6 +109,7 @@ export function applyStickyTruncations(
             frozen: Object.keys(frozen).length,
         })
     }
+    return pruned
 }
 
 /**
@@ -103,12 +117,16 @@ export function applyStickyTruncations(
  * outputs are stringified via `extractCompletedToolOutput` — the same
  * normalization the guards use before truncating — so a guard turning an
  * object output into a truncated string is detected as a change and frozen.
+ * Compacted parts are skipped: `extractCompletedToolOutput` reports their
+ * placeholder while `state.output` still holds the full string, which would
+ * otherwise read as a guard change and freeze the FULL output into state.
  */
 export function snapshotToolOutputs(messages: WithParts[]): Map<string, string> {
     const snapshot = new Map<string, string>()
     for (const part of collectToolParts(messages)) {
         const callID = typeof part.callID === "string" ? part.callID : undefined
         if (!callID) continue
+        if (part.state?.time?.compacted) continue
         const content = extractCompletedToolOutput(part)
         if (content === undefined) continue
         snapshot.set(callID, content)
@@ -118,10 +136,12 @@ export function snapshotToolOutputs(messages: WithParts[]): Map<string, string> 
 
 /**
  * Freeze any output the guards changed since `before`: a changed output is
- * either a fresh truncation or a phase-2 clear — both must stick. Returns
- * the number of entries frozen so the caller can persist immediately
- * (every other save trigger in the transform hook fires EARLIER, so a quiet
- * session would otherwise reach disk only via an unrelated later save).
+ * either a fresh truncation or a phase-2 clear — both must stick. Compacted
+ * parts never reach this loop's freeze path (skipped by the snapshot; guards
+ * skip them too). Returns the number of entries frozen so the caller can
+ * persist immediately (every other save trigger in the transform hook fires
+ * EARLIER, so a quiet session would otherwise reach disk only via an
+ * unrelated later save).
  */
 export function recordStickyTruncations(
     state: SessionState,

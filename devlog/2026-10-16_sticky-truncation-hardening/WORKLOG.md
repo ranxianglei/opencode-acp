@@ -33,3 +33,33 @@
   cascade test fails; re-applied → 16/16 again
 - `npm test` → 1390/1390 (env -u BILLION_CONTEXT_PROXY)
 - `npm run build` + `tsc --noEmit` clean
+
+## 2026-10-17 — Second review round (PR #488, reviewer #1)
+
+Findings fixed (1 MAJOR + 2 MINOR + NITs):
+
+1. **MAJOR — compacted parts falsely frozen.** Native compaction marks
+   `state.time.compacted` but keeps the FULL output on the part;
+   `extractCompletedToolOutput` reports the placeholder, so the snapshot vs
+   record comparison saw prior(placeholder)≠output(full) and froze the FULL
+   output into `state.json` (megabytes, re-serialized every save), and replay
+   later re-inflated it over native compaction. Fix: skip `time.compacted`
+   parts in BOTH `snapshotToolOutputs` and `applyStickyTruncations` replay
+   (still counted as `seen` so genuinely vanished calls are pruned).
+2. **MINOR — prune deletions never persisted.** `applyStickyTruncations` now
+   returns the prune count; hooks saves on `frozenCount > 0 || prunedCount > 0`.
+3. **MINOR — guards received raw config.** Hoisted one `effectiveConfig =
+   applyCompressOverrides(...)`; reasoning gate, emergency gate, AND both
+   guards (`truncateLargeToolOutputs`, `enforceContextBudget`) now use the
+   same resolved view, so per-provider `protectedTools` /
+   `completionReserveTokens` overrides are honored by the guards the switch
+   enables. (Also resolves NIT: duplicate cascade call.)
+4. **NIT — silent save failure.** `saveSessionState(...).catch` now logs
+   `logger.warn("Sticky truncation: failed to persist state", ...)`.
+5. **NIT — fork persistence condition.** Comment added in
+   `lib/state/state.ts` explaining sticky inheritance intentionally rides the
+   next save instead of forcing one.
+
+Tests: +1 unit test "compacted parts are never frozen nor replayed" (snapshot
+skips; replay leaves full output, keeps entry; record on empty prior never
+freezes). Suite: 17/17 in this file, 1391/1391 full (`env -u BILLION_CONTEXT_PROXY npm test`), `tsc --noEmit` clean.

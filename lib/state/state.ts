@@ -398,6 +398,12 @@ export async function ensureSessionInitialized(
 
             const rebuilt =
                 restored > 0 ? 0 : rebuildCompressionState(state, messages, config, logger)
+            // [#485 review] Note: sticky truncations inherited above are NOT
+            // part of this persistence condition — they ride along with
+            // whatever state this session persists next (its init save or the
+            // first transform-hook save). That is intentional: the in-memory
+            // map already has the right content, and forcing a save here would
+            // duplicate the transform hook's own persistence trigger.
             if (restored > 0 || rebuilt > 0) {
                 await saveSessionState(state, logger)
             }

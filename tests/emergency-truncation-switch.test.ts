@@ -499,6 +499,75 @@ test("sticky: unit — record freezes only outputs the guards changed", () => {
     )
 })
 
+test("sticky: unit — compacted parts are never frozen nor replayed", () => {
+    const state = createSessionState()
+    state.stickyTruncations = {
+        "call-compacted": "frozen truncated form",
+    }
+    const messages = [
+        {
+            info: { id: "m1", role: "user" },
+            parts: [
+                // Native compaction marked this part compacted, but the
+                // full output is still on the wire part. It must NOT be
+                // snapshotted (extractCompletedToolOutput reports the
+                // placeholder while state.output holds the full string →
+                // freezing would duplicate the FULL output into state) and
+                // an existing frozen entry must NOT be replayed over it.
+                {
+                    type: "tool",
+                    callID: "call-compacted",
+                    state: {
+                        status: "completed",
+                        output: "FULL COMPACTED OUTPUT".repeat(50),
+                        time: { compacted: true },
+                    },
+                },
+                {
+                    type: "tool",
+                    callID: "call-fresh",
+                    state: { status: "completed", output: "fresh output" },
+                },
+            ],
+        },
+    ] as unknown as WithParts[]
+
+    // Snapshot skips compacted parts entirely.
+    const snapshot = snapshotToolOutputs(messages)
+    assert.deepEqual(
+        [...snapshot.entries()],
+        [["call-fresh", "fresh output"]],
+        "compacted parts are not snapshotted",
+    )
+
+    // Replay leaves the compacted part's full output alone (native compaction
+    // wins) but still counts the call as seen — the frozen entry survives in
+    // the map instead of being pruned, and the return counts nothing pruned.
+    const pruned = applyStickyTruncations(state, messages, new Logger(false))
+    const toolParts = (messages[0] as { parts: any[] }).parts
+    assert.equal(
+        toolParts[0].state.output,
+        "FULL COMPACTED OUTPUT".repeat(50),
+        "replay must not re-inflate a frozen entry over a compacted part",
+    )
+    assert.equal(pruned, 0, "the compacted call is still seen, so nothing is pruned")
+    assert.equal(
+        state.stickyTruncations["call-compacted"],
+        "frozen truncated form",
+        "entry for a still-seen compacted call is kept (not pruned)",
+    )
+
+    // Record on top of an empty snapshot never freezes the compacted part's
+    // full output (prior === undefined → skipped).
+    const frozenCount = recordStickyTruncations(state, messages, snapshot, new Logger(false))
+    assert.equal(frozenCount, 0)
+    assert.equal(
+        state.stickyTruncations["call-compacted"],
+        "frozen truncated form",
+        "compacted part's full output must never enter the frozen map",
+    )
+})
+
 test("sticky: freezing a truncation persists state in the same request (quiet session)", async () => {
     // [#485 review Major 1] Every other save trigger in the transform hook
     // fires EARLIER than recordStickyTruncations. The init-time "always save"

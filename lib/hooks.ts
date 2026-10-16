@@ -322,11 +322,15 @@ export function createChatMessageTransformHandler(
             lastUserMessage?.info as
                 { model?: { providerID?: string; modelID?: string } } | undefined
         )?.model
-        const reasoningConfig = applyCompressOverrides(
+        // [#485 review] Resolve the per-provider/model override view ONCE:
+        // both the reasoning gate and the emergency-truncation gate below need
+        // the same (provider, model) identity.
+        const effectiveConfig = applyCompressOverrides(
             config,
             dropReasoningModel?.providerID ?? state.modelProviderID,
             dropReasoningModel?.modelID ?? state.modelID,
-        ).compress.reasoning
+        )
+        const reasoningConfig = effectiveConfig.compress.reasoning
         if (reasoningConfig?.drop !== false) {
             const droppedReasoning = dropCompressReasoning(
                 output.messages,
@@ -430,32 +434,29 @@ export function createChatMessageTransformHandler(
         // cluster. Default: off. When on, truncations are STICKY: replayed
         // verbatim from state on every later request (A→B→B→B), so the wire
         // view never flip-flops.
-        // [#485 review] Resolve the switch through the provider/model
-        // override cascade (same as the reasoning gate above) so
-        // compress.providers.<p>.[models.<m>.]emergencyTruncation works.
-        const emergencyTruncationEnabled = applyCompressOverrides(
-            config,
-            dropReasoningModel?.providerID ?? state.modelProviderID,
-            dropReasoningModel?.modelID ?? state.modelID,
-        ).compress.emergencyTruncation
-        if (emergencyTruncationEnabled === true) {
+        // [#485 review] The gate resolves through the provider/model override
+        // cascade so compress.providers.<p>.[models.<m>.]emergencyTruncation
+        // works, and the guards receive the SAME resolved config so related
+        // per-provider overrides (protectedTools, completionReserveTokens)
+        // are honored by the guards this switch enables.
+        if (effectiveConfig.compress.emergencyTruncation === true) {
             // Replay frozen truncations first, so the guards see the
             // already-truncated form and never restore the pristine output
             // (which is what caused the #485 cache thrash).
-            applyStickyTruncations(state, output.messages, logger)
+            const prunedCount = applyStickyTruncations(state, output.messages, logger)
             const toolOutputsBefore = snapshotToolOutputs(output.messages)
             // Candidate planning consumes the pre-truncation snapshot so its
             // executor-parity check matches the fresh messages fetched by compress.
             truncateLargeToolOutputs(
                 state,
-                config,
+                effectiveConfig,
                 logger,
                 output.messages.filter((message) => !isSyntheticMessage(message)),
             )
             // Keep candidate planning independent from the final budget guard:
             // candidates are computed from the pre-truncation snapshot so their
             // ranges remain valid when the compress executor fetches fresh history.
-            enforceContextBudget(state, config, logger, output.messages)
+            enforceContextBudget(state, effectiveConfig, logger, output.messages)
             // Freeze whatever the guards truncated/cleared this request so it
             // survives into the next one (and across restarts, via persistence).
             const frozenCount = recordStickyTruncations(
@@ -468,9 +469,19 @@ export function createChatMessageTransformHandler(
             // in this hook fires earlier, so a quiet session (no nudges, no
             // compress) would otherwise hit disk only via an unrelated later
             // save — and a restart would replay pristine A once, the exact
-            // flip this feature exists to kill.
-            if (frozenCount > 0) {
-                saveSessionState(state, logger).catch(() => {})
+            // flip this feature exists to kill. Prunes count as dirty too:
+            // deletions must reach disk even when nothing new was frozen.
+            if (frozenCount > 0 || prunedCount > 0) {
+                saveSessionState(state, logger).catch((error) => {
+                    // Swallowing this silently would reintroduce the #485 flip
+                    // after a restart — leave a trace instead.
+                    logger.warn("Sticky truncation: failed to persist state", {
+                        session: state.sessionId,
+                        frozenCount,
+                        prunedCount,
+                        error: error instanceof Error ? error.message : String(error),
+                    })
+                })
             }
         }
         injectMessageIds(state, config, output.messages, compressionPriorities)
