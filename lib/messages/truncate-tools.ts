@@ -110,6 +110,11 @@ export function truncateLargeToolOutputs(
             const part = parts[pi]
             if (part?.type !== "tool") continue
             if (part.state?.status !== "completed") continue
+            // [#485 review] Never truncate compress tool outputs (summaries)
+            // — they are the durable product of compression and, with sticky
+            // truncation on, a truncated summary would be frozen forever.
+            // Mirrors enforceContextBudget's exclusion.
+            if (part.tool === "compress") continue
 
             const content = extractCompletedToolOutput(part)
             if (content === undefined) continue

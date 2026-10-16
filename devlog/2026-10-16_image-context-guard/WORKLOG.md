@@ -143,3 +143,16 @@ npm run typecheck
 
 - [ ] Consider extending `ArchivedImageEntry` with parsed width/height so archive
       pointers can advertise size without re-reading the file (separate issue if pursued).
+
+## 8. Master merge (conflict resolution for PR #490)
+
+Merged `master` (98a16d5b, includes #486 emergency-truncation-switch, #487
+release v1.18.5, #488 sticky-truncation-hardening) into this branch. Conflicts
+in `lib/state/types.ts`, `lib/state/state.ts`, `lib/state/persistence.ts`: both
+sides appended new `SessionState` fields at the same spots — kept BOTH
+(`imageSurgeNudged` from #489 and `stickyTruncations` from #485/#486) in all six
+hunks (interface decl, createSessionState init, resetSessionState, persistence
+restore, PersistedSessionState interface, toPersistedState). No behavior change
+beyond adding master's features to this branch. Verified: typecheck clean,
+targeted tests (image-*, emergency-truncation-switch, truncate-tools,
+persistence, compress-state) 97/97 pass.

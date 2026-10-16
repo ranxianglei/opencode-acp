@@ -230,4 +230,14 @@ export interface SessionState {
      * Persisted so a restart does not re-announce the same image.
      */
     imageSurgeNudged: Record<string, number>
+    /**
+     * [Issue #485] Sticky emergency truncations: tool call ID → the truncated
+     * output the guards last produced. Written when
+     * `compress.emergencyTruncation` is on and a guard truncates/clears a tool
+     * output; replayed verbatim on every later request so the decision is
+     * one-way (A→B→B→…) instead of oscillating back to the pristine output.
+     * Entries are pruned when their call disappears from the session.
+     * Persisted so stickiness survives restarts.
+     */
+    stickyTruncations: Record<string, string>
 }

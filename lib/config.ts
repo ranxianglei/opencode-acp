@@ -140,6 +140,19 @@ export interface CompressConfig {
      * fallback for models with no declared limit.output).
      */
     completionReserveTokens?: number
+    /**
+     * [Issue #485] Master switch for the per-request emergency truncation
+     * guards (truncateLargeToolOutputs + enforceContextBudget). Default
+     * false: the truncation is view-only (never persisted to the session
+     * store), so a session hovering at the guard threshold oscillates
+     * between truncated and pristine tool outputs — every flip invalidates
+     * the provider prefix cache from that message onward, and with opencode
+     * retrying on a busy backend the churn can take down the whole serving
+     * cluster. Set true to re-enable overflow protection at the cost of that
+     * oscillation risk (protects against the HTTP 400 → silent exit 0 wall,
+     * #346).
+     */
+    emergencyTruncation?: boolean
 }
 
 /**
@@ -383,6 +396,7 @@ const defaultConfig: PluginConfig = {
         permission: "allow",
         showCompression: true,
         summaryBuffer: true,
+        emergencyTruncation: false,
         candidates: false,
         maxContextLimit: "80%",
         minContextLimit: "80%",
@@ -668,6 +682,7 @@ export function mergeCompress(
             nudge: override.images?.nudge ?? base.images?.nudge ?? DEFAULT_COMPRESS_IMAGES.nudge,
         },
         completionReserveTokens: override.completionReserveTokens ?? base.completionReserveTokens,
+        emergencyTruncation: override.emergencyTruncation ?? base.emergencyTruncation,
     }
 }
 

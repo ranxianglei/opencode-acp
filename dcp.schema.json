@@ -125,6 +125,11 @@
                     "default": true,
                     "description": "When enabled, active summary tokens extend the effective maxContextLimit used for context-limit nudges."
                 },
+                "emergencyTruncation": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Opt-in emergency truncation of oversized old tool outputs near the context wall (truncateLargeToolOutputs + enforceContextBudget). Default false: per-request truncation oscillates and invalidates the provider prefix cache (#485)."
+                },
                 "maxContextLimit": {
                     "description": "Soft upper threshold. Above this, DCP keeps sending strong compression nudges (based on nudgeFrequency), so the model is pushed to compress. Accepts number or \"X%\" of the model context window.",
                     "default": 100000,
@@ -309,6 +314,10 @@
                                 "type": "boolean",
                                 "description": "Override for counting active summary tokens toward the effective maxContextLimit."
                             },
+                            "emergencyTruncation": {
+                                "type": "boolean",
+                                "description": "Override for the opt-in emergency truncation of oversized old tool outputs."
+                            },
                             "protectTags": {
                                 "type": "boolean",
                                 "description": "Override for <protect> tag preservation."
@@ -453,6 +462,10 @@
                                         "summaryBuffer": {
                                             "type": "boolean",
                                             "description": "Override for counting active summary tokens toward the effective maxContextLimit."
+                                        },
+                                        "emergencyTruncation": {
+                                            "type": "boolean",
+                                            "description": "Override for the opt-in emergency truncation of oversized old tool outputs."
                                         },
                                         "protectTags": {
                                             "type": "boolean",
@@ -663,6 +676,7 @@
                 "permission": "allow",
                 "showCompression": false,
                 "summaryBuffer": true,
+                "emergencyTruncation": false,
                 "maxContextLimit": 100000,
                 "minContextLimit": 50000,
                 "nudgeFrequency": 5,

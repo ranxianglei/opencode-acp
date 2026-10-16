@@ -63,6 +63,7 @@ export const VALID_CONFIG_KEYS = new Set([
     "compress.images.largeBytes",
     "compress.images.nudge",
     "compress.completionReserveTokens",
+    "compress.emergencyTruncation",
     "gc",
     "gc.algorithm",
     "gc.promotionThreshold",
@@ -701,6 +702,17 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
             }
 
             if (
+                compress.emergencyTruncation !== undefined &&
+                typeof compress.emergencyTruncation !== "boolean"
+            ) {
+                errors.push({
+                    key: "compress.emergencyTruncation",
+                    expected: "boolean",
+                    actual: typeof compress.emergencyTruncation,
+                })
+            }
+
+            if (
                 typeof compress.completionReserveTokens === "number" &&
                 compress.completionReserveTokens < 0
             ) {
@@ -817,6 +829,7 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
             const OVERRIDE_FIELD_TYPES: Record<string, OverrideFieldType> = {
                 showCompression: "boolean",
                 summaryBuffer: "boolean",
+                emergencyTruncation: "boolean",
                 protectTags: "boolean",
                 protectUserMessages: "boolean",
                 lastSegmentSoftBlock: "boolean",

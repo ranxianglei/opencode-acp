@@ -455,6 +455,13 @@ Resolution: model-level `reasoning` > provider-level `reasoning` > global `compr
 - **Status:** ACTIVE
 - **Description:** Tokens reserved for the model's completion by the context-budget guard. The guard estimates the request's input size and, if it exceeds `window - completionReserveTokens`, deterministically truncates (then clears) old compressible tool outputs until it fits — summaries, protected tools, the first user message, and the last 3 messages are never touched. The default `32768` covers opencode's `32000` `max_tokens` fallback for models with no declared `limit.output`. The guard is a no-op unless the model's context window is known (declared `limit.context` in opencode.json, or a catalog entry). An absolute (number) `compress.maxContextLimit` does **not** enable the guard — it is a soft nudge threshold, not the backend's real limit.
 
+#### `compress.emergencyTruncation`
+
+- **Type:** `boolean`
+- **Default:** `false`
+- **Status:** ACTIVE
+- **Description:** Master switch for the emergency truncation guards (`truncateLargeToolOutputs` + `enforceContextBudget`, gated together in the message-transform pipeline). When `true`, oversized old tool outputs are truncated head+tail near the context wall to keep the request within the model's window — and the truncation is **sticky**: once a tool output is truncated it stays truncated for the rest of the session (replayed verbatim from persisted state on every later request, including after restarts), so the wire view never oscillates. Default `false` (#485): left alone, per-request truncation would oscillate between truncated and full tool outputs around the guard threshold; every flip invalidates the provider prefix cache from that message onward, and with opencode's automatic retries the churn can overload the serving backend. With the switch off, a session that outgrows the window fails loudly at the provider (HTTP 400 → opencode exits with no output) instead of being silently mutated — rely on compression nudges to keep sessions below the wall.
+
 ---
 
 ### `gc` (Generation & Cleanup)
