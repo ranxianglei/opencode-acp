@@ -150,7 +150,15 @@ test("multi-turn: one-shot large-image notice with dedup, compress-turn suppress
     assert.equal(hasNotice(turn), false, "t1: no notice without images")
     assert.equal(Object.keys(state.imageSurgeNudged).length, 0, "t1: dedup map empty")
     assert.equal(state.nudges.shouldInjectThisTurn, false, "t1: nothing injected")
-    assert.equal(state.nudges.lastPerMessageNudgeTokens, undefined, "t1: nudge baseline untouched")
+    // Pre-existing behavior: the per-message baseline is established from the
+    // first measurable turn, so pin its stability across the cycle below
+    // instead of expecting undefined (§5.7 side-effect assertion).
+    assert.equal(
+        typeof state.nudges.lastPerMessageNudgeTokens,
+        "number",
+        "t1: baseline established on first measurable turn",
+    )
+    const nudgeBaseline = state.nudges.lastPerMessageNudgeTokens
 
     // Turn 2 — first large image appears: notice emitted, dedup key recorded.
     turn = [u1, u2img]
@@ -161,7 +169,7 @@ test("multi-turn: one-shot large-image notice with dedup, compress-turn suppress
     assert.equal(state.nudges.shouldInjectThisTurn, true, "t2: directive flagged")
     const t2Keys = Object.keys(state.imageSurgeNudged)
     assert.ok(t2Keys[0]!.startsWith(`${sha8("u2img")}:p0:`), "t2: key format sha8(rawId):p{idx}:sha8(payload)")
-    assert.equal(state.nudges.lastPerMessageNudgeTokens, undefined, "t2: notice emission does not touch nudge baseline")
+    assert.equal(state.nudges.lastPerMessageNudgeTokens, nudgeBaseline, "t2: notice emission does not move nudge baseline")
 
     // Turn 3 — same image, no compress: NO repeat, dedup map unchanged.
     turn = [u1, u2img, aReply]
@@ -170,7 +178,7 @@ test("multi-turn: one-shot large-image notice with dedup, compress-turn suppress
     assert.equal(hasNotice(turn), false, "t3: no repeat for the same image")
     assert.deepEqual(Object.keys(state.imageSurgeNudged), t2Keys, "t3: dedup map unchanged")
     assert.equal(state.nudges.shouldInjectThisTurn, false, "t3: nothing injected")
-    assert.equal(state.nudges.lastPerMessageNudgeTokens, undefined, "t3: nudge baseline untouched")
+    assert.equal(state.nudges.lastPerMessageNudgeTokens, nudgeBaseline, "t3: nudge baseline stable")
 
     // Turn 4 — a different new image: fires again under its own key.
     turn = [u1, u2img, aReply, u3img]
@@ -180,7 +188,7 @@ test("multi-turn: one-shot large-image notice with dedup, compress-turn suppress
     assert.equal(Object.keys(state.imageSurgeNudged).length, 2, "t4: two dedup keys")
     assert.ok(Object.keys(state.imageSurgeNudged).some((k) => k.startsWith(`${sha8("u3img")}:p0:`)))
     assert.equal(state.nudges.shouldInjectThisTurn, true, "t4: directive flagged")
-    assert.equal(state.nudges.lastPerMessageNudgeTokens, undefined, "t4: nudge baseline untouched")
+    assert.equal(state.nudges.lastPerMessageNudgeTokens, nudgeBaseline, "t4: second notice does not move nudge baseline")
 
     // Turn 5 — the model finally compresses (compress turn): detection is
     // skipped entirely, so the still-unnoticed u4 image records NO key here.
@@ -189,7 +197,7 @@ test("multi-turn: one-shot large-image notice with dedup, compress-turn suppress
     injectCompressNudges(state, config, logger, turn, {} as any)
     assert.equal(hasNotice(turn), false, "t5: suppress on compress turn")
     assert.equal(Object.keys(state.imageSurgeNudged).length, 2, "t5: u4 slot not recorded")
-    assert.equal(state.nudges.lastPerMessageNudgeTokens, undefined, "t5: compress-turn reset leaves baseline untouched")
+    assert.equal(state.nudges.lastPerMessageNudgeTokens, nudgeBaseline, "t5: compress-turn reset leaves nudge baseline intact")
 
     // Turn 6 — next plain turn, u4 image still visible: re-fires.
     turn = [u1, u2img, aReply, u3img, u4img, aCompress, assistantMsg("ar2", "ok", { input: 70_000, output: 300 })]
@@ -199,7 +207,7 @@ test("multi-turn: one-shot large-image notice with dedup, compress-turn suppress
     assert.equal(Object.keys(state.imageSurgeNudged).length, 3, "t6: three dedup keys")
     assert.ok(Object.keys(state.imageSurgeNudged).some((k) => k.startsWith(`${sha8("u4img")}:p0:`)))
     assert.equal(state.nudges.shouldInjectThisTurn, true, "t6: directive flagged")
-    assert.equal(state.nudges.lastPerMessageNudgeTokens, undefined, "t6: re-fire does not touch nudge baseline")
+    assert.equal(state.nudges.lastPerMessageNudgeTokens, nudgeBaseline, "t6: re-fire does not move nudge baseline")
 })
 
 test("multi-turn: same slot with changed content gets a fresh key", () => {
