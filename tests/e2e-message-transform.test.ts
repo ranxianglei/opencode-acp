@@ -956,9 +956,11 @@ test("reasoning drop: oversized reasoning removed from closed-turn compress call
 })
 
 test("reasoning drop: drop:false kill-switch keeps oversized reasoning", async () => {
+    // normalize:false isolates the #368 drop gate: a kept reasoning stays a
+    // separate part so this test observes "not dropped", not "#482 folded it".
     const { handler } = setupPipeline(
         {},
-        { compress: { ...buildConfig().compress, reasoning: { drop: false, threshold: 2048 } } },
+        { compress: { ...buildConfig().compress, reasoning: { drop: false, threshold: 2048, normalize: false } } },
     )
 
     const messages: WithParts[] = [
@@ -979,13 +981,17 @@ test("reasoning drop: drop:false kill-switch keeps oversized reasoning", async (
 })
 
 test("reasoning drop: small thinking survives the threshold gate; threshold 0 drops it", async () => {
-    // Default threshold 2048 → small thinking kept.
+    // Default threshold 2048 → small thinking kept. normalize:false isolates
+    // the drop gate so the surviving reasoning stays a separate part.
     const kept = { messages: [
         makeUserMessage("u1", "Hello"),
         makeAssistantMessage("a1", "summary", [smallReasoningPart("r1"), compressToolPart("t1")]),
         makeUserMessage("u2", "next round"),
     ] }
-    await setupPipeline().handler({}, kept)
+    await setupPipeline(
+        {},
+        { compress: { ...buildConfig().compress, reasoning: { ...buildConfig().compress.reasoning, normalize: false } } },
+    ).handler({}, kept)
     const keptA1 = kept.messages.find((m) => m.info.id === "a1")!
     assert.deepEqual(keptA1.parts.map((p) => p.type), ["text", "reasoning", "tool"])
 
@@ -1010,7 +1016,8 @@ test("reasoning drop: provider-level drop:false disables for matching provider",
         {
             compress: {
                 ...buildConfig().compress,
-                providers: { "test-provider": { reasoning: { drop: false } } },
+                // normalize:false keeps the kept reasoning a separate part (#368 isolation).
+                providers: { "test-provider": { reasoning: { drop: false, normalize: false } } },
             },
         },
     )
@@ -1091,7 +1098,12 @@ test("reasoning drop: model-level override beats provider-level", async () => {
 })
 
 test("reasoning drop: active round reasoning is never touched", async () => {
-    const { handler } = setupPipeline()
+    // normalize:false so the active round's kept reasoning stays a separate
+    // part; this test verifies the #368 gate, not #482 wire-form folding.
+    const { handler } = setupPipeline(
+        {},
+        { compress: { ...buildConfig().compress, reasoning: { ...buildConfig().compress.reasoning, normalize: false } } },
+    )
 
     const output = { messages: [
         makeUserMessage("u1", "Hello"),
@@ -1114,4 +1126,50 @@ test("reasoning drop: active round reasoning is never touched", async () => {
         ["text", "reasoning", "tool"],
         "active round untouched (text + reasoning + tool)",
     )
+})
+
+// ─── Test: compress.reasoning.normalize wire-form pinning (#482) ──────────
+// normalize runs AFTER the #368 drop pass; by default it folds every
+// assistant message's surviving reasoning into a single <thinking>-marked
+// text part so the serialized wire form is byte-stable across host metadata
+// table refreshes.
+
+test("normalize (#482): default pipeline folds assistant reasoning into a <thinking> text part", async () => {
+    const { handler } = setupPipeline() // default config → normalize on
+
+    const output = { messages: [
+        makeUserMessage("u1", "Hello"),
+        makeAssistantMessage("a1", "answer", [smallReasoningPart("r1")]),
+        makeUserMessage("u2", "next round"),
+    ] }
+
+    await handler({}, output)
+
+    const a1 = output.messages.find((m) => m.info.id === "a1")!
+    // Wire form pinned: no separate reasoning part survives onto the wire.
+    assert.ok(!a1.parts.some((p) => p.type === "reasoning"), "no separate reasoning part remains on the wire")
+    const textParts = a1.parts.filter((p) => p.type === "text")
+    assert.equal(textParts.length, 1, "exactly one text part carries the pinned form")
+    const pinned = textParts[0]!.text as string
+    // smallReasoningPart text is "short thinking"; original answer text is "answer".
+    assert.ok(pinned.includes("<thinking>\nshort thinking\n</thinking>"), "folded <thinking> marker present")
+    assert.ok(pinned.includes("answer"), "original answer text preserved")
+})
+
+test("normalize (#482): normalize:false keeps assistant reasoning as a separate wire part", async () => {
+    const { handler } = setupPipeline(
+        {},
+        { compress: { ...buildConfig().compress, reasoning: { ...buildConfig().compress.reasoning, normalize: false } } },
+    )
+
+    const output = { messages: [
+        makeUserMessage("u1", "Hello"),
+        makeAssistantMessage("a1", "answer", [smallReasoningPart("r1")]),
+        makeUserMessage("u2", "next round"),
+    ] }
+
+    await handler({}, output)
+
+    const a1 = output.messages.find((m) => m.info.id === "a1")!
+    assert.ok(a1.parts.some((p) => p.type === "reasoning"), "kill-switch: reasoning survives as its own part")
 })

@@ -415,3 +415,51 @@ test("getInvalidConfigKeys flags unknown fields nested inside compress.reasoning
     })
     assert.deepEqual(result, ["compress.reasoning.dropp"])
 })
+
+// ── compress.reasoning.normalize (#482): wire-form pinning kill-switch ──
+
+test("getInvalidConfigKeys accepts compress.reasoning.normalize as a known field", () => {
+    const result = getInvalidConfigKeys({
+        compress: { reasoning: { drop: true, threshold: 2048, normalize: false } },
+    })
+    assert.equal(result.length, 0)
+})
+
+test("validateConfigTypes accepts boolean compress.reasoning.normalize", () => {
+    assert.equal(
+        validateConfigTypes({ compress: { reasoning: { normalize: true } } }).length,
+        0,
+    )
+    assert.equal(
+        validateConfigTypes({ compress: { reasoning: { normalize: false } } }).length,
+        0,
+    )
+})
+
+test("validateConfigTypes rejects non-boolean compress.reasoning.normalize", () => {
+    const result = validateConfigTypes({ compress: { reasoning: { normalize: "yes" } } })
+    assert.equal(result.length, 1)
+    assert.equal(result[0].key, "compress.reasoning.normalize")
+    assert.equal(result[0].expected, "boolean")
+})
+
+test("validateConfigTypes rejects non-boolean normalize overrides inside compress.providers", () => {
+    const result = validateConfigTypes({
+        compress: {
+            providers: {
+                "my-gateway": { reasoning: { normalize: "no" } },
+                anthropic: {
+                    models: { "claude-opus-4-5": { reasoning: { normalize: 1 } } },
+                },
+            },
+        },
+    })
+    assert.equal(result.length, 2)
+    assert.deepEqual(
+        result.map((e) => e.key).sort(),
+        [
+            "compress.providers.anthropic.models.claude-opus-4-5.reasoning.normalize",
+            "compress.providers.my-gateway.reasoning.normalize",
+        ],
+    )
+})
