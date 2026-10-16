@@ -69,6 +69,8 @@ export interface PersistedSessionState {
     modelID?: string
     /** [Issue #478] Archived image metadata index (raw message ID → entries) */
     imageArchive?: Record<string, ArchivedImageEntry[]>
+    /** [Issue #489] Large-image surge-nudge dedup index (dedup key → first-emission ts) */
+    imageSurgeNudged?: Record<string, number>
 }
 
 /** Default storage directory: $XDG_DATA_HOME/opencode/storage/plugin/acp */
@@ -212,6 +214,7 @@ export function saveSessionState(
         modelProviderID: sessionState.modelProviderID,
         modelID: sessionState.modelID,
         imageArchive: sessionState.imageArchive,
+        imageSurgeNudged: sessionState.imageSurgeNudged,
     }
 
     const key = saveQueueKey(sessionState.sessionId, sessionState.storageDir)

@@ -633,6 +633,17 @@
                             "default": 7,
                             "exclusiveMinimum": 0,
                             "description": "Delete archived image files older than this many days (best-effort sweep, once per process per session)."
+                        },
+                        "largeBytes": {
+                            "type": "integer",
+                            "default": 524288,
+                            "minimum": 0,
+                            "description": "[#489] Decoded image size in bytes at or above which a one-time 'large image entered context' nudge fires for that image, telling the model to compress older ranges to make room (and to compress the range containing the image once it is done with it). Set 0 to disable size-based detection."
+                        },
+                        "nudge": {
+                            "type": "boolean",
+                            "default": true,
+                            "description": "[#489] Master switch for the large-image nudge and the standing 'make room before reading images' rule in the system prompt."
                         }
                     }
                 },

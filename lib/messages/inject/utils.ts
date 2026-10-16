@@ -23,6 +23,7 @@ import {
     estimateSystemPromptTokens,
     getCurrentTokenUsage,
 } from "../../token-utils"
+import { estimateImagePartTokens } from "../../compress/image-tokens"
 import {
     appendToTextPart,
     appendToLastTextPart,
@@ -598,6 +599,8 @@ export interface ContextComposition {
     systemTokens: number
     protectedTokens: number
     reasoningTokens: number
+    /** [Issue #489] Estimated cost of inline image attachments (vision-billing formula). */
+    imageTokens: number
     total: number
     largestRanges: { ref: string; tokens: number }[]
     largestToolRanges: { ref: string; tokens: number; tool?: string }[]
@@ -632,6 +635,7 @@ export function estimateContextComposition(
     let messageTokens = 0
     let protectedTokens = 0
     let reasoningTokens = 0
+    let imageTokens = 0
     const perMessage: { ref: string; tokens: number }[] = []
     const perTool: { ref: string; tokens: number; tool?: string }[] = []
     const perCode: { ref: string; tokens: number }[] = []
@@ -706,6 +710,13 @@ export function estimateContextComposition(
                 const tokens = Math.round(((part as any).text as string).length / 4)
                 msgTotal += tokens
                 reasoningTokens += tokens
+            } else if (part.type === "file") {
+                // [Issue #489] Inline images were invisible to this breakdown.
+                const imgTokens = estimateImagePartTokens(part)
+                if (imgTokens > 0) {
+                    msgTotal += imgTokens
+                    imageTokens += imgTokens
+                }
             }
         }
 
@@ -745,7 +756,14 @@ export function estimateContextComposition(
         systemTokens,
         protectedTokens,
         reasoningTokens,
-        total: systemTokens + toolTokens + summaryTokens + messageTokens + reasoningTokens,
+        imageTokens,
+        total:
+            systemTokens +
+            toolTokens +
+            summaryTokens +
+            messageTokens +
+            reasoningTokens +
+            imageTokens,
         largestRanges: perMessage.slice(0, 15),
         largestToolRanges: perTool.slice(0, 15),
         largestCodeRanges: perCode.slice(0, 5),
@@ -1214,6 +1232,11 @@ export function computeProtectedRefs(
         for (const part of msg.parts || []) {
             if (part.type === "text" && typeof (part as any).text === "string") {
                 tokens += Math.round(((part as any).text as string).length / 4)
+            } else if (part.type === "file") {
+                // [Issue #489] JSON.stringify counts the raw base64 (~500x the
+                // vision-billed cost); one large image would eat the whole
+                // preserveRecentTokens budget and shield everything behind it.
+                tokens += estimateImagePartTokens(part)
             } else if (part.type !== "text" && part.type !== "reasoning") {
                 tokens += Math.round(JSON.stringify(part).length / 4)
             }

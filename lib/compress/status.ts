@@ -22,6 +22,7 @@ import {
 } from "../messages/inject/candidates"
 import { buildSearchContext, fetchSessionMessages } from "./search"
 import { hideConsumedCompressCalls } from "./hide-consumed"
+import { estimateImagePartTokens } from "./image-tokens"
 import { estimateSystemPromptTokens } from "../token-utils"
 import { armBestSmartPlan, clearSmartPlan, getVisibleMessageIds } from "./smart-plan"
 import { assignMessageRefs, repairNonMonotonicMessageRefs } from "../message-ids"
@@ -133,6 +134,9 @@ interface VisibleMessageInfo {
     // Reasoning (thinking) part tokens, tracked separately from `tokens`
     // (text+tool) so the overview can show it as its own category (#371).
     reasoning: number
+    // Image file-part tokens (vision-billed estimate), tracked separately
+    // from `tokens` so the overview can show images as its own category (#489).
+    image: number
 }
 
 export interface StatusRenderContext {
@@ -172,11 +176,14 @@ function collectVisibleMessages(
 
         let tokens = 0
         let reasoning = 0
+        let image = 0
         let toolName = ""
 
         for (const part of msg.parts || []) {
             if (part.type === "text" && typeof (part as any).text === "string") {
                 tokens += Math.round(((part as any).text as string).length / 4)
+            } else if (part.type === "file") {
+                image += estimateImagePartTokens(part)
             } else if (part.type === "tool") {
                 const raw = JSON.stringify(part)
                 tokens += Math.round(raw.length / 4)
@@ -188,8 +195,8 @@ function collectVisibleMessages(
             }
         }
 
-        if (tokens > 0 || reasoning > 0) {
-            result.push({ ref, tokens, tool: toolName || "text", index: idx, reasoning })
+        if (tokens > 0 || reasoning > 0 || image > 0) {
+            result.push({ ref, tokens, tool: toolName || "text", index: idx, reasoning, image })
         }
     })
 
@@ -231,17 +238,19 @@ function renderOverview(
             .filter((m) => m.tool === "text")
             .reduce((s, m) => s + m.tokens, 0)
         const totalReasoning = visibleMessages.reduce((s, m) => s + m.reasoning, 0)
-        const total = systemTokens + totalTool + totalText + summaryTokens + totalReasoning
+        const totalImage = visibleMessages.reduce((s, m) => s + m.image, 0)
+        const total = systemTokens + totalTool + totalText + summaryTokens + totalReasoning + totalImage
 
         const sysPct = pct(systemTokens, total)
         const toolPct = pct(totalTool, total)
         const textPct = pct(totalText, total)
         const summaryPct = pct(summaryTokens, total)
         const reasoningPct = pct(totalReasoning, total)
+        const imagePct = pct(totalImage, total)
 
         lines.push("CONTEXT BREAKDOWN")
         lines.push(
-            `  ${formatTokens(systemTokens)} system (${sysPct}%) | ${formatTokens(totalTool)} tool (${toolPct}%) | ${formatTokens(totalText)} text (${textPct}%) | ${formatTokens(summaryTokens)} summaries (${summaryPct}%) | ${formatTokens(totalReasoning)} reasoning (${reasoningPct}%)`,
+            `  ${formatTokens(systemTokens)} system (${sysPct}%) | ${formatTokens(totalTool)} tool (${toolPct}%) | ${formatTokens(totalText)} text (${textPct}%) | ${formatTokens(summaryTokens)} summaries (${summaryPct}%) | ${formatTokens(totalReasoning)} reasoning (${reasoningPct}%) | ${formatTokens(totalImage)} images (${imagePct}%)`,
         )
 
         const topTypes = Array.from(toolTypeMap.entries())
@@ -430,7 +439,7 @@ function renderUncompressedDrilldown(
         filtered = filtered.filter((m) => m.tool === toolFilter)
     }
 
-    const sizeOf = (m: VisibleMessageInfo) => m.tokens + m.reasoning
+    const sizeOf = (m: VisibleMessageInfo) => m.tokens + m.reasoning + m.image
 
     if (sort === "time") {
         filtered.sort((a, b) => a.index - b.index)

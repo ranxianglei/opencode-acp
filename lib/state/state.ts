@@ -247,6 +247,7 @@ export function createSessionState(): SessionState {
         noContextLimitWarned: false,
         imageArchive: {},
         imagePruneDone: false,
+        imageSurgeNudged: {},
     }
 }
 
@@ -293,6 +294,7 @@ export function resetSessionState(state: SessionState): void {
     state.noContextLimitWarned = false
     state.imageArchive = {}
     state.imagePruneDone = false
+    state.imageSurgeNudged = {}
 }
 
 export async function ensureSessionInitialized(
@@ -431,6 +433,15 @@ export async function ensureSessionInitialized(
             )
             if (valid.length > 0) {
                 state.imageArchive[rawId] = valid
+            }
+        }
+    }
+    // [Issue #489] Restore the large-image surge-nudge dedup index, dropping
+    // malformed entries (defensive: state files are user-visible).
+    if (persisted.imageSurgeNudged && typeof persisted.imageSurgeNudged === "object") {
+        for (const [key, ts] of Object.entries(persisted.imageSurgeNudged)) {
+            if (typeof key === "string" && typeof ts === "number" && Number.isFinite(ts)) {
+                state.imageSurgeNudged[key] = ts
             }
         }
     }

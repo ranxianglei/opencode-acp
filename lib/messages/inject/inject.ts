@@ -1,11 +1,14 @@
 import type { SessionState, WithParts } from "../../state"
 import type { Logger } from "../../logger"
 import type { PluginConfig } from "../../config"
+import { DEFAULT_COMPRESS_IMAGES } from "../../config"
 import type { RuntimePrompts } from "../../prompts/store"
 import { formatMessageIdTag, formatTokenSize, classifyMessageType } from "../../message-ids"
 import type { CompressionPriorityMap } from "../priority"
 import { compressPermission } from "../../compress-permission"
 import { countMessageCharacters } from "../../token-utils"
+import { estimateImagePartTokens } from "../../compress/image-tokens"
+import { detectNewLargeImages, formatLargeImageNotice } from "../large-images"
 import {
     getLastUserMessage,
     isIgnoredUserMessage,
@@ -497,6 +500,26 @@ export const injectCompressNudges = (
     let shouldInject = shouldInjectNudge || shouldInjectNotice
     let armedSmartPlan: SmartCompressionPlan | undefined
 
+    // [Issue #489] Large-image guard: an oversized inline image is invisible
+    // to the growth machinery until the next API response reports tokens.
+    // One-shot strong notice per (message, part, content); the dedup map is
+    // persisted so restarts do not re-nudge already-seen images. Emits even
+    // when no regular nudge fires this turn (it is its own directive).
+    const imagesConfig = config.compress?.images ?? DEFAULT_COMPRESS_IMAGES
+    let imageNoticeEmitted = false
+    if (suffixMessage && imagesConfig.nudge !== false && imagesConfig.largeBytes > 0) {
+        const newLargeImages = detectNewLargeImages(messages, state, imagesConfig.largeBytes)
+        if (newLargeImages.length > 0) {
+            appendToLastTextPart(suffixMessage, formatLargeImageNotice(newLargeImages))
+            imageNoticeEmitted = true
+            saveSessionState(state, logger).catch(() => {})
+            logger.info("Large image notice injected", {
+                session: state.sessionId,
+                images: newLargeImages.map((image) => `${image.ref}:${image.mediaType}:${image.bytes}B`),
+            })
+        }
+    }
+
     // Arm the exact, model-visible range in the same pass that emits the
     // nudge. This removes an otherwise redundant acp_status inference round
     // trip while keeping execution-side structure and visibility checks.
@@ -592,9 +615,9 @@ export const injectCompressNudges = (
     }
 
     // ── Tier 2/3 triggers — only if T1 didn't already fire ────────────
-    // Priority: T1 > T2 > T3. T1 compression reduces raw context first.
-    // Each tier has independent cadence counters — T2 firing doesn't block T3.
-    if (suffixMessage && !shouldInject) {
+    // Priority: T1 > T2 > T3. The large-image notice (#489) is also a T1-class
+    // directive: one directive per turn, so tier triggers yield to it too.
+    if (suffixMessage && !shouldInject && !imageNoticeEmitted) {
         // [Issue #384] Reuse the early tier-usage snapshot: nothing between the
         // computation above and here mutates compression blocks.
         const tierUsage = tierUsageEarly
@@ -719,7 +742,7 @@ export const injectCompressNudges = (
         }
     }
 
-    state.nudges.shouldInjectThisTurn = shouldInject
+    state.nudges.shouldInjectThisTurn = shouldInject || imageNoticeEmitted
 
     // Decision-level audit trail: written at the default `info` level so nudge
     // behavior is diagnosable from the daily log without `debug: true`.
@@ -816,7 +839,7 @@ export const injectCompressNudges = (
                 composition.systemTokens > 0
                     ? `${fmt(composition.systemTokens)} system (${pct(composition.systemTokens)}%) | `
                     : ""
-            let breakdown = `${efficiencyNote}\nBreakdown: ${sysPart}${fmt(composition.toolTokens)} tool (${pct(composition.toolTokens)}%) | ${fmt(composition.summaryTokens)} summaries (${pct(composition.summaryTokens)}%) | ${fmt(composition.codeTokens)} code (${pct(composition.codeTokens)}%) | ${fmt(plainTextTokens)} text (${pct(plainTextTokens)}%) | ${fmt(composition.reasoningTokens)} reasoning (${pct(composition.reasoningTokens)}%)${growthStr}`
+            let breakdown = `${efficiencyNote}\nBreakdown: ${sysPart}${fmt(composition.toolTokens)} tool (${pct(composition.toolTokens)}%) | ${fmt(composition.summaryTokens)} summaries (${pct(composition.summaryTokens)}%) | ${fmt(composition.codeTokens)} code (${pct(composition.codeTokens)}%) | ${fmt(plainTextTokens)} text (${pct(plainTextTokens)}%) | ${fmt(composition.reasoningTokens)} reasoning (${pct(composition.reasoningTokens)}%) | ${fmt(composition.imageTokens)} images (${pct(composition.imageTokens)}%)${growthStr}`
 
             const compressibleTokens =
                 composition.total -
@@ -969,6 +992,9 @@ export function buildVisibleSegments(state: SessionState, messages: WithParts[])
         for (const part of msg.parts || []) {
             if (part.type === "text" && typeof (part as any).text === "string") {
                 tokens += Math.round(((part as any).text as string).length / 4)
+            } else if (part.type === "file") {
+                // [Issue #489] Vision-billed estimate, not base64 char count.
+                tokens += estimateImagePartTokens(part)
             } else if (part.type !== "text" && part.type !== "reasoning") {
                 tokens += Math.round(JSON.stringify(part).length / 4)
                 hasTool = true

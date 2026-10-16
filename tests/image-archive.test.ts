@@ -17,7 +17,13 @@ import {
 } from "../lib/compress/image-archive"
 
 const logger = new Logger(false)
-const imagesConfig: CompressImagesConfig = { enabled: true, minBytes: 16384, ttlDays: 7 }
+const imagesConfig: CompressImagesConfig = {
+    enabled: true,
+    minBytes: 16384,
+    ttlDays: 7,
+    largeBytes: 524288,
+    nudge: true,
+}
 
 function makePngDataUrl(byteLength: number): string {
     return `data:image/png;base64,${Buffer.alloc(byteLength, 0x42).toString("base64")}`

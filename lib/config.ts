@@ -189,6 +189,18 @@ export interface CompressImagesConfig {
      * sweep, once per process per session). Default: 7.
      */
     ttlDays: number
+    /**
+     * [Issue #489] Decoded image size (bytes) at or above which a "large image
+     * entered context" nudge fires once per image. The notice tells the model
+     * to compress older ranges before/after working with the image. Set to 0
+     * to disable size-based detection entirely. Default: 524288 (512 KB).
+     */
+    largeBytes: number
+    /**
+     * [Issue #489] Master switch for the large-image nudge and the standing
+     * "make room before reading images" rule in the system prompt. Default: true.
+     */
+    nudge: boolean
 }
 
 /**
@@ -199,6 +211,8 @@ export const DEFAULT_COMPRESS_IMAGES: Readonly<CompressImagesConfig> = {
     enabled: true,
     minBytes: 16384,
     ttlDays: 7,
+    largeBytes: 524288,
+    nudge: true,
 }
 
 export interface Commands {
@@ -647,6 +661,11 @@ export function mergeCompress(
                 DEFAULT_COMPRESS_IMAGES.minBytes,
             ttlDays:
                 override.images?.ttlDays ?? base.images?.ttlDays ?? DEFAULT_COMPRESS_IMAGES.ttlDays,
+            largeBytes:
+                override.images?.largeBytes ??
+                base.images?.largeBytes ??
+                DEFAULT_COMPRESS_IMAGES.largeBytes,
+            nudge: override.images?.nudge ?? base.images?.nudge ?? DEFAULT_COMPRESS_IMAGES.nudge,
         },
         completionReserveTokens: override.completionReserveTokens ?? base.completionReserveTokens,
     }

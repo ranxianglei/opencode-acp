@@ -223,4 +223,11 @@ export interface SessionState {
      * image archive directory has run for this session in this process.
      */
     imagePruneDone: boolean
+    /**
+     * [Issue #489] Dedup index for large-image surge nudges: one entry per
+     * (message, part, content-hash) that has already received a "large image
+     * entered context" notice. Values are timestamps (first-emission time).
+     * Persisted so a restart does not re-announce the same image.
+     */
+    imageSurgeNudged: Record<string, number>
 }

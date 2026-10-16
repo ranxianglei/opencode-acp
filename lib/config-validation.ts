@@ -60,6 +60,8 @@ export const VALID_CONFIG_KEYS = new Set([
     "compress.images.enabled",
     "compress.images.minBytes",
     "compress.images.ttlDays",
+    "compress.images.largeBytes",
+    "compress.images.nudge",
     "compress.completionReserveTokens",
     "gc",
     "gc.algorithm",
@@ -623,7 +625,7 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
                     errors.push({
                         key: "compress.images",
                         expected:
-                            "object { enabled?: boolean; minBytes?: integer (>= 0); ttlDays?: number (> 0) }",
+                            "object { enabled?: boolean; minBytes?: integer (>= 0); ttlDays?: number (> 0); largeBytes?: integer (>= 0); nudge?: boolean }",
                         actual: JSON.stringify(compress.images),
                     })
                 } else {
@@ -659,6 +661,29 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
                             key: "compress.images.ttlDays",
                             expected: "number (> 0)",
                             actual: JSON.stringify(compress.images.ttlDays),
+                        })
+                    }
+                    // [#489] largeBytes: integer >= 0 (0 disables size-based detection).
+                    if (
+                        compress.images.largeBytes !== undefined &&
+                        (typeof compress.images.largeBytes !== "number" ||
+                            !Number.isInteger(compress.images.largeBytes) ||
+                            compress.images.largeBytes < 0)
+                    ) {
+                        errors.push({
+                            key: "compress.images.largeBytes",
+                            expected: "integer (>= 0)",
+                            actual: JSON.stringify(compress.images.largeBytes),
+                        })
+                    }
+                    if (
+                        compress.images.nudge !== undefined &&
+                        typeof compress.images.nudge !== "boolean"
+                    ) {
+                        errors.push({
+                            key: "compress.images.nudge",
+                            expected: "boolean",
+                            actual: typeof compress.images.nudge,
                         })
                     }
                 }
