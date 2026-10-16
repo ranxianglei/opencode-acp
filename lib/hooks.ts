@@ -5,6 +5,7 @@ import { assignMessageRefs } from "./message-ids"
 import {
     buildPriorityMap,
     buildToolIdList,
+    canonicalizeReasoningShape,
     computeInputBudget,
     dropCompressReasoning,
     dropEmptyMessages,
@@ -333,6 +334,20 @@ export function createChatMessageTransformHandler(
                     threshold: reasoningConfig?.threshold ?? DEFAULT_COMPRESS_REASONING.threshold,
                 })
             }
+        }
+
+        // [#482] Pin historical thinking to one canonical wire shape
+        // (billion-context#3301): merge each assistant message's reasoning
+        // parts into a single tagged text part so host serialization stops
+        // depending on the current model-metadata table. Runs AFTER the #368
+        // drop so oversized compress-call reasoning is dropped first and
+        // never merged. Deterministic per parts-array; idempotent across
+        // requests, so prefix-cache bytes stay stable.
+        const canonicalizedReasoning = canonicalizeReasoningShape(output.messages)
+        if (canonicalizedReasoning > 0) {
+            logger.debug("reasoning-canonicalize: pinned historical thinking shape", {
+                messages: canonicalizedReasoning,
+            })
         }
 
         ensureBuiltinFiltersRegistered()
