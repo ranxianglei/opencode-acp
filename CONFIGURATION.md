@@ -420,21 +420,23 @@ In this example, for `anthropic/claude-sonnet-4-6`: the floor is 30%, the over-m
 
 #### `compress.reasoning`
 
-- **Type:** `object { drop?: boolean; threshold?: number }`
-- **Default:** `{ "drop": true, "threshold": 2048 }`
-- **Status:** ACTIVE (#368)
-- **Description:** Config for dropping oversized reasoning (thinking) parts from historical `compress` tool calls. `compress` calls are hard-exempt from compression, so their thinking rides along every request as an unreclaimable context floor. This pass removes `reasoning` parts at request time (persisted history is never modified) from closed-turn compress messages whose total reasoning length exceeds `threshold`. The active round (from the last genuine user message onward) is never touched.
+- **Type:** `object { drop?: boolean; threshold?: number; normalize?: boolean }`
+- **Default:** `{ "drop": true, "threshold": 2048 }` (`normalize` is enabled unless explicitly set to `false`)
+- **Status:** ACTIVE (#368 drop, #482 normalize)
+- **Description:** Config for request-time handling of reasoning (thinking) parts. Two independent passes run here: **#368 drop** removes oversized `reasoning` parts from historical closed-turn `compress` messages at request time (persisted history is never modified); `compress` calls are hard-exempt from compression, so their thinking would otherwise ride along every request as an unreclaimable context floor. The active round (from the last genuine user message onward) is never touched by the drop pass. **#482 normalize** pins the wire form of historical thinking so it stops drifting when the host refreshes its model-metadata table: every assistant message's `reasoning` parts are merged into a single `<thinking>`-marked `text` part at request time, making the serialized bytes deterministic regardless of metadata table / interleaved flag / provider config. This is what keeps downstream context-ledger content hashes stable across metadata-table refreshes.
 - **Fields:**
-    - `drop` (`boolean`, default `true`) — master switch; `false` disables the whole pass.
-    - `threshold` (`number`, chars, default `2048`) — single-thinking size gate: the message's total reasoning length must **exceed** this to be dropped. Small thinkings are kept; lengths are NOT accumulated across messages. `0` drops any non-empty reasoning (only zero-length reasoning survives).
+    - `drop` (`boolean`, default `true`) — master switch for the #368 drop pass; `false` disables that pass.
+    - `threshold` (`number`, chars, default `2048`) — single-thinking size gate for the #368 drop pass: the message's total reasoning length must **exceed** this to be dropped. Small thinkings are kept; lengths are NOT accumulated across messages. `0` drops any non-empty reasoning (only zero-length reasoning survives).
+    - `normalize` (`boolean`, enabled by default) — #482 kill-switch for the wire-form normalization pass. Enabled (default) folds each assistant message's `reasoning` parts into one `<thinking>\n{R}\n</thinking>\n{T}` text part, where `{R}`/`{T}` join all reasoning/text part bodies with the empty string (byte-matching the host's own split-form join so the reconstructed hash equals the original). Set `false` only for direct providers that require structured thinking replay (Anthropic native thinking blocks, Gemini `thoughtSignature`) — those lanes lose the structured field when normalization is on. Idempotent: once folded, no `reasoning` parts remain, so a second run makes no further change (prefix cache stays stable — the form changes exactly once).
 - **Per-provider/model overrides (field-wise, via the `compress.providers` cascade):**
 
 ```jsonc
 {
     "compress": {
-        "reasoning": { "drop": true, "threshold": 2048 },
+        "reasoning": { "drop": true, "threshold": 2048 }, // normalize is on by default
         "providers": {
             "my-gateway": { "reasoning": { "drop": false } },
+            "anthropic-native": { "reasoning": { "normalize": false } }, // keep structured thinking replay
             "anthropic": {
                 "reasoning": { "threshold": 8000 },
                 "models": { "claude-opus-4-5": { "reasoning": { "threshold": 16000 } } },
@@ -444,7 +446,7 @@ In this example, for `anthropic/claude-sonnet-4-6`: the floor is 30%, the over-m
 }
 ```
 
-Resolution: model-level `reasoning` > provider-level `reasoning` > global `compress.reasoning`, field by field (a field set at a deeper level overrides only that field). Provider/model IDs come from the current request's model identity.
+Resolution: model-level `reasoning` > provider-level `reasoning` > global `compress.reasoning`, field by field (a field set at a deeper level overrides only that field), including `normalize`. Provider/model IDs come from the current request's model identity.
 
 #### `compress.completionReserveTokens`
 

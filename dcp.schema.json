@@ -380,6 +380,10 @@
                                         "type": "integer",
                                         "minimum": 0,
                                         "description": "Override for the single-thinking size gate (chars)."
+                                    },
+                                    "normalize": {
+                                        "type": "boolean",
+                                        "description": "[#482] Override for the wire-form pinning kill-switch (enabled unless set to false)."
                                     }
                                 }
                             },
@@ -529,6 +533,10 @@
                                                     "type": "integer",
                                                     "minimum": 0,
                                                     "description": "Override for the single-thinking size gate (chars)."
+                                                },
+                                                "normalize": {
+                                                    "type": "boolean",
+                                                    "description": "[#482] Override for the wire-form pinning kill-switch; model-level wins over provider-level (enabled unless set to false)."
                                                 }
                                             }
                                         }
@@ -623,6 +631,11 @@
                             "default": 2048,
                             "minimum": 0,
                             "description": "Single-thinking size gate (chars): a closed-turn compress message's total reasoning length must exceed this to be dropped. Small thinkings are kept (not accumulated across messages). 0 drops any non-empty reasoning."
+                        },
+                        "normalize": {
+                            "type": "boolean",
+                            "default": true,
+                            "description": "[#482] Pin the wire form of historical thinking: merge every assistant message's reasoning parts into one <thinking>-marked text part so serialization stops depending on the host's per-request metadata-table choice (v1 capabilities.interleaved). Opt-out kill-switch — enabled unless set to false. Set false for direct providers that require structured thinking replay (Anthropic native / Gemini thoughtSignature)."
                         }
                     }
                 },

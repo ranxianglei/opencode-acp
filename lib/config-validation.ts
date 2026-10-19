@@ -56,6 +56,7 @@ export const VALID_CONFIG_KEYS = new Set([
     "compress.reasoning",
     "compress.reasoning.drop",
     "compress.reasoning.threshold",
+    "compress.reasoning.normalize",
     "compress.images",
     "compress.images.enabled",
     "compress.images.minBytes",
@@ -584,7 +585,8 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
                 ) {
                     errors.push({
                         key: "compress.reasoning",
-                        expected: "object { drop?: boolean; threshold?: integer (>= 0) }",
+                        expected:
+                            "object { drop?: boolean; threshold?: integer (>= 0); normalize?: boolean }",
                         actual: JSON.stringify(compress.reasoning),
                     })
                 } else {
@@ -608,6 +610,16 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
                             key: "compress.reasoning.threshold",
                             expected: "integer (>= 0)",
                             actual: JSON.stringify(compress.reasoning.threshold),
+                        })
+                    }
+                    if (
+                        compress.reasoning.normalize !== undefined &&
+                        typeof compress.reasoning.normalize !== "boolean"
+                    ) {
+                        errors.push({
+                            key: "compress.reasoning.normalize",
+                            expected: "boolean",
+                            actual: typeof compress.reasoning.normalize,
                         })
                     }
                 }
@@ -890,12 +902,17 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
                         if (typeof value !== "object" || value === null || Array.isArray(value)) {
                             errors.push({
                                 key,
-                                expected: "object { drop?: boolean; threshold?: integer (>= 0) }",
+                                expected:
+                                    "object { drop?: boolean; threshold?: integer (>= 0); normalize?: boolean }",
                                 actual: JSON.stringify(value),
                             })
                             break
                         }
-                        const reasoning = value as { drop?: unknown; threshold?: unknown }
+                        const reasoning = value as {
+                            drop?: unknown
+                            threshold?: unknown
+                            normalize?: unknown
+                        }
                         if (reasoning.drop !== undefined && typeof reasoning.drop !== "boolean") {
                             errors.push({
                                 key: `${key}.drop`,
@@ -913,6 +930,16 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
                                 key: `${key}.threshold`,
                                 expected: "integer (>= 0)",
                                 actual: JSON.stringify(reasoning.threshold),
+                            })
+                        }
+                        if (
+                            reasoning.normalize !== undefined &&
+                            typeof reasoning.normalize !== "boolean"
+                        ) {
+                            errors.push({
+                                key: `${key}.normalize`,
+                                expected: "boolean",
+                                actual: typeof reasoning.normalize,
                             })
                         }
                         break

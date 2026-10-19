@@ -413,21 +413,23 @@ ACP 从最多三层配置文件中读取（后加载的覆盖先加载的）：
 
 #### `compress.reasoning`
 
-- **类型：** `object { drop?: boolean; threshold?: number }`
-- **默认值：** `{ "drop": true, "threshold": 2048 }`
-- **状态：** ACTIVE (#368)
-- **说明：** 控制从历史 `compress` 工具调用中丢弃超大 reasoning（思考）部分。`compress` 调用被硬排除在压缩之外，其思考内容会随每次请求原样重发，形成无法回收的上下文底座。本 pass 在请求时（从不修改持久化历史）移除已关闭轮次中 reasoning 总长超过 `threshold` 的 compress 消息的思考部分。活跃轮（最后一条真实用户消息及之后）永不触碰。
+- **类型：** `object { drop?: boolean; threshold?: number; normalize?: boolean }`
+- **默认值：** `{ "drop": true, "threshold": 2048 }`（`normalize` 除非显式设为 `false`，否则启用）
+- **状态：** ACTIVE (#368 drop、#482 normalize)
+- **说明：** 控制请求时对 reasoning（思考）部分的处理。这里有两个相互独立的 pass： **#368 drop** 在请求时移除历史已关闭轮次 `compress` 消息中超大的 `reasoning` 部分（从不修改持久化历史）——`compress` 调用被硬排除在压缩之外，其思考内容否则会随每次请求原样重发，形成无法回收的上下文底座；活跃轮（最后一条真实用户消息及之后）不被 drop pass 触碰。**#482 normalize** 把历史思考的 wire 形态钉死，使其不再因宿主刷新模型元数据表而漂移：每个 assistant 消息的 `reasoning` 部分在请求时被合并进一个带 `<thinking>` 标记的 `text` 部分，使序列化字节对元数据表 / interleaved 标志 / provider 配置完全确定。这正是下游上下文账本的内容哈希在元数据表刷新后保持稳定的原因。
 - **字段：**
-    - `drop`（`boolean`，默认 `true`）— 总开关；`false` 完全禁用本 pass。
-    - `threshold`（`number`，字符数，默认 `2048`）— 单条思考大小门：消息 reasoning 总长必须**严格大于**该值才丢弃。小思考保留；长度不跨消息累计。`0` 表示丢弃所有非空 reasoning（仅零长 reasoning 幸免）。
+    - `drop`（`boolean`，默认 `true`）— #368 drop pass 的总开关；`false` 禁用该 pass。
+    - `threshold`（`number`，字符数，默认 `2048`）— #368 drop pass 的单条思考大小门：消息 reasoning 总长必须**严格大于**该值才丢弃。小思考保留；长度不跨消息累计。`0` 表示丢弃所有非空 reasoning（仅零长 reasoning 幸免）。
+    - `normalize`（`boolean`，默认启用）— #482 wire 形态归一化 pass 的 kill-switch。启用（默认）会把每个 assistant 消息的 `reasoning` 部分折叠为一个 `<thinking>\n{R}\n</thinking>\n{T}` text 部分，其中 `{R}`/`{T}` 分别用空字符串拼接全部 reasoning/text 部分正文（与宿主自身的拆分形态 join 语义逐字节对齐，使还原出的哈希与原始一致）。仅当直连需要结构化 thinking 回放的 provider（Anthropic 原生 thinking block、Gemini `thoughtSignature`）时才设 `false`——这些 lane 在归一化开启时会失去结构化字段。幂等：折叠后不再携带 `reasoning` 部分，第二次运行零改动（前缀缓存稳定——形态只变一次）。
 - **按 provider/model 覆盖（字段级，走 `compress.providers` cascade）：
 
 ```jsonc
 {
     "compress": {
-        "reasoning": { "drop": true, "threshold": 2048 },
+        "reasoning": { "drop": true, "threshold": 2048 }, // normalize 默认开启
         "providers": {
             "my-gateway": { "reasoning": { "drop": false } },
+            "anthropic-native": { "reasoning": { "normalize": false } }, // 保留结构化 thinking 回放
             "anthropic": {
                 "reasoning": { "threshold": 8000 },
                 "models": { "claude-opus-4-5": { "reasoning": { "threshold": 16000 } } },
@@ -437,7 +439,7 @@ ACP 从最多三层配置文件中读取（后加载的覆盖先加载的）：
 }
 ```
 
-解析顺序：model 级 `reasoning` > provider 级 `reasoning` > 全局 `compress.reasoning`，逐字段生效（深层只覆盖显式设置的字段）。provider/model id 取自当前请求的模型标识。
+解析顺序：model 级 `reasoning` > provider 级 `reasoning` > 全局 `compress.reasoning`，逐字段生效（含 `normalize`；深层只覆盖显式设置的字段）。provider/model id 取自当前请求的模型标识。
 
 #### `compress.completionReserveTokens`
 

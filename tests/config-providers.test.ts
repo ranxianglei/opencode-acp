@@ -530,3 +530,68 @@ test("reasoning cascade: legacy config without reasoning still applies a reasoni
     const applied = applyCompressOverrides(config, "my-gateway", "m")
     assert.deepEqual(applied.compress.reasoning, { drop: false })
 })
+
+// ── reasoning.normalize cascade (#482): wire-form pinning kill-switch ──
+
+test("reasoning.normalize cascade (#482): resolve merges normalize field-wise, inheritable across models", () => {
+    const config = pluginConfig({
+        ...reasoningBase,
+        providers: {
+            "my-gateway": {
+                reasoning: { drop: false, normalize: false },
+                models: { "claude-opus-4-5": { reasoning: { threshold: 8000 } } },
+            },
+        },
+    })
+    // Model level: normalize+drop inherited from provider, threshold from model.
+    assert.deepEqual(
+        resolveCompressOverrides(config, "my-gateway", "claude-opus-4-5").reasoning,
+        { drop: false, threshold: 8000, normalize: false },
+    )
+    // Sibling model: provider level only, still carries normalize:false.
+    assert.deepEqual(
+        resolveCompressOverrides(config, "my-gateway", "gpt-5").reasoning,
+        { drop: false, normalize: false },
+    )
+})
+
+test("reasoning.normalize cascade (#482): model-level normalize wins over provider-level", () => {
+    const config = pluginConfig({
+        ...reasoningBase,
+        providers: {
+            "my-gateway": {
+                reasoning: { normalize: false },
+                models: { "m1": { reasoning: { normalize: true } } },
+            },
+        },
+    })
+    assert.deepEqual(resolveCompressOverrides(config, "my-gateway", "m1").reasoning, {
+        normalize: true, // model wins
+    })
+})
+
+test("reasoning.normalize cascade (#482): applyCompressOverrides forwards provider-level normalize:false", () => {
+    const config = pluginConfig({
+        ...reasoningBase,
+        providers: { "my-gateway": { reasoning: { normalize: false } } },
+    })
+    const applied = applyCompressOverrides(config, "my-gateway", "some-model")
+    assert.notEqual(applied, config)
+    assert.deepEqual(applied.compress.reasoning, { drop: true, threshold: 2048, normalize: false })
+    // Input config is never mutated.
+    assert.deepEqual(config.compress.reasoning, { drop: true, threshold: 2048 })
+})
+
+test("reasoning.normalize cascade (#482): normalize key stays absent when no layer sets it (byte-stable)", () => {
+    const config = pluginConfig({
+        ...reasoningBase,
+        providers: { "my-gateway": { reasoning: { threshold: 0 } } },
+    })
+    const applied = applyCompressOverrides(config, "my-gateway", "m")
+    const reasoning = applied.compress.reasoning
+    assert.ok(reasoning, "reasoning object present")
+    assert.deepEqual(reasoning, { drop: true, threshold: 0 })
+    // Regression guard: a layer that sets another field must not cause a
+    // spurious `normalize` key to appear in the resolved object.
+    assert.equal(Object.keys(reasoning).length, 2)
+})

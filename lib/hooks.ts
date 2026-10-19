@@ -10,6 +10,7 @@ import {
     dropEmptyMessages,
     injectCompressNudges,
     injectMessageIds,
+    normalizeThinkingForm,
     prune,
     stripHallucinations,
     stripHallucinationsFromString,
@@ -336,6 +337,21 @@ export function createChatMessageTransformHandler(
                 logger.debug("compress.reasoning: dropped oversized reasoning parts", {
                     dropped: droppedReasoning,
                     threshold: reasoningConfig?.threshold ?? DEFAULT_COMPRESS_REASONING.threshold,
+                })
+            }
+        }
+
+        // [#482] Pin the wire form of historical thinking: merge every
+        // assistant message's reasoning parts into one <thinking>-marked text
+        // part so the serialized bytes stop depending on the host's per-request
+        // metadata-table choice (v1 capabilities.interleaved). Runs after the
+        // #368 drop pass; idempotent; gated by the same cascade-resolved
+        // `reasoning` object (kill-switch: compress.reasoning.normalize:false).
+        if (reasoningConfig?.normalize !== false) {
+            const normalizedThinking = normalizeThinkingForm(output.messages)
+            if (normalizedThinking > 0) {
+                logger.debug("compress.reasoning: pinned thinking wire form", {
+                    normalizedMessages: normalizedThinking,
                 })
             }
         }
