@@ -198,9 +198,14 @@ test("E2E: toFile on inactive block writes block summary", async () => {
     })
     const state = makeState([inactiveBlock], [])
 
+    // The tool validates toFile against os.tmpdir(); a hardcoded /tmp path
+    // breaks in environments where TMPDIR points elsewhere (e.g. sandboxes).
+    const { tmpdir } = await import("os")
+    const targetFile = `${tmpdir()}/test-inactive-block-decompress.txt`
+
     const result = await runDecompress(state, {
         blockId: "b5",
-        toFile: "/tmp/test-inactive-block-decompress.txt",
+        toFile: targetFile,
     })
 
     assert.ok(!result.includes("Error"), `should not error: ${result}`)
@@ -211,7 +216,7 @@ test("E2E: toFile on inactive block writes block summary", async () => {
     )
 
     const { readFileSync } = await import("fs")
-    const fileContent = readFileSync("/tmp/test-inactive-block-decompress.txt", "utf-8")
+    const fileContent = readFileSync(targetFile, "utf-8")
     assert.equal(fileContent, "Important compressed content about feature X.")
 })
 
