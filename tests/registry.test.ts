@@ -11,10 +11,15 @@ import "./test-env"
 
 import assert from "node:assert/strict"
 import test, { beforeEach, afterEach } from "node:test"
-import { mkdtempSync, rmSync } from "node:fs"
+import { mkdtempSync, rmSync, chmodSync } from "node:fs"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
-import { SessionStateRegistry, saveSessionState, type WithParts } from "../lib/state"
+import {
+    SessionStateRegistry,
+    createSessionState,
+    saveSessionState,
+    type WithParts,
+} from "../lib/state"
 import { Logger } from "../lib/logger"
 
 function makeClient(): any {
@@ -98,4 +103,50 @@ test("soft-cap eviction drops the oldest session; reload restores persisted mode
 
     const reloaded = await registry.getOrCreate(makeClient(), "session-0", MESSAGES, MANUAL_MODE)
     assert.equal(reloaded.modelContextLimit, 200000)
+})
+
+// [Issue #411] A transient init failure (here: state file temporarily unreadable →
+// EACCES) used to leave the state "initialized" (sessionId set) with no persisted
+// data loaded — the getOrCreate fast path then suppressed re-initialization for the
+// process lifetime. After the fix: the failure clears the fast-path condition and
+// the next request retries full initialization once the condition recovers.
+test("transient init failure does not permanently suppress persisted-state load (#411)", async (t) => {
+    if (typeof process.getuid === "function" && process.getuid() === 0) {
+        t.skip("root bypasses file permissions; EACCES cannot be simulated")
+        return
+    }
+    const logger = new Logger(false)
+    const registry = new SessionStateRegistry(logger)
+    const sessionId = "session-retry-411"
+
+    // Simulate a previous run: persist state with a known modelContextLimit.
+    // (Written directly — NOT through this registry — so the session's first
+    // request against the registry below performs a real load from disk.)
+    const previous = createSessionState()
+    previous.sessionId = sessionId
+    previous.modelContextLimit = 314_159
+    await saveSessionState(previous, logger)
+
+    // Transient FS read failure: stored state temporarily unreadable (EACCES).
+    const stateFile = join(tempDir, "opencode", "storage", "plugin", "acp", `${sessionId}.json`)
+    chmodSync(stateFile, 0o000)
+
+    // First request: initialization fails; the fast-path condition must be cleared.
+    try {
+        const first = await registry.getOrCreate(makeClient(), sessionId, MESSAGES)
+        assert.equal(first.modelContextLimit, undefined, "failed init must not claim loaded state")
+        assert.equal(
+            first.sessionId,
+            null,
+            "failed init must reset the idempotency flag so the next request retries",
+        )
+    } finally {
+        // Restore readability even if an assertion above fails.
+        chmodSync(stateFile, 0o644)
+    }
+
+    // Condition recovers; second request must retry full init and load persisted state.
+    const second = await registry.getOrCreate(makeClient(), sessionId, MESSAGES)
+    assert.equal(second.sessionId, sessionId)
+    assert.equal(second.modelContextLimit, 314_159, "retry must load persisted modelContextLimit")
 })
