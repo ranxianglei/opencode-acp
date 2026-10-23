@@ -51,19 +51,41 @@ export interface PreparedSession {
     searchContext: SearchContext
 }
 
-export async function prepareSession(
-    ctx: ToolContext,
+/**
+ * [Issue #410] Request compress permission + set the tool-call title. Extracted
+ * so callers run this OUTSIDE the per-session guard: `toolCtx.ask` is an
+ * interactive host prompt that can wait an unbounded time (user away from the
+ * keyboard) and may be abandoned without settling on session teardown/abort.
+ * Holding the session lock across that await would wedge every subsequent
+ * same-session operation if the prompt never settles (#410), and even when it
+ * settles normally it needlessly blocks legitimate same-session work for as long
+ * as the user reviews it. The bounded state-mutating steps that follow
+ * (fetch -> init -> assignMessageRefs) stay guarded by the caller.
+ */
+export async function requestCompressPermission(
     toolCtx: RunContext,
     title: string,
-): Promise<PreparedSession> {
+): Promise<void> {
     await toolCtx.ask({
         permission: "compress",
         patterns: ["*"],
         always: ["*"],
         metadata: {},
     })
-
     toolCtx.metadata({ title })
+}
+
+export async function prepareSession(
+    ctx: ToolContext,
+    toolCtx: RunContext,
+    title: string,
+    opts?: { preApproved?: boolean },
+): Promise<PreparedSession> {
+    // [Issue #410] When the caller already requested permission outside the
+    // guard, skip it here; otherwise request it (kept for direct/test callers).
+    if (!opts?.preApproved) {
+        await requestCompressPermission(toolCtx, title)
+    }
 
     const rawMessages = await fetchSessionMessages(ctx.client, toolCtx.sessionID)
 

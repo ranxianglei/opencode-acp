@@ -5,6 +5,7 @@ import { RANGE_FORMAT_EXTENSION } from "../prompts/extensions/tool"
 import {
     finalizeSession,
     prepareSession,
+    requestCompressPermission,
     snapshotCompressionState,
     restoreCompressionState,
     identifyPhantomPlans,
@@ -128,10 +129,20 @@ export function createCompressRangeTool(factoryCtx: ToolFactoryContext): ReturnT
                     ? (toolCtx as unknown as { callID: string }).callID
                     : undefined
 
+            // [Issue #410] Compute the tool-call title here so the permission prompt can be
+            // requested OUTSIDE the per-session guard (see below); run() reuses the same title.
+            const title = `Compress Range: ${input.topic ?? "(batch)"}`
+
+            // [Issue #404] Serialize the full prepare→mutate→finalize transaction under the
+            // per-session guard so it cannot interleave with concurrent same-session work
+            // (message transforms, event-hook saves). The body intentionally keeps its
+            // original indentation inside `run` to keep this change additive-only in diff.
+            const run = async () => {
             const { rawMessages, searchContext } = await prepareSession(
                 ctx0,
                 toolCtx,
-                `Compress Range: ${input.topic ?? "(batch)"}`,
+                title,
+                { preApproved: true },
             )
             // Three-level cascade (issue #344): once the session messages are
             // loaded, swap in the effective compress config for the active
@@ -404,6 +415,14 @@ export function createCompressRangeTool(factoryCtx: ToolFactoryContext): ReturnT
                 ? `\n⚠️ acknowledgeRisk was ignored: no quality gate rejection was pending, so quality checks ran normally. Only pass it when retrying immediately after a quality gate rejection.\n`
                 : ""
             return `Compressed ${totalCompressedMessages} messages into ${COMPRESSED_BLOCK_HEADER}.${skippedNote}${ackNote}\nIMPORTANT: This was an automatic context compression. You MUST continue your previous task exactly where you left off. Do NOT ask the user what to do next.\n💡 Tip: Use search_context('keyword') to find compressed content when you need it later.`
+            }
+            // [Issue #410] Request permission OUTSIDE the per-session guard: toolCtx.ask is an
+            // interactive host prompt that can wait unbounded (user away from keyboard) or be
+            // abandoned without settling on session teardown/abort. Holding the session lock
+            // across that await would wedge every later same-session operation forever (#410).
+            // The bounded state-mutating transaction below stays fully serialized by the guard.
+            await requestCompressPermission(toolCtx, title)
+            return factoryCtx.registry.withSessionGuard(toolCtx.sessionID, () => run())
         },
     })
 }

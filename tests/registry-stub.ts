@@ -1,4 +1,4 @@
-import { createSessionState, type SessionState } from "../lib/state"
+import { createSessionGuard, createSessionState, type SessionState } from "../lib/state"
 import { createModelLimitCatalog } from "../lib/state/model-limits"
 
 // Test helper: builds a SessionStateRegistry stub that resolves any sessionID
@@ -9,6 +9,7 @@ export function singletonRegistry(state: SessionState): {
     all: () => SessionState[]
     size: number
     compressionTiming: SessionState["compressionTiming"]
+    withSessionGuard: ReturnType<typeof createSessionGuard>
 } {
     return {
         get: () => state,
@@ -17,6 +18,7 @@ export function singletonRegistry(state: SessionState): {
             return 1
         },
         compressionTiming: state.compressionTiming,
+        withSessionGuard: createSessionGuard(),
     }
 }
 
@@ -35,6 +37,7 @@ export function createTestRegistry(seedState: SessionState) {
     let hydratedOnce = false
     return {
         compressionTiming: sharedTiming,
+        withSessionGuard: createSessionGuard(),
         get size() {
             return states.size
         },
