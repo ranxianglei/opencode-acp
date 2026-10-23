@@ -204,6 +204,77 @@ export const stripHallucinationsFromString = (text: string): string => {
     return text.replace(DCP_PAIRED_TAG_REGEX, "").replace(DCP_UNPAIRED_TAG_REGEX, "")
 }
 
+// [#431] Strip a leaked bare ACP reference fragment from completed assistant text.
+//
+// The model occasionally degenerates at the end of a completion and echoes the
+// ID-annotation pattern it saw on the last visible message as a bare token
+// followed by unrelated garbage:
+//
+//     Normal progress message.
+//     m00057 <random multilingual tail>
+//
+// stripHallucinationsFromString cannot see this — the fragment carries no tag.
+//
+// Key invariant exploited here: message refs and block IDs are allocated
+// strictly monotonically within a compaction epoch (`messageIds.nextRef` /
+// `prune.messages.nextBlockId` are the next values to be allocated; nothing at
+// or beyond them exists yet). And the completing message does NOT have its ref
+// assigned yet — assignment happens on the next messages.transform. So a ref
+// at or beyond the next-to-allocate value cannot be a legitimate citation of
+// anything the model could have seen; it is by definition a hallucinated/future
+// ID. (Compaction resets the counters — see DESIGN.md §8 for the residual
+// stale-ref window that implies.)
+//
+// Conservative guards (legitimate prose must survive):
+// - LINE-LEADING only: the ref must start a line (string start or after \n,
+//   optional leading [ \t]). Embedded mentions ("see m00042") are untouched.
+// - Exact injected format only: lowercase `m` + 4-5 digits, or lowercase `b` +
+//   non-zero digits. Uppercase forms (product codes like "M00057") do not match.
+// - Only future values are cut. Existing refs (below the bound) are always kept.
+// - Unknown ID space (both bounds invalid) → input returned unchanged.
+// Truncation removes from the first qualifying line-leading ref to end of
+// string, then trims trailing whitespace.
+const LEAKED_TRAILING_REF_REGEX = /(?:^|\n)[ \t]*(?:m(\d{4,5})|b([1-9]\d*))\b/g
+
+export const stripLeakedTrailingRefs = (
+    text: string,
+    bounds: { nextMessageRef?: number | null; nextBlockRef?: number | null },
+): string => {
+    if (typeof text !== "string" || text.length === 0) {
+        return text
+    }
+
+    const rawMessageBound = bounds.nextMessageRef
+    const rawBlockBound = bounds.nextBlockRef
+    const messageBound =
+        typeof rawMessageBound === "number" && Number.isInteger(rawMessageBound)
+            ? rawMessageBound
+            : null
+    const blockBound =
+        typeof rawBlockBound === "number" && Number.isInteger(rawBlockBound)
+            ? rawBlockBound
+            : null
+    if (messageBound === null && blockBound === null) {
+        return text
+    }
+
+    // Rebuilt per call: global regexes carry mutable lastIndex state.
+    const pattern = new RegExp(LEAKED_TRAILING_REF_REGEX.source, "g")
+    let match: RegExpExecArray | null
+    while ((match = pattern.exec(text)) !== null) {
+        if (match[1] !== undefined) {
+            if (messageBound !== null && Number(match[1]) >= messageBound) {
+                return text.slice(0, match.index).replace(/[ \t\r\n]*$/, "")
+            }
+        } else if (match[2] !== undefined) {
+            if (blockBound !== null && Number(match[2]) >= blockBound) {
+                return text.slice(0, match.index).replace(/[ \t\r\n]*$/, "")
+            }
+        }
+    }
+    return text
+}
+
 export const stripHallucinations = (messages: WithParts[]): void => {
     for (const message of messages) {
         for (const part of message.parts) {

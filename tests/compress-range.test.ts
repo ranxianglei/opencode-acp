@@ -3,7 +3,7 @@ import test from "node:test"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 import { mkdirSync } from "node:fs"
-import { createCompressRangeTool } from "../lib/compress/range"
+import { createCompressRangeTool, requiresSmartPlan } from "../lib/compress/range"
 import { createSessionState, type WithParts } from "../lib/state"
 import type { PluginConfig } from "../lib/config"
 import { Logger } from "../lib/logger"
@@ -114,6 +114,12 @@ function buildMessages(sessionID: string): WithParts[] {
     ]
 }
 
+test("smart-plan policy applies to raw ranges but never tier block ranges", () => {
+    assert.equal(requiresSmartPlan(true, [{ startId: "m00001", endId: "m00002" }]), true)
+    assert.equal(requiresSmartPlan(true, [{ startId: "b1", endId: "b4" }]), false)
+    assert.equal(requiresSmartPlan(false, [{ startId: "m00001", endId: "m00002" }]), false)
+})
+
 test("compress range rebuilds subagent message refs after session state was reset", async () => {
     const sessionID = `ses_subagent_compress_${Date.now()}`
     const rawMessages = buildMessages(sessionID)
@@ -162,7 +168,10 @@ test("compress range rebuilds subagent message refs after session state was rese
     )
 
     // [Bug 30 fix] Result now includes IMPORTANT continuation instruction
-    assert.equal(result, "Compressed 2 messages into [Compressed conversation section].\nIMPORTANT: This was an automatic context compression. You MUST continue your previous task exactly where you left off. Do NOT ask the user what to do next.\n💡 Tip: Use search_context('keyword') to find compressed content when you need it later.")
+    assert.equal(
+        result,
+        "Compressed 2 messages into [Compressed conversation section].\nIMPORTANT: This was an automatic context compression. You MUST continue your previous task exactly where you left off. Do NOT ask the user what to do next.\n💡 Tip: Use search_context('keyword') to find compressed content when you need it later.",
+    )
     assert.equal(state.sessionId, sessionID)
     assert.equal(state.isSubAgent, true)
     assert.equal(state.messageIds.byRef.get("m00001"), "msg-assistant-1")
@@ -313,7 +322,10 @@ test("compress range mode batches multiple ranges into one notification", async 
     )
 
     // [Bug 30 fix] Result now includes IMPORTANT continuation instruction
-    assert.equal(result, "Compressed 2 messages into [Compressed conversation section].\nIMPORTANT: This was an automatic context compression. You MUST continue your previous task exactly where you left off. Do NOT ask the user what to do next.\n💡 Tip: Use search_context('keyword') to find compressed content when you need it later.")
+    assert.equal(
+        result,
+        "Compressed 2 messages into [Compressed conversation section].\nIMPORTANT: This was an automatic context compression. You MUST continue your previous task exactly where you left off. Do NOT ask the user what to do next.\n💡 Tip: Use search_context('keyword') to find compressed content when you need it later.",
+    )
     assert.equal(state.prune.messages.blocksById.size, 2)
     assert.equal(toastCalls.length, 1)
     assert.match(toastCalls[0] || "", /▣ ACP \| Context [^|]+→[^|]+/)

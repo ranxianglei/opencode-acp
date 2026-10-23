@@ -9,15 +9,23 @@ import {
     estimateContextComposition,
     buildCompressibleRanges,
     computeProtectedRefs,
+    filterRecommendedRanges,
     formatCompressibleRanges,
+    resolveContextTokenLimit,
+    resolveEffectiveFloor,
+    applyCompressOverrides,
+    getModelInfo,
 } from "../messages/inject/utils"
 import {
     formatCompressionCandidates,
     planCompressionCandidates,
 } from "../messages/inject/candidates"
-import { fetchSessionMessages } from "./search"
+import { buildSearchContext, fetchSessionMessages } from "./search"
 import { hideConsumedCompressCalls } from "./hide-consumed"
 import { estimateSystemPromptTokens } from "../token-utils"
+import { armBestSmartPlan, clearSmartPlan, getVisibleMessageIds } from "./smart-plan"
+import { assignMessageRefs, repairNonMonotonicMessageRefs } from "../message-ids"
+import { saveSessionState } from "../state"
 
 const ACP_STATUS_TOOL_DESCRIPTION = `Show context status — overview includes compressible ranges (compression candidates when compress.candidates is enabled).
 
@@ -694,13 +702,96 @@ export function createAcpStatusTool(factoryCtx: ToolFactoryContext): ReturnType<
 
             hideConsumedCompressCalls(ctx.state, rawMessages)
 
-            return buildStatusReport({ state: ctx.state, config: ctx.config }, rawMessages, {
-                scope,
-                view,
-                tool: toolFilter,
-                sort,
-                limit,
-            })
+            assignMessageRefs(ctx.state, rawMessages)
+            if (repairNonMonotonicMessageRefs(ctx.state, rawMessages)) {
+                ctx.logger.warn("Repaired non-monotonic message aliases after native compaction", {
+                    session: toolCtx.sessionID,
+                    messages: rawMessages.length,
+                })
+                await saveSessionState(ctx.state, ctx.logger)
+            }
+            const { providerId, modelId } = getModelInfo(rawMessages)
+            const effectiveCtx: typeof ctx = {
+                ...ctx,
+                config: applyCompressOverrides(ctx.config, providerId, modelId),
+            }
+            let smartPlanSuffix = ""
+            if (
+                effectiveCtx.config.compress?.smartPlanRequired === true &&
+                scope === "uncompressed" &&
+                view !== "messages"
+            ) {
+                const lastModelView = getVisibleMessageIds(toolCtx.sessionID)
+                const visibleRaw = rawMessages.filter((message) => {
+                    const entry = effectiveCtx.state.prune.messages.byMessageId.get(message.info.id)
+                    return (
+                        (!entry || entry.activeBlockIds.length === 0) &&
+                        (!lastModelView || lastModelView.has(message.info.id))
+                    )
+                })
+                const protectedRefs = computeProtectedRefs(
+                    visibleRaw,
+                    effectiveCtx.state,
+                    effectiveCtx.config.compress,
+                )
+                const contextRanges = buildCompressibleRanges(
+                    visibleRaw,
+                    effectiveCtx.state,
+                    effectiveCtx.config.compress.protectedTools,
+                    effectiveCtx.config.protectedFilePatterns,
+                    protectedRefs,
+                )
+                const ranges = filterRecommendedRanges(
+                    contextRanges.compressible,
+                    contextRanges.protected,
+                    {
+                        logger: effectiveCtx.logger,
+                        minEffectiveTokens: resolveEffectiveFloor(effectiveCtx.config),
+                    },
+                )
+                const composition = estimateContextComposition(
+                    visibleRaw,
+                    effectiveCtx.state,
+                    effectiveCtx.config.compress.protectedTools,
+                    effectiveCtx.config.protectedFilePatterns,
+                )
+                const targetLimit = resolveContextTokenLimit(
+                    effectiveCtx.config,
+                    effectiveCtx.state,
+                    providerId,
+                    modelId,
+                    "max",
+                )
+                const targetChars = Math.max(
+                    effectiveCtx.config.compress.minCompressRange,
+                    targetLimit === undefined
+                        ? 0
+                        : Math.max(0, composition.total - targetLimit + 8192) * 4,
+                )
+                const plan = lastModelView
+                    ? armBestSmartPlan(
+                          toolCtx.sessionID,
+                          ranges,
+                          buildSearchContext(effectiveCtx.state, rawMessages),
+                          effectiveCtx,
+                          lastModelView,
+                          Date.now(),
+                          targetChars,
+                      )
+                    : undefined
+                smartPlanSuffix = plan
+                    ? `\n\nSMART PLAN ARMED: ${plan.startId}-${plan.endId} | ${plan.exactChars} effective chars | reclaim target ${targetChars} chars\nNext: compress exactly this one range. acp_status is optional unless this plan becomes stale.`
+                    : `\n\nSMART PLAN: none. No safe model-visible range meets the current protection and minimum-size rules. Do not call compress.`
+                if (!plan) clearSmartPlan(toolCtx.sessionID)
+            }
+
+            return (
+                buildStatusReport(
+                    { state: effectiveCtx.state, config: effectiveCtx.config },
+                    rawMessages,
+                    { scope, view, tool: toolFilter, sort, limit },
+                ) + smartPlanSuffix
+            )
         },
     })
 }

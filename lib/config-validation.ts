@@ -43,6 +43,7 @@ export const VALID_CONFIG_KEYS = new Set([
     "compress.protectUserMessages",
     "compress.maxSummaryLengthHard",
     "compress.minCompressRange",
+    "compress.smartPlanRequired",
     "compress.minNudgeGrowthRatio",
     "compress.minNudgeGrowthFloor",
     "compress.emergencyThresholdPercent",
@@ -55,7 +56,12 @@ export const VALID_CONFIG_KEYS = new Set([
     "compress.reasoning",
     "compress.reasoning.drop",
     "compress.reasoning.threshold",
+    "compress.images",
+    "compress.images.enabled",
+    "compress.images.minBytes",
+    "compress.images.ttlDays",
     "compress.completionReserveTokens",
+    "compress.emergencyTruncation",
     "gc",
     "gc.algorithm",
     "gc.promotionThreshold",
@@ -373,6 +379,17 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
             }
 
             if (
+                compress.smartPlanRequired !== undefined &&
+                typeof compress.smartPlanRequired !== "boolean"
+            ) {
+                errors.push({
+                    key: "compress.smartPlanRequired",
+                    expected: "boolean",
+                    actual: typeof compress.smartPlanRequired,
+                })
+            }
+
+            if (
                 compress.minNudgeGrowthRatio !== undefined &&
                 typeof compress.minNudgeGrowthRatio !== "number"
             ) {
@@ -596,6 +613,58 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
                 }
             }
 
+            // [#478] Nested compress.images object — session-scoped image
+            // archiving settings (not part of the provider/model cascade).
+            if (compress.images !== undefined) {
+                if (
+                    typeof compress.images !== "object" ||
+                    compress.images === null ||
+                    Array.isArray(compress.images)
+                ) {
+                    errors.push({
+                        key: "compress.images",
+                        expected:
+                            "object { enabled?: boolean; minBytes?: integer (>= 0); ttlDays?: number (> 0) }",
+                        actual: JSON.stringify(compress.images),
+                    })
+                } else {
+                    if (
+                        compress.images.enabled !== undefined &&
+                        typeof compress.images.enabled !== "boolean"
+                    ) {
+                        errors.push({
+                            key: "compress.images.enabled",
+                            expected: "boolean",
+                            actual: typeof compress.images.enabled,
+                        })
+                    }
+                    if (
+                        compress.images.minBytes !== undefined &&
+                        (typeof compress.images.minBytes !== "number" ||
+                            !Number.isInteger(compress.images.minBytes) ||
+                            compress.images.minBytes < 0)
+                    ) {
+                        errors.push({
+                            key: "compress.images.minBytes",
+                            expected: "integer (>= 0)",
+                            actual: JSON.stringify(compress.images.minBytes),
+                        })
+                    }
+                    if (
+                        compress.images.ttlDays !== undefined &&
+                        (typeof compress.images.ttlDays !== "number" ||
+                            !Number.isFinite(compress.images.ttlDays) ||
+                            compress.images.ttlDays <= 0)
+                    ) {
+                        errors.push({
+                            key: "compress.images.ttlDays",
+                            expected: "number (> 0)",
+                            actual: JSON.stringify(compress.images.ttlDays),
+                        })
+                    }
+                }
+            }
+
             if (
                 compress.completionReserveTokens !== undefined &&
                 typeof compress.completionReserveTokens !== "number"
@@ -604,6 +673,17 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
                     key: "compress.completionReserveTokens",
                     expected: "number",
                     actual: typeof compress.completionReserveTokens,
+                })
+            }
+
+            if (
+                compress.emergencyTruncation !== undefined &&
+                typeof compress.emergencyTruncation !== "boolean"
+            ) {
+                errors.push({
+                    key: "compress.emergencyTruncation",
+                    expected: "boolean",
+                    actual: typeof compress.emergencyTruncation,
                 })
             }
 
@@ -724,6 +804,7 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
             const OVERRIDE_FIELD_TYPES: Record<string, OverrideFieldType> = {
                 showCompression: "boolean",
                 summaryBuffer: "boolean",
+                emergencyTruncation: "boolean",
                 protectTags: "boolean",
                 protectUserMessages: "boolean",
                 lastSegmentSoftBlock: "boolean",
@@ -741,6 +822,7 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
                 protectedTools: "stringArray",
                 maxSummaryLengthHard: "positiveNumber",
                 minCompressRange: "nonNegativeNumber",
+                smartPlanRequired: "boolean",
                 maxVisibleSegments: "positiveNumber",
                 keepEmbedMaxChars: "nonNegativeNumber",
                 preserveRecentMessages: "nonNegativeNumber",

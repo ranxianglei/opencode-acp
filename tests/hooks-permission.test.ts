@@ -161,47 +161,99 @@ test("command execute works even when effective permission resolves to deny (inf
         { global: undefined, agents: {} },
     )
 
-    // /acp (no args) now shows compression status — works regardless of compress permission
-    try {
-        await handler({ command: "dcp", sessionID: "session-1", arguments: "" }, output)
-    } catch (e: any) {
-        if (e?.message !== "__DCP_CONTEXT_HANDLED__") throw e
-    }
+    // /acp (no args) now shows compression status — works regardless of compress permission.
+    // Since #398 the abort is deterministic: only a throw stops opencode from sending
+    // the arguments to the model, so the hook MUST reject with the sentinel.
+    await expectAbortedAfterNotification(handler, "", "dcp")
 
     assert.equal(sessionMessagesCalls, 1)
 })
 
-test("command execute returns normally (no __DCP_CONTEXT_HANDLED__ throw) — issue #296", async () => {
+// Minimal shape of the session.prompt call ACP sends for ignored notifications
+// (see sendIgnoredMessage in lib/ui/notification.ts).
+type IgnoredPromptCall = {
+    path: { id: string }
+    body: { noReply?: boolean; parts?: Array<{ type: string; text: string; ignored?: boolean }> }
+}
+
+function createCommandHarness(permission: string = "allow") {
     let sessionMessagesCalls = 0
-    const output = { parts: [] as any[] }
-    const handler = createCommandExecuteHandler(
-        {
-            session: {
-                messages: async () => {
-                    sessionMessagesCalls += 1
-                    return { data: [] }
-                },
+    const prompts: IgnoredPromptCall[] = []
+    const client = {
+        session: {
+            messages: async () => {
+                sessionMessagesCalls += 1
+                return { data: [] }
             },
-        } as any,
+            prompt: async (args: IgnoredPromptCall) => {
+                prompts.push(args)
+                return {}
+            },
+        },
+    }
+    const handler = createCommandExecuteHandler(
+        client as any,
         createTestRegistry(createSessionState()),
         new Logger(false),
-        buildConfig("allow"),
+        buildConfig(permission),
         "/tmp",
         { global: undefined, agents: {} },
     )
+    return { handler, prompts, calls: () => sessionMessagesCalls }
+}
 
-    await handler({ command: "acp", sessionID: "session-1", arguments: "context" }, output)
+// Regression guard for #398 (reverts PR #297): opencode's Plugin.trigger only
+// aborts a command when the hook THROWS — a normal return lets opencode append
+// the raw arguments to the empty command template and send them to the model
+// ("/acp status" leaked a user message "status", triggering a spurious ~40K-token
+// model call). Every handled /acp branch MUST reject with
+// __DCP_CONTEXT_HANDLED__ after delivering its ignored notification.
+async function expectAbortedAfterNotification(
+    handler: ReturnType<typeof createCommandExecuteHandler>,
+    args: string,
+    command: string = "acp",
+): Promise<void> {
+    await assert.rejects(
+        () => handler({ command, sessionID: "session-1", arguments: args }, { parts: [] }),
+        (e: unknown) => e instanceof Error && e.message === "__DCP_CONTEXT_HANDLED__",
+    )
+}
 
-    assert.equal(sessionMessagesCalls, 1)
+test("command execute aborts every handled /acp branch by throwing (regression guard #398)", async () => {
+    // Each form must reject with __DCP_CONTEXT_HANDLED__ AND have delivered its
+    // ignored notification first (proves the branch ran, then aborted — not swallowed).
+    for (const args of ["stats", "status", "", "context", "help", "export --stdout"]) {
+        const { handler, prompts, calls } = createCommandHarness()
+        await expectAbortedAfterNotification(handler, args)
+        assert.ok(
+            prompts.length >= 1,
+            `/acp ${args || "(bare)"} should send its ignored notification before aborting`,
+        )
+        assert.equal(prompts[0].body.noReply, true)
+        assert.equal(prompts[0].body.parts[0].ignored, true)
+        assert.equal(prompts[0].path.id, "session-1")
+        assert.equal(calls(), 1, `/acp ${args || "(bare)"} should fetch session messages exactly once`)
+    }
+})
+
+test("command execute passes through non-acp commands without throwing", async () => {
+    const { handler } = createCommandHarness()
+    await assert.doesNotReject(
+        () => handler({ command: "other", sessionID: "session-1", arguments: "" }, { parts: [] }),
+    )
 })
 
 test("text complete strips hallucinated metadata tags", async () => {
-    const output = { text: "alpha  omega" }
-    const handler = createTextCompleteHandler()
+    const state = createSessionState()
+    state.sessionId = "session-1"
+    const handler = createTextCompleteHandler(createTestRegistry(state), new Logger(false))
+    const output = {
+        text: 'alpha<dcp-message-id tokens="1" type="text">m00001</dcp-message-id>omega',
+    }
 
     await handler({ sessionID: "session-1", messageID: "message-1", partID: "part-1" }, output)
 
-    assert.equal(output.text, "alpha  omega")
+    assert.equal(output.text, "alphaomega")
 })
 
 test("event hook attaches durations to matching blocks by message and call id", async () => {

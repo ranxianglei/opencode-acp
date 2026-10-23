@@ -1,4 +1,5 @@
 import type { PluginConfig } from "../config"
+import { describeBiliEnvYield, detectBiliEnvYield } from "../bili-proxy"
 import type { Logger } from "../logger"
 import type { PromptStore } from "../prompts/store"
 import type { CompressionBlock, CompressionMode, SessionState, WithParts } from "../state"
@@ -27,6 +28,18 @@ export function resolveToolContext(
     factoryCtx: ToolFactoryContext,
     sessionID: string,
 ): ToolContext {
+    // [FIX #405] Action-time owner re-check (defense-in-depth for every ACP
+    // tool — all five execute() bodies enter through here): the config hook
+    // denies the tools once billion-context claims ownership, but the
+    // native-mode marker can land after the last config run. No tool may act
+    // after the handoff.
+    const biliYield = detectBiliEnvYield()
+    if (biliYield !== null) {
+        throw new Error(
+            `ACP is disabled in this process — ${describeBiliEnvYield(biliYield)}. ` +
+                "billion-context owns context compression; do not call ACP tools again.",
+        )
+    }
     const state = factoryCtx.registry.get(sessionID)
     if (!state) {
         throw new Error(

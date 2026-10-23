@@ -25,6 +25,8 @@ type Permission = "ask" | "allow" | "deny"
  * - `reasoning` — an object; cascade merges it field-wise (see
  *   `CompressReasoningConfig`), not by whole-value replacement, so it is handled
  *   outside the flat Omit surface.
+ * - `images` — session-scoped disk side effect (archive dir per session);
+ *   per-model/provider cascading would fork archive locations unpredictably.
  */
 export type CompressOverridableConfig = Omit<
     CompressConfig,
@@ -35,6 +37,7 @@ export type CompressOverridableConfig = Omit<
     | "modelMinLimits"
     | "providers"
     | "reasoning"
+    | "images"
 >
 
 /** Per-model / per-provider override object (all overridable fields optional). */
@@ -99,6 +102,8 @@ export interface CompressConfig {
     protectUserMessages: boolean
     maxSummaryLengthHard: number
     minCompressRange: number
+    /** Require one fresh canonical range armed by a nudge or acp_status per compress call. */
+    smartPlanRequired?: boolean
     minNudgeGrowthRatio: number
     minNudgeGrowthFloor: number
     emergencyThresholdPercent: number | `${number}%`
@@ -121,11 +126,33 @@ export interface CompressConfig {
      */
     reasoning?: CompressReasoningConfig
     /**
+     * [Issue #478] Image archiving: inline image attachments (data: URLs) are
+     * spilled to disk at index time so folded ranges keep a re-readable pointer
+     * instead of silently losing the pixels. Session-scoped; NOT part of the
+     * provider/model cascade (see `CompressOverridableConfig`). Optional for
+     * backward compatibility with pre-#478 configs; `getConfig()` always
+     * populates it via `DEFAULT_COMPRESS_IMAGES`.
+     */
+    images?: CompressImagesConfig
+    /**
      * Tokens reserved for the model's completion when enforcing the context
      * budget guard (default: 32768 — covers opencode's 32000 max_tokens
      * fallback for models with no declared limit.output).
      */
     completionReserveTokens?: number
+    /**
+     * [Issue #485] Master switch for the per-request emergency truncation
+     * guards (truncateLargeToolOutputs + enforceContextBudget). Default
+     * false: the truncation is view-only (never persisted to the session
+     * store), so a session hovering at the guard threshold oscillates
+     * between truncated and pristine tool outputs — every flip invalidates
+     * the provider prefix cache from that message onward, and with opencode
+     * retrying on a busy backend the churn can take down the whole serving
+     * cluster. Set true to re-enable overflow protection at the cost of that
+     * oscillation risk (protects against the HTTP 400 → silent exit 0 wall,
+     * #346).
+     */
+    emergencyTruncation?: boolean
 }
 
 /**
@@ -155,6 +182,36 @@ export interface CompressReasoningConfig {
 export const DEFAULT_COMPRESS_REASONING: Readonly<CompressReasoningConfig> = {
     drop: true,
     threshold: 2048,
+}
+
+/**
+ * [Issue #478] Nested `compress.images` config. Field-wise merge across config
+ * layers like `reasoning`. Session-scoped: applies to the whole session, never
+ * cascaded per provider/model (archive location must be stable for a session).
+ */
+export interface CompressImagesConfig {
+    /** Master switch. Default: true. */
+    enabled: boolean
+    /**
+     * Minimum decoded image size (bytes) to archive; smaller images stay
+     * inline and are cheap enough to summarize around. Default: 16384.
+     */
+    minBytes: number
+    /**
+     * Delete archived image files older than this many days (best-effort TTL
+     * sweep, once per process per session). Default: 7.
+     */
+    ttlDays: number
+}
+
+/**
+ * [Issue #478] Default `compress.images`. Readonly — always spread into a fresh
+ * object (`{ ...DEFAULT_COMPRESS_IMAGES }`), never handed out directly.
+ */
+export const DEFAULT_COMPRESS_IMAGES: Readonly<CompressImagesConfig> = {
+    enabled: true,
+    minBytes: 16384,
+    ttlDays: 7,
 }
 
 export interface Commands {
@@ -325,6 +382,7 @@ const defaultConfig: PluginConfig = {
         permission: "allow",
         showCompression: true,
         summaryBuffer: true,
+        emergencyTruncation: false,
         candidates: false,
         maxContextLimit: "80%",
         minContextLimit: "80%",
@@ -338,6 +396,7 @@ const defaultConfig: PluginConfig = {
         protectUserMessages: false,
         maxSummaryLengthHard: 20000,
         minCompressRange: 5000,
+        smartPlanRequired: false,
         minNudgeGrowthRatio: 0.45,
         minNudgeGrowthFloor: 5000,
         nudgeGrowthTokens: 50000,
@@ -349,6 +408,7 @@ const defaultConfig: PluginConfig = {
         preserveRecentTokens: 5000,
         preserveLastUserMessage: true,
         reasoning: { ...DEFAULT_COMPRESS_REASONING },
+        images: { ...DEFAULT_COMPRESS_IMAGES },
     },
     gc: {
         algorithm: "truncate",
@@ -573,6 +633,7 @@ export function mergeCompress(
         protectUserMessages: override.protectUserMessages ?? base.protectUserMessages,
         maxSummaryLengthHard: override.maxSummaryLengthHard ?? base.maxSummaryLengthHard,
         minCompressRange: override.minCompressRange ?? base.minCompressRange,
+        smartPlanRequired: override.smartPlanRequired ?? base.smartPlanRequired,
         minNudgeGrowthRatio: override.minNudgeGrowthRatio ?? base.minNudgeGrowthRatio,
         minNudgeGrowthFloor: override.minNudgeGrowthFloor ?? base.minNudgeGrowthFloor,
         emergencyThresholdPercent:
@@ -591,7 +652,18 @@ export function mergeCompress(
                 base.reasoning?.threshold ??
                 DEFAULT_COMPRESS_REASONING.threshold,
         },
+        images: {
+            enabled:
+                override.images?.enabled ?? base.images?.enabled ?? DEFAULT_COMPRESS_IMAGES.enabled,
+            minBytes:
+                override.images?.minBytes ??
+                base.images?.minBytes ??
+                DEFAULT_COMPRESS_IMAGES.minBytes,
+            ttlDays:
+                override.images?.ttlDays ?? base.images?.ttlDays ?? DEFAULT_COMPRESS_IMAGES.ttlDays,
+        },
         completionReserveTokens: override.completionReserveTokens ?? base.completionReserveTokens,
+        emergencyTruncation: override.emergencyTruncation ?? base.emergencyTruncation,
     }
 }
 

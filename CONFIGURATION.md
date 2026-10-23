@@ -323,6 +323,17 @@ In this example, for `anthropic/claude-sonnet-4-6`: the floor is 30%, the over-m
 - **Status:** ACTIVE
 - **Description:** When `true`, all user messages are protected from compression (not just the last one).
 
+#### `compress.images`
+
+- **Type:** object (nested, field-wise defaults)
+- **Default:** `{ "enabled": true, "minBytes": 16384, "ttlDays": 7 }`
+- **Status:** ACTIVE
+- **Description:** Image archive (#478). Images attached to messages arrive as data-URL file parts; when a range containing them is folded, ACP would otherwise drop the pixels with no recovery path. With archiving enabled, qualifying images are spilled to disk as soon as they enter the session (`<storageDir>/images/<dirName(sessionId)>/`, files mode `0600`) and any block summary covering them gains a pointer appendix listing absolute paths — the model re-reads archived images with its own file tools. Summary text itself never contains image bytes. Not part of the per-model override cascade (archive location is session-scoped).
+    - `enabled` (`boolean`, default `true`) — master switch. `false` restores pre-archive behavior exactly (no disk writes, no summary appendix).
+    - `minBytes` (`number`, bytes, default `16384`) — only images at least this large are archived. Tiny inline icons are left to normal folding.
+    - `ttlDays` (`number`, days, default `7`) — archived files older than this are deleted by a best-effort sweep that runs once per process per session.
+    - Only `data:` URL images of binary types (png/jpeg/gif/webp/avif/bmp) qualify; SVG is excluded (scriptable text format) and remote/file URLs are out of scope for v1. Archive failures are logged and never interrupt a request.
+
 #### `compress.maxSummaryLengthHard`
 
 - **Type:** `number`
@@ -336,6 +347,13 @@ In this example, for `anthropic/claude-sonnet-4-6`: the floor is 30%, the over-m
 - **Default:** `5000`
 - **Status:** ACTIVE
 - **Description:** Minimum estimated tokens in a compression range. Ranges smaller than this are filtered out from recommendations (not worth compressing).
+
+#### `compress.smartPlanRequired`
+
+- **Type:** `boolean`
+- **Default:** `false`
+- **Status:** ACTIVE
+- **Description:** Require raw-message compression calls to match the single canonical range armed by the latest ACP nudge or `acp_status` report. Tier-2/3 block compression is unaffected. This fail-closed mode prevents stale, reversed, batched, or no-longer-visible message ranges from being submitted.
 
 #### `compress.minNudgeGrowthRatio`
 
@@ -434,6 +452,13 @@ Resolution: model-level `reasoning` > provider-level `reasoning` > global `compr
 - **Default:** `32768`
 - **Status:** ACTIVE
 - **Description:** Tokens reserved for the model's completion by the context-budget guard. The guard estimates the request's input size and, if it exceeds `window - completionReserveTokens`, deterministically truncates (then clears) old compressible tool outputs until it fits — summaries, protected tools, the first user message, and the last 3 messages are never touched. The default `32768` covers opencode's `32000` `max_tokens` fallback for models with no declared `limit.output`. The guard is a no-op unless the model's context window is known (declared `limit.context` in opencode.json, or a catalog entry). An absolute (number) `compress.maxContextLimit` does **not** enable the guard — it is a soft nudge threshold, not the backend's real limit.
+
+#### `compress.emergencyTruncation`
+
+- **Type:** `boolean`
+- **Default:** `false`
+- **Status:** ACTIVE
+- **Description:** Master switch for the emergency truncation guards (`truncateLargeToolOutputs` + `enforceContextBudget`, gated together in the message-transform pipeline). When `true`, oversized old tool outputs are truncated head+tail near the context wall to keep the request within the model's window — and the truncation is **sticky**: once a tool output is truncated it stays truncated for the rest of the session (replayed verbatim from persisted state on every later request, including after restarts), so the wire view never oscillates. Default `false` (#485): left alone, per-request truncation would oscillate between truncated and full tool outputs around the guard threshold; every flip invalidates the provider prefix cache from that message onward, and with opencode's automatic retries the churn can overload the serving backend. With the switch off, a session that outgrows the window fails loudly at the provider (HTTP 400 → opencode exits with no output) instead of being silently mutated — rely on compression nudges to keep sessions below the wall.
 
 ---
 

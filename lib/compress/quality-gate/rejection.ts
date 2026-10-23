@@ -1,4 +1,3 @@
-import { HOW_TO_COMPRESS_RULES } from "context-compress-algorithms/prompts"
 import type { QualityGateResult } from "./types"
 
 export interface RejectionPlanInfo {
@@ -7,6 +6,15 @@ export interface RejectionPlanInfo {
     summary: string
     messageIds: string[]
     messageTokenById: Map<string, number>
+}
+
+/**
+ * Minimal logging surface for full rejection diagnostics. Kept structural (not
+ * the concrete `Logger` class) so tests can inject a plain mock without casting,
+ * and so this module has no runtime dependency on the logger implementation.
+ */
+export interface RejectionDiagnosticsLogger {
+    warn(message: string, data?: Record<string, unknown>): void
 }
 
 function formatMetric(result: QualityGateResult, name: string): string {
@@ -39,37 +47,51 @@ function computeStats(plan: RejectionPlanInfo): {
     return { originalTokens, summaryChars, ratio, retentionPct }
 }
 
+/**
+ * Reduce an algorithm-provided reason to its core phrase. The external
+ * `context-compress-algorithms` package appends internal threshold/config detail
+ * after a colon or inside a parenthetical (e.g. `"Summary too short: 670 chars …
+ * (threshold: 200 chars OR 0.5% retention)"`). Only the phrase before the first
+ * `:` / `(` is actionable for the model, so everything after it stays out of the
+ * model-facing message (#444).
+ */
+function coreReason(reason: string | undefined): string {
+    if (!reason) return "unknown"
+    const candidates = [reason.indexOf(":"), reason.indexOf("(")].filter((i) => i >= 0)
+    const cut = Math.min(...candidates)
+    return (cut > 0 ? reason.slice(0, cut) : reason).trim() || "unknown"
+}
+
 export function buildQualityRejectionError(
     plan: RejectionPlanInfo,
     result: QualityGateResult,
+    logger?: RejectionDiagnosticsLogger,
 ): Error {
     const stats = computeStats(plan)
-    const metrics = [
-        `Original: ~${stats.originalTokens} tokens`,
-        `Summary: ${stats.summaryChars} chars`,
-        `Ratio: ${stats.ratio}:1`,
-        `Retention: ${stats.retentionPct}%`,
-        `Gate layer: ${result.layer ?? "unknown"}`,
-        `rougeF1: ${formatMetric(result, "rougeF1")}`,
-        `top20Recall: ${formatMetric(result, "top20Recall")}`,
-    ]
+
+    // Full diagnostics go to the ACP log, NOT the model context. The model only
+    // needs enough to act (what failed + how to retry); algorithm-internal
+    // metrics and threshold config are diagnostic detail that would otherwise
+    // consume context on every rejection (#444).
+    logger?.warn("quality gate rejected compression", {
+        range: `${plan.startId}–${plan.endId}`,
+        reason: result.reason || "unknown",
+        layer: result.layer ?? "unknown",
+        originalTokens: stats.originalTokens,
+        summaryChars: stats.summaryChars,
+        ratio: stats.ratio,
+        retentionPct: stats.retentionPct,
+        rougeF1: formatMetric(result, "rougeF1"),
+        top20Recall: formatMetric(result, "top20Recall"),
+    })
 
     const message = `⚠️ COMPRESSION REJECTED — QUALITY GATE FAILURE
 
 Range: ${plan.startId}–${plan.endId}
-${metrics.join("\n")}
+Reason: ${coreReason(result.reason)}
+Original: ~${stats.originalTokens} tokens · Summary: ${stats.summaryChars} chars · Retention: ${stats.retentionPct}%
 
-⚠️ CRITICAL: Compression is the ONLY mechanism for preserving historical context in this session.
-Once a compression is accepted, the original messages are permanently removed from visible context.
-Your summary becomes the SOLE record. If it fails, subsequent work is built on a broken foundation —
-memory loss → wrong assumptions → entire reasoning chain collapse.
-Treat every compression with maximum care.
-
-${HOW_TO_COMPRESS_RULES}
-
-To retry: rewrite a more complete summary that preserves critical details (file paths, decisions,
-exact values, errors). Then add "acknowledgeRisk": true to the compress tool call parameters.
-Without acknowledgeRisk: true, the compression will be rejected again.`
+Retry: write a more complete summary preserving critical details (file paths, decisions, exact values, errors), then call compress again on the same range. If you are confident the summary is adequate despite the metrics, pass "acknowledgeRisk": true.`
 
     return new Error(message)
 }

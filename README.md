@@ -10,6 +10,32 @@ The model decides <em>when</em> and <em>what</em> to compress — not a hard lim
 
 ---
 
+## Community
+
+QQ Group:
+1056132097 (full)
+1108730198 (open)
+
+---
+
+> ⚠️ **Using OpenCode 2.x?** This extension uses the OpenCode **V1** plugin
+> API and does **not** load on OpenCode 2.x. For OpenCode 2.x the recommended
+> context manager is [billion-context](https://github.com/ranxianglei/billion-context):
+> `bili opencode` (launcher) or `bili plugin install opencode` (native plugin,
+> no launcher). This extension remains fully supported on OpenCode **1.x**.
+
+---
+
+## 📄 Paper / Preprint
+
+- **[Model-Driven Incremental Hierarchical Compression: Training-Free Multi-Generational Context Management for Long-Lived Coding Agents](./paper/model-driven-incremental-hierarchical-compression-training-free-multi-generational-context-management-for-long-lived-coding-agents.md)** (English, v0.2)
+
+> 📝 **The paper itself is open-sourced under the MIT License as part of the codebase (`paper/`). It is a living document — anyone may edit it; improvements are welcome via pull request.**
+
+A production-scale longitudinal study: 4.5 months, three hosts, 174,327 model calls, 18.76B cumulative input tokens (~24.7B across all hosts), zero window violations on 204,800-token models, marathon sessions of 8,584–12,049 calls.
+
+---
+
 <p align="center">
 <a href="https://www.npmjs.com/package/opencode-acp"><img src="https://img.shields.io/npm/v/opencode-acp.svg?style=flat-square" alt="npm"></a>
 <a href="https://github.com/ranxianglei/opencode-acp/blob/master/LICENSE"><img src="https://img.shields.io/npm/l/opencode-acp.svg?style=flat-square" alt="license"></a>
@@ -19,14 +45,6 @@ The model decides <em>when</em> and <em>what</em> to compress — not a hard lim
 <p align="center">
 <code>opencode plugin opencode-acp@stable --global</code>
 </p>
-
----
-
-## Community
-
-Discussion, help, and updates on QQ — one group covers all three projects (`billion-context`, `billion-context-pi`, `opencode-acp`):
-
-**QQ Group: 1056132097**
 
 ---
 
@@ -53,12 +71,13 @@ This brings two concrete effects:
 
 Pick by your client:
 
-| Client | Use |
-|---|---|
-| **pi** | [`billion-context-pi`](https://github.com/ranxianglei/billion-context-pi) (in-process extension) |
-| **opencode** | [`opencode-acp`](https://github.com/ranxianglei/opencode-acp) (in-process extension) |
-| **omp** | [`billion-context`](https://github.com/ranxianglei/billion-context) via `bili omp` (built-in plugin) |
-| **everything else** (no context hook) | [`billion-context`](https://github.com/ranxianglei/billion-context) — `bili <client>` (launcher, preferred) or `/bili/` prefix |
+| Client                                | Use                                                                                                                                                                                                                          |
+| ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **pi**                                | [`billion-context-pi`](https://github.com/ranxianglei/billion-context-pi) (in-process extension)                                                                                                                             |
+| **opencode 1.x**                      | [`opencode-acp`](https://github.com/ranxianglei/opencode-acp) (in-process extension)                                                                                                                                         |
+| **opencode 2.0+**                     | [`billion-context`](https://github.com/ranxianglei/billion-context) — `bili opencode` (built-in V2 plugin) or `bili plugin install opencode` (self-spawning native plugin, no launcher); `opencode-acp` does not load on 2.x |
+| **omp**                               | [`billion-context`](https://github.com/ranxianglei/billion-context) via `bili omp` (built-in plugin)                                                                                                                         |
+| **everything else** (no context hook) | [`billion-context`](https://github.com/ranxianglei/billion-context) — `bili <client>` (launcher, preferred) or `/bili/` prefix                                                                                               |
 
 ---
 
@@ -89,6 +108,11 @@ across all other sessions.
 ---
 
 ## Installation
+
+> ⚠️ This installs the **V1** plugin — it targets OpenCode **1.x**. On
+> OpenCode **2.x** the plugin will not load; use
+> [billion-context](https://github.com/ranxianglei/billion-context) instead
+> (`bili opencode` or `bili plugin install opencode`).
 
 ```bash
 opencode plugin opencode-acp@stable --global
@@ -133,11 +157,11 @@ stateDiagram-v2
     Tier1 --> GC_Truncated : GC at 100% context
 ```
 
-| Tier | Name | Input | Output | Compression ratio | When it fires |
-|------|------|-------|--------|-------------------|---------------|
-| **T1** | Capture | Raw conversation | Detailed summary | ~45× | Context exceeds `maxContextLimit` |
-| **T2** | Distill | T1 summaries (≥ `nudgeGrowthTokens`) | Condensed decisions/outcomes | ~10× | T1 summaries accumulate past threshold |
-| **T3** | Condense | T2 summaries (≥ `nudgeGrowthTokens`) | Bare facts (1-3 per block) | ~5× | T2 summaries accumulate past threshold |
+| Tier   | Name     | Input                                | Output                       | Compression ratio | When it fires                          |
+| ------ | -------- | ------------------------------------ | ---------------------------- | ----------------- | -------------------------------------- |
+| **T1** | Capture  | Raw conversation                     | Detailed summary             | ~45×              | Context exceeds `maxContextLimit`      |
+| **T2** | Distill  | T1 summaries (≥ `nudgeGrowthTokens`) | Condensed decisions/outcomes | ~10×              | T1 summaries accumulate past threshold |
+| **T3** | Condense | T2 summaries (≥ `nudgeGrowthTokens`) | Bare facts (1-3 per block)   | ~5×               | T2 summaries accumulate past threshold |
 
 **How triggers work:**
 
@@ -159,19 +183,19 @@ impact).
 T2 → T3 → context limit (real-calibrated: 500 API calls/day, ~9.6K new tokens/call,
 T1=45x/T2=10x/T3=3x):
 
-| Context limit | 1 month | 3 months | At limit | Limit reached |
-|---------------|---------|----------|----------|---------------|
-| 1M | 1.9B tok | 10.5B tok | **68.9B tok** | day 259 (~8.6 mo) |
-| 400K | 1.9B tok | 10.3B tok | **10.3B tok** | day 89 (~3 mo) |
-| 400K (200 calls/day) | 559M tok | 2.5B tok | **9.5B tok** | day 212 (~7 mo) |
+| Context limit        | 1 month  | 3 months  | At limit      | Limit reached     |
+| -------------------- | -------- | --------- | ------------- | ----------------- |
+| 1M                   | 1.9B tok | 10.5B tok | **68.9B tok** | day 259 (~8.6 mo) |
+| 400K                 | 1.9B tok | 10.3B tok | **10.3B tok** | day 89 (~3 mo)    |
+| 400K (200 calls/day) | 559M tok | 2.5B tok  | **9.5B tok**  | day 212 (~7 mo)   |
 
 **Token savings** — without ACP, context grows unbounded and the session crashes
 after ~100 API calls (~0.2 days). With ACP, context is bounded by compression:
 
-| Metric | Without ACP | With ACP (1M model) |
-|--------|-------------|---------------------|
-| Session lifetime | ~0.2 days | 259 days (**1295x** longer) |
-| Total tokens processed | ~52M | 68.9B (**1325x** more work) |
+| Metric                 | Without ACP | With ACP (1M model)         |
+| ---------------------- | ----------- | --------------------------- |
+| Session lifetime       | ~0.2 days   | 259 days (**1295x** longer) |
+| Total tokens processed | ~52M        | 68.9B (**1325x** more work) |
 
 The core value: ACP doesn't just reduce per-call token cost — it enables a single
 session to process **1000x more total work** by keeping context bounded across
@@ -254,12 +278,12 @@ ensures key context information is not lost.
 
 ACP provides an `/acp` slash command (also accepts `/dcp` for backward compatibility):
 
-| Command                 | Description                                                                                                                                |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `/acp`                  | Show compression status (same as `/acp stats`). Use `/acp help` for the command list                                                       |
-| `/acp context`          | Token usage breakdown by category (system, user, assistant, tools, etc.) and how much has been saved through pruning                       |
-| `/acp stats`            | Compression status: blocks, context usage, ranges (same report as the `acp_status` tool)                                                   |
-| `/acp export`           | Export active compression blocks to a markdown file. Options: `--output <path>`, `--tier t1,t2,t3`, `--stdout`, `--append`                |
+| Command        | Description                                                                                                                |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `/acp`         | Show compression status (same as `/acp stats`). Use `/acp help` for the command list                                       |
+| `/acp context` | Token usage breakdown by category (system, user, assistant, tools, etc.) and how much has been saved through pruning       |
+| `/acp stats`   | Compression status: blocks, context usage, ranges (same report as the `acp_status` tool)                                   |
+| `/acp export`  | Export active compression blocks to a markdown file. Options: `--output <path>`, `--tier t1,t2,t3`, `--stdout`, `--append` |
 
 ---
 
@@ -409,7 +433,18 @@ Each level overrides the previous, so project settings take priority over global
         // touched. Small thinkings under the threshold are kept.
         "reasoning": {
             "drop": true,
-            "threshold": 2048
+            "threshold": 2048,
+        },
+        // [#478] Image archive: spill data-URL images to disk when they enter
+        // the session so folded ranges keep re-readable pointers instead of
+        // silently dropping the pixels. Files land in
+        // <storageDir>/images/<dirName(sessionId)>/ (mode 0600); block
+        // summaries covering them append absolute paths for the model to
+        // re-read with its own file tools. Not part of the per-model cascade.
+        "images": {
+            "enabled": true,
+            "minBytes": 16384,
+            "ttlDays": 7,
         },
     },
     // Garbage collection — hardcoded 100% fallback only
@@ -442,7 +477,7 @@ Each level overrides the previous, so project settings take priority over global
                 // L2 fails (combined with top20Recall via AND) when below this.
                 "layer2MaxRougeF1": 0.05,
                 // L2 fails (combined with rougeF1 via AND) when below this.
-                "layer2MaxTop20Recall": 0.20,
+                "layer2MaxTop20Recall": 0.2,
             },
         },
     },
@@ -478,12 +513,12 @@ Any `compress` field can be overridden per provider and per model via the nested
             "anthropic": {
                 "nudgeGrowthTokens": 20000,
                 "models": {
-                    "claude-sonnet-4.6": { "maxContextLimit": "70%", "nudgeForce": "strong" }
-                }
+                    "claude-sonnet-4.6": { "maxContextLimit": "70%", "nudgeForce": "strong" },
+                },
             },
-            "openai": { "nudgeGrowthTokens": 40000 }
-        }
-    }
+            "openai": { "nudgeGrowthTokens": 40000 },
+        },
+    },
 }
 ```
 

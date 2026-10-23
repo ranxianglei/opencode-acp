@@ -10,6 +10,28 @@
 
 ---
 
+## 社区
+
+QQ群:
+1056132097(已满)
+1108730198(未满)
+
+---
+
+> ⚠️ **你用的是 OpenCode 2.x?** 本扩展使用 OpenCode **V1** 插件 API,在 OpenCode 2.x 上**不会加载**。OpenCode 2.x 推荐的上下文管理方案是 [billion-context](https://github.com/ranxianglei/billion-context):`bili opencode`(启动器)或 `bili plugin install opencode`(原生插件,免启动器)。本扩展在 OpenCode **1.x** 上继续完整可用。
+
+---
+
+## 📄 论文 / 预印本
+
+- **[模型驱动的分层增量压缩:面向长寿命编码 Agent 的免训练多代上下文管理](./paper/模型驱动的分层增量压缩-免训练多代上下文管理.md)**(中文版,v0.2)
+
+> 📝 **论文本身与代码一同以 MIT 许可开源(位于 `paper/` 目录),是代码库的一部分 —— 这是一份活文档,任何人都可以编辑,欢迎提 PR 改进。**
+
+生产规模纵向研究:四个半月、三宿主、174,327 次模型调用、187.6 亿累计输入 token(三宿主合计约 247 亿),204,800-token 窗口零违规,马拉松会话 8,584–12,049 次调用。
+
+---
+
 <p align="center">
 <a href="https://www.npmjs.com/package/opencode-acp"><img src="https://img.shields.io/npm/v/opencode-acp.svg?style=flat-square" alt="npm"></a>
 <a href="https://github.com/ranxianglei/opencode-acp/blob/master/LICENSE"><img src="https://img.shields.io/npm/l/opencode-acp.svg?style=flat-square" alt="license"></a>
@@ -19,14 +41,6 @@
 <p align="center">
 <code>opencode plugin opencode-acp@stable --global</code>
 </p>
-
----
-
-## 社区
-
-交流、求助与更新都在 QQ——同一个群覆盖三个项目(`billion-context`、`billion-context-pi`、`opencode-acp`):
-
-**QQ 群:1056132097**
 
 ---
 
@@ -45,12 +59,13 @@ ACP 将上下文管理的所有权限全部交给模型自己，而不依靠外�
 
 按客户端选:
 
-| 客户端 | 用这个 |
-|---|---|
-| **pi** | [`billion-context-pi`](https://github.com/ranxianglei/billion-context-pi)(进程内扩展) |
-| **opencode** | [`opencode-acp`](https://github.com/ranxianglei/opencode-acp)(进程内扩展) |
-| **omp** | [`billion-context`](https://github.com/ranxianglei/billion-context),`bili omp`(内置插件) |
-| **其余所有**(没有上下文 hook) | [`billion-context`](https://github.com/ranxianglei/billion-context) —— `bili <client>`(启动器,优先)或 `/bili/` 前缀 |
+| 客户端                        | 用这个                                                                                                                                                                                        |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **pi**                        | [`billion-context-pi`](https://github.com/ranxianglei/billion-context-pi)(进程内扩展)                                                                                                         |
+| **opencode 1.x**              | [`opencode-acp`](https://github.com/ranxianglei/opencode-acp)(进程内扩展)                                                                                                                     |
+| **opencode 2.0+**             | [`billion-context`](https://github.com/ranxianglei/billion-context) —— `bili opencode`(内置 V2 插件)或 `bili plugin install opencode`(自拉起原生插件,免启动器);`opencode-acp` 在 2.x 上不加载 |
+| **omp**                       | [`billion-context`](https://github.com/ranxianglei/billion-context),`bili omp`(内置插件)                                                                                                      |
+| **其余所有**(没有上下文 hook) | [`billion-context`](https://github.com/ranxianglei/billion-context) —— `bili <client>`(启动器,优先)或 `/bili/` 前缀                                                                           |
 
 ---
 
@@ -76,6 +91,8 @@ ACP 将上下文管理的所有权限全部交给模型自己，而不依靠外�
 ---
 
 ## 安装
+
+> ⚠️ 这里安装的是 **V1** 插件 —— 面向 OpenCode **1.x**。在 OpenCode **2.x** 上该插件不会加载;请改用 [billion-context](https://github.com/ranxianglei/billion-context)(`bili opencode` 或 `bili plugin install opencode`)。
 
 ```bash
 opencode plugin opencode-acp@stable --global
@@ -112,11 +129,11 @@ stateDiagram-v2
     Tier1 --> GC_Truncated : GC（100% 上下文）
 ```
 
-| 层级 | 名称 | 输入 | 输出 | 压缩比 | 触发时机 |
-|------|------|------|------|--------|----------|
-| **T1** | 捕获 | 原始对话 | 详细摘要 | ~45× | 上下文超过 `maxContextLimit` |
-| **T2** | 蒸馏 | T1 摘要（≥ `nudgeGrowthTokens`） | 精炼的决策/结果 | ~10× | T1 摘要累积超过阈值 |
-| **T3** | 浓缩 | T2 摘要（≥ `nudgeGrowthTokens`） | 纯事实（每块 1-3 条） | ~5× | T2 摘要累积超过阈值 |
+| 层级   | 名称 | 输入                             | 输出                  | 压缩比 | 触发时机                     |
+| ------ | ---- | -------------------------------- | --------------------- | ------ | ---------------------------- |
+| **T1** | 捕获 | 原始对话                         | 详细摘要              | ~45×   | 上下文超过 `maxContextLimit` |
+| **T2** | 蒸馏 | T1 摘要（≥ `nudgeGrowthTokens`） | 精炼的决策/结果       | ~10×   | T1 摘要累积超过阈值          |
+| **T3** | 浓缩 | T2 摘要（≥ `nudgeGrowthTokens`） | 纯事实（每块 1-3 条） | ~5×    | T2 摘要累积超过阈值          |
 
 **触发机制：**
 
@@ -130,17 +147,17 @@ stateDiagram-v2
 
 **会话容量** — 一个会话从空 → T1 → T2 → T3 → 上下文极限，总共可以处理多少 token（真实校准：500 次 API 调用/天，~9.6K 新 token/调用，T1=45x/T2=10x/T3=3x）：
 
-| 上下文上限 | 1 个月 | 3 个月 | 到极限 | 极限时间 |
-|-----------|--------|--------|--------|---------|
-| 1M | 19 亿 tok | 105 亿 tok | **689 亿 tok** | 第 259 天（~8.6 月） |
-| 400K | 19 亿 tok | 103 亿 tok | **103 亿 tok** | 第 89 天（~3 月） |
-| 400K（200 调用/天） | 5.6 亿 tok | 25 亿 tok | **95 亿 tok** | 第 212 天（~7 月） |
+| 上下文上限          | 1 个月     | 3 个月     | 到极限         | 极限时间             |
+| ------------------- | ---------- | ---------- | -------------- | -------------------- |
+| 1M                  | 19 亿 tok  | 105 亿 tok | **689 亿 tok** | 第 259 天（~8.6 月） |
+| 400K                | 19 亿 tok  | 103 亿 tok | **103 亿 tok** | 第 89 天（~3 月）    |
+| 400K（200 调用/天） | 5.6 亿 tok | 25 亿 tok  | **95 亿 tok**  | 第 212 天（~7 月）   |
 
 **Token 节省** — 无 ACP 时上下文无限增长，约 100 次 API 调用后崩溃（~0.2 天）。有 ACP 时上下文被压缩在有界范围：
 
-| 指标 | 无 ACP | 有 ACP（1M 模型） |
-|------|--------|-----------------|
-| 会话寿命 | ~0.2 天 | 259 天（**长 1295 倍**） |
+| 指标          | 无 ACP   | 有 ACP（1M 模型）        |
+| ------------- | -------- | ------------------------ |
+| 会话寿命      | ~0.2 天  | 259 天（**长 1295 倍**） |
 | 总 token 产出 | ~5200 万 | 689 亿（**多 1325 倍**） |
 
 核心价值：ACP 不是减少每次调用的 token 成本，而是**让一个会话能处理 1000 倍以上的工作量**。
@@ -209,12 +226,12 @@ stateDiagram-v2
 
 ACP 提供 `/acp` 斜杠命令（为向后兼容也接受 `/dcp`）：
 
-| 命令                    | 说明                                                                                                                |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `/acp`                  | 显示压缩状态（同 `/acp stats`）；`/acp help` 查看命令列表                                                                            |
-| `/acp context`          | 按类别（system、user、assistant、tools 等）显示 token 用量明细，以及通过剪枝节省的量                                |
-| `/acp stats`            | 压缩状态：压缩块、上下文用量、推荐范围（与 `acp_status` 工具同一报告）                                                          |
-| `/acp export`           | 导出活动压缩块到 markdown 文件。选项：`--output <path>`、`--tier t1,t2,t3`、`--stdout`、`--append`                   |
+| 命令           | 说明                                                                                               |
+| -------------- | -------------------------------------------------------------------------------------------------- |
+| `/acp`         | 显示压缩状态（同 `/acp stats`）；`/acp help` 查看命令列表                                          |
+| `/acp context` | 按类别（system、user、assistant、tools 等）显示 token 用量明细，以及通过剪枝节省的量               |
+| `/acp stats`   | 压缩状态：压缩块、上下文用量、推荐范围（与 `acp_status` 工具同一报告）                             |
+| `/acp export`  | 导出活动压缩块到 markdown 文件。选项：`--output <path>`、`--tier t1,t2,t3`、`--stdout`、`--append` |
 
 ---
 
@@ -361,7 +378,17 @@ ACP 使用自己的配置文件，按以下顺序搜索：
         // 低于阈值的小思考保留。
         "reasoning": {
             "drop": true,
-            "threshold": 2048
+            "threshold": 2048,
+        },
+        // [#478] 图片归档：图片（data-URL）进入会话时即落盘，折叠后摘要里保留
+        // 可重读的路径指针，而不是把像素悄悄丢掉。文件落在
+        // <storageDir>/images/<dirName(sessionId)>/（权限 0600）；覆盖它们的折叠块
+        // 摘要末尾追加绝对路径，模型用自己的文件工具重新读取即可。
+        // 不参与按模型的覆盖级联。
+        "images": {
+            "enabled": true,
+            "minBytes": 16384,
+            "ttlDays": 7,
         },
     },
     // 垃圾回收与批量清理
@@ -393,7 +420,7 @@ ACP 使用自己的配置文件，按以下顺序搜索：
                 // 当 ROUGE-1 F1 低于此值时（与 top20Recall 经 AND 合并）L2 失败
                 "layer2MaxRougeF1": 0.05,
                 // 当 top-20 关键词召回低于此值时（与 rougeF1 经 AND 合并）L2 失败
-                "layer2MaxTop20Recall": 0.20,
+                "layer2MaxTop20Recall": 0.2,
             },
         },
     },
@@ -428,12 +455,12 @@ ACP 使用自己的配置文件，按以下顺序搜索：
             "anthropic": {
                 "nudgeGrowthTokens": 20000,
                 "models": {
-                    "claude-sonnet-4.6": { "maxContextLimit": "70%", "nudgeForce": "strong" }
-                }
+                    "claude-sonnet-4.6": { "maxContextLimit": "70%", "nudgeForce": "strong" },
+                },
             },
-            "openai": { "nudgeGrowthTokens": 40000 }
-        }
-    }
+            "openai": { "nudgeGrowthTokens": 40000 },
+        },
+    },
 }
 ```
 

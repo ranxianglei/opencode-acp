@@ -1,6 +1,8 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 import {
+    anyRuleResolves,
+    applyAcpToolPermissions,
     compressDisabledByOpencode,
     hasExplicitToolPermission,
     resolveEffectiveCompressPermission,
@@ -101,4 +103,104 @@ test("explicit permission detection works without Object.hasOwn", () => {
     } finally {
         Object.hasOwn = originalHasOwn
     }
+})
+
+test("applyAcpToolPermissions defaults compress and acp_status when no host map", () => {
+    assert.deepEqual(applyAcpToolPermissions(undefined, "allow"), {
+        compress: "allow",
+        acp_status: "allow",
+    })
+})
+
+test("applyAcpToolPermissions preserves unrelated host rules", () => {
+    assert.deepEqual(applyAcpToolPermissions({ bash: "ask" }, "ask"), {
+        bash: "ask",
+        compress: "ask",
+        acp_status: "allow",
+    })
+})
+
+test("#457 explicit acp_status deny survives the config write", () => {
+    assert.deepEqual(applyAcpToolPermissions({ acp_status: "deny" }, "allow"), {
+        acp_status: "deny",
+        compress: "allow",
+    })
+})
+
+test("#457 explicit acp_status ask survives the config write", () => {
+    assert.deepEqual(applyAcpToolPermissions({ acp_status: "ask" }, "allow"), {
+        acp_status: "ask",
+        compress: "allow",
+    })
+})
+
+test("explicit compress rule defers fully — map returned unchanged", () => {
+    const original = { compress: "deny", acp_status: "allow" }
+    assert.equal(applyAcpToolPermissions(original, "allow"), original)
+})
+
+test("explicit compress rule defers fully — no acp_status injected", () => {
+    assert.deepEqual(applyAcpToolPermissions({ compress: "deny" }, "allow"), {
+        compress: "deny",
+    })
+})
+
+test('#465 user wildcard "*" deny is not overridden by default acp_status', () => {
+    assert.deepEqual(applyAcpToolPermissions({ "*": "deny" }, "allow"), {
+        "*": "deny",
+        compress: "allow",
+    })
+})
+
+test('#465 user wildcard "acp*" deny is not overridden by default acp_status', () => {
+    assert.deepEqual(applyAcpToolPermissions({ "acp*": "deny" }, "allow"), {
+        "acp*": "deny",
+        compress: "allow",
+    })
+})
+
+test("#465 user wildcard ask resolves acp_status — no default injected", () => {
+    assert.deepEqual(applyAcpToolPermissions({ "*": "ask" }, "allow"), {
+        "*": "ask",
+        compress: "allow",
+    })
+})
+
+test("#465 user wildcard allow resolves acp_status — no redundant default injected", () => {
+    assert.deepEqual(applyAcpToolPermissions({ "acp*": "allow" }, "allow"), {
+        "acp*": "allow",
+        compress: "allow",
+    })
+})
+
+test("#465 non-matching wildcards still get the default acp_status", () => {
+    assert.deepEqual(applyAcpToolPermissions({ "bash*": "deny" }, "allow"), {
+        "bash*": "deny",
+        compress: "allow",
+        acp_status: "allow",
+    })
+})
+
+test("#465 nested pattern form on acp_status counts as a user decision", () => {
+    assert.deepEqual(applyAcpToolPermissions({ acp_status: { "*": "deny" } }, "allow"), {
+        acp_status: { "*": "deny" },
+        compress: "allow",
+    })
+})
+
+test("#465 wildcard map with explicit compress still defers fully (identity)", () => {
+    const original = { "*": "deny", compress: "allow" }
+    assert.equal(applyAcpToolPermissions(original, "deny"), original)
+})
+
+test("anyRuleResolves matches exact keys, wildcards and nested forms; ignores others", () => {
+    assert.equal(anyRuleResolves(undefined, "acp_status"), false)
+    assert.equal(anyRuleResolves({ "bash*": "deny" }, "acp_status"), false)
+    assert.equal(anyRuleResolves({ bash: "ask" }, "acp_status"), false)
+    assert.equal(anyRuleResolves({ acp_status: "deny" }, "acp_status"), true)
+    assert.equal(anyRuleResolves({ "*": "deny" }, "acp_status"), true)
+    assert.equal(anyRuleResolves({ "acp*": "deny" }, "acp_status"), true)
+    assert.equal(anyRuleResolves({ acp_status: { "*": "deny" } }, "acp_status"), true)
+    // degenerate empty object produces no rules — key presence still wins
+    assert.equal(anyRuleResolves({ acp_status: {} }, "acp_status"), true)
 })
