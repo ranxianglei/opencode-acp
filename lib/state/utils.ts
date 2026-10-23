@@ -8,6 +8,7 @@ import type {
 import type { PluginConfig } from "../config"
 import { isIgnoredUserMessage, messageHasCompress } from "../messages/query"
 import { isMessageWithInfo } from "../messages/shape"
+import { migrateMessageRef } from "../message-ids"
 import { countTokens } from "../token-utils"
 
 // [FIX Bug 3] Added summary check to match getCurrentTokenUsage exclusion logic
@@ -235,8 +236,10 @@ export function loadPruneMessagesState(
                         : typeof block.topic === "string"
                           ? block.topic
                           : "",
-                startId: typeof block.startId === "string" ? block.startId : "",
-                endId: typeof block.endId === "string" ? block.endId : "",
+                // [Issue #415] Migrate legacy 4-digit boundary refs (pre-1.1.0 state)
+                // to canonical 5-digit form, matching the messageIds ref migration.
+                startId: typeof block.startId === "string" ? migrateMessageRef(block.startId) : "",
+                endId: typeof block.endId === "string" ? migrateMessageRef(block.endId) : "",
                 anchorMessageId:
                     typeof block.anchorMessageId === "string" ? block.anchorMessageId : "",
                 compressMessageId:
