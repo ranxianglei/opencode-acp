@@ -1,0 +1,57 @@
+name: publish-stable
+
+# Lives in opencode-acp ON PURPOSE: the NPM_TOKEN secret with rights to the
+# opencode-*-stable npm packages was rotated here (2026-08-24) and GitHub
+# secrets are write-only, so the value cannot be copied to the opencode-stable
+# repo. This workflow checks out opencode-stable and publishes it using THIS
+# repo's token. Delete once opencode-stable owns a working NPM_TOKEN.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "opencode-stable version to publish (e.g. 1.14.47)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-stable-from-acp
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.repository == 'ranxianglei/opencode-acp'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: ranxianglei/opencode-stable
+          ref: v${{ inputs.version }}
+          fetch-depth: 0
+
+      - name: Determine version
+        id: ver
+        run: echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+
+      - uses: ./.github/actions/setup-bun
+
+      - name: Build all platform targets
+        working-directory: packages/opencode
+        env:
+          OPENCODE_VERSION: ${{ steps.ver.outputs.version }}
+        run: bun run script/build.ts -- --no-windows
+
+      - name: Configure npm auth
+        run: |
+          echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish
+        working-directory: packages/opencode
+        env:
+          OPENCODE_VERSION: ${{ steps.ver.outputs.version }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: bun run script/publish.ts

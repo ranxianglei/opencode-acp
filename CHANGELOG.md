@@ -1,5 +1,57 @@
 # Changelog
 
+### v1.18.3 — decompress correctness hardening + host permission respect + one-click release workflow
+
+**Bundles six runtime fixes, one CI feature, and doc updates since v1.18.2** (issues #405, #444, #446, #447, #457, #461, #465; CI #443/#474; docs #441/#442/#450/#471). No config or state-format changes.
+
+**1. Decompress correctness (#446, #447):**
+- **Source availability verification** (#446): before committing a decompression, ACP now verifies that every message whose visibility would change is still present in the fetched host history. If originals were removed externally (native compaction, manual deletion), the call aborts with an explicit error and **no state is mutated** — previously it reported phantom restorations, decremented stats by phantom tokens, and irreversibly discarded summary coverage. The check is fail-closed and conservative: over-requiring an ID can only cause a safe-direction abort, never a false "restored" claim.
+- **`decompress.toFile` exports original text** (#447): the exporter previously read non-existent `content`/`text` fields off SDK messages and fell back to `JSON.stringify` garbage. It now serializes message parts (text verbatim, tool outputs via `extractToolContent`); when originals are gone it writes the block summary with an explicit note instead of empty files.
+
+**2. Quality-gate rejection conciseness (#444):** the model-facing rejection error no longer dumps internal metrics (gate layer, rougeF1, top20Recall, threshold details) — it now carries the core reason, one Original/Summary/Retention stats line, and retry guidance. Full diagnostics go to the ACP log via `logger.warn`. The `acknowledgeRisk` bypass hint is retained.
+
+**3. Host permission respect (#457, #465):** ACP's config write no longer overrides user permission decisions on `acp_status`:
+- Exact keys (#457): an explicit `acp_status: "deny"`/`"ask"` used to be silently rewritten to `"allow"` (inverting the decision); it now survives.
+- Wildcards (#465): user rules like `"*": "deny"` or `"acp*": "deny"` used to be erased because the appended default won last-match resolution; they now survive.
+- Behavior preserved: an explicit user `compress` rule still defers fully (the map is returned unchanged), and unrelated host rules are untouched.
+
+**4. truncate-tools overhead-error set bound (#461):** the once-per-session "window too small" ERROR dedup set was unbounded (one key per session forever on long-lived servers). It is now capped at 1024 sessions with oldest-first eviction; the worst cost of evicting a still-active session is one duplicate ERROR line.
+
+**5. Yield to billion-context native mode (#405):** ACP now recognizes both billion-context ownership markers — `BILLION_CONTEXT_PROXY` (launcher) and `BILLION_CONTEXT_NATIVE` (native plugin) — and re-samples env at action time (hook calls, config runs, every tool call via `resolveToolContext`) instead of trusting the setup-time snapshot. This closes the race where native mode's marker landed after ACP setup, letting both plugins run simultaneously. After handoff, all five ACP tools throw a clear error naming the owning mode.
+
+**6. CI: one-click release workflow (#443, #474):** new `Release (one-click)` workflow (`workflow_dispatch`) — resolves the version (blank = auto next-patch over npm latest), drift-guards master vs npm, bumps `package.json` + `package-lock.json`, verifies the bump diff, runs the full pre-flight gate, then pushes to master or falls back to a release branch + PR. Follow-up fix heals package-lock.json version drift instead of failing.
+
+**Docs:** OpenCode 2.x users pointed to [billion-context](https://github.com/ranxianglei/billion-context) (README callout + AGENTS.md migration/triage rule codified, #442); new QQ group 1108730198 added with original 1056132097 marked full; AGENTS.md version table corrected (1.10.0 → 1.18.2).
+
+**Install**: `opencode plugin opencode-acp@latest --global`
+
+### v1.18.2 — strip leaked bare ACP refs from assistant text tail + fix silent no-op in Windows path protection
+
+**PR #432 + PR #403.** Two bug fixes bundled — no config or state-format changes.
+
+**1. Leaked bare-ref stripping** (#432, fixes #431):
+Models occasionally degenerate at end-of-generation and echo the `<dcp-message-id>` annotation pattern they saw on the last visible message, leaving a **bare ref + garbage** fragment at the end of completed text (e.g., `m00057 <random multilingual text>`). The previous sanitizer only removed complete/incomplete *tags*, so tag-less fragments leaked through, persisted into OpenCode's DB, and re-entered later context and compression summaries.
+- New pure function `stripLeakedTrailingRefs(text, { nextMessageRef, nextBlockRef })` (`lib/messages/utils.ts`): single-pass regex scan for **line-leading** bare refs (`m\d{4,5}`, `b[1-9]\d*`); truncates from the first match whose numeric value is ≥ the next-to-allocate bound (`messageIds.nextRef` / `prune.messages.nextBlockId`), trimming trailing whitespace.
+- Why "future refs only" is safe: refs are strictly monotonic — output produced before value V existed cannot legitimately cite V, so stripping V+ at the tail has zero false positives against real citations ("see m00042" survives; mid-line future refs like "between m00056 and m00999" also survive).
+- The `text.complete` handler (`lib/hooks.ts`) applies this after the existing tag stripping via a synchronous registry lookup; when session state is unavailable (eviction, internal sessions) it falls back to today's tag-only behavior. O(text) per completion.
+- Known limitation (documented): echoes of **already-assigned** refs are not covered — deliberate, since those may be legitimate citations.
+- +222-line regression suite (`tests/leaked-trailing-ref.test.ts`), plus review-nit coverage (mixed below/future-bound sequences, non-integer bound guards, b0 exclusion, 4-digit m-refs) and a cast-free bounds-narrowing refactor.
+
+**2. Windows path protection actually works now** (#403, fixes #402):
+`normalizePath()` searched for a **two**-character string (source literal `"\\\\"`) instead of a single backslash, so real Windows paths were never normalized and `protectedFilePatterns` silently failed to protect them — a no-op on the one platform that needs it. Now `replaceAll("\\", "/")`. Ported from upstream DCP commit 5f8f33b; +104 tests (5 of 8 fail against pre-fix code).
+
+**Install**: `opencode plugin opencode-acp@latest --global`
+
+### v1.18.1 — paper preprint v0.2 into the repo (docs only)
+
+**PR #394.** No runtime code changes — this release ships ACP's research preprint and its figures into the repository, linked from both READMEs.
+
+- **Paper**: `paper/model-driven-incremental-hierarchical-compression-training-free-multi-generational-context-management-for-long-lived-coding-agents.md` (English) + `paper/模型驱动的增量分层压缩-免训练多代上下文管理.md` (Chinese), preprint v0.2 — a production-scale longitudinal study: 4.5 months, three hosts, 174,327 model calls, 18.76B cumulative input tokens (~24.7B across all hosts), zero window violations on 204,800-token models, marathon sessions of 8,584–12,049 calls.
+- **Figures**: `paper/figures/fig1-fold-layout.png` … `fig6-capacity-sim.png`, generated by `paper/figures/make-figures.py`.
+- **Open access**: the paper is MIT-licensed inside the repo (a living document — improvements welcome via PR); both READMEs carry a prominent callout and link to their own-language version.
+
+**Install**: `opencode plugin opencode-acp@latest --global`
+
 ### v1.18.0 — adaptive compression candidates (opt-in): MICRO/EPISODE targets, executor-parity validated
 
 **PR #341 + follow-ups.** Adds a candidate-planning layer on top of the existing range nudges — off by default, byte-exact with v1.17.1 behavior until you opt in.

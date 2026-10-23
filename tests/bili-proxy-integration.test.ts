@@ -27,6 +27,7 @@ const testConfigHome = join(tmpdir(), `opencode-acp-bili-config-${process.pid}`)
 process.env.XDG_DATA_HOME = testDataHome
 process.env.XDG_CONFIG_HOME = testConfigHome
 delete process.env.BILLION_CONTEXT_PROXY
+delete process.env.BILLION_CONTEXT_NATIVE
 delete process.env.OPENCODE_CONFIG_DIR
 delete process.env.OPENCODE_SERVER_PASSWORD
 

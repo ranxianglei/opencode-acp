@@ -9,7 +9,13 @@ import * as fs from "fs/promises"
 import { existsSync } from "fs"
 import { homedir } from "os"
 import { isAbsolute, join } from "path"
-import type { CompressionBlock, PrunedMessageEntry, SessionState, SessionStats } from "./types"
+import type {
+    ArchivedImageEntry,
+    CompressionBlock,
+    PrunedMessageEntry,
+    SessionState,
+    SessionStats,
+} from "./types"
 import type { Logger } from "../logger"
 import { serializePruneMessagesState } from "./utils"
 
@@ -61,6 +67,10 @@ export interface PersistedSessionState {
     modelContextLimit?: number
     modelProviderID?: string
     modelID?: string
+    /** [Issue #478] Archived image metadata index (raw message ID → entries) */
+    imageArchive?: Record<string, ArchivedImageEntry[]>
+    /** [Issue #485] Sticky emergency truncations (tool call ID → frozen truncated output) */
+    stickyTruncations?: Record<string, string>
 }
 
 /** Default storage directory: $XDG_DATA_HOME/opencode/storage/plugin/acp */
@@ -203,6 +213,8 @@ export function saveSessionState(
         modelContextLimit: sessionState.modelContextLimit,
         modelProviderID: sessionState.modelProviderID,
         modelID: sessionState.modelID,
+        imageArchive: sessionState.imageArchive,
+        stickyTruncations: sessionState.stickyTruncations,
     }
 
     const key = saveQueueKey(sessionState.sessionId, sessionState.storageDir)
@@ -283,13 +295,7 @@ export async function loadSessionState(
 
         const hasPruneMessages = state?.prune?.messages && typeof state.prune.messages === "object"
         const hasNudgeFormat = state?.nudges && typeof state.nudges === "object"
-        if (
-            !state ||
-            !state.prune ||
-            !hasPruneMessages ||
-            !state.stats ||
-            !hasNudgeFormat
-        ) {
+        if (!state || !state.prune || !hasPruneMessages || !state.stats || !hasNudgeFormat) {
             logger.warn("Invalid session state file, ignoring", {
                 sessionId: sessionId,
             })

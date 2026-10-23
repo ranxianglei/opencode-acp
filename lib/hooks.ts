@@ -13,13 +13,15 @@ import {
     prune,
     stripHallucinations,
     stripHallucinationsFromString,
+    stripLeakedTrailingRefs,
     stripStaleMetadata,
     syncCompressionBlocks,
 } from "./messages"
 import { applyCompressOverrides } from "./messages/inject/utils"
 import { renderSystemPrompt, type PromptStore } from "./prompts"
 import { buildProtectedToolsExtension } from "./prompts/extensions/system"
-import { DEFAULT_COMPRESS_REASONING } from "./config"
+import { DEFAULT_COMPRESS_IMAGES, DEFAULT_COMPRESS_REASONING } from "./config"
+import { archiveSessionImages, pruneImageArchive } from "./compress/image-archive"
 import {
     applyPendingCompressionDurations,
     buildCompressionTimingKey,
@@ -28,6 +30,11 @@ import {
 import { filterMessages, filterMessagesInPlace } from "./messages/shape"
 import { getLastUserMessage, isSyntheticMessage } from "./messages/query"
 import { OUTPUT_RESERVE_TOKENS, truncateLargeToolOutputs } from "./messages/truncate-tools"
+import {
+    applyStickyTruncations,
+    recordStickyTruncations,
+    snapshotToolOutputs,
+} from "./messages/sticky-truncation"
 import { resolveEffectiveContextLimit } from "./state/utils"
 import { enforceContextBudget } from "./messages/enforce-budget"
 import { handleContextCommand, handleStatsCommand } from "./commands"
@@ -49,6 +56,7 @@ import {
 import { cacheSystemPromptTokens } from "./ui/utils"
 import { runBatchCleanup } from "./gc/merge"
 import { getCurrentTokenUsage } from "./token-utils"
+import { clearSmartPlanSession, recordVisibleMessages } from "./compress/smart-plan"
 
 const INTERNAL_AGENT_SIGNATURES = [
     "You are a title generator",
@@ -256,6 +264,22 @@ export function createChatMessageTransformHandler(
             })
             cacheSystemPromptTokens(state, output.messages)
             assignMessageRefs(state, output.messages)
+            // [#478] Spill inline image attachments to disk so later folds keep a
+            // re-readable file pointer instead of silently losing pixels. Never
+            // throws; persists the metadata index only when something new landed.
+            const imagesConfig = config.compress.images ?? DEFAULT_COMPRESS_IMAGES
+            if (imagesConfig.enabled) {
+                const archivedImages = archiveSessionImages(
+                    state,
+                    output.messages,
+                    imagesConfig,
+                    logger,
+                )
+                if (archivedImages > 0) {
+                    saveSessionState(state, logger).catch(() => {})
+                }
+                pruneImageArchive(state, imagesConfig, logger)
+            }
             const activeBlockCountBefore = state.prune.messages.activeBlockIds.size // [FIX Bug 4]
             const compressionStateChanged = syncCompressionBlocks(state, logger, output.messages)
             if (
@@ -312,22 +336,70 @@ export function createChatMessageTransformHandler(
                 prePruneTokens,
                 candidateMessages,
             )
-            // Candidate planning consumes the pre-truncation snapshot so its
-            // executor-parity check matches the fresh messages fetched by compress.
-            truncateLargeToolOutputs(
-                state,
+            // [Issue #485] Emergency truncation is opt-in. The guards are
+            // view-only (truncation never persists to the session store), so a
+            // session hovering at the guard threshold oscillates between
+            // truncated and pristine tool outputs — every flip invalidates the
+            // provider prefix cache from that message onward, and with opencode
+            // retrying on a busy backend the churn can take down the serving
+            // cluster. Default: off. When on, truncations are STICKY: replayed
+            // verbatim from state on every later request (A→B→B→B), so the wire
+            // view never flip-flops.
+            // [#485 review] Resolve the switch through the provider/model
+            // override cascade (same as the reasoning gate above) so
+            // compress.providers.<p>.[models.<m>.]emergencyTruncation works.
+            const emergencyTruncationEnabled = applyCompressOverrides(
                 config,
-                logger,
-                output.messages.filter((message) => !isSyntheticMessage(message)),
-            )
-            // Keep candidate planning independent from the final budget guard:
-            // candidates are computed from the pre-truncation snapshot so their
-            // ranges remain valid when the compress executor fetches fresh history.
-            enforceContextBudget(state, config, logger, output.messages)
+                dropReasoningModel?.providerID ?? state.modelProviderID,
+                dropReasoningModel?.modelID ?? state.modelID,
+            ).compress.emergencyTruncation
+            if (emergencyTruncationEnabled === true) {
+                // Replay frozen truncations first, so the guards see the
+                // already-truncated form and never restore the pristine output
+                // (which is what caused the #485 cache thrash).
+                applyStickyTruncations(state, output.messages, logger)
+                const toolOutputsBefore = snapshotToolOutputs(output.messages)
+                // Candidate planning consumes the pre-truncation snapshot so its
+                // executor-parity check matches the fresh messages fetched by compress.
+                truncateLargeToolOutputs(
+                    state,
+                    config,
+                    logger,
+                    output.messages.filter((message) => !isSyntheticMessage(message)),
+                )
+                // Keep candidate planning independent from the final budget guard:
+                // candidates are computed from the pre-truncation snapshot so their
+                // ranges remain valid when the compress executor fetches fresh history.
+                enforceContextBudget(state, config, logger, output.messages)
+                // Freeze whatever the guards truncated/cleared this request so it
+                // survives into the next one (and across restarts, via persistence).
+                const frozenCount = recordStickyTruncations(
+                    state,
+                    output.messages,
+                    toolOutputsBefore,
+                    logger,
+                )
+                // [#485 review] Persist in THIS request: every other save trigger
+                // in this hook fires earlier, so a quiet session (no nudges, no
+                // compress) would otherwise hit disk only via an unrelated later
+                // save — and a restart would replay pristine A once, the exact
+                // flip this feature exists to kill.
+                if (frozenCount > 0) {
+                    saveSessionState(state, logger).catch(() => {})
+                }
+            }
             injectMessageIds(state, config, output.messages, compressionPriorities)
             hideFailedCompressCalls(output.messages)
             stripStaleMetadata(output.messages)
             dropEmptyMessages(output.messages)
+            const smartPlanEnabled = applyCompressOverrides(
+                config,
+                state.modelProviderID,
+                state.modelID,
+            ).compress.smartPlanRequired
+            if (state.sessionId && smartPlanEnabled === true) {
+                recordVisibleMessages(state.sessionId, output.messages)
+            }
             const postTokens = getCurrentTokenUsage(state, output.messages)
             // [FIX #346] Hard guard: if the post-transform context still exceeds
             // the model's real request budget (window minus system prompt + tool
@@ -535,10 +607,18 @@ export function createCommandExecuteHandler(
                 workingDirectory,
             }
 
+            // [FIX #398] Every handled /acp branch MUST abort the command by throwing
+            // __DCP_CONTEXT_HANDLED__. A normal return does NOT stop execution:
+            // opencode's Plugin.trigger only aborts on hook errors, and the command is
+            // registered with template: "" (no $ARGUMENTS), so opencode appends the raw
+            // arguments to the empty template and sends them to the model as a user
+            // message ("/acp status" leaked "status" to the model in v1.17.0+). The
+            // resulting level=ERROR log line on opencode >= 1.18.18 is the known cost
+            // of this mechanism (#296) — do NOT replace these throws with returns.
             const sub = input.arguments?.trim().toLowerCase()
             if (sub === "stats" || sub === "status" || sub === "") {
                 await handleStatsCommand(commandCtx)
-                return
+                throw new Error("__DCP_CONTEXT_HANDLED__")
             }
 
             if (sub === "export" || sub.startsWith("export ")) {
@@ -553,21 +633,60 @@ export function createCommandExecuteHandler(
             }
 
             await handleContextCommand(commandCtx)
+            throw new Error("__DCP_CONTEXT_HANDLED__")
         }
     }
 }
 
-export function createTextCompleteHandler() {
+export function createTextCompleteHandler(registry: SessionStateRegistry, logger: Logger) {
     return async (
-        _input: { sessionID: string; messageID: string; partID: string },
+        input: { sessionID: string; messageID: string; partID: string },
         output: { text: string },
     ) => {
-        output.text = stripHallucinationsFromString(output.text)
+        if (typeof output.text !== "string" || output.text.length === 0) {
+            return
+        }
+
+        let text = stripHallucinationsFromString(output.text)
+
+        // [#431] Bare refs carry no tag — catch the self-echo variant where the
+        // model leaks its own not-yet-assigned ref as a trailing fragment.
+        // registry.get is a synchronous in-memory lookup (no client fetch); on
+        // a miss (soft-cap eviction, internal title/summary sessions) the step
+        // is skipped and behavior falls back to tag-only sanitization.
+        const state =
+            typeof input.sessionID === "string" ? registry.get(input.sessionID) : undefined
+        if (state) {
+            const nextBlockId = state.prune?.messages?.nextBlockId
+            const stripped = stripLeakedTrailingRefs(text, {
+                nextMessageRef: Number.isInteger(state.messageIds.nextRef)
+                    ? state.messageIds.nextRef
+                    : null,
+                nextBlockRef: Number.isInteger(nextBlockId) ? nextBlockId : null,
+            })
+            if (stripped !== text) {
+                logger.warn("Stripped leaked trailing ACP ref from assistant output", {
+                    sessionID: input.sessionID,
+                    messageID: input.messageID,
+                    removedChars: text.length - stripped.length,
+                    removedTailPreview: text.slice(stripped.length, stripped.length + 200),
+                })
+                text = stripped
+            }
+        }
+
+        output.text = text
     }
 }
 
 export function createEventHandler(registry: SessionStateRegistry, logger: Logger) {
     return async (input: { event: any }) => {
+        if (input.event?.type === "session.idle" || input.event?.type === "session.deleted") {
+            const sessionID =
+                input.event?.properties?.sessionID ?? input.event?.properties?.info?.id
+            if (typeof sessionID === "string") clearSmartPlanSession(sessionID)
+            return
+        }
         const eventTime =
             typeof input.event?.time === "number" && Number.isFinite(input.event.time)
                 ? input.event.time

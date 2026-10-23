@@ -293,6 +293,27 @@ test("all-field cascade: applyCompressOverrides swaps fields but never maxContex
     assert.equal(config.compress.nudgeGrowthTokens, undefined)
 })
 
+test("all-field cascade: applyCompressOverrides never cascades images (#478)", () => {
+    const config = pluginConfig({
+        ...base,
+        images: { enabled: true, minBytes: 16384, ttlDays: 7 },
+        // Misplacement of a session-scoped field under providers — runtime JSON
+        // bypasses the types; the cast models what a user file can actually say.
+        providers: {
+            anthropic: { nudgeFrequency: 2, images: { minBytes: 1 } },
+        } as CompressConfig["providers"],
+    })
+    const applied = applyCompressOverrides(config, "anthropic", "claude-sonnet-4-6")
+    assert.equal(applied.compress.nudgeFrequency, 2)
+    // images must keep the global object intact — no partial replacement.
+    assert.deepEqual(applied.compress.images, { enabled: true, minBytes: 16384, ttlDays: 7 })
+    // The misplacement is still surfaced by validation (unknown override field).
+    const errors = validateConfigTypes({
+        compress: { ...base, providers: { anthropic: { images: {} } } },
+    })
+    assert.ok(errors.some((e) => e.key === "compress.providers.anthropic.images"))
+})
+
 test("all-field cascade: nested maxContextLimit beats the flat modelMaxLimits map", () => {
     const config = pluginConfig({
         ...base,

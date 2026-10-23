@@ -1,7 +1,7 @@
 import { existsSync } from "fs"
 import { join } from "path"
 import { cwd } from "process"
-import type { SessionState, ToolParameterEntry, WithParts } from "./types"
+import type { ArchivedImageEntry, SessionState, ToolParameterEntry, WithParts } from "./types"
 import type { PluginConfig } from "../config"
 import type { Logger } from "../logger"
 import {
@@ -298,6 +298,9 @@ export function createSessionState(): SessionState {
         storageDir: undefined,
         qualityGateRetryPending: false,
         noContextLimitWarned: false,
+        imageArchive: {},
+        imagePruneDone: false,
+        stickyTruncations: {},
     }
 }
 
@@ -342,6 +345,9 @@ export function resetSessionState(state: SessionState): void {
     state.storageDir = undefined
     state.qualityGateRetryPending = false
     state.noContextLimitWarned = false
+    state.imageArchive = {}
+    state.imagePruneDone = false
+    state.stickyTruncations = {}
 }
 
 // [Issue #404] In-flight init coalescing keyed by state object: concurrent
@@ -441,6 +447,17 @@ async function runSessionInitialization(
             if (parentSessionId) {
                 try {
                     const parent = await loadSessionState(parentSessionId, logger)
+                    // [#485 review] Forks/subagents inherit the parent's frozen
+                    // truncations so the wire view stays stable across the fork
+                    // point (this branch returns before the regular sticky
+                    // restore below, which only runs for persisted sessions).
+                    if (parent?.stickyTruncations) {
+                        for (const [callID, output] of Object.entries(parent.stickyTruncations)) {
+                            if (typeof output === "string") {
+                                state.stickyTruncations[callID] = output
+                            }
+                        }
+                    }
                     const response = parent
                         ? await client.session.messages({ path: { id: parentSessionId } })
                         : undefined
@@ -505,6 +522,35 @@ async function runSessionInitialization(
     state.stats = {
         pruneTokenCounter: persisted.stats?.pruneTokenCounter || 0,
         totalPruneTokens: persisted.stats?.totalPruneTokens || 0,
+        imagesArchived: persisted.stats?.imagesArchived,
+        imageBytesArchived: persisted.stats?.imageBytesArchived,
+    }
+    // [Issue #478] Restore the archived-image metadata index from persisted
+    // state, dropping malformed entries (defensive: state files are user-visible).
+    if (persisted.imageArchive && typeof persisted.imageArchive === "object") {
+        for (const [rawId, entries] of Object.entries(persisted.imageArchive)) {
+            if (!Array.isArray(entries)) continue
+            const valid = entries.filter(
+                (e): e is ArchivedImageEntry =>
+                    !!e &&
+                    typeof e.path === "string" &&
+                    typeof e.mediaType === "string" &&
+                    typeof e.bytes === "number",
+            )
+            if (valid.length > 0) {
+                state.imageArchive[rawId] = valid
+            }
+        }
+    }
+    // [Issue #485] Restore sticky emergency truncations (callID → frozen
+    // truncated output). Defensive: drop non-string entries.
+    const persistedSticky = persisted.stickyTruncations
+    if (persistedSticky && typeof persistedSticky === "object") {
+        for (const [callID, output] of Object.entries(persistedSticky as Record<string, unknown>)) {
+            if (typeof output === "string") {
+                state.stickyTruncations[callID] = output
+            }
+        }
     }
 
     const persistedAny = persisted as any

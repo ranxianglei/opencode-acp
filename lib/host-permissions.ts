@@ -99,3 +99,53 @@ export const hasExplicitToolPermission = (
 ): boolean => {
     return permissionConfig ? Object.prototype.hasOwnProperty.call(permissionConfig, tool) : false
 }
+
+/**
+ * True when the user has made any decision that resolves `tool` in this map:
+ * an exact key in any value form (scalar or nested pattern object — including
+ * a degenerate empty object, which produces no rules but still counts as key
+ * presence), or a wildcard key (`"*"`, `"acp*"`) matching via the same rule
+ * machinery the host resolution models ([#465]).
+ */
+export const anyRuleResolves = (permissionConfig: PermissionConfig, tool: string): boolean => {
+    if (hasExplicitToolPermission(permissionConfig, tool)) {
+        return true
+    }
+
+    const match = findLastMatchingRule(getPermissionRules([permissionConfig]), (rule) =>
+        wildcardMatch(tool, rule.permission),
+    )
+
+    return match !== undefined
+}
+
+/**
+ * Merge ACP's tool permissions into the host map. An explicit user `compress`
+ * rule means the user owns the map (returned unchanged). Otherwise write
+ * `compress` + default `acp_status: "allow"` — but never override a user
+ * decision on `acp_status`, whether an exact key ([#457]: it used to be
+ * silently rewritten to `"allow"`, inverting the decision; the host reads its
+ * own permissions from this same map) or a wildcard like `"*"` / `"acp*"`
+ * ([#465]: appended after the user's rules it would win last-match and erase
+ * their decision). The default write is strictly additive over [#457]: it only
+ * stops where a user rule already resolves the tool.
+ */
+export const applyAcpToolPermissions = (
+    permissionConfig: PermissionConfig,
+    compressPermission: PermissionAction,
+): Record<string, PermissionValue> => {
+    if (permissionConfig && hasExplicitToolPermission(permissionConfig, "compress")) {
+        return permissionConfig
+    }
+
+    const next: Record<string, PermissionValue> = {
+        ...(permissionConfig ?? {}),
+        compress: compressPermission,
+    }
+
+    if (!anyRuleResolves(permissionConfig, "acp_status")) {
+        next.acp_status = "allow"
+    }
+
+    return next
+}

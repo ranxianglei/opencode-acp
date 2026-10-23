@@ -1,5 +1,57 @@
 # 更新日志
 
+### v1.18.3 — decompress 正确性加固 + 宿主权限尊重 + 一键发布 workflow
+
+**自 v1.18.2 以来捆绑六个运行时修复、一个 CI 特性与文档更新**（issue #405、#444、#446、#447、#457、#461、#465；CI #443/#474；文档 #441/#442/#450/#471）。无配置或状态格式变更。
+
+**1. Decompress 正确性（#446、#447）：**
+- **源消息可用性校验**（#446）：提交解压前，ACP 现在校验所有可见性将发生变化的消息仍存在于拉取的宿主历史中。若原始消息已被外部移除（原生压缩、手动删除），调用以显式错误中止且**不改动任何状态** —— 此前会报告幻影恢复、按幻影 token 扣减统计，并不可逆地丢弃摘要覆盖。该检查 fail-closed 且保守：多要求某个 ID 只可能导致安全方向的中止，绝不会产生虚假的"已恢复"声明。
+- **`decompress.toFile` 导出原始文本**（#447）：旧导出器读取 SDK 消息上不存在的 `content`/`text` 字段并退化为 `JSON.stringify` 垃圾。现改为序列化消息 parts（文本原样、工具输出经 `extractToolContent`）；原始消息缺失时写入带明确标注的块摘要而非空文件。
+
+**2. 质量门拒绝信息精简（#444）：** 面向模型的拒绝错误不再倾倒内部指标（gate 层、rougeF1、top20Recall、阈值细节）—— 现在只含核心原因、一行 Original/Summary/Retention 统计与重试指引。完整诊断经 `logger.warn` 写入 ACP 日志。`acknowledgeRisk` 旁路提示保留。
+
+**3. 宿主权限尊重（#457、#465）：** ACP 的配置写入不再覆盖用户对 `acp_status` 的权限决定：
+- 精确键（#457）：显式的 `acp_status: "deny"`/`"ask"` 过去会被静默改写为 `"allow"`（反转决定）；现在得以保留。
+- 通配符（#465）：用户规则如 `"*": "deny"` 或 `"acp*": "deny"` 过去会被追加的默认值以 last-match 胜出而抹掉；现在得以保留。
+- 保持的行为：用户显式 `compress` 规则仍然完全让位（map 原样返回），无关宿主规则不受影响。
+
+**4. truncate-tools 开销错误集合设界（#461）：** 每会话一次的 "window too small" ERROR 去重集合原先无界（长驻服务器每会话永久累积一个 key）。现上限 1024 个会话、最旧优先驱逐；驱逐仍活跃会话的最坏代价是多一条重复 ERROR 行。
+
+**5. 向 billion-context 原生模式让位（#405）：** ACP 现在识别 billion-context 的两个所有权标记 —— `BILLION_CONTEXT_PROXY`（launcher）与 `BILLION_CONTEXT_NATIVE`（native 插件）—— 并在动作时（hook 调用、config 运行、每次工具调用经 `resolveToolContext`）重新采样 env，而不是信任 setup 时的快照。这消除了原生模式标记晚于 ACP setup 落盘、导致两个插件同时运行的竞态。交接后，全部五个 ACP 工具抛出指明接管模式的清晰错误。
+
+**6. CI：一键发布 workflow（#443、#474）：** 新增 `Release (one-click)` workflow（`workflow_dispatch`）—— 解析版本（留空 = 自动取 npm latest 的下一 patch）、master 与 npm 漂移守卫、bump `package.json` + `package-lock.json`、校验 bump diff、跑完整 pre-flight 门，然后推 master 或回退到 release 分支 + PR。后续修复使 package-lock.json 版本漂移被修复而非失败。
+
+**文档：** OpenCode 2.x 用户引导至 [billion-context](https://github.com/ranxianglei/billion-context)（README callout + AGENTS.md 迁移/triage 规则固化，#442）；新增 QQ 群 1108730198，原群 1056132097 标记为满员；AGENTS.md 版本表修正（1.10.0 → 1.18.2）。
+
+**安装**：`opencode plugin opencode-acp@latest --global`
+
+### v1.18.2 — 剥离助手文本尾部泄漏的裸 ACP 引用 + 修复 Windows 路径保护静默失效
+
+**PR #432 + PR #403。** 捆绑两个 bug 修复 —— 无配置或状态格式变更。
+
+**1. 泄漏裸引用剥离**（#432，修复 #431）：
+模型偶尔在生成末尾退化，回显最后一条可见消息上看到的 `<dcp-message-id>` 标注模式，在完成文本尾部留下**裸引用 + 垃圾**片段（如 `m00057 <随机多语言文本>`）。旧 sanitizer 只剥离完整/不完整的 *标签*，这些无标签片段因此漏过、被持久化进 OpenCode DB，并重新进入后续上下文与压缩摘要。
+- 新纯函数 `stripLeakedTrailingRefs(text, { nextMessageRef, nextBlockRef })`（`lib/messages/utils.ts`）：单次正则扫描**行首**裸引用（`m\d{4,5}`、`b[1-9]\d*`）；首个数值 ≥ 待分配边界（`messageIds.nextRef` / `prune.messages.nextBlockId`）的匹配触发从该处到文末的截断（尾随空白修剪）。
+- 为何只剥"未来引用"是安全的：引用严格单调递增 —— 在数值 V 存在之前产生的输出不可能合法引用 V，对真实引用零误伤（"see m00042" 保留；行中未来引用如 "between m00056 and m00999" 也保留）。
+- `text.complete` handler（`lib/hooks.ts`）在既有标签剥离之后经同步 registry 查找应用；会话状态不可用时（驱逐、内部会话）→ 回退到纯标签行为。每次完成 O(text)。
+- 已知限制（已文档化）：**已分配**引用的回显不在覆盖范围 —— 有意为之，那些可能是合法引用。
+- +222 行回归测试（`tests/leaked-trailing-ref.test.ts`），另加评审补测（混合 below/future 边界序列、非整数边界守卫、b0 排除、4 位 m 引用）与无 cast 边界收窄重构。
+
+**2. Windows 路径保护真正生效**（#403，修复 #402）：
+`normalizePath()` 搜索的是**两字符**字符串（源码字面量 `"\\\\"`）而非单个反斜杠，真实 Windows 路径从未被归一化，`protectedFilePatterns` 在其唯一需要的平台上静默失效（no-op）。现改为 `replaceAll("\\", "/")`。移植自上游 DCP 提交 5f8f33b；+104 行测试（其中 5 个在修复前代码上失败）。
+
+**安装**：`opencode plugin opencode-acp@latest --global`
+
+### v1.18.1 — 论文预印本 v0.2 入库（纯文档）
+
+**PR #394。** 无运行时代码变更 —— 本次发布将 ACP 的研究预印本及其配图收入仓库，并在两个 README 中加链接。
+
+- **论文**：`paper/model-driven-incremental-hierarchical-compression-training-free-multi-generational-context-management-for-long-lived-coding-agents.md`（英文）+ `paper/模型驱动的增量分层压缩-免训练多代上下文管理.md`（中文），预印本 v0.2 —— 生产规模纵向研究：4.5 个月、三台主机、174,327 次模型调用、累计输入 18.76B tokens（全部主机合计约 24.7B）、204,800-token 模型零窗口违规、马拉松会话 8,584–12,049 次调用。
+- **配图**：`paper/figures/fig1-fold-layout.png` … `fig6-capacity-sim.png`，由 `paper/figures/make-figures.py` 生成。
+- **开放获取**：论文以 MIT 许可收录在仓库内（活文档 —— 欢迎通过 PR 改进）；两个 README 均有醒目标注并链接到各自语言版本。
+
+**安装**：`opencode plugin opencode-acp@latest --global`
+
 ### v1.18.0 — 自适应压缩候选（opt-in）：MICRO/EPISODE 目标，执行同构校验
 
 **PR #341 + 后续修复。** 在既有范围 nudge 之上加了一层候选规划 —— 默认关闭，未开启时与 v1.17.1 行为逐字节一致。

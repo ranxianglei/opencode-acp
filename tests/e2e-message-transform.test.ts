@@ -282,6 +282,9 @@ test("candidate planning uses pre-truncation tool output", async () => {
     config.compress.preserveRecentMessages = 0
     config.compress.preserveRecentTokens = 0
     config.compress.preserveLastUserMessage = false
+    // [#485] Emergency truncation is opt-in (default off) — this test pins the
+    // truncation behavior itself, so it must enable the switch explicitly.
+    config.compress.emergencyTruncation = true
     config.gc.majorGcThresholdPercent = "1%"
 
     const largeOutput = Array.from({ length: 2_000 }, (_, index) => `result-${index}`).join(" ")
