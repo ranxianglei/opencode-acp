@@ -4,6 +4,7 @@ export { injectCompressNudges } from "./inject/inject"
 export { computeInputBudget } from "./inject/utils"
 export { injectMessageIds } from "./inject/inject"
 export { stripStaleMetadata, dropCompressReasoning } from "./reasoning-strip"
+export { canonicalizeReasoningShape } from "./reasoning-canonicalize"
 export { buildPriorityMap } from "./priority"
 export {
     buildToolIdList,
