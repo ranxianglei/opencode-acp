@@ -4,20 +4,10 @@ export const CONTEXT_LIMIT_NUDGE = `
 
 If mid-atomic-operation, finish that step first, then compress.
 
-HOW TO CALL COMPRESS:
-{
-  "topic": "Short Label",
-  "content": [
-    {
-      "startId": "<ID from early in this conversation>",
-      "endId": "<ID from later in this conversation>",
-      "summary": "Complete technical summary of everything in the range"
-    }
-  ]
-}
+Format: { "topic": "...", "content": [{ "startId": "<visible ID>", "endId": "<visible ID>", "summary": "..." }] } — batch unrelated ranges in one call.
 
 ⚠️ ID RULES — MOST COMMON CAUSE OF ERRORS:
-- ONLY use IDs you can see in  tags in the messages ABOVE.
+- ONLY use IDs you can see in <dcp-message-id> tags in the messages ABOVE.
 - Do NOT copy IDs from this example. Do NOT invent IDs.
 - Do NOT use IDs from compressed block summaries — they are stale.
 - startId must appear BEFORE endId in the conversation.

@@ -187,6 +187,13 @@ Core compression behavior.
 - **Status:** ACTIVE (opt-in)
 - **Description:** Enable MICRO/EPISODE compression candidates. When `true`, nudges and `acp_status` show pre-validated, batchable compression candidates (MICRO = one large message or a complete tool transaction; EPISODE = a contiguous historical segment of smaller units) instead of raw compressible ranges. Candidates are validated through the same execution path as the `compress` tool, so every listed target is submittable. When `false` (default), legacy range-list behavior is kept.
 
+#### `compress.promptPack`
+
+- **Type:** `"default" | "lean"`
+- **Default:** `"default"`
+- **Status:** ACTIVE (opt-in)
+- **Description:** Selects the standing prompt surface pack. `"default"` ships the full system-prompt sections and multi-line tool descriptions. `"lean"` switches to a condensed surface aligned with billion-context-pi's lean mode: a compact system prompt (condensed how-to-compress contract retaining all rule classes plus the INTEGRITY/PENDING anti-fabrication rule) and one-line tool descriptions (~40–70% smaller than the trimmed defaults). Lean adds two directives absent from the default pack: recall is never a routine post-compress step, and `acp_status`/`decompress`/`search_context` are not called merely to verify a fold. The option is global-scope only (the prompt surface is session-wide; per-provider/per-model overrides do not apply). User prompt file overrides (`.opencode/acp-prompts/overrides/`) still take precedence over any pack.
+
 #### `compress.maxContextLimit`
 
 - **Type:** `number | \`${number}%\``

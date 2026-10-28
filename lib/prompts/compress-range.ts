@@ -21,7 +21,6 @@ Compressed block sections in context are clearly marked with a header:
 
 Rules:
 
-- Write your summary normally. The system handles block consumption automatically.
 - Do not invent placeholders for blocks outside the selected range.
 - Treat \`(bN)\` as a RESERVED TOKEN. Do not emit \`(bN)\` text anywhere in the summary.
 - If you need to mention a block in prose, use plain text like \`compressed bN\` (never as a placeholder).
@@ -38,41 +37,20 @@ Treat these tags as boundary metadata only, not as tool result content.
 
 Rules:
 
-- Pick \`startId\` and \`endId\` directly from injected IDs in context.
 - IDs must exist in the current visible context. If you cannot see an ID in the messages above, it is stale and will fail.
 - Prefer \`startId\` before \`endId\` in conversation order. ACP can normalize reversed boundaries, but do not rely on that behavior.
-- Do not invent IDs. Use only IDs that are present in context.
 - NEVER use IDs from compressed block summaries, previous nudges, or your own memory — only IDs currently visible as XML metadata tags in the conversation.
 
 BATCHING
-When multiple independent ranges are ready and their boundaries do not overlap, include all of them as separate entries in the \`content\` array of a single tool call. Each entry should have its own \`startId\`, \`endId\`, and \`summary\`.
-
-When the ranges cover unrelated topics, give each entry its own \`topic\` for better summary quality — do not force unrelated content under a single shared topic. Omit the top-level \`topic\` when every entry has its own. Use the top-level \`topic\` only as a fallback when entries don't specify one.
-
-\`\`\`
-compress({ content: [
-  { topic: "Auth System Exploration", startId: "m00010", endId: "m00050", summary: "..." },
-  { topic: "Bug Hunt", startId: "m00060", endId: "m00080", summary: "..." },
-  { topic: "Deployment", startId: "m00090", endId: "m00110", summary: "..." },
-]})
-\`\`\`
+When multiple independent ranges are ready and their boundaries do not overlap, include all of them as separate entries in the \`content\` array of a single tool call, each with its own \`startId\`, \`endId\`, and \`summary\`. Give each entry its own \`topic\` when the ranges cover unrelated topics; otherwise omit per-entry topics and set the top-level \`topic\` once.
 
 ${candidateGuidanceBlock}KEEP AND REF MARKERS
 When writing a summary, you may embed markers that reference specific messages in the compressed range. The system resolves them automatically:
 
-- \`[[KEEP:mNNNNN]]\` — Expands to the original message content inline (truncated to a max length). Use for critical content you want preserved verbatim in the summary without re-typing it: key function definitions, important error messages, essential file contents.
-- \`[[REF:mNNNNN|short description]]\` — Creates a compact link like \`[→ m00065: key function definition]\`. Use for content the reader can decompress later if needed. Does not expand — saves space.
+- \`[[KEEP:mNNNNN]]\` — Expands to the original message content inline (truncated to a max length). Use sparingly for critical content you want preserved verbatim without re-typing it: key definitions, important errors, essential file contents.
+- \`[[REF:mNNNNN|short description]]\` — Creates a compact link like \`[→ m00065: key function definition]\`. Does not expand — use for content the reader can decompress later if needed.
 
-Example:
-\`\`\`
-Implemented the QuotaMonitor feature. Key design: observer pattern.
-
-[[KEEP:m00065]]
-
-The rest of the bash calls were repetitive export commands. See [[REF:m00078|test results]] for details.
-\`\`\`
-
-Use KEEP sparingly — each expansion adds to the summary length. Prefer REF for content that is important but not immediately critical.
+Prefer REF over KEEP: each KEEP expansion adds to the summary length.
 `
 }
 

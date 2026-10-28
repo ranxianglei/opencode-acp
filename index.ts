@@ -60,6 +60,7 @@ const server: Plugin = (async (ctx) => {
         ctx.directory,
         config.experimental.customPrompts,
         config.compress.candidates === true,
+        config.compress.promptPack ?? "default",
     )
     const hostPermissions: HostPermissionSnapshot = {
         global: undefined,
