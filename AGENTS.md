@@ -778,9 +778,7 @@ gh pr create --title "release: v{VERSION}-dev.1 — title" --body "..."
 
 ```json
 {
-    "plugin": {
-        "opencode-acp": "dev"
-    }
+    "plugin": ["opencode-acp@dev"]
 }
 ```
 

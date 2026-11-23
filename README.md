@@ -122,9 +122,7 @@ Or add to your opencode config:
 
 ```json
 {
-    "plugin": {
-        "opencode-acp": "stable"
-    }
+    "plugin": ["opencode-acp@stable"]
 }
 ```
 
