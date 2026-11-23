@@ -7,7 +7,7 @@
 
 ## 1. Summary
 
-- **What was done**: Replaced the object-form `plugin` example with the array form in both README files.
+- **What was done**: Replaced the object-form `plugin` example with the array form in both README files, plus the same stale example in `AGENTS.md` (§5.4.5 dev prerelease install, found during review).
 - **Why**: OpenCode's current config schema rejects the object form with `plugin: must be array`.
 - **Behavior / compatibility changes**: No. Documentation only.
 - **Risk level**: Low
@@ -20,11 +20,13 @@
 |--------|-------------|
 | `c6a8737` | docs: use array form for plugin config |
 | this commit | docs: add devlog for plugin config change |
+| (review fix) | docs: fix object-form plugin example in AGENTS.md dev prerelease section |
 
 ### Key Files
 
 - `README.md` — installation snippet now uses `"plugin": ["opencode-acp@stable"]`.
 - `README.zh-CN.md` — same correction in the Chinese installation snippet.
+- `AGENTS.md` — §5.4.5 dev prerelease install snippet corrected to `"plugin": ["opencode-acp@dev"]` (same defect, found in review).
 - `devlog/2026-11-23_plugin-config-array/REQ.md` — task record and acceptance criteria.
 - `devlog/2026-11-23_plugin-config-array/WORKLOG.md` — this file.
 
@@ -32,7 +34,7 @@
 
 - **Entry point / key function**: none; documentation-only change.
 - **Key configuration items**: `plugin` in `opencode.json(c)`, array form.
-- **Key logic explanation**: The CLI command `opencode plugin opencode-acp@stable --global` writes the correct array form; the README's manual JSON example was the only stale part.
+- **Key logic explanation**: The CLI command `opencode plugin opencode-acp@stable --global` writes the correct array form; the manual JSON examples in the READMEs and in `AGENTS.md` were the stale parts.
 
 ## 4. Testing & Verification
 
