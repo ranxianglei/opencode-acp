@@ -102,9 +102,7 @@ opencode plugin opencode-acp@stable --global
 
 ```json
 {
-    "plugin": {
-        "opencode-acp": "stable"
-    }
+    "plugin": ["opencode-acp@stable"]
 }
 ```
 
